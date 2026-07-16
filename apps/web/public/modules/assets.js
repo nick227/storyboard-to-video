@@ -37,13 +37,6 @@ export async function loadProtectedAsset(path) {
   }
 }
 
-export function revokeAsset(path) {
-  if (loadedAssets.has(path)) {
-    URL.revokeObjectURL(loadedAssets.get(path));
-    loadedAssets.delete(path);
-  }
-}
-
 /**
  * Revokes every cached blob URL and clears the cache. Call this when leaving
  * a project so assets from the old project don't stay pinned in memory.

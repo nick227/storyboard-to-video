@@ -6,6 +6,23 @@ import { getSpeakersFromScenes } from './workflows.js';
 
 const NO_MAPPING_AUDIO_PROVIDERS = ['stub', 'piper'];
 
+const LEGACY_STYLE_PROMPTS = {
+  'basic-cartoon': 'Ultra-low detail stick figure illustration of simple shapes and minimal colors. Thick black outlines, flat colors, white or lightly colored background, minimal props, playful composition, crude hand-drawn digital doodle feeling, clean readable silhouette, minimal texture, no realism.',
+  'cinematic-reality': 'Cinematic realistic scene with natural lighting, expressive framing, believable environments, detailed subjects, soft depth of field, polished photography-inspired composition, dramatic but grounded mood.',
+  'dark-gothic': 'Dark gothic illustration with moody shadows, worn architecture, ominous atmosphere, muted deep palette, dramatic contrast, melancholic tone, haunting but readable composition.',
+  'indie-youtuber': 'Clean modern creator aesthetic, expressive thumbnail-friendly composition, bright contrast, approachable personality, casual environments, trendy editorial feel, punchy simplified storytelling.',
+  'vox-style': 'Editorial explainer visual language, clean infographic-like composition, simplified shapes, bold framing, smart modern color blocking, crisp design-led illustration, readable information-first storytelling.',
+};
+
+function migrateLegacyStylePrompt(saved, style, els) {
+  const legacy = LEGACY_STYLE_PROMPTS[style?.id];
+  if (!saved || !legacy || !String(saved.commonPromptText || '').startsWith(legacy)) return false;
+  const suffix = String(saved.commonPromptText).slice(legacy.length).trimStart();
+  saved.commonPromptText = [style.promptText, suffix].filter(Boolean).join('\n');
+  els.commonPromptText.value = saved.commonPromptText;
+  return true;
+}
+
 export function renderStoryboardPicker(els) {
   const state = projectStore.get();
   els.storyboardPicker.replaceChildren();
@@ -35,7 +52,13 @@ export async function loadStyles(els) {
   if (saved?.styleId && generationStore.get().styles.some((x) => x.id === saved.styleId)) {
     els.styleSelect.value = saved.styleId;
   }
-  if (!saved?.commonPromptText) prefillCommonPrompt(els.styleSelect.value, els);
+  const selectedStyle = generationStore.get().styles.find((item) => item.id === els.styleSelect.value);
+  if (migrateLegacyStylePrompt(saved, selectedStyle, els)) {
+    persistStoryboardLibrary();
+    queueSync(saved);
+  } else if (!saved?.commonPromptText) {
+    prefillCommonPrompt(els.styleSelect.value, els);
+  }
 }
 
 export function prefillCommonPrompt(styleId, els) {

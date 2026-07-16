@@ -17,11 +17,16 @@ function decimalSetting(env, name, fallback, min, max) {
 
 function createVideoProvider(config, getCancellation) {
   const url = (name) => `${config.ltxUrl}${String(name).startsWith('/') ? name : `/${name}`}`;
+  const headers = (includeJson = false) => ({
+    ...(includeJson ? { 'Content-Type': 'application/json' } : {}),
+    ...(config.env.LTX_VIDEO_API_TOKEN ? { Authorization: `Bearer ${config.env.LTX_VIDEO_API_TOKEN}` } : {}),
+  });
 
   async function verify() {
     if (config.videoProvider === 'stub') return { ok: true, provider: 'stub' };
     try {
       const response = await fetch(url(config.env.LTX_VIDEO_HEALTH_PATH || '/ready'), {
+        headers: headers(),
         signal: signal(config.env.VIDEO_PREFLIGHT_TIMEOUT_MS || 3000, getCancellation),
       });
       if (!response.ok) {
@@ -54,10 +59,10 @@ function createVideoProvider(config, getCancellation) {
     fs.copyFileSync(imagePath, stagedImage);
     try {
       const presetFrames = { subtle: 33, medium: 49, high: 65 }[motionIntensity] || 49;
-      const frames = setting(config.env, 'VIDEO_FRAMES', presetFrames, 1, 297);
+      const frames = setting(config.env, 'VIDEO_FRAMES', presetFrames, 9, 297);
       const response = await fetch(url(config.env.LTX_VIDEO_GENERATE_PATH || '/generate'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers(true),
         body: JSON.stringify({
           prompt: cleanText(prompt, 20_000),
           negative_prompt: cleanText(config.env.VIDEO_NEGATIVE_PROMPT || 'flicker, jitter, blurry, warped anatomy, extra limbs, duplicate characters, text, watermark, frozen frame, static pose', 20_000),
@@ -67,7 +72,7 @@ function createVideoProvider(config, getCancellation) {
           height: setting(config.env, 'VIDEO_HEIGHT', 480, 64, 2048),
           frames: (frames - 1) % 8 === 0 ? frames : presetFrames,
           frame_rate: setting(config.env, 'VIDEO_FRAME_RATE', 24, 1, 60),
-          steps: setting(config.env, 'VIDEO_STEPS', 30, 1, 100),
+          steps: setting(config.env, 'VIDEO_STEPS', 30, 5, 100),
           guidance_scale: decimalSetting(config.env, 'VIDEO_GUIDANCE_SCALE', 4, 1, 10),
           seed: setting(config.env, 'VIDEO_SEED', 42, 0, 2 ** 31 - 1),
           output: stagedOutput,

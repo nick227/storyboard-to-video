@@ -2,9 +2,11 @@ import { projectStore, sceneStore, voiceStore } from './store.js';
 import { api } from './api.js';
 import { revokeAllAssets } from './assets.js';
 
-const TEXT_PROVIDERS = ['gemini', 'openai', 'stub'];
-const IMAGE_PROVIDERS = ['gemini', 'openai', 'dezgo', 'stub'];
-const MOTION_INTENSITIES = ['subtle', 'medium', 'high'];
+// Valid provider/intensity values live in index.html's <select> options — the single
+// source of truth. Reading them here avoids a second, driftable copy of that enumeration.
+function optionValues(selectEl) {
+  return [...selectEl.options].map((option) => option.value);
+}
 
 const STORYBOARD_LIBRARY_KEY = 'storyboard-poc-storyboards';
 const LEGACY_STORYBOARD_KEYS = ['storyboard-poc-current', 'storyboard-poc-draft'];
@@ -174,14 +176,14 @@ function restoreStoryboardFields(els) {
 
   els.scriptText.value = record.scriptText || '';
   els.sceneCount.value = record.sceneCount || 8;
-  els.textProvider.value = TEXT_PROVIDERS.includes(record.textProvider) ? record.textProvider : 'gemini';
-  els.imageProvider.value = IMAGE_PROVIDERS.includes(record.imageProvider) ? record.imageProvider : 'gemini';
+  els.textProvider.value = optionValues(els.textProvider).includes(record.textProvider) ? record.textProvider : 'gemini';
+  els.imageProvider.value = optionValues(els.imageProvider).includes(record.imageProvider) ? record.imageProvider : 'gemini';
   els.fallbackPolicy.value = record.fallbackPolicy === 'fail' ? 'fail' : 'local';
-  els.videoMotionIntensity.value = MOTION_INTENSITIES.includes(record.videoMotionIntensity) ? record.videoMotionIntensity : 'medium';
+  els.videoMotionIntensity.value = optionValues(els.videoMotionIntensity).includes(record.videoMotionIntensity) ? record.videoMotionIntensity : 'medium';
   if (record.styleId) els.styleSelect.value = record.styleId;
   if (record.commonPromptText != null) els.commonPromptText.value = record.commonPromptText;
 
-  const audioProvider = ['elevenlabs', 'piper', 'spark', 'stub'].includes(record.audioProvider) ? record.audioProvider : 'stub';
+  const audioProvider = optionValues(els.audioProvider).includes(record.audioProvider) ? record.audioProvider : 'stub';
   els.audioProvider.value = audioProvider;
   voiceStore.set({
     audioProvider,

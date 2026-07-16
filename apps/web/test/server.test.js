@@ -76,7 +76,7 @@ test('stub text mode uses local fallback prompts without calling remote provider
   assert.equal(result.usedFallback, true);
   assert.equal(result.scenes.length, 2);
   assert.match(result.warning, /stub/i);
-  assert.match(result.scenes[0].prompt, /Show/i);
+  assert.match(result.scenes[0].prompt, /Clear subject, key pose/i);
 });
 
 test('buildWavBuffer writes a correct RIFF/WAVE header for the given PCM data', () => {

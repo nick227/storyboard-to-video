@@ -8,6 +8,14 @@ const DEFAULT_MOTION_PROMPT = [
   'Show clear continuous subject movement and follow-through; never a frozen hold.',
 ].join(' ');
 
+const VIDEO_PROMPT_WORD_BUDGET = Object.freeze({
+  action: 24,
+  motion: 14,
+  visual: 28,
+  style: 16,
+  additionalStyle: 5,
+});
+
 function clipWords(value, limit) {
   return cleanText(value, 20_000).split(/\s+/).filter(Boolean).slice(0, limit).join(' ');
 }
@@ -16,11 +24,11 @@ function buildVideoPrompt(input, style, configuredMotionPrompt = '') {
   const common = getAdditionalCommonPrompt(style.promptText, input.commonPromptText);
   const motion = cleanText(input.motionPrompt || configuredMotionPrompt || DEFAULT_MOTION_PROMPT, 4_000);
   return [
-    input.sceneBeat ? `Story action: ${clipWords(input.sceneBeat, 35)}` : '',
-    `Motion direction: ${clipWords(motion, 18)}`,
-    input.scenePrompt ? `Scene visual prompt: ${clipWords(input.scenePrompt, 45)}` : '',
-    `Style baseline: ${clipWords(style.promptText, 20)}`,
-    common ? `Additional style direction: ${clipWords(common, 6)}` : '',
+    input.sceneBeat ? `Story action: ${clipWords(input.sceneBeat, VIDEO_PROMPT_WORD_BUDGET.action)}` : '',
+    `Motion direction: ${clipWords(motion, VIDEO_PROMPT_WORD_BUDGET.motion)}`,
+    input.scenePrompt ? `Scene visual prompt: ${clipWords(input.scenePrompt, VIDEO_PROMPT_WORD_BUDGET.visual)}` : '',
+    `Style baseline: ${clipWords(style.promptText, VIDEO_PROMPT_WORD_BUDGET.style)}`,
+    common ? `Additional style direction: ${clipWords(common, VIDEO_PROMPT_WORD_BUDGET.additionalStyle)}` : '',
   ].filter(Boolean).join('\n\n');
 }
 
@@ -76,4 +84,4 @@ function createVideoGenerationService({ config, provider, projectStore, styles }
   };
 }
 
-module.exports = { DEFAULT_MOTION_PROMPT, buildVideoPrompt, createVideoGenerationService };
+module.exports = { DEFAULT_MOTION_PROMPT, VIDEO_PROMPT_WORD_BUDGET, buildVideoPrompt, createVideoGenerationService };

@@ -6,7 +6,7 @@ function compactWords(value, maxWords) {
 }
 
 function compactAction(value, fallback = 'Subject moves.') {
-  return compactWords(value, 14) || fallback;
+  return compactWords(value, 24) || fallback;
 }
 
 function splitIntoScenes(scriptText, sceneCount) {
@@ -41,11 +41,12 @@ function createPromptGenerationService({ textProviders, limits }) {
 Create exactly ${sceneCount} sequential storyboard scenes.
 
 BEAT RULES:
-- One concrete physical action, 3-12 words.
+- One primary physical action, usually 5-20 words; never more than 24 words.
 - Use caveman-simple present tense: named subject + strong verb + object or direction.
-- One action only. No "and", "then", "while", camera language, style, emotion, motivation, or backstory.
+- A short second clause may show the immediate visible result or physical reaction.
+- Avoid conjunction chains, camera language, style, emotion, motivation, or backstory.
 - Prefer specific physical verbs: slams, ducks, grabs, throws, spins, kicks, points.
-- Examples: "Mara kicks the door open." "Jonah drops the burning letter." "The dog lunges at the sandwich."
+- Examples: "Mara kicks the door; wood splinters outward." "Jonah drops the letter; flames scatter across the floor." "The dog lunges at the sandwich."
 
 PROMPT RULES:
 - Describe the single keyframe at the action's clearest physical moment in 15-40 words.
