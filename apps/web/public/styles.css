@@ -789,17 +789,18 @@ button.text-button {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #0b0f14;
-  margin-bottom: 12px;
 }
-.timeline-toggle { min-width: 58px; }
-.timeline-scrubber { width: 100%; margin: 0; }
-.timeline-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.timeline-toggle { min-width: 58px; align-self: center; }
+.timeline-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; align-self: center; }
 .timeline-track-wrap {
   overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #0b0f14;
   padding: 10px;
+  cursor: pointer;
+  touch-action: pan-y;
 }
 .timeline-track-inner {
   position: relative;

@@ -68,7 +68,6 @@ const els = {
   timelineStageEmpty: document.getElementById('timelineStageEmpty'),
   timelineAudio: document.getElementById('timelineAudio'),
   timelineToggle: document.getElementById('timelineToggle'),
-  timelineScrubber: document.getElementById('timelineScrubber'),
   timelineTime: document.getElementById('timelineTime'),
   timelineTrackWrap: document.getElementById('timelineTrackWrap'),
   timelineTrackInner: document.getElementById('timelineTrackInner'),

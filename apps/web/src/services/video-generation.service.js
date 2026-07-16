@@ -8,9 +8,23 @@ const DEFAULT_MOTION_PROMPT = [
   'Show clear continuous subject movement and follow-through; never a frozen hold.',
 ].join(' ');
 
+const INTENSITY_MOTION_PROMPTS = Object.freeze({
+  subtle: 'Small continuous movement and gentle follow-through.',
+  medium: DEFAULT_MOTION_PROMPT,
+  high: 'Strong continuous action and pronounced follow-through; never a frozen hold.',
+});
+
+const STYLE_MOTION_PROMPTS = Object.freeze({
+  'basic-cartoon': 'Exaggerated snap, recoil, comic timing.',
+  'cinematic-reality': 'Grounded weight, natural momentum, realistic follow-through.',
+  'dark-gothic': 'Restrained movement, heavy drift, ominous atmosphere.',
+  'indie-youtuber': 'Lively gestures, casual energy, clean motion.',
+  'vox-style': 'Crisp cutout slides, simple layers, light parallax.',
+});
+
 const VIDEO_PROMPT_WORD_BUDGET = Object.freeze({
   action: 24,
-  motion: 14,
+  motion: 18,
   visual: 28,
   style: 16,
   additionalStyle: 5,
@@ -22,7 +36,9 @@ function clipWords(value, limit) {
 
 function buildVideoPrompt(input, style, configuredMotionPrompt = '') {
   const common = getAdditionalCommonPrompt(style.promptText, input.commonPromptText);
-  const motion = cleanText(input.motionPrompt || configuredMotionPrompt || DEFAULT_MOTION_PROMPT, 4_000);
+  const intensityMotion = INTENSITY_MOTION_PROMPTS[input.motionIntensity] || INTENSITY_MOTION_PROMPTS.medium;
+  const styleMotion = STYLE_MOTION_PROMPTS[style.id] || 'Clear readable motion.';
+  const motion = cleanText(`${input.motionPrompt || configuredMotionPrompt || intensityMotion} ${styleMotion}`, 4_000);
   return [
     input.sceneBeat ? `Story action: ${clipWords(input.sceneBeat, VIDEO_PROMPT_WORD_BUDGET.action)}` : '',
     `Motion direction: ${clipWords(motion, VIDEO_PROMPT_WORD_BUDGET.motion)}`,
@@ -84,4 +100,4 @@ function createVideoGenerationService({ config, provider, projectStore, styles }
   };
 }
 
-module.exports = { DEFAULT_MOTION_PROMPT, VIDEO_PROMPT_WORD_BUDGET, buildVideoPrompt, createVideoGenerationService };
+module.exports = { DEFAULT_MOTION_PROMPT, INTENSITY_MOTION_PROMPTS, STYLE_MOTION_PROMPTS, VIDEO_PROMPT_WORD_BUDGET, buildVideoPrompt, createVideoGenerationService };

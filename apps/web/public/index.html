@@ -186,16 +186,14 @@
 
         <div class="timeline-controls">
           <button type="button" class="timeline-toggle" id="timelineToggle" aria-label="Play combined timeline" disabled>Play</button>
-          <input class="timeline-scrubber" id="timelineScrubber" type="range" min="0" max="0" value="0" step="0.01" aria-label="Timeline position" disabled />
-          <span class="timeline-time" id="timelineTime">0:00 / 0:00</span>
-        </div>
-
-        <div class="timeline-track-wrap" id="timelineTrackWrap">
-          <div class="timeline-track-inner" id="timelineTrackInner">
-            <div class="timeline-thumbs" id="timelineThumbs"></div>
-            <canvas class="timeline-waveform-canvas" id="timelineWaveformCanvas" height="48"></canvas>
-            <div class="timeline-playhead" id="timelinePlayhead"></div>
+          <div class="timeline-track-wrap" id="timelineTrackWrap">
+            <div class="timeline-track-inner" id="timelineTrackInner">
+              <div class="timeline-thumbs" id="timelineThumbs"></div>
+              <canvas class="timeline-waveform-canvas" id="timelineWaveformCanvas" height="48"></canvas>
+              <div class="timeline-playhead" id="timelinePlayhead"></div>
+            </div>
           </div>
+          <span class="timeline-time" id="timelineTime">0:00 / 0:00</span>
         </div>
       </section>
     </div>

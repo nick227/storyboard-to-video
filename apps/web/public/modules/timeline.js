@@ -118,18 +118,29 @@ async function buildTimelineSegments() {
 
 function setupTimelinePlayback(segments, totalDuration, trackWidth) {
   const { timelineVideo: video, timelineAudio: audio, timelineImage: image, timelineStageEmpty: emptyEl,
-    timelineToggle: toggle, timelineScrubber: scrubber, timelineTime: timeLabel, timelinePlayhead: playhead,
+    timelineToggle: toggle, timelineTime: timeLabel, timelinePlayhead: playhead,
     timelineTrackWrap: trackWrap, timelineTrackInner: trackInner } = els;
 
+  // Playback position is tracked from the real audio/video element's currentTime rather than
+  // wall-clock elapsed time. Driving the clock off performance.now() let it outrun the actual
+  // media whenever play() took a moment to start or buffering stalled it, so segments swapped
+  // (killing the previous segment's audio mid-word) before the audio had actually finished.
   let playing = false;
   let currentSegmentIndex = 0;
-  let segmentElapsedAtStart = 0;
-  let startedAt = 0;
-  let animationFrame = null;
   let globalCurrentTime = 0;
+  let animationFrame = null;
+  let stillClockAt = 0;
+  let stillClockOffset = 0;
+  let segmentEnteredAt = 0;
+  let dragging = false;
+
+  const localTimeForSegment = (segment) => {
+    if (segment.audioPath) return audio.currentTime;
+    if (segment.videoPath) return video.currentTime;
+    return stillClockOffset + (performance.now() - stillClockAt) / 1000;
+  };
 
   const updateDisplay = () => {
-    scrubber.value = String(globalCurrentTime);
     timeLabel.textContent = `${formatPlaybackTime(globalCurrentTime)} / ${formatPlaybackTime(totalDuration)}`;
     playhead.style.transform = `translateX(${(globalCurrentTime / totalDuration) * trackWidth}px)`;
   };
@@ -139,11 +150,10 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     return index === -1 ? segments.length - 1 : index;
   };
 
-  const loadSegment = (index) => {
-    const segment = segments[index];
-    currentSegmentIndex = index;
+  const applyVisualSource = (segment) => {
     if (segment.videoPath) {
-      video.src = segment.videoPath;
+      video.loop = Boolean(segment.audioPath && segment.audioDuration > segment.videoDuration);
+      if (video.getAttribute('src') !== segment.videoPath) video.src = segment.videoPath;
       video.style.display = 'block';
       image.style.display = 'none';
       image.removeAttribute('src');
@@ -158,39 +168,68 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
         image.style.display = 'none';
       }
     }
-    audio.src = segment.audioPath || '';
+    if (segment.audioPath) {
+      if (audio.getAttribute('src') !== segment.audioPath) audio.src = segment.audioPath;
+    } else {
+      audio.removeAttribute('src');
+    }
     emptyEl.style.display = (segment.videoPath || segment.imagePath) ? 'none' : 'flex';
   };
 
-  const positionWithinSegment = (segment, localTime, shouldPlay) => {
-    const loopsForAudio = segment.videoPath && segment.audioDuration > segment.videoDuration;
-    if (segment.videoPath) {
-      const videoTime = loopsForAudio ? localTime % segment.videoDuration : Math.min(localTime, segment.videoDuration);
-      video.loop = Boolean(loopsForAudio);
-      if (Math.abs(video.currentTime - videoTime) > 0.15) video.currentTime = videoTime;
-      if (shouldPlay) video.play().catch(() => {});
-      else video.pause();
+  // Fast path for normal forward playback: always starts at local time 0, so there's nothing to
+  // wait for or seek — just swap sources and let them play from the top.
+  const enterSegment = (index, shouldPlay) => {
+    currentSegmentIndex = index;
+    const segment = segments[index];
+    applyVisualSource(segment);
+    stillClockOffset = 0;
+    stillClockAt = performance.now();
+    segmentEnteredAt = performance.now();
+    if (shouldPlay) {
+      if (segment.videoPath) video.play().catch(() => {});
+      if (segment.audioPath) audio.play().catch(() => {});
     }
-    if (segment.audioPath) {
-      const audioTime = Math.min(localTime, segment.audioDuration || localTime);
-      if (Math.abs(audio.currentTime - audioTime) > 0.15) audio.currentTime = audioTime;
-      if (shouldPlay) audio.play().catch(() => {});
-      else audio.pause();
+  };
+
+  const waitUntilReady = (el) => (el.readyState >= 1 ? Promise.resolve() : new Promise((resolve) => {
+    const done = () => { el.removeEventListener('loadedmetadata', done); el.removeEventListener('error', done); resolve(); };
+    el.addEventListener('loadedmetadata', done);
+    el.addEventListener('error', done);
+  }));
+
+  // Used for scrubbing / resuming mid-segment, where we need an accurate seek before playing.
+  const seekWithinSegment = async (index, localTime, shouldPlay) => {
+    currentSegmentIndex = index;
+    const segment = segments[index];
+    applyVisualSource(segment);
+    segmentEnteredAt = performance.now();
+
+    const positionEl = async (el, path, duration) => {
+      if (!path) { el.pause(); return; }
+      await waitUntilReady(el);
+      if (currentSegmentIndex !== index) return; // superseded by a newer seek/segment change
+      el.currentTime = Math.min(Math.max(localTime, 0), duration || localTime);
+      if (shouldPlay) el.play().catch(() => {});
+      else el.pause();
+    };
+
+    await Promise.all([
+      positionEl(video, segment.videoPath, segment.videoDuration),
+      positionEl(audio, segment.audioPath, segment.audioDuration),
+    ]);
+    if (currentSegmentIndex !== index) return;
+    if (!segment.audioPath && !segment.videoPath) {
+      stillClockOffset = localTime;
+      stillClockAt = performance.now();
     }
   };
 
   const seekTo = (target, shouldPlay) => {
     globalCurrentTime = Math.min(Math.max(target, 0), totalDuration);
     const index = segmentForTime(globalCurrentTime);
-    if (index !== currentSegmentIndex) loadSegment(index);
-    const segment = segments[currentSegmentIndex];
-    positionWithinSegment(segment, globalCurrentTime - segment.start, shouldPlay);
+    const segment = segments[index];
+    seekWithinSegment(index, globalCurrentTime - segment.start, shouldPlay).catch(() => {});
     updateDisplay();
-  };
-
-  const rebaseClock = () => {
-    segmentElapsedAtStart = globalCurrentTime - segments[currentSegmentIndex].start;
-    startedAt = performance.now();
   };
 
   const pause = () => {
@@ -201,61 +240,76 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     audio.pause();
     toggle.textContent = globalCurrentTime >= totalDuration ? 'Replay' : 'Play';
     toggle.setAttribute('aria-label', toggle.textContent === 'Replay' ? 'Replay combined timeline' : 'Play combined timeline');
-    // Note: If we integrate with activeScenePlayback we would need a global reference. For now, pause all other audios.
     document.querySelectorAll('.scene-playback-audio, .audio-version-thumb audio').forEach((el) => {
       if (!el.paused) el.pause();
     });
   };
 
-  const tick = (now) => {
-    const target = segmentElapsedAtStart + (now - startedAt) / 1000;
-    let segment = segments[currentSegmentIndex];
-    while (target >= segment.start + segment.duration && currentSegmentIndex < segments.length - 1) {
-      loadSegment(currentSegmentIndex + 1);
-      segment = segments[currentSegmentIndex];
-      positionWithinSegment(segment, 0, true);
+  const tick = () => {
+    const segment = segments[currentSegmentIndex];
+    const localTime = localTimeForSegment(segment);
+    const isLast = currentSegmentIndex === segments.length - 1;
+    // Real media time drives advancement; a generous wall-clock overrun is only a safety valve
+    // for a stalled/broken media element so the timeline can't hang forever on one segment.
+    const wallOverrun = (performance.now() - segmentEnteredAt) / 1000 > segment.duration + 1.5;
+    if (localTime >= segment.duration - 0.03 || wallOverrun) {
+      if (isLast) {
+        seekTo(totalDuration, false);
+        pause();
+        return;
+      }
+      enterSegment(currentSegmentIndex + 1, true);
+      globalCurrentTime = segments[currentSegmentIndex].start;
+    } else {
+      globalCurrentTime = Math.min(segment.start + localTime, totalDuration);
     }
-    globalCurrentTime = Math.min(target, totalDuration);
     updateDisplay();
-    if (globalCurrentTime >= totalDuration) {
-      seekTo(totalDuration, false);
-      pause();
-      return;
-    }
     animationFrame = requestAnimationFrame(tick);
   };
 
   const play = () => {
-    if (!totalDuration) return;
-    
-    // Pause other medias globally
+    if (!totalDuration || dragging) return;
+
     document.querySelectorAll('.scene-playback-audio, .audio-version-thumb audio, .scene-video').forEach((el) => {
-        if (!el.paused && typeof el.pause === 'function') el.pause();
+      if (!el.paused && typeof el.pause === 'function') el.pause();
     });
-    
-    if (globalCurrentTime >= totalDuration) {
-      globalCurrentTime = 0;
-      loadSegment(0);
-    }
-    
+
+    if (globalCurrentTime >= totalDuration) globalCurrentTime = 0;
+
     playing = true;
     toggle.textContent = 'Pause';
     toggle.setAttribute('aria-label', 'Pause combined timeline');
-    rebaseClock();
-    positionWithinSegment(segments[currentSegmentIndex], segmentElapsedAtStart, true);
+    const index = segmentForTime(globalCurrentTime);
+    seekWithinSegment(index, globalCurrentTime - segments[index].start, true).catch(() => {});
+    if (animationFrame) cancelAnimationFrame(animationFrame);
     animationFrame = requestAnimationFrame(tick);
   };
 
   const onToggleClick = () => { if (playing) pause(); else play(); };
-  const onScrubberInput = () => {
-    seekTo(Number(scrubber.value) || 0, playing);
-    if (playing) rebaseClock();
-  };
-  const onTrackClick = (event) => {
+
+  const timeForClientX = (clientX) => {
     const rect = trackInner.getBoundingClientRect();
-    const target = ((event.clientX - rect.left) / trackWidth) * totalDuration;
-    seekTo(target, playing);
-    if (playing) rebaseClock();
+    const ratio = trackWidth ? Math.min(Math.max((clientX - rect.left) / trackWidth, 0), 1) : 0;
+    return ratio * totalDuration;
+  };
+
+  let resumeAfterDrag = false;
+  const onTrackPointerDown = (event) => {
+    dragging = true;
+    resumeAfterDrag = playing;
+    if (playing) pause();
+    trackWrap.setPointerCapture(event.pointerId);
+    seekTo(timeForClientX(event.clientX), false);
+  };
+  const onTrackPointerMove = (event) => {
+    if (!dragging) return;
+    seekTo(timeForClientX(event.clientX), false);
+  };
+  const endDrag = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    if (trackWrap.hasPointerCapture(event.pointerId)) trackWrap.releasePointerCapture(event.pointerId);
+    if (resumeAfterDrag) play();
   };
 
   const controller = {
@@ -266,19 +320,21 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
       audio.removeAttribute('src');
       image.removeAttribute('src');
       toggle.removeEventListener('click', onToggleClick);
-      scrubber.removeEventListener('input', onScrubberInput);
-      trackWrap.removeEventListener('click', onTrackClick);
+      trackWrap.removeEventListener('pointerdown', onTrackPointerDown);
+      trackWrap.removeEventListener('pointermove', onTrackPointerMove);
+      trackWrap.removeEventListener('pointerup', endDrag);
+      trackWrap.removeEventListener('pointercancel', endDrag);
     },
   };
 
-  scrubber.max = String(totalDuration);
-  scrubber.disabled = false;
   toggle.disabled = false;
   toggle.addEventListener('click', onToggleClick);
-  scrubber.addEventListener('input', onScrubberInput);
-  trackWrap.addEventListener('click', onTrackClick);
+  trackWrap.addEventListener('pointerdown', onTrackPointerDown);
+  trackWrap.addEventListener('pointermove', onTrackPointerMove);
+  trackWrap.addEventListener('pointerup', endDrag);
+  trackWrap.addEventListener('pointercancel', endDrag);
 
-  loadSegment(0);
+  enterSegment(0, false);
   updateDisplay();
   return controller;
 }
