@@ -1,0 +1,17 @@
+# Lives inside apps/web/ deliberately: Railway resolves this file and its watchPatterns
+# relative to the service's configured Root Directory. That Root Directory (apps/web) is a
+# dashboard/project setting this file cannot set on its own -- see README's Deployment section.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+watchPatterns = ["apps/web/**"]
+
+[deploy]
+# NOT /api/styles or any /api/* path -- those sit behind AuthService (src/app.js mounts
+# `authenticate` on ['/api', '/projects', '/style-references']), and Railway's health
+# checker can't attach a bearer token. "/" is served by express.static before the auth
+# middleware runs, so it's a genuinely reachable, unauthenticated liveness check.
+healthcheckPath = "/"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"

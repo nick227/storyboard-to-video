@@ -1,0 +1,13 @@
+const {signal,throwResponse}=require('../providers/http');
+function createVoiceService(config,getCancellation){
+ const spark=(name)=>`${config.sparkUrl}${name}`;
+ const authHeaders=()=>config.sparkServiceToken?{Authorization:`Bearer ${config.sparkServiceToken}`}:{};
+ return{
+ async elevenLabsVoices(){if(!config.env.ELEVENLABS_API_KEY)throw new Error('ELEVENLABS_API_KEY missing');const response=await fetch('https://api.elevenlabs.io/v1/voices',{headers:{'xi-api-key':config.env.ELEVENLABS_API_KEY},signal:signal(config.env.AUDIO_PROVIDER_TIMEOUT_MS||60000,getCancellation)});if(!response.ok)await throwResponse('elevenlabs',response);return(await response.json()).voices?.map(v=>({voiceId:v.voice_id,label:v.name}))||[];},
+ async sparkPreflight(){const response=await fetch(spark('/health'),{signal:signal(config.env.SPARK_PREFLIGHT_TIMEOUT_MS||3000,getCancellation)});if(!response.ok)throw new Error(`health check returned HTTP ${response.status}`);return{ok:true,provider:'spark'};},
+ async sparkVoices(){const response=await fetch(spark('/voices'),{headers:authHeaders(),signal:signal(config.env.SPARK_PREFLIGHT_TIMEOUT_MS||10000,getCancellation)});if(!response.ok)throw new Error(`Voice list failed (${response.status})`);return(await response.json()).voices?.map(v=>({voiceId:v.voiceId,label:v.name}))||[];},
+ async clone(file,name){const form=new FormData();form.append('audio',new Blob([file.buffer]),file.originalname||'recording.webm');form.append('name',name);const response=await fetch(spark('/voices'),{method:'POST',headers:authHeaders(),body:form,signal:signal(config.env.SPARK_CLONE_TIMEOUT_MS||60000,getCancellation)});if(!response.ok){const detail=await response.json().catch(()=>({}));throw new Error(detail.detail||`Voice cloning failed (${response.status})`);}const data=await response.json();return{voiceId:data.voiceId,label:data.name};},
+ async remove(voiceId){const response=await fetch(spark(`/voices/${encodeURIComponent(voiceId)}`),{method:'DELETE',headers:authHeaders(),signal:signal(config.env.SPARK_PREFLIGHT_TIMEOUT_MS||10000,getCancellation)});if(!response.ok)throw new Error(`Voice deletion failed (${response.status})`);},
+ async reference(voiceId){const response=await fetch(spark(`/voices/${encodeURIComponent(voiceId)}/reference`),{headers:authHeaders(),signal:signal(config.env.SPARK_PREFLIGHT_TIMEOUT_MS||10000,getCancellation)});if(!response.ok)throw new Error(`Reference audio failed (${response.status})`);return{buffer:Buffer.from(await response.arrayBuffer()),contentType:response.headers.get('content-type')||'audio/wav'};}
+};}
+module.exports={createVoiceService};

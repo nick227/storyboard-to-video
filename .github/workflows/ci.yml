@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+        working-directory: apps/web
+      - run: npm run check
+        working-directory: apps/web
+      - run: npm test
+        working-directory: apps/web
+
+  voice-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # CPU-only wheels: GitHub-hosted runners have no GPU, so the CUDA build in
+      # requirements.txt (used by setup.sh / the Modal image) would just waste
+      # bandwidth and time here.
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+        working-directory: apps/voice-service
+      - run: pip install -r requirements-ci.txt
+        working-directory: apps/voice-service
+      - run: SPARK_SKIP_MODEL_LOAD=1 pytest test_main.py -v
+        working-directory: apps/voice-service

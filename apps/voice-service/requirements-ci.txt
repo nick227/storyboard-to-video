@@ -1,0 +1,21 @@
+# Same as requirements.txt minus torch/torchaudio, which CI installs separately from the
+# CPU-only wheel index (GitHub-hosted runners have no GPU, so the multi-GB CUDA build in
+# requirements.txt is wasted bandwidth/time there). This file is CI-only -- setup.sh and the
+# Modal image both use requirements.txt with the real CUDA-enabled torch pin.
+einops==0.8.1
+einx==0.3.0
+numpy==2.2.3
+omegaconf==2.3.0
+packaging==24.2
+safetensors==0.5.2
+soundfile==0.12.1
+soxr==0.5.0.post1
+tqdm==4.66.5
+transformers==4.46.2
+fastapi==0.115.6
+uvicorn==0.34.0
+python-multipart==0.0.20
+huggingface_hub==0.27.1
+python-dotenv==1.0.1
+pytest==8.3.4
+httpx==0.28.1

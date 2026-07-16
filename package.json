@@ -1,20 +1,14 @@
 {
-  "name": "storyboard-image-poc",
-  "version": "0.2.0",
+  "name": "storyboard-monorepo",
   "private": true,
-  "description": "Storyboard prompt and image generation POC",
-  "main": "server.js",
+  "description": "Root orchestrator for apps/web (Node, deploys to Railway) and apps/voice-service (Python/Spark-TTS, deploys to Modal). No dependencies of its own -- see apps/web/package.json and apps/voice-service/requirements.txt.",
   "scripts": {
-    "start": "node server.js",
-    "test": "node --test",
-    "check": "node --check server.js && node --check public/app.js",
-    "setup:piper": "node scripts/setup-piper.js"
-  },
-  "dependencies": {
-    "archiver": "^7.0.1",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "multer": "^1.4.5-lts.1",
-    "text2wav": "^0.0.14"
+    "start": "trap 'kill 0' INT TERM EXIT; npm run dev:web & npm run dev:voice & wait",
+    "dev:web": "npm --prefix apps/web start",
+    "dev:voice": "apps/voice-service/venv/bin/python apps/voice-service/main.py",
+    "check": "npm --prefix apps/web run check && apps/voice-service/venv/bin/python -m py_compile apps/voice-service/main.py",
+    "test": "npm --prefix apps/web test && apps/voice-service/venv/bin/python -m pytest apps/voice-service/test_main.py",
+    "setup:piper": "npm --prefix apps/web run setup:piper",
+    "setup:spark": "bash apps/voice-service/setup.sh"
   }
 }

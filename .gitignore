@@ -1,23 +1,21 @@
 # Dependencies and downloaded runtimes
-/node_modules/
-/vendor/
+**/node_modules/
+/apps/web/vendor/
 
 # Local environment and secrets
 .env
 .env.*
 !.env.example
 
-# Generated storyboard media and exports
-/data/audio/
-/data/generated/
-/data/stubs/
-/data/videos/
-/data/zips/
+# Generated storyboard media, exports, and any ad-hoc local backups under it
+/apps/web/data/*
 
 # Local Python environments and model weights
-/voice-service/venv/
-/voice-service/.venv/
-/voice-service/pretrained_models/
+/apps/voice-service/venv/
+/apps/voice-service/.venv/
+/apps/voice-service/pretrained_models/
+/apps/voice-service/spark_tts_src/
+/apps/voice-service/voices/
 **/__pycache__/
 *.py[cod]
 
@@ -37,4 +35,3 @@ Thumbs.db
 *.swp
 *.swo
 *~
-/voice-service/

@@ -1,0 +1,3 @@
+const {randomUUID}=require('node:crypto');const {AppError,errorPayload}=require('../errors');
+function requestId(req,res,next){req.id=req.get('X-Request-Id')||randomUUID();res.set('X-Request-Id',req.id);const json=res.json.bind(res);res.json=(payload)=>{if(res.statusCode>=400&&payload&&typeof payload==='object'){if(typeof payload.error==='string')return json(errorPayload(new AppError(payload.code||'REQUEST_FAILED',payload.error,{status:res.statusCode}),req.id));if(payload.error&&typeof payload.error==='object'&&!payload.error.requestId)return json({ok:false,...payload,error:{retryable:false,...payload.error,requestId:req.id}});}return json(payload);};next();}
+module.exports={requestId};

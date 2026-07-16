@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Frontend Tests</title>
+    <style>
+      body { font-family: sans-serif; }
+      .pass { color: green; }
+      .fail { color: red; }
+    </style>
+  </head>
+  <body>
+    <h1>Frontend Tests</h1>
+    <ul id="test-results"></ul>
+    
+    <!-- Mocks for testing -->
+    <div id="mock-ui" style="display: none;">
+      <select id="storyboardPicker"></select>
+      <button id="newStoryboardBtn"></button>
+      <textarea id="scriptText"></textarea>
+      <input id="sceneCount" type="number" />
+      <select id="styleSelect"></select>
+      <select id="textProvider"></select>
+      <input id="fallbackPolicy" />
+      <select id="imageProvider"></select>
+      <select id="audioProvider"></select>
+      <textarea id="commonPromptText"></textarea>
+      <button id="generatePromptsBtn"></button>
+      <button id="startSerialBtn"></button>
+      <button id="generateDialogueBtn"></button>
+      <button id="startAudioSerialBtn"></button>
+      <button id="saveStateBtn"></button>
+      <button id="downloadZipBtn"></button>
+      <span id="statusText"></span>
+      <div id="storyboardGrid"></div>
+      <template id="sceneCardTemplate">
+        <article class="scene-card"><div class="scene-index"></div><input class="scene-title-input"/><textarea class="scene-beat"></textarea><textarea class="scene-prompt"></textarea><img class="scene-image" /><div class="scene-placeholder"></div><div class="image-version-list"></div><span class="version-count"></span><span class="image-version-count"></span><textarea class="scene-dialogue"></textarea><div class="audio-version-list"></div><span class="audio-version-count"></span><div class="current-audio"></div><audio class="current-audio-player"></audio><span class="current-audio-version"></span><button class="regen-prompt-btn"></button><button class="regen-image-btn"></button><button class="regen-dialogue-btn"></button><button class="regen-audio-btn"></button><div class="prompt-loading"></div><div class="image-loading"></div><span class="beat-summary"></span><span class="detail-completeness"></span><details class="scene-details"></details><div class="visual-history-block"></div><div class="image-history-group"></div><div class="audio-version-block"></div></article>
+      </template>
+      <div id="characterRefs"></div>
+      <div id="worldRefs"></div>
+      <details id="styleReferencesDetails"></details>
+      <input id="characterRefInput" />
+      <input id="worldRefInput" />
+      <div id="voicesPanel"></div>
+      <button id="voiceCloningBtn"></button>
+      <dialog id="voiceLibraryModal"></dialog>
+      <button id="closeVoiceLibraryBtn"></button>
+      <div id="voiceLibraryList"></div>
+      <select id="voiceMicSelect"></select>
+      <span id="voiceMicStatus"></span>
+      <button id="voiceRecordBtn"></button>
+      <canvas id="voiceWaveformCanvas"></canvas>
+      <audio id="voiceRecordPreview"></audio>
+      <span id="voiceDurationNote"></span>
+      <input id="voiceNameInput" />
+      <button id="voiceSaveBtn"></button>
+    </div>
+
+    <script type="module" src="/tests/frontend.test.js"></script>
+  </body>
+</html>

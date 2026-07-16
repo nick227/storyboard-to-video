@@ -1,0 +1,145 @@
+process.env.AUTH_TOKENS = 'alice-token:alice,bob-token:bob';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const request = require('supertest');
+const { app, generationQueue, projectStore } = require('../server');
+const { GenerationQueue } = require('../src/services/generation-queue');
+const { JobStore } = require('../src/storage/job-store');
+const { ProjectStore } = require('../src/storage/project-store');
+
+const auth = (token = 'alice-token') => ({ Authorization: `Bearer ${token}` });
+const id = (label) => `test-${label}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function cleanupProject(projectId) { fs.rmSync(projectStore.projectDir(projectId), { recursive: true, force: true }); fs.rmSync(projectStore.tombstonePath(projectId), { force: true }); }
+
+test('concurrent project saves reject stale revisions', async (t) => {
+  const projectId = id('revision'); t.after(() => cleanupProject(projectId));
+  const created = await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Revision' }).expect(201);
+  const revision = created.body.project.revision;
+  const first = await request(app).put(`/api/projects/${projectId}`).set(auth()).set('If-Match', `"${revision}"`).send({ title: 'First', scenes: [] }).expect(200);
+  assert.equal(first.body.project.revision, revision + 1);
+  const stale = await request(app).put(`/api/projects/${projectId}`).set(auth()).set('If-Match', `"${revision}"`).send({ title: 'Stale', scenes: [] }).expect(409);
+  assert.equal(stale.body.error.code, 'REVISION_CONFLICT');
+});
+
+test('persisted queued and running jobs recover as interrupted', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jobs-'));
+  try {
+    const store = new JobStore(root);
+    store.save({ id: 'queued', type: 'image', projectId: 'p', status: 'queued', createdAt: new Date().toISOString() });
+    store.save({ id: 'running', type: 'audio', projectId: 'p', status: 'running', createdAt: new Date().toISOString() });
+    const queue = new GenerationQueue({ store });
+    assert.equal(queue.get('queued').status, 'interrupted');
+    assert.equal(queue.get('running').error.code, 'SERVER_RESTARTED');
+    assert.equal(queue.cancel('queued').status, 'interrupted');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('cancelled leases reject late asset commits', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-'));
+  try {
+    const store = new ProjectStore(root); const project = store.create({ id: 'p', ownerId: 'alice' }); const lease = store.acquireLease(project.id);
+    const source = path.join(root, 'source.bin'); fs.writeFileSync(source, Buffer.alloc(8));
+    const controller = new AbortController(); controller.abort();
+    assert.throws(() => store.commitAsset(lease, 'images', source, { signal: controller.signal }), /abort/i);
+    assert.deepEqual(fs.readdirSync(store.assetDir('p', 'images')), []);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('project tombstones prevent late jobs from recreating deleted projects', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-'));
+  try {
+    const store = new ProjectStore(root); store.create({ id: 'p', ownerId: 'alice' }); const lease = store.acquireLease('p');
+    const source = path.join(root, 'source.bin'); fs.writeFileSync(source, Buffer.alloc(8)); store.delete('p');
+    assert.throws(() => store.commitAsset(lease, 'images', source), /deleted/i);
+    assert.equal(fs.existsSync(store.projectDir('p')), false);
+    assert.throws(() => store.create({ id: 'p' }), /permanently deleted/i);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('asset deletion rejects explicit active-version references', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-'));
+  try {
+    const store = new ProjectStore(root); let project = store.create({ id: 'p' }); const lease = store.acquireLease('p');
+    const source = path.join(root, 'source.bin'); fs.writeFileSync(source, Buffer.alloc(8)); const asset = store.commitAsset(lease, 'images', source);
+    project = store.write('p', { ...project, scenes: [{ versions: [{ path: asset.path }], activeVersionIndex: 0 }] }, { expectedRevision: project.revision });
+    assert.throws(() => store.deleteAsset('p', 'images', asset.fileName), (error) => error.code === 'ASSET_IN_USE');
+    assert.ok(project.assetReferences.includes(asset.path));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('duplicate generation requests reuse the completed project-scoped result', async (t) => {
+  const projectId = id('idem'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Idempotency' }).expect(201);
+  const body = { projectId, sceneNumber: 1, sceneTitle: 'Opening', scenePrompt: 'A bright room.', styleId: 'basic-cartoon', provider: 'stub' };
+  const first = await request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'same-request-001').send(body).expect(200);
+  const second = await request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'same-request-001').send(body).expect(200);
+  assert.equal(second.body.image.path, first.body.image.path);
+  assert.equal(fs.readdirSync(projectStore.assetDir(projectId, 'images')).length, 1);
+});
+
+test('duplicate active generation requests reuse the active job', async (t) => {
+  const projectId = id('active-idem'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Active idempotency' }).expect(201);
+  let release;
+  const blocker = generationQueue.add('test-blocker', null, () => new Promise((resolve) => { release = resolve; }));
+  blocker.promise.catch(() => {});
+  const body = { projectId, sceneNumber: 1, sceneTitle: 'Opening', scenePrompt: 'A held request.', styleId: 'basic-cartoon', provider: 'stub' };
+  const firstRequest = request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'active-request-001').send(body);
+  const firstPromise = firstRequest.then((response) => response);
+  for (let attempts = 0; attempts < 20 && !generationQueue.list(projectId).length; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+  const duplicate = await request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'active-request-001').send(body).expect(202);
+  assert.equal(duplicate.body.reused, true);
+  assert.equal(generationQueue.list(projectId).length, 1);
+  release();
+  assert.equal((await firstPromise).status, 200);
+});
+
+test('quota enforcement is atomic and cleanup removes only unreferenced assets', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-'));
+  try {
+    const store = new ProjectStore(root, { maxFiles: 2, maxBytes: 12 }); let project = store.create({ id: 'p' }); const lease = store.acquireLease('p');
+    const source = path.join(root, 'source.bin'); fs.writeFileSync(source, Buffer.alloc(8)); const kept = store.commitAsset(lease, 'images', source, { fileName: 'kept.bin' });
+    project = store.write('p', { ...project, scenes: [{ versions: [{ path: kept.path }] }] }, { expectedRevision: project.revision });
+    fs.writeFileSync(source, Buffer.alloc(8)); assert.throws(() => store.commitAsset(lease, 'images', source, { fileName: 'too-big.bin' }), (error) => error.code === 'PROJECT_QUOTA_EXCEEDED');
+    fs.writeFileSync(path.join(store.assetDir('p', 'images'), 'unused.bin'), Buffer.alloc(1));
+    const removed = store.cleanup('p'); assert.deepEqual(removed, [{ type: 'images', fileName: 'unused.bin' }]);
+    assert.equal(fs.existsSync(path.join(store.assetDir('p', 'images'), 'kept.bin')), true);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('unfinished cleanup transactions roll back during restart recovery', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-'));
+  try {
+    const store = new ProjectStore(root); store.create({ id: 'p' });
+    const assetDir = store.assetDir('p', 'images'); fs.writeFileSync(path.join(assetDir, 'recover.bin'), Buffer.alloc(1));
+    const trash = path.join(store.projectDir('p'), '.cleanup-crash', 'images'); fs.mkdirSync(trash, { recursive: true });
+    fs.renameSync(path.join(assetDir, 'recover.bin'), path.join(trash, 'recover.bin'));
+    new ProjectStore(root);
+    assert.equal(fs.existsSync(path.join(assetDir, 'recover.bin')), true);
+    assert.equal(fs.existsSync(path.dirname(trash)), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('authentication and ownership protect project documents and assets', async (t) => {
+  const projectId = id('owner'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Private' }).expect(201);
+  const body = { projectId, sceneNumber: 1, sceneTitle: 'Private', scenePrompt: 'Private image.', styleId: 'basic-cartoon', provider: 'stub' };
+  const generated = await request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'private-request-001').send(body).expect(200);
+  await request(app).get(`/api/projects/${projectId}`).expect(401);
+  await request(app).get(`/api/projects/${projectId}`).set(auth('bob-token')).expect(404);
+  await request(app).get(generated.body.image.path).set(auth('bob-token')).expect(404);
+  await request(app).get(generated.body.image.path).set(auth()).expect(200);
+  await request(app).post('/api/images/generate').set(auth('bob-token')).set('Idempotency-Key', 'cross-owner-001').send(body).expect(404);
+  const legacyName = `legacy-${Date.now()}.bin`; const legacyPath = path.join(__dirname, '..', 'data', 'generated', legacyName);
+  fs.mkdirSync(path.dirname(legacyPath), { recursive: true }); fs.writeFileSync(legacyPath, Buffer.alloc(1));
+  try { await request(app).get(`/generated/${legacyName}`).set(auth()).expect(404); } finally { fs.rmSync(legacyPath, { force: true }); }
+});
+
+test('validation errors retain the shared error contract behind authentication', async () => {
+  const response = await request(app).post('/api/storyboard/generate-prompts').set(auth()).set('Idempotency-Key', 'invalid-request-001').send({ projectId: 'missing', scriptText: '', sceneCount: 500 }).expect(400);
+  assert.equal(response.body.error.code, 'VALIDATION_ERROR'); assert.ok(response.body.error.requestId);
+});

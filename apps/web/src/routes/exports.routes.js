@@ -1,0 +1,1 @@
+const express=require('express');const {validate}=require('../middleware/validate');const {exportProject}=require('../schemas');const {asyncRoute}=require('./helpers');function exportsRoutes(controller){const router=express.Router();router.post('/',validate(exportProject),asyncRoute(controller.export));return router;}module.exports={exportsRoutes};

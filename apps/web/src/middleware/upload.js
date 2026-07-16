@@ -1,0 +1,1 @@
+const multer=require('multer');function createUpload(config){return multer({storage:multer.memoryStorage(),limits:{files:config.limits.references,fileSize:config.limits.referenceBytes}});}module.exports={createUpload};
