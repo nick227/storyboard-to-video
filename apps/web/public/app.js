@@ -1,10 +1,11 @@
 import { projectStore, sceneStore, voiceStore, uiStore, batchStore } from './modules/store.js';
-import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard } from './modules/persistence.js';
+import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord } from './modules/persistence.js';
 import { initRendering } from './modules/rendering.js';
 import { initTimeline } from './modules/timeline.js';
 import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, updateButtons } from './modules/ui.js';
 import { generatePrompts, generateDialogue, downloadZip, regenerateImage, regenerateAudio, regenerateVideo } from './modules/workflows.js';
 import { batchController } from './modules/batch.js';
+import { suggestSceneCount } from './modules/scene-count.js';
 import {
   loadElevenLabsVoices, loadSparkVoices, cloneVoice, switchMicrophone,
   openVoiceLibraryModal, closeVoiceLibraryCleanup, toggleVoiceRecording,
@@ -15,6 +16,7 @@ const els = {
   // Elements
   scriptText: document.getElementById('scriptText'),
   sceneCount: document.getElementById('sceneCount'),
+  autoSceneCountBtn: document.getElementById('autoSceneCountBtn'),
   styleSelect: document.getElementById('styleSelect'),
   commonPromptText: document.getElementById('commonPromptText'),
   textProvider: document.getElementById('textProvider'),
@@ -27,6 +29,7 @@ const els = {
   sceneCardTemplate: document.getElementById('sceneCardTemplate'),
   
   // Navigation / Actions
+  storyboardTitle: document.getElementById('storyboardTitle'),
   storyboardPicker: document.getElementById('storyboardPicker'),
   newStoryboardBtn: document.getElementById('newStoryboardBtn'),
   saveStateBtn: document.getElementById('saveStateBtn'),
@@ -80,6 +83,15 @@ function setStatus(msg) {
   if (els.statusText) els.statusText.textContent = msg;
 }
 
+function refreshSceneCountSuggestion({ apply = false } = {}) {
+  const suggested = suggestSceneCount(els.scriptText.value);
+  const isAuto = els.sceneCount.dataset.mode !== 'manual';
+  els.autoSceneCountBtn.textContent = `Auto: ${suggested}`;
+  els.autoSceneCountBtn.classList.toggle('is-active', isAuto);
+  els.autoSceneCountBtn.setAttribute('aria-pressed', String(isAuto));
+  if (apply && isAuto) els.sceneCount.value = suggested;
+}
+
 async function refreshVoicesForCurrentProvider() {
   const provider = voiceStore.get().audioProvider;
   if (provider === 'elevenlabs') await loadElevenLabsVoices(setStatus);
@@ -97,6 +109,7 @@ async function loadStoryboardIntoUI() {
 function attachEvents() {
   els.newStoryboardBtn.addEventListener('click', async () => {
     createStoryboard(els);
+    refreshSceneCountSuggestion({ apply: true });
     renderStoryboardPicker(els);
     saveStoryboard(els, true);
     await loadStoryboardIntoUI();
@@ -104,15 +117,41 @@ function attachEvents() {
 
   els.storyboardPicker.addEventListener('change', async (e) => {
     await openStoryboard(e.target.value, els);
+    refreshSceneCountSuggestion({ apply: true });
+    renderStoryboardPicker(els);
     await loadStoryboardIntoUI();
+  });
+
+  els.storyboardTitle.addEventListener('input', () => {
+    saveStoryboard(els, false);
+    const selectedOption = els.storyboardPicker.selectedOptions[0];
+    if (selectedOption) selectedOption.textContent = getCurrentStoryboardRecord().title;
+  });
+  els.storyboardTitle.addEventListener('blur', () => {
+    els.storyboardTitle.value = getCurrentStoryboardRecord().title;
+  });
+  els.storyboardTitle.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') els.storyboardTitle.blur();
   });
 
   els.saveStateBtn.addEventListener('click', () => saveStoryboard(els, true));
 
-  [els.scriptText, els.commonPromptText].forEach((el) => {
-    el.addEventListener('input', () => { saveStoryboard(els, false); updateButtons(els); });
+  els.scriptText.addEventListener('input', () => {
+    refreshSceneCountSuggestion({ apply: true });
+    saveStoryboard(els, false);
+    updateButtons(els);
   });
-  els.sceneCount.addEventListener('input', () => saveStoryboard(els, false));
+  els.commonPromptText.addEventListener('input', () => { saveStoryboard(els, false); updateButtons(els); });
+  els.sceneCount.addEventListener('input', () => {
+    els.sceneCount.dataset.mode = 'manual';
+    refreshSceneCountSuggestion();
+    saveStoryboard(els, false);
+  });
+  els.autoSceneCountBtn.addEventListener('click', () => {
+    els.sceneCount.dataset.mode = 'auto';
+    refreshSceneCountSuggestion({ apply: true });
+    saveStoryboard(els, false);
+  });
   [els.textProvider, els.imageProvider].forEach((el) => {
     el.addEventListener('change', () => saveStoryboard(els, false));
   });
@@ -158,11 +197,12 @@ function attachEvents() {
     }
   });
 
-  els.styleSelect.addEventListener('change', () => {
-    if (!els.commonPromptText.value.trim()) prefillCommonPrompt(els.styleSelect.value, els);
-    loadStyleReferences(els.styleSelect.value, els, setStatus);
+  els.styleSelect.addEventListener('change', async () => {
+    const styleId = els.styleSelect.value;
+    prefillCommonPrompt(styleId, els);
     saveStoryboard(els, false);
     updateButtons(els);
+    await loadStyleReferences(styleId, els, setStatus);
   });
   els.styleReferencesDetails.addEventListener('toggle', () => loadStyleReferences(els.styleSelect.value, els, setStatus));
   els.characterRefInput.addEventListener('change', (e) => uploadStyleReferences('characters', e.target.files, els, setStatus));
@@ -214,6 +254,7 @@ async function init() {
   attachEvents();
 
   await restoreStoryboardLibrary(els);
+  refreshSceneCountSuggestion({ apply: true });
   renderStoryboardPicker(els);
   await loadStoryboardIntoUI();
 

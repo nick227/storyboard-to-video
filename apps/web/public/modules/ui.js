@@ -25,6 +25,8 @@ function migrateLegacyStylePrompt(saved, style, els) {
 
 export function renderStoryboardPicker(els) {
   const state = projectStore.get();
+  const current = state.storyboards.find((storyboard) => storyboard.id === state.currentId);
+  if (els.storyboardTitle) els.storyboardTitle.value = current?.title || 'Untitled storyboard';
   els.storyboardPicker.replaceChildren();
   state.storyboards
     .slice()
@@ -114,14 +116,21 @@ function renderStyleReferenceList(container, items, type, els) {
 }
 
 export async function loadStyleReferences(styleId, els, setStatus) {
+  generationStore.set({ styleReferences: { characters: [], world: [] } });
+  renderStyleReferences(els);
+  els.styleReferencesDetails.setAttribute('aria-busy', 'true');
   try {
     const data = await api(`/api/styles/${encodeURIComponent(styleId)}/references`);
+    if (els.styleSelect.value !== styleId) return;
     generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
     renderStyleReferences(els);
   } catch (error) {
+    if (els.styleSelect.value !== styleId) return;
     generationStore.set({ styleReferences: { characters: [], world: [] } });
     renderStyleReferences(els);
     if (setStatus) setStatus(`Could not load references: ${error.message}`);
+  } finally {
+    if (els.styleSelect.value === styleId) els.styleReferencesDetails.removeAttribute('aria-busy');
   }
 }
 

@@ -246,6 +246,22 @@ export function renderScenes() {
     beatEl.value = scene.beat;
     promptEl.value = scene.prompt;
     dialogueEl.value = (scene.lines || []).map((line) => `${line.speaker || 'Narrator'}: ${line.text || ''}`).join('\n');
+
+    const sceneStatus = {
+      prompt: Boolean(String(scene.prompt || '').trim()),
+      image: (scene.versions || []).some((version) => Boolean(version?.path)),
+      dialogue: (scene.lines || []).some((line) => Boolean(String(line?.text || '').trim())),
+      audio: (scene.audioVersions || []).some((version) => Boolean(version?.path)),
+      video: (scene.videoVersions || []).some((version) => Boolean(version?.path)),
+    };
+    for (const [type, isPresent] of Object.entries(sceneStatus)) {
+      const statusIcon = node.querySelector(`[data-status="${type}"]`);
+      const label = `${type[0].toUpperCase()}${type.slice(1)} ${isPresent ? 'ready' : 'missing'}`;
+      statusIcon.classList.toggle('is-present', isPresent);
+      statusIcon.setAttribute('aria-label', label);
+      statusIcon.title = label;
+    }
+
     node.querySelector('.beat-summary').textContent = scene.beat ? scene.beat : 'Add beat, prompt, and dialogue';
     const completeDetailCount = [scene.beat, scene.prompt, scene.lines.length].filter(Boolean).length;
     node.querySelector('.detail-completeness').textContent = `${completeDetailCount}/3`;

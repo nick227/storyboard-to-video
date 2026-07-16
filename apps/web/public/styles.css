@@ -79,6 +79,12 @@ label > span {
   margin-bottom: 14px;
 }
 .brand-block { min-width: 0; flex: 1; }
+.storyboard-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 920px;
+}
 .eyebrow {
   color: var(--muted);
   font-size: 11px;
@@ -88,9 +94,10 @@ label > span {
   margin-bottom: 4px;
 }
 .storyboard-title {
+  flex: 1 1 auto;
+  min-width: 0;
   max-width: 720px;
-  width: min(720px, 100%);
-  padding: 4px 38px 4px 0;
+  padding: 4px 0;
   border: 0;
   border-bottom: 1px solid transparent;
   border-radius: 0;
@@ -98,10 +105,17 @@ label > span {
   font-size: clamp(24px, 3vw, 34px);
   font-weight: 750;
   line-height: 1.2;
-  cursor: pointer;
 }
 .storyboard-title:hover { border-bottom-color: var(--line); }
 .storyboard-title:focus { background-color: rgba(255,255,255,0.03); }
+.storyboard-picker {
+  flex: 0 1 190px;
+  width: 190px;
+  padding: 7px 30px 7px 10px;
+  color: var(--muted);
+  background-color: transparent;
+  cursor: pointer;
+}
 .top-actions { flex: 0 0 auto; }
 .panel {
   background: var(--panel);
@@ -122,7 +136,7 @@ label > span {
   min-width: 0;
   flex-direction: column;
   gap: 12px;
-  min-height: 360px;
+  min-height: 380px;
 }
 .concept-heading h2 {
   margin: 0;
@@ -139,7 +153,24 @@ label > span {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
-.script-field textarea { min-height: 160px; resize: vertical; }
+.scene-count-control {
+  display: flex;
+  gap: 6px;
+}
+.scene-count-control input { min-width: 0; }
+.scene-count-control button {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 6px 9px;
+  color: var(--muted);
+}
+.scene-count-control button.is-active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+.script-field textarea,
+.script-textarea { min-height: 314px; resize: vertical; }
 .inline-settings {
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
@@ -384,7 +415,7 @@ details > summary::marker { color: var(--muted); }
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: start;
+  align-items: flex-start;
 }
 .scene-index {
   font-size: 12px;
@@ -392,6 +423,40 @@ details > summary::marker { color: var(--muted); }
   margin-bottom: 6px;
 }
 .scene-header > div:first-child { flex: 1; min-width: 0; }
+.scene-status {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 5px;
+  padding-top: 1px;
+}
+.scene-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
+  color: #59636f;
+  transition: color 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+.scene-status-icon svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.scene-status-icon.is-present {
+  color: #8fb5ff;
+  border-color: rgba(79, 140, 255, 0.65);
+  background: var(--accent-soft);
+  box-shadow: 0 0 9px rgba(79, 140, 255, 0.16);
+}
 .scene-title-input { font-weight: 700; font-size: 17px; }
 .scene-image-wrap {
   position: relative;
@@ -741,6 +806,8 @@ button.text-button {
 }
 @media (max-width: 700px) {
   .app-shell { padding: 12px; }
+  .storyboard-title-row { align-items: stretch; flex-direction: column; }
+  .storyboard-picker { flex-basis: auto; width: 100%; }
   .story-setup-grid, .settings-fields, .reference-groups, .compact-fields { grid-template-columns: 1fr; }
   .section-heading { align-items: flex-start; flex-direction: column; }
   .section-heading button { width: 100%; }

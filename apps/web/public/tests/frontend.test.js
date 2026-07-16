@@ -92,6 +92,22 @@ async function runTests() {
     assert(!apiSource.includes('import('), 'api.js should not need a dynamic import');
     addResult('No Circular Dynamic Import In api.js', true);
 
+    // Test 10: Changing style always refreshes both prompt text and references.
+    const appSource = await (await fetch('/app.js')).text();
+    const styleChangeHandler = appSource.match(/styleSelect\.addEventListener\('change',[\s\S]*?\n  \}\);/)?.[0] || '';
+    assert(styleChangeHandler.includes('prefillCommonPrompt(styleId, els)'), 'Style changes should replace the common prompt');
+    assert(styleChangeHandler.includes('loadStyleReferences(styleId, els, setStatus)'), 'Style changes should refresh reference images');
+    assert(!styleChangeHandler.includes('commonPromptText.value.trim()'), 'Prompt refresh should not depend on the previous prompt being empty');
+    addResult('Style Change Refreshes Prompt And References', true);
+
+    // Test 11: Every scene exposes a live, accessible five-part status summary.
+    const sceneTemplate = document.getElementById('sceneCardTemplate');
+    const statusTypes = [...sceneTemplate.content.querySelectorAll('.scene-status-icon')].map((icon) => icon.dataset.status);
+    assert(statusTypes.join(',') === 'prompt,image,dialogue,audio,video', 'Scene status should include all five generation stages');
+    assert(renderingSource.includes("statusIcon.classList.toggle('is-present', isPresent)"), 'Scene status icons should react to scene content');
+    assert(renderingSource.includes("statusIcon.setAttribute('aria-label', label)"), 'Scene status icons should announce their state');
+    addResult('Scene Header Status Indicators', true);
+
   } catch (e) {
     addResult('Test Suite Execution', false, e.message);
     console.error(e);

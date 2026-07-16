@@ -27,6 +27,7 @@ export function createStoryboardRecord(storyboard = {}, title = 'Untitled storyb
     ...storyboard,
     id: typeof storyboard.id === 'string' && storyboard.id ? storyboard.id : crypto.randomUUID(),
     title: String(storyboard.title || title),
+    sceneCountMode: storyboard.sceneCountMode === 'manual' || (storyboard.sceneCountMode == null && storyboard.sceneCount != null) ? 'manual' : 'auto',
     updatedAt: storyboard.updatedAt || new Date().toISOString(),
   };
 }
@@ -176,6 +177,7 @@ function restoreStoryboardFields(els) {
 
   els.scriptText.value = record.scriptText || '';
   els.sceneCount.value = record.sceneCount || 8;
+  els.sceneCount.dataset.mode = record.sceneCountMode === 'manual' ? 'manual' : 'auto';
   els.textProvider.value = optionValues(els.textProvider).includes(record.textProvider) ? record.textProvider : 'gemini';
   els.imageProvider.value = optionValues(els.imageProvider).includes(record.imageProvider) ? record.imageProvider : 'gemini';
   els.fallbackPolicy.value = record.fallbackPolicy === 'fail' ? 'fail' : 'local';
@@ -219,6 +221,7 @@ export function createStoryboard(els) {
 
   els.scriptText.value = '';
   els.sceneCount.value = 8;
+  els.sceneCount.dataset.mode = 'auto';
   els.commonPromptText.value = '';
   els.fallbackPolicy.value = 'local';
   els.videoMotionIntensity.value = 'medium';
@@ -229,8 +232,10 @@ export function saveStoryboard(els, immediate = false) {
   if (!record) return;
 
   Object.assign(record, {
+    title: String(els.storyboardTitle?.value || '').trim() || 'Untitled storyboard',
     scriptText: els.scriptText.value,
     sceneCount: Number(els.sceneCount.value) || 8,
+    sceneCountMode: els.sceneCount.dataset.mode === 'manual' ? 'manual' : 'auto',
     styleId: els.styleSelect.value,
     commonPromptText: els.commonPromptText.value,
     textProvider: els.textProvider.value,

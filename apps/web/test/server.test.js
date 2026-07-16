@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
 
 const {
   buildScenePrompts,
@@ -20,6 +21,18 @@ test('scene count is clamped to the supported range', () => {
   assert.equal(clampSceneCount(0), 1);
   assert.equal(clampSceneCount(500), 50);
   assert.equal(clampSceneCount('not-a-number'), 6);
+});
+
+test('scene count suggestion scales with story length and screenplay structure', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../public/modules/scene-count.js'), 'utf8');
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
+  const { suggestSceneCount } = await import(moduleUrl);
+
+  assert.equal(suggestSceneCount(''), 1);
+  assert.equal(suggestSceneCount('A hero opens the door.'), 1);
+  assert.ok(suggestSceneCount(Array.from({ length: 400 }, () => 'word').join(' ')) >= 10);
+  assert.equal(suggestSceneCount('INT. KITCHEN - DAY\nA door opens.\n\nEXT. STREET - NIGHT\nA car stops.'), 2);
+  assert.equal(suggestSceneCount(Array.from({ length: 3000 }, () => 'word').join(' ')), 50);
 });
 
 test('fallback scene splitting covers the entire story', () => {
