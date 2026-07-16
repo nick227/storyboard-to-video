@@ -1,0 +1,40 @@
+# Dependencies and downloaded runtimes
+/node_modules/
+/vendor/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Generated storyboard media and exports
+/data/audio/
+/data/generated/
+/data/stubs/
+/data/videos/
+/data/zips/
+
+# Local Python environments and model weights
+/voice-service/venv/
+/voice-service/.venv/
+/voice-service/pretrained_models/
+**/__pycache__/
+*.py[cod]
+
+# Logs, test output, and caches
+*.log
+coverage/
+.coverage
+.nyc_output/
+.cache/
+.pytest_cache/
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+/voice-service/

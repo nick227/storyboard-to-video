@@ -1,0 +1,20 @@
+{
+  "name": "storyboard-image-poc",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Storyboard prompt and image generation POC",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "check": "node --check server.js && node --check public/app.js",
+    "setup:piper": "node scripts/setup-piper.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "text2wav": "^0.0.14"
+  }
+}
