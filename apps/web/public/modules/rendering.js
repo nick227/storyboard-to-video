@@ -2,26 +2,31 @@ import { sceneStore, uiStore, debounce } from './store.js';
 import { regeneratePrompt, regenerateAction, regenerateDialogue, regenerateImage, regenerateAudio, regenerateVideo } from './workflows.js';
 import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
 import { loadProtectedAsset } from './assets.js';
-import { renderVoicesPanel } from './ui.js';
 
 let els = {};
 let activeScenePlayback = null;
-let scenePlaybackCleanups = [];
-let confirmResolve = null;
-let entityModalSceneId = null;
-let entityModalType = null;
-let entityModalMediaPath;
+let scenePlaybackCleanups = new Map();
+let renderAbortController = null;
 
-function linesToText(lines) {
-  return (lines || []).map((line) => `${line.speaker || 'Narrator'}: ${line.text || ''}`).join('\n');
-}
-function textToLines(text) {
-  return String(text || '').split('\n').map((row) => row.trim()).filter(Boolean).map((row) => {
-    const colonIndex = row.indexOf(':');
-    if (colonIndex === -1) return { speaker: 'Narrator', text: row };
-    return { speaker: row.slice(0, colonIndex).trim() || 'Narrator', text: row.slice(colonIndex + 1).trim() };
-  }).filter((line) => line.text);
-}
+const debouncedQueueSync = debounce(() => {
+  const record = getCurrentStoryboardRecord();
+  if (record) { queueSync(record, (t) => els.statusText.textContent = t); }
+}, 500);
+
+const modalState = {
+  confirmResolve: null,
+  sceneId: null,
+  type: null,
+  mediaPath: undefined,
+  historyAbortController: null,
+  mediaAbortController: null,
+};
+
+const STATUS_LABELS = { dialogue: 'Narration' };
+
+const handleAssetError = (err) => {
+  if (err.name !== 'AbortError') console.error('Asset load error:', err);
+};
 
 const ENTITY_CONFIG = {
   prompt: {
@@ -34,17 +39,17 @@ const ENTITY_CONFIG = {
     regenBeat: (index, els, cb) => regenerateAction(index, els, cb),
   },
   dialogue: {
-    title: 'Dialogue',
+    title: 'Spoken Narration',
     kind: 'text',
-    fieldLabel: 'Dialogue',
-    getValue: (scene) => linesToText(scene.lines),
-    setValue: (scene, value) => { scene.lines = textToLines(value); },
-    regen: (index, els, cb) => regenerateDialogue(index, els, cb),
+    fieldLabel: 'Spoken Narration',
+    getValue: (scene) => scene.narrationText || '',
+    setValue: (scene, value) => { scene.narrationText = value; scene.narrationIsFallback = false; },
+    regen: (index, els, cb) => regenerateDialogue(index, els, cb, els.entityModalInstruction?.value.trim() || ''),
   },
   image: {
     title: 'Image',
     kind: 'image',
-    versions: (scene) => scene.versions,
+    versions: (scene) => scene.versions || [],
     activeIndex: (scene) => scene.activeVersionIndex,
     selectVersion: (scene, vIndex) => { scene.activeVersionIndex = vIndex; scene.activeVisualType = 'image'; },
     regen: (index, els, cb) => regenerateImage(index, null, els, cb).catch(() => {}),
@@ -52,7 +57,7 @@ const ENTITY_CONFIG = {
   audio: {
     title: 'Audio',
     kind: 'audio',
-    versions: (scene) => scene.audioVersions,
+    versions: (scene) => scene.audioVersions || [],
     activeIndex: (scene) => scene.activeAudioVersionIndex,
     selectVersion: (scene, vIndex) => { scene.activeAudioVersionIndex = vIndex; },
     regen: (index, els, cb) => regenerateAudio(index, null, els, cb).catch(() => {}),
@@ -60,7 +65,7 @@ const ENTITY_CONFIG = {
   video: {
     title: 'Video',
     kind: 'video',
-    versions: (scene) => scene.videoVersions,
+    versions: (scene) => scene.videoVersions || [],
     activeIndex: (scene) => scene.activeVideoVersionIndex,
     selectVersion: (scene, vIndex) => { scene.activeVideoVersionIndex = vIndex; scene.activeVisualType = 'video'; },
     regen: (index, els, cb) => regenerateVideo(index, null, els, cb).catch(() => {}),
@@ -90,42 +95,42 @@ function setupConfirmModal() {
   modal.addEventListener('close', () => {
     const confirmed = modal.returnValue === 'confirm';
     modal.returnValue = '';
-    const resolve = confirmResolve;
-    confirmResolve = null;
+    const resolve = modalState.confirmResolve;
+    modalState.confirmResolve = null;
     if (resolve) resolve(confirmed);
   });
 }
 
 function confirmRegeneration(message) {
   return new Promise((resolve) => {
-    confirmResolve = resolve;
+    modalState.confirmResolve = resolve;
     els.confirmRegenMessage.textContent = message;
     els.confirmRegenModal.showModal();
   });
 }
 
 function currentEntityModalSceneIndex() {
-  if (!entityModalSceneId) return -1;
-  return sceneStore.get().scenes.findIndex((s) => s.id === entityModalSceneId);
+  if (!modalState.sceneId) return -1;
+  return sceneStore.get().scenes.findIndex((s) => s.id === modalState.sceneId);
 }
 
 function openEntityModal(index, type) {
   const scene = sceneStore.get().scenes[index];
   if (!scene || !ENTITY_CONFIG[type]) return;
-  entityModalSceneId = scene.id;
-  entityModalType = type;
-  entityModalMediaPath = undefined;
+  modalState.sceneId = scene.id;
+  modalState.type = type;
+  modalState.mediaPath = undefined;
   els.entityModal.showModal();
   renderEntityModal();
 }
 
 function renderEntityModalMedia(scene, type, config) {
   const versions = config.versions(scene);
-  const active = versions[config.activeIndex(scene)];
+  const active = versions?.[config.activeIndex(scene)];
   const path = active?.path || null;
   els.entityModalMediaEmpty.hidden = Boolean(path);
-  if (path === entityModalMediaPath) return; // unchanged — don't disrupt any in-progress playback
-  entityModalMediaPath = path;
+  if (path === modalState.mediaPath) return; // unchanged — don't disrupt any in-progress playback
+  modalState.mediaPath = path;
 
   els.entityModalImage.hidden = true;
   els.entityModalVideo.hidden = true;
@@ -133,21 +138,28 @@ function renderEntityModalMedia(scene, type, config) {
   els.entityModalImage.removeAttribute('src');
   els.entityModalVideo.pause();
   els.entityModalVideo.removeAttribute('src');
+  els.entityModalVideo.load();
   els.entityModalAudio.pause();
   els.entityModalAudio.removeAttribute('src');
+  els.entityModalAudio.load();
+  
   if (!path) return;
 
-  // entityModalMediaPath may have moved on to a different version/scene by the time this
-  // resolves (fast version-switching, or the modal closing) — re-check before assigning so a
-  // late response can't clobber whatever is actually being shown now.
+  modalState.mediaAbortController?.abort();
+  modalState.mediaAbortController = new AbortController();
+  const signal = modalState.mediaAbortController.signal;
+
   if (type === 'image') {
-    loadProtectedAsset(path).then((url) => { if (url && entityModalMediaPath === path) els.entityModalImage.src = url; });
+    els.entityModalImage.dataset.assetPath = path;
+    loadProtectedAsset(path, { signal }).then((url) => { if (url && els.entityModalImage.dataset.assetPath === path && modalState.mediaPath === path) els.entityModalImage.src = url; }).catch(handleAssetError);
     els.entityModalImage.hidden = false;
   } else if (type === 'video') {
-    loadProtectedAsset(path).then((url) => { if (url && entityModalMediaPath === path) els.entityModalVideo.src = url; });
+    els.entityModalVideo.dataset.assetPath = path;
+    loadProtectedAsset(path, { signal }).then((url) => { if (url && els.entityModalVideo.dataset.assetPath === path && modalState.mediaPath === path) els.entityModalVideo.src = url; }).catch(handleAssetError);
     els.entityModalVideo.hidden = false;
   } else if (type === 'audio') {
-    loadProtectedAsset(path).then((url) => { if (url && entityModalMediaPath === path) els.entityModalAudio.src = url; });
+    els.entityModalAudio.dataset.assetPath = path;
+    loadProtectedAsset(path, { signal }).then((url) => { if (url && els.entityModalAudio.dataset.assetPath === path && modalState.mediaPath === path) els.entityModalAudio.src = url; }).catch(handleAssetError);
     els.entityModalAudio.hidden = false;
   }
 }
@@ -160,6 +172,9 @@ function renderEntityModalHistory(scene, type, config, busy) {
   els.entityModalHistoryCount.textContent = `${versions.length} version${versions.length === 1 ? '' : 's'}`;
   els.entityModalHistoryList.className = type === 'audio' ? 'audio-version-list' : 'version-list';
   els.entityModalHistoryList.innerHTML = '';
+  modalState.historyAbortController?.abort();
+  modalState.historyAbortController = new AbortController();
+  const signal = modalState.historyAbortController.signal;
 
   if (type === 'audio') {
     versions.forEach((version, vIndex) => {
@@ -174,8 +189,8 @@ function renderEntityModalHistory(scene, type, config, busy) {
       meta.append(label, provider);
       const audio = document.createElement('audio');
       audio.controls = true;
-      loadProtectedAsset(version.path).then((url) => { if (url) audio.src = url; });
-      audio.addEventListener('play', () => activeScenePlayback?.pause());
+      audio.dataset.assetPath = version.path;
+      loadProtectedAsset(version.path, { signal }).then((url) => { if (url && audio.dataset.assetPath === version.path) audio.src = url; }).catch(handleAssetError);
       const selectBtn = document.createElement('button');
       selectBtn.type = 'button';
       selectBtn.className = 'audio-version-select';
@@ -205,7 +220,8 @@ function renderEntityModalHistory(scene, type, config, busy) {
       mediaEl = document.createElement('img');
       mediaEl.alt = `Scene version ${vIndex + 1}`;
     }
-    loadProtectedAsset(version.path).then((url) => { if (url) mediaEl.src = url; });
+    mediaEl.dataset.assetPath = version.path;
+    loadProtectedAsset(version.path, { signal }).then((url) => { if (url && mediaEl.dataset.assetPath === version.path) mediaEl.src = url; }).catch(handleAssetError);
     const meta = document.createElement('div');
     meta.className = 'version-meta';
     meta.textContent = `v${vIndex + 1}`;
@@ -215,11 +231,11 @@ function renderEntityModalHistory(scene, type, config, busy) {
 }
 
 function renderEntityModal() {
-  if (!entityModalType || !els.entityModal.open) return;
+  if (!modalState.type || !els.entityModal.open) return;
   const index = currentEntityModalSceneIndex();
   if (index === -1) { els.entityModal.close(); return; }
   const scene = sceneStore.get().scenes[index];
-  const type = entityModalType;
+  const type = modalState.type;
   const config = ENTITY_CONFIG[type];
   const operation = uiStore.get().operation;
   const busy = operation != null;
@@ -241,14 +257,14 @@ function renderEntityModal() {
   els.entityModalTextarea.disabled = busy;
   els.entityModalTextHint.hidden = type !== 'dialogue';
 
+  els.entityModalInstructionField.hidden = type !== 'dialogue';
+  els.entityModalInstruction.disabled = busy;
+
+  els.entityModalFallbackWarning.hidden = !(type === 'dialogue' && Boolean(scene.narrationIsFallback));
+
   els.entityModalMedia.hidden = isText;
   if (!isText) renderEntityModalMedia(scene, type, config);
 
-  // Text kinds (prompt/dialogue) regenerate via the inline per-field buttons; the shared bottom
-  // button is only meaningful for media kinds, which have no per-field header to hang a button on.
-  // `isLoading` above is intentionally broad (spins the status icon for either the action or the
-  // prompt regenerating), but each inline button must reflect only its OWN field's operation —
-  // otherwise regenerating the action would make the (untouched) visual-prompt button spin too.
   const beatLoading = isEntityLoading('action', scene, operation);
   const promptFieldLoading = type === 'prompt'
     ? (operation?.type === 'prompts' || (operation?.type === 'prompt' && operation.sceneId === scene.id))
@@ -287,23 +303,34 @@ function setupEntityModal() {
   els.entityModalVideo.addEventListener('play', pauseOtherPlayers);
   els.entityModalAudio.addEventListener('play', pauseOtherPlayers);
 
+  // Capture play events on the history list for delegation
+  els.entityModalHistoryList.addEventListener('play', (e) => {
+    if (e.target.tagName === 'AUDIO') {
+      activeScenePlayback?.pause();
+    }
+  }, true);
+
   els.closeEntityModalBtn.addEventListener('click', () => modal.close());
   modal.addEventListener('click', (event) => { if (event.target === modal) modal.close(); });
   modal.addEventListener('close', () => {
-    entityModalSceneId = null;
-    entityModalType = null;
-    entityModalMediaPath = undefined;
+    modalState.historyAbortController?.abort();
+    modalState.mediaAbortController?.abort();
+    modalState.sceneId = null;
+    modalState.type = null;
+    modalState.mediaPath = undefined;
     els.entityModalVideo.pause();
     els.entityModalVideo.removeAttribute('src');
+    els.entityModalVideo.load();
     els.entityModalAudio.pause();
     els.entityModalAudio.removeAttribute('src');
+    els.entityModalAudio.load();
     els.entityModalImage.removeAttribute('src');
   });
 
   els.entityModalRegenBtn.addEventListener('click', () => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
-    const config = ENTITY_CONFIG[entityModalType];
+    const config = ENTITY_CONFIG[modalState.type];
     confirmRegeneration(`Regenerate the ${config.title.toLowerCase()} for scene ${index + 1}? This creates a new version and makes it active.`).then((confirmed) => {
       if (confirmed) config.regen(index, els, (t) => els.statusText.textContent = t);
     });
@@ -312,7 +339,7 @@ function setupEntityModal() {
   els.entityModalRegenBeatBtn.addEventListener('click', () => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
-    const config = ENTITY_CONFIG[entityModalType];
+    const config = ENTITY_CONFIG[modalState.type];
     if (!config.regenBeat) return;
     confirmRegeneration(`Regenerate the physical action for scene ${index + 1}? This does not change the visual prompt.`).then((confirmed) => {
       if (confirmed) config.regenBeat(index, els, (t) => els.statusText.textContent = t);
@@ -322,37 +349,38 @@ function setupEntityModal() {
   els.entityModalRegenTextBtn.addEventListener('click', () => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
-    const config = ENTITY_CONFIG[entityModalType];
+    const config = ENTITY_CONFIG[modalState.type];
     confirmRegeneration(`Regenerate the ${(config.fieldLabel || config.title).toLowerCase()} for scene ${index + 1}? This replaces the current version.`).then((confirmed) => {
       if (confirmed) config.regen(index, els, (t) => els.statusText.textContent = t);
     });
   });
 
-  els.entityModalBeat.addEventListener('input', debounce(() => {
+  els.entityModalBeat.addEventListener('input', () => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
     const value = els.entityModalBeat.value;
     const scenes = sceneStore.get().scenes.map((scene, i) => (i === index ? { ...scene, beat: value } : scene));
     sceneStore.set({ scenes });
     const record = getCurrentStoryboardRecord();
-    if (record) { record.scenes = scenes; queueSync(record, (t) => els.statusText.textContent = t); }
-  }, 500));
+    if (record) record.scenes = scenes;
+    debouncedQueueSync();
+  });
 
-  els.entityModalTextarea.addEventListener('input', debounce(() => {
+  els.entityModalTextarea.addEventListener('input', () => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
     const value = els.entityModalTextarea.value;
     const scenes = sceneStore.get().scenes.map((scene, i) => {
       if (i !== index) return scene;
       const next = { ...scene };
-      ENTITY_CONFIG[entityModalType].setValue(next, value);
+      ENTITY_CONFIG[modalState.type].setValue(next, value);
       return next;
     });
     sceneStore.set({ scenes });
     const record = getCurrentStoryboardRecord();
-    if (record) { record.scenes = scenes; queueSync(record, (t) => els.statusText.textContent = t); }
-    if (entityModalType === 'dialogue') renderVoicesPanel(els, (t) => els.statusText.textContent = t);
-  }, 500));
+    if (record) record.scenes = scenes;
+    debouncedQueueSync();
+  });
 
   els.entityModalHistoryList.addEventListener('click', (event) => {
     const index = currentEntityModalSceneIndex();
@@ -363,7 +391,7 @@ function setupEntityModal() {
     const scenes = sceneStore.get().scenes.map((scene, i) => {
       if (i !== index) return scene;
       const next = { ...scene };
-      ENTITY_CONFIG[entityModalType].selectVersion(next, vIndex);
+      ENTITY_CONFIG[modalState.type].selectVersion(next, vIndex);
       return next;
     });
     sceneStore.set({ scenes });
@@ -395,13 +423,14 @@ export function initRendering(domEls) {
 
 function renderEmptyPromptTargets() {
   const count = Math.min(50, Math.max(1, Number(els.sceneCount.value) || 1));
-  els.storyboardGrid.innerHTML = '';
+  const nodes = [];
   for (let index = 0; index < count; index++) {
     const target = document.createElement('article');
     target.className = 'scene-card scene-card-loading';
     target.innerHTML = `<div class="scene-index">Scene ${index + 1}</div><div class="empty-image-target"></div><div class="empty-prompt-target"><span class="spinner"></span><span>Generating prompt</span></div>`;
-    els.storyboardGrid.appendChild(target);
+    nodes.push(target);
   }
+  els.storyboardGrid.replaceChildren(...nodes);
 }
 
 function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio }) {
@@ -476,13 +505,19 @@ function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio }) {
     cleanup() {
       pause();
       video.removeAttribute('src');
+      video.load();
       audio.removeAttribute('src');
+      audio.load();
+      video.removeEventListener('loadedmetadata', updateDuration);
+      video.removeEventListener('durationchange', updateDuration);
+      audio.removeEventListener('loadedmetadata', updateDuration);
+      audio.removeEventListener('durationchange', updateDuration);
     },
   };
 
   toggle.hidden = !(hasVideo || hasAudio);
   toggle.disabled = true;
-  video.loop = false; // explicit initial state — positionMedia() only ever sets this once playback starts
+  video.loop = false;
   setToggleState('paused');
   video.addEventListener('loadedmetadata', updateDuration);
   video.addEventListener('durationchange', updateDuration);
@@ -494,23 +529,34 @@ function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio }) {
 }
 
 export function renderScenes() {
-  scenePlaybackCleanups.forEach((cleanup) => cleanup());
-  scenePlaybackCleanups = [];
+  renderAbortController?.abort();
+  renderAbortController = new AbortController();
+  const signal = renderAbortController.signal;
+
   const scenes = sceneStore.get().scenes;
   const operation = uiStore.get().operation;
   
   els.storyboardSection.hidden = scenes.length === 0 && operation?.type !== 'prompts';
 
   if (!scenes.length && operation?.type === 'prompts') {
+    scenePlaybackCleanups.forEach(cleanup => cleanup());
+    scenePlaybackCleanups.clear();
     renderEmptyPromptTargets();
     return;
   }
   
-  els.storyboardGrid.innerHTML = '';
+  const existingCards = Array.from(els.storyboardGrid.querySelectorAll('.scene-card'));
+  const existingNodesMap = new Map(existingCards.map(node => [node.dataset.sceneId, node]));
+  
+  const nextScenePlaybackCleanups = new Map();
+  const nextNodes = [];
 
   scenes.forEach((scene, index) => {
-    const node = els.sceneCardTemplate.content.firstElementChild.cloneNode(true);
-    node.dataset.sceneId = scene.id;
+    let node = existingNodesMap.get(scene.id);
+    if (!node) {
+      node = els.sceneCardTemplate.content.firstElementChild.cloneNode(true);
+      node.dataset.sceneId = scene.id;
+    }
 
     const sceneIndexEl = node.querySelector('.scene-index');
     const titleEl = node.querySelector('.scene-title');
@@ -529,18 +575,19 @@ export function renderScenes() {
     const sceneStatus = {
       prompt: Boolean(String(scene.prompt || '').trim()),
       image: (scene.versions || []).some((version) => Boolean(version?.path)),
-      dialogue: (scene.lines || []).some((line) => Boolean(String(line?.text || '').trim())),
+      dialogue: Boolean(String(scene.narrationText || '').trim()),
       audio: (scene.audioVersions || []).some((version) => Boolean(version?.path)),
       video: (scene.videoVersions || []).some((version) => Boolean(version?.path)),
     };
     for (const [type, isPresent] of Object.entries(sceneStatus)) {
       const statusIcon = node.querySelector(`[data-status="${type}"]`);
       const isLoading = loadingByType[type];
+      const displayName = STATUS_LABELS[type] || `${type[0].toUpperCase()}${type.slice(1)}`;
       const label = isLoading
-        ? `Regenerating ${type}...`
+        ? `Regenerating ${displayName.toLowerCase()}...`
         : isPresent
-          ? `Regenerate ${type}`
-          : `${type[0].toUpperCase()}${type.slice(1)} missing`;
+          ? `Regenerate ${displayName.toLowerCase()}`
+          : `${displayName} missing`;
       statusIcon.classList.toggle('is-present', isPresent);
       statusIcon.classList.toggle('is-loading', isLoading);
       statusIcon.disabled = !isPresent || busy;
@@ -548,49 +595,99 @@ export function renderScenes() {
       statusIcon.title = label;
     }
 
-    const activeVersion = scene.versions[scene.activeVersionIndex];
-    const activeVideoVersion = scene.videoVersions[scene.activeVideoVersionIndex];
+    const activeVersion = scene.versions?.[scene.activeVersionIndex];
+    const activeVideoVersion = scene.videoVersions?.[scene.activeVideoVersionIndex];
+    const currentVideoPath = activeVideoVersion?.path || '';
+    const currentPosterPath = activeVersion?.path || '';
 
-    if (scene.activeVisualType === 'video' && activeVideoVersion?.path) {
-      loadProtectedAsset(activeVideoVersion.path).then(url => { if (url) videoEl.src = url; });
-      if (activeVersion?.path) {
-        loadProtectedAsset(activeVersion.path).then(url => { if (url) videoEl.poster = url; });
+    if (scene.activeVisualType === 'video' && currentVideoPath) {
+      if (videoEl.dataset.assetPath !== currentVideoPath) {
+        videoEl.dataset.assetPath = currentVideoPath;
+        loadProtectedAsset(currentVideoPath, { signal }).then(url => { if (url && videoEl.dataset.assetPath === currentVideoPath) videoEl.src = url; }).catch(handleAssetError);
+      }
+      if (currentPosterPath && videoEl.dataset.posterPath !== currentPosterPath) {
+        videoEl.dataset.posterPath = currentPosterPath;
+        loadProtectedAsset(currentPosterPath, { signal }).then(url => { if (url && videoEl.dataset.posterPath === currentPosterPath) videoEl.poster = url; }).catch(handleAssetError);
       }
       videoEl.style.display = 'block';
       imageEl.removeAttribute('src');
+      imageEl.dataset.assetPath = '';
       imageEl.style.display = 'none';
       placeholderEl.style.display = 'none';
-    } else if (activeVersion?.path) {
-      loadProtectedAsset(activeVersion.path).then(url => { if (url) imageEl.src = url; });
+    } else if (currentPosterPath) {
+      if (imageEl.dataset.assetPath !== currentPosterPath) {
+        imageEl.dataset.assetPath = currentPosterPath;
+        loadProtectedAsset(currentPosterPath, { signal }).then(url => { if (url && imageEl.dataset.assetPath === currentPosterPath) imageEl.src = url; }).catch(handleAssetError);
+      }
       imageEl.style.display = 'block';
       videoEl.removeAttribute('src');
+      videoEl.removeAttribute('poster');
+      videoEl.dataset.assetPath = '';
+      videoEl.dataset.posterPath = '';
       videoEl.style.display = 'none';
+      videoEl.load();
       placeholderEl.style.display = 'none';
     } else {
       imageEl.removeAttribute('src');
+      imageEl.dataset.assetPath = '';
       imageEl.style.display = 'none';
       videoEl.removeAttribute('src');
+      videoEl.removeAttribute('poster');
+      videoEl.dataset.assetPath = '';
+      videoEl.dataset.posterPath = '';
       videoEl.style.display = 'none';
+      videoEl.load();
       placeholderEl.style.display = 'flex';
     }
 
-    const activeAudioVersion = scene.audioVersions[scene.activeAudioVersionIndex];
-    if (activeAudioVersion?.path) {
-      loadProtectedAsset(activeAudioVersion.path).then(url => { if (url) playbackAudioEl.src = url; });
+    const activeAudioVersion = scene.audioVersions?.[scene.activeAudioVersionIndex];
+    const currentAudioPath = activeAudioVersion?.path || '';
+    if (currentAudioPath && playbackAudioEl.dataset.assetPath !== currentAudioPath) {
+      playbackAudioEl.dataset.assetPath = currentAudioPath;
+      loadProtectedAsset(currentAudioPath, { signal }).then(url => { if (url && playbackAudioEl.dataset.assetPath === currentAudioPath) playbackAudioEl.src = url; }).catch(handleAssetError);
+    } else if (!currentAudioPath) {
+      playbackAudioEl.removeAttribute('src');
+      playbackAudioEl.dataset.assetPath = '';
+      playbackAudioEl.load();
     }
 
-    scenePlaybackCleanups.push(setupScenePlayback({
-      toggle: playbackToggleEl,
-      video: videoEl,
-      audio: playbackAudioEl,
-      hasVideo: scene.activeVisualType === 'video' && Boolean(activeVideoVersion?.path),
-      hasAudio: Boolean(activeAudioVersion?.path),
-    }));
+    const hasVideo = scene.activeVisualType === 'video' && Boolean(currentVideoPath);
+    const hasAudio = Boolean(currentAudioPath);
+    const playbackKey = `${hasVideo}-${currentVideoPath}-${hasAudio}-${currentAudioPath}`;
+    
+    if (node.dataset.playbackKey !== playbackKey) {
+      if (scenePlaybackCleanups.has(scene.id)) {
+        scenePlaybackCleanups.get(scene.id)();
+      }
+      nextScenePlaybackCleanups.set(scene.id, setupScenePlayback({
+        toggle: playbackToggleEl,
+        video: videoEl,
+        audio: playbackAudioEl,
+        hasVideo,
+        hasAudio,
+      }));
+      node.dataset.playbackKey = playbackKey;
+    } else {
+      if (scenePlaybackCleanups.has(scene.id)) {
+        nextScenePlaybackCleanups.set(scene.id, scenePlaybackCleanups.get(scene.id));
+      }
+    }
 
     node.classList.toggle('is-busy', Object.values(loadingByType).some(Boolean));
     node.querySelector('.image-loading').classList.toggle('visible', loadingByType.image);
     node.querySelector('.video-loading').classList.toggle('visible', loadingByType.video);
 
-    els.storyboardGrid.appendChild(node);
+    nextNodes.push(node);
+    existingNodesMap.delete(scene.id);
   });
+  
+  existingNodesMap.forEach((node, sceneId) => {
+    if (scenePlaybackCleanups.has(sceneId)) {
+      scenePlaybackCleanups.get(sceneId)();
+    }
+    node.remove();
+  });
+  scenePlaybackCleanups = nextScenePlaybackCleanups;
+  
+  els.storyboardGrid.replaceChildren(...nextNodes);
 }

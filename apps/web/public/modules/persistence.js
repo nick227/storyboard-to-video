@@ -189,11 +189,11 @@ function restoreStoryboardFields(els) {
   els.audioProvider.value = audioProvider;
   voiceStore.set({
     audioProvider,
-    voiceMap: {
-      elevenlabs: record.voiceMap?.elevenlabs || {},
-      piper: record.voiceMap?.piper || {},
-      spark: record.voiceMap?.spark || {},
-      stub: record.voiceMap?.stub || {},
+    narratorVoice: {
+      elevenlabs: record.narratorVoice?.elevenlabs || null,
+      piper: record.narratorVoice?.piper || null,
+      spark: record.narratorVoice?.spark || null,
+      stub: record.narratorVoice?.stub || null,
     },
   });
 }
@@ -254,7 +254,7 @@ export function saveStoryboard(els, immediate = false) {
     fallbackPolicy: els.fallbackPolicy.value,
     videoMotionIntensity: els.videoMotionIntensity.value,
     audioProvider: voiceStore.get().audioProvider,
-    voiceMap: voiceStore.get().voiceMap,
+    narratorVoice: voiceStore.get().narratorVoice,
     scenes: sceneStore.get().scenes,
     lastPromptInputs: sceneStore.get().lastPromptInputs,
     updatedAt: new Date().toISOString(),

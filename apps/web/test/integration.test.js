@@ -1,4 +1,5 @@
 process.env.AUTH_TOKENS = 'alice-token:alice,bob-token:bob';
+process.env.ADMIN_OWNER_IDS = 'alice';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -20,6 +21,20 @@ async function cleanupProject(projectId) {
   await prisma.projectTombstone.deleteMany({ where: { projectId } });
   fs.rmSync(projectStore.projectDir(projectId), { recursive: true, force: true });
 }
+
+test('admin console and API require a platform administrator', async () => {
+  await request(app).get('/admin.html').set(auth('alice-token')).expect(200).expect(/Admin console/);
+  await request(app).get('/admin.html').set(auth('bob-token')).expect(403);
+  await request(app).get('/api/admin/overview').set(auth('alice-token')).expect(200).expect((response) => assert.equal(response.body.ok, true));
+  await request(app).get('/api/admin/overview').set(auth('bob-token')).expect(403).expect((response) => assert.equal(response.body.error.code, 'FORBIDDEN'));
+});
+
+test('credit purchase pages require login and Stripe webhooks bypass user auth', async () => {
+  await request(app).get('/credits.html').expect(302).expect('Location', /login\.html/);
+  await request(app).get('/credits.html').set(auth('bob-token')).expect(200).expect(/Site credits/);
+  await request(app).get('/api/billing/credit-packs').set(auth('bob-token')).expect(200).expect((response) => assert.ok(Array.isArray(response.body.packs)));
+  await request(app).post('/api/webhooks/stripe').set('Content-Type', 'application/json').send('{"id":"evt_test"}').expect(503).expect((response) => assert.equal(response.body.error.code, 'PAYMENTS_UNAVAILABLE'));
+});
 
 test('concurrent project saves reject stale revisions', async (t) => {
   const projectId = id('revision'); t.after(() => cleanupProject(projectId));

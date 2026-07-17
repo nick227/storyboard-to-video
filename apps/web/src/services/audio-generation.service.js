@@ -8,7 +8,7 @@ function createAudioGenerationService({ config, provider, projectStore }) {
   return {
     async generate(input, { ownerId, userId, signal, jobId } = {}) {
       const lease = await projectStore.acquireLease(input.projectId, { ownerId, userId });
-      const result = providerOutput(await provider.generate({ provider: input.provider, lines: input.lines, voiceMap: input.voiceMap }));
+      const result = providerOutput(await provider.generate({ provider: input.provider, narrationText: input.narrationText, voice: input.voice }));
       fs.mkdirSync(config.paths.audio, { recursive: true });
       const file = `${String(input.sceneNumber).padStart(2, '0')}-${slugify(input.sceneTitle || 'scene')}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.${result.extension}`;
       const staged = path.join(config.paths.audio, file);

@@ -13,6 +13,7 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
   const paths = {
     root,
     public: path.join(root, 'public'), styles: path.join(root, 'styles'), styleReferences: path.join(root, 'style-references'),
+    userStyleReferences: path.join(root, 'data', 'user-style-references'),
     generated: path.join(root, 'data', 'generated'), audio: path.join(root, 'data', 'audio'), videos: path.join(root, 'data', 'videos'),
     stubs: path.join(root, 'data', 'stubs'), zips: path.join(root, 'data', 'zips'), projects: path.join(root, 'data', 'projects'),
     jobs: path.join(root, 'data', 'jobs'), idempotency: path.join(root, 'data', 'idempotency'),
@@ -25,6 +26,11 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     limits: { references: 8, referenceBytes: 8 * 1024 * 1024, script: 200_000, prompt: 20_000, line: 2_000, json: '10mb' },
     generationConcurrency: integer(env.GENERATION_CONCURRENCY, 1, 1, 32),
     billing: { customerChargingEnabled: enabled(env.BILLING_CUSTOMER_CHARGING_ENABLED) },
+    payments: {
+      publicAppUrl: String(env.PUBLIC_APP_URL || `http://localhost:${integer(env.PORT, 3000, 1, 65535)}`).replace(/\/+$/, ''),
+      stripeSecretKey: String(env.STRIPE_SECRET_KEY || ''),
+      stripeWebhookSecret: String(env.STRIPE_WEBHOOK_SECRET || ''),
+    },
     sparkUrl: String(env.SPARK_TTS_URL || 'http://localhost:8001').replace(/\/+$/, ''), sparkTimeout: integer(env.SPARK_TTS_TIMEOUT_MS, 120_000, 1, 600_000), sparkServiceToken: String(env.SPARK_SERVICE_TOKEN || ''),
     ltxUrl: String(env.LTX_VIDEO_URL || 'http://localhost:8000').replace(/\/+$/, ''), videoProvider: env.VIDEO_PROVIDER === 'stub' ? 'stub' : 'ltx',
     piperVoices: String(env.PIPER_VOICE_IDS || PIPER_VOICE_CATALOG.map((v) => v.id).join(',')).split(',').map((x) => x.trim()).filter(Boolean),

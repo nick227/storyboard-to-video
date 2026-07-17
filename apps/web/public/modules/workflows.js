@@ -21,11 +21,11 @@ export function normalizeScene(scene, index) {
     ? scene.versions.filter((version) => typeof version?.path === 'string' && (version.path.startsWith(`${projectPrefix}images/`) || version.path.startsWith('/generated/')))
     : [];
   const requestedIndex = Number.isInteger(scene?.activeVersionIndex) ? scene.activeVersionIndex : 0;
-  const lines = Array.isArray(scene?.lines)
-    ? scene.lines
-        .filter((line) => line && typeof line.text === 'string' && line.text.trim())
-        .map((line) => ({ speaker: String(line.speaker || 'Narrator'), text: String(line.text) }))
-    : [];
+  // Server-authoritative normalization (project-store.js) is what actually adapts legacy `lines`
+  // into `narrationText`. This is only a trivial client-side fallback for stale local-cached data
+  // that hasn't round-tripped through the server yet — not a reimplementation of that adapter.
+  const narrationText = typeof scene?.narrationText === 'string' ? scene.narrationText : '';
+  const narrationIsFallback = Boolean(scene?.narrationIsFallback);
   const audioVersions = Array.isArray(scene?.audioVersions)
     ? scene.audioVersions.filter((version) => typeof version?.path === 'string' && (version.path.startsWith(`${projectPrefix}audio/`) || version.path.startsWith('/audio/')))
     : [];
@@ -51,19 +51,14 @@ export function normalizeScene(scene, index) {
     promptGeneratedFromBeat: typeof scene?.promptGeneratedFromBeat === 'string' ? scene.promptGeneratedFromBeat : '',
     versions,
     activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
-    lines,
+    narrationText,
+    narrationIsFallback,
     audioVersions,
     activeAudioVersionIndex: audioVersions.length ? Math.min(Math.max(requestedAudioIndex, 0), audioVersions.length - 1) : 0,
     videoVersions,
     activeVideoVersionIndex: videoVersions.length ? Math.min(Math.max(requestedVideoIndex, 0), videoVersions.length - 1) : 0,
     activeVisualType,
   };
-}
-
-export function getSpeakersFromScenes() {
-  const speakers = new Set();
-  sceneStore.get().scenes.forEach((scene) => scene.lines.forEach((line) => speakers.add(line.speaker || 'Narrator')));
-  return speakers.size ? [...speakers] : ['Narrator'];
 }
 
 export async function generatePrompts(els, setStatus) {
@@ -208,17 +203,16 @@ export async function generateDialogue(els, setStatus) {
     if (!scenes.length && setStatus) setStatus('Generate scene prompts first.');
     return;
   }
-  
+
   uiStore.set({ operation: { type: 'dialogueAll' } });
   try {
     await ensureProjectSynced();
-    if (setStatus) setStatus('Organizing dialogue by speaker...');
+    if (setStatus) setStatus('Writing spoken narration...');
     const base = getPayloadBase(els);
     const data = await api('/api/storyboard/generate-dialogue', {
       method: 'POST',
       body: JSON.stringify({
-        scriptText: base.scriptText,
-        scenes: scenes.map((scene, index) => ({ sceneNumber: index + 1, title: scene.title, beat: scene.beat, prompt: scene.prompt })),
+        scenes: scenes.map((scene, index) => ({ sceneNumber: index + 1, title: scene.title, beat: scene.beat, scriptFragment: scene.scriptFragment })),
         provider: base.textProvider,
         projectId: base.projectId,
         fallbackPolicy: base.fallbackPolicy,
@@ -226,58 +220,63 @@ export async function generateDialogue(els, setStatus) {
     });
 
     (data.scenesDialogue || []).forEach((sceneDialogue, index) => {
-      if (scenes[index]) scenes[index].lines = sceneDialogue.lines || [];
+      if (scenes[index]) {
+        scenes[index].narrationText = sceneDialogue.narrationText || '';
+        scenes[index].narrationIsFallback = Boolean(data.usedFallback);
+      }
     });
-    
+
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
     if (record) {
       record.scenes = scenes;
       queueSync(record, setStatus);
     }
-    
-    if (setStatus) setStatus(data.usedFallback ? data.warning : `Organized dialogue for ${scenes.length} scenes with ${base.textProvider}.`);
+
+    if (setStatus) setStatus(data.usedFallback ? data.warning : `Wrote spoken narration for ${scenes.length} scenes with ${base.textProvider}.`);
   } catch (error) {
-    if (setStatus) setStatus(`Dialogue generation failed: ${error.message}`);
+    if (setStatus) setStatus(`Narration generation failed: ${error.message}`);
   } finally {
     uiStore.set({ operation: null });
   }
 }
 
-export async function regenerateDialogue(index, els, setStatus) {
+export async function regenerateDialogue(index, els, setStatus, instruction = '') {
   const scenes = sceneStore.get().scenes;
   const scene = scenes[index];
   if (!scene || uiStore.get().operation) return;
-  
+
   uiStore.set({ operation: { type: 'dialogue', sceneId: scene.id } });
   try {
     await ensureProjectSynced();
-    if (setStatus) setStatus(`Regenerating dialogue for scene ${index + 1}...`);
+    if (setStatus) setStatus(`Regenerating narration for scene ${index + 1}...`);
     const base = getPayloadBase(els);
     const data = await api('/api/storyboard/regenerate-dialogue', {
       method: 'POST',
       body: JSON.stringify({
-        scriptText: base.scriptText,
         scene,
         sceneIndex: index,
+        previousText: scenes[index - 1]?.narrationText?.slice(-200) || '',
+        nextBeat: scenes[index + 1]?.beat || '',
+        instruction,
         provider: base.textProvider,
         projectId: base.projectId,
-        knownSpeakers: getSpeakersFromScenes(),
         fallbackPolicy: base.fallbackPolicy,
       }),
     });
-    
-    scene.lines = data.lines || scene.lines;
+
+    scene.narrationText = data.narrationText || scene.narrationText;
+    scene.narrationIsFallback = Boolean(data.usedFallback);
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
     if (record) {
       record.scenes = scenes;
       queueSync(record, setStatus);
     }
-    
-    if (setStatus) setStatus(data.usedFallback ? data.warning : `Dialogue updated for scene ${index + 1}.`);
+
+    if (setStatus) setStatus(data.usedFallback ? data.warning : `Narration updated for scene ${index + 1}.`);
   } catch (error) {
-    if (setStatus) setStatus(`Dialogue regeneration failed: ${error.message}`);
+    if (setStatus) setStatus(`Narration regeneration failed: ${error.message}`);
   } finally {
     uiStore.set({ operation: null });
   }
@@ -339,14 +338,14 @@ export async function regenerateAudio(index, scene, els, setStatus) {
   const scenes = sceneStore.get().scenes;
   const activeScene = scene || scenes[index];
   if (!activeScene || (!scene && uiStore.get().operation)) return;
-  if (!activeScene.lines.length) throw new Error('Scene has no dialogue lines. Generate dialogue first.');
-  
+  if (!activeScene.narrationText?.trim()) throw new Error('Scene has no spoken narration. Generate narration first.');
+
   const audioProvider = voiceStore.get().audioProvider;
-  
+
   if (!scene) {
     uiStore.set({ operation: { type: 'audio', sceneId: activeScene.id } });
   }
-  
+
   try {
     await ensureProjectSynced();
     if (setStatus) setStatus(`Generating audio for scene ${index + 1}...`);
@@ -356,9 +355,9 @@ export async function regenerateAudio(index, scene, els, setStatus) {
         sceneNumber: index + 1,
         sceneId: activeScene.id,
         sceneTitle: activeScene.title,
-        lines: activeScene.lines,
+        narrationText: activeScene.narrationText,
         provider: audioProvider,
-        voiceMap: voiceStore.get().voiceMap[audioProvider] || {},
+        voice: voiceStore.get().narratorVoice[audioProvider] || null,
         projectId: projectStore.get().currentId,
       }),
     });

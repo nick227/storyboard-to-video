@@ -21,6 +21,8 @@
         <span class="site-brand-word">Storyframe</span>
       </a>
       <div id="authLoggedIn" class="user-chip" hidden>
+        <a id="adminConsoleLink" class="user-chip-admin" href="/admin.html" hidden>Admin</a>
+        <a class="user-chip-admin" href="/credits.html">Credits</a>
         <span id="authUserAvatar" class="user-chip-avatar" aria-hidden="true"></span>
         <span id="authUserLabel" class="user-chip-label"></span>
         <button id="logoutBtn" class="user-chip-logout" type="button" aria-label="Log out">Log out</button>
@@ -145,8 +147,8 @@
                 <path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12" />
               </svg>
             </span>
-            <span class="settings-launch-copy"><strong>Audio Settings</strong><small>Provider and speaker
-                voices</small></span>
+            <span class="settings-launch-copy"><strong>Audio Settings</strong><small>Provider and narrator
+                voice</small></span>
             <span class="settings-launch-arrow" aria-hidden="true">›</span>
           </button>
         </div>
@@ -196,7 +198,7 @@
               <path d="M20 15a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-2-3V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3Z" />
               <path d="M7 9h10M7 13h6" />
             </svg>
-            <span class="action-label">Dialogue</span>
+            <span class="action-label">Spoken Narration</span>
             <svg class="generation-action-lock" viewBox="0 0 24 24" aria-hidden="true">
               <rect x="5" y="10" width="14" height="10" rx="2" />
               <path d="M8 10V7a4 4 0 0 1 8 0v3" />
@@ -329,8 +331,8 @@
             </svg>
             <span class="status-icon-spinner" aria-hidden="true"></span>
           </button>
-          <button type="button" class="scene-status-icon" data-status="dialogue" disabled aria-label="Dialogue missing"
-            title="Dialogue missing">
+          <button type="button" class="scene-status-icon" data-status="dialogue" disabled aria-label="Narration missing"
+            title="Narration missing">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
               <path d="M8 9h8M8 13h5" />
@@ -407,11 +409,20 @@
         <button type="button" id="entityModalRegenTextBtn" class="text-button">Regenerate</button>
       </span>
       <textarea id="entityModalTextarea" rows="8"></textarea>
-      <small id="entityModalTextHint" class="field-note" hidden>One line per speaker: “Speaker: line”</small>
+      <small id="entityModalTextHint" class="field-note" hidden>Plain spoken narration — preserved dialogue and bridging narration together, read exactly as written.</small>
+    </label>
+
+    <label id="entityModalInstructionField" class="entity-modal-field" hidden>
+      <span class="field-heading"><span>Regeneration instruction (optional)</span></span>
+      <input type="text" id="entityModalInstruction" placeholder="e.g. preserve original dialogue more closely, reduce narration..." maxlength="500" />
     </label>
 
     <div id="entityModalStaleWarning" class="entity-modal-warning" hidden>
       This visual prompt may be stale — the physical action changed after this prompt was generated.
+    </div>
+
+    <div id="entityModalFallbackWarning" class="entity-modal-warning" hidden>
+      This is fallback placeholder text (the scene's action beat), not AI-generated narration — regenerate once a provider is available.
     </div>
 
     <div id="entityModalMedia" class="entity-modal-media" hidden>
@@ -521,8 +532,8 @@
         <button type="button" id="voiceCloningBtn" class="secondary" hidden>Voice Cloning</button>
       </div>
       <div class="settings-modal-section-heading">
-        <h3>Speaker voices</h3>
-        <span>Assignments update with your generated dialogue</span>
+        <h3>Narrator voice</h3>
+        <span>One voice reads all spoken narration for this project</span>
       </div>
       <div id="voicesPanel" class="voices-panel"></div>
     </div>

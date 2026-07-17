@@ -5,12 +5,16 @@ const { PrismaIdempotencyRepository } = require('./storage/prisma-idempotency.re
 const { createPrismaClient } = require('./storage/prisma-client');
 const { PrismaUsageRepository } = require('./storage/prisma-usage.repository');
 const { PrismaBillingRepository } = require('./storage/prisma-billing.repository');
+const { PrismaAdminRepository } = require('./storage/prisma-admin.repository');
+const { PrismaPaymentRepository } = require('./storage/prisma-payment.repository');
 const { ProjectStore } = require('./storage/project-store');
 const { JobStore } = require('./storage/job-store');
 const { IdempotencyStore } = require('./storage/idempotency-store');
 const { GenerationQueue } = require('./services/generation-queue');
 const { createProviderUsageService } = require('./services/provider-usage.service');
 const { createBillingService } = require('./services/billing.service');
+const { createPaymentService } = require('./services/payment.service');
+const Stripe = require('stripe');
 const { createStylesService } = require('./services/styles.service');
 const { createTextProviders } = require('./providers/text');
 const { createImageProviders } = require('./providers/image');
@@ -47,7 +51,15 @@ function createDependencies(config, overrides = {}) {
   const cancellation = () => generationContext.getStore()?.signal || generationContext.getStore();
   const usageRepository = overrides.usageRepository || (prisma ? new PrismaUsageRepository(prisma) : null);
   const billingRepository = overrides.billingRepository || (prisma ? new PrismaBillingRepository(prisma) : null);
+  const adminRepository = overrides.adminRepository || (prisma ? new PrismaAdminRepository(prisma) : null);
+  const paymentRepository = overrides.paymentRepository || (prisma ? new PrismaPaymentRepository(prisma) : null);
   const billing = overrides.billing || createBillingService({ repository: billingRepository, chargingEnabled: config.billing?.customerChargingEnabled });
+  const stripe = overrides.stripe === undefined
+    ? (config.payments?.stripeSecretKey ? new Stripe(config.payments.stripeSecretKey, { maxNetworkRetries: 2 }) : null)
+    : overrides.stripe;
+  const payments = overrides.payments || createPaymentService({
+    repository: paymentRepository, stripe, webhookSecret: config.payments?.stripeWebhookSecret, publicAppUrl: config.payments?.publicAppUrl,
+  });
   const usageTracker = createProviderUsageService({ repository: usageRepository, generationContext, billing });
 
   const styles = createStylesService(config);
@@ -68,7 +80,7 @@ function createDependencies(config, overrides = {}) {
   const auth = new AuthService({ identityStore });
 
   return {
-    config, prisma, projectStore, queue, idempotencyStore, usageRepository, usageTracker, billingRepository, billing, generationContext,
+    config, prisma, projectStore, queue, idempotencyStore, usageRepository, usageTracker, billingRepository, billing, adminRepository, paymentRepository, payments, generationContext,
     styles, prompts, dialogue, images, audio, videos, exports, voices,
     upload: createUpload(config),
     auth,

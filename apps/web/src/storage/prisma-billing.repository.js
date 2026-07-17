@@ -179,6 +179,7 @@ class PrismaBillingRepository {
   listPrices() { return this.prisma.providerPriceVersion.findMany({ orderBy: [{ provider: 'asc' }, { modality: 'asc' }, { model: 'asc' }, { effectiveAt: 'desc' }] }); }
   listMarkups() { return this.prisma.markupPolicyVersion.findMany({ orderBy: { effectiveAt: 'desc' } }); }
   listCreditRates() { return this.prisma.siteCreditRateVersion.findMany({ orderBy: { effectiveAt: 'desc' } }); }
+  listWelcomeCreditPolicies() { return this.prisma.welcomeCreditPolicyVersion.findMany({ orderBy: { effectiveAt: 'desc' } }); }
   listAccounts() { return this.prisma.creditAccount.findMany({ include: { tenant: { select: { name: true } } }, orderBy: { updatedAt: 'desc' } }); }
   listLedger({ tenantId, limit = 100 } = {}) { return this.prisma.creditLedgerEntry.findMany({ where: tenantId ? { tenantId } : {}, orderBy: { createdAt: 'desc' }, take: Math.min(500, Math.max(1, Number(limit) || 100)) }); }
   listMargins({ tenantId, limit = 100 } = {}) {
@@ -195,6 +196,13 @@ class PrismaBillingRepository {
   }
   createMarkupVersion(data) { return this.prisma.markupPolicyVersion.create({ data: { id: crypto.randomUUID(), ...data } }); }
   createCreditRateVersion(data) { return this.prisma.siteCreditRateVersion.create({ data: { id: crypto.randomUUID(), ...data } }); }
+
+  async createWelcomeCreditPolicyVersion(data) {
+    return this.prisma.$transaction(async (db) => {
+      if (data.active) await db.welcomeCreditPolicyVersion.updateMany({ where: { active: true }, data: { active: false, retiredAt: new Date() } });
+      return db.welcomeCreditPolicyVersion.create({ data: { id: crypto.randomUUID(), ...data } });
+    }, { isolationLevel: 'Serializable' });
+  }
 
   async configurePrice(id, { active, billable, evidenceStatus, reconciledAt, reconciliationNotes }) {
     return this.prisma.$transaction(async (db) => {

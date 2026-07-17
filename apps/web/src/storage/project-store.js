@@ -110,11 +110,17 @@ class ProjectStore {
       const next = { ...scene };
       delete next.entityRefs;
       delete next.continuity;
-      next.lines = Array.isArray(next.lines) ? next.lines.map((line) => {
-        const cleanLine = { ...line };
-        delete cleanLine.characterId;
-        return cleanLine;
-      }) : next.lines;
+      // One-time migration shim, not ongoing parsing: only ever runs for a scene that still has the
+      // old {speaker,text} lines shape and no narrationText yet. Keeps speaker meaning instead of
+      // flattening it away, but the "Name said." phrasing is a fallback for old data only — never
+      // reuse this pattern in live generation, which produces narrationText directly.
+      if (typeof next.narrationText !== 'string' && Array.isArray(next.lines)) {
+        next.narrationText = next.lines
+          .map((line) => (line?.speaker && line.speaker !== 'Narrator' ? `"${line.text}" ${line.speaker} said.` : line?.text))
+          .filter(Boolean)
+          .join('\n\n');
+      }
+      delete next.lines;
       return next;
     }) : [];
     delete copy.assetReferences;
@@ -123,7 +129,7 @@ class ProjectStore {
   }
 
   hasLegacyContinuity(document) {
-    return Boolean(document.storyBible || document.schemaVersion === 4 || document.scenes?.some((scene) => scene.entityRefs || scene.continuity || scene.lines?.some((line) => line.characterId)));
+    return Boolean(document.storyBible || document.schemaVersion === 4 || document.scenes?.some((scene) => scene.entityRefs || scene.continuity || Array.isArray(scene.lines)));
   }
 
   hasLegacyAssets(document) {

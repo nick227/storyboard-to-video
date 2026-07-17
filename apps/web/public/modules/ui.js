@@ -2,7 +2,6 @@ import { projectStore, sceneStore, generationStore, voiceStore, uiStore, batchSt
 import { getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from './persistence.js';
 import { loadProtectedAsset } from './assets.js';
 import { api } from './api.js';
-import { getSpeakersFromScenes } from './workflows.js';
 import { previewVoice } from './voices.js';
 
 const NO_MAPPING_AUDIO_PROVIDERS = ['stub'];
@@ -167,83 +166,76 @@ async function deleteStyleReference(type, fileName, els, setStatus) {
 }
 
 export function renderVoicesPanel(els) {
-  const speakers = getSpeakersFromScenes();
   const state = voiceStore.get();
   const provider = state.audioProvider;
-  const voiceMap = state.voiceMap[provider] || {};
+  const narratorVoice = state.narratorVoice[provider] || null;
   const availableVoices = PREVIEWABLE_AUDIO_PROVIDERS.includes(provider) ? (state.availableVoices[provider] || []) : [];
-  
+
   els.voiceCloningBtn.hidden = provider !== 'spark';
   els.voicesPanel.innerHTML = '';
 
-  speakers.forEach((speaker) => {
-    const row = document.createElement('div');
-    row.className = 'voice-row';
+  const row = document.createElement('div');
+  row.className = 'voice-row';
 
-    const label = document.createElement('div');
-    label.className = 'voice-speaker';
-    label.textContent = speaker;
-    row.appendChild(label);
+  const label = document.createElement('div');
+  label.className = 'voice-speaker';
+  label.textContent = 'Narrator voice';
+  row.appendChild(label);
 
-    if (NO_MAPPING_AUDIO_PROVIDERS.includes(provider)) {
-      const note = document.createElement('span');
-      note.className = 'voice-note';
-      note.textContent = 'Local rudimentary voice, auto-assigned per speaker (no mapping needed)';
-      row.appendChild(note);
-    } else {
-      const select = document.createElement('select');
-      select.disabled = uiStore.get().operation != null;
-      const blank = document.createElement('option');
-      blank.value = '';
-      blank.textContent = availableVoices.length ? 'Choose a voice...' : 'No voices loaded';
-      select.appendChild(blank);
-      availableVoices.forEach((voice) => {
-        const option = document.createElement('option');
-        option.value = voice.voiceId;
-        option.textContent = voice.label || voice.voiceId;
-        select.appendChild(option);
-      });
-      const mapped = voiceMap[speaker];
-      select.value = mapped?.voiceId || '';
-      row.classList.toggle('voice-unmapped', !mapped?.voiceId);
+  if (NO_MAPPING_AUDIO_PROVIDERS.includes(provider)) {
+    const note = document.createElement('span');
+    note.className = 'voice-note';
+    note.textContent = 'Local rudimentary voice, auto-assigned (no selection needed)';
+    row.appendChild(note);
+  } else {
+    const select = document.createElement('select');
+    select.disabled = uiStore.get().operation != null;
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = availableVoices.length ? 'Choose a voice...' : 'No voices loaded';
+    select.appendChild(blank);
+    availableVoices.forEach((voice) => {
+      const option = document.createElement('option');
+      option.value = voice.voiceId;
+      option.textContent = voice.label || voice.voiceId;
+      select.appendChild(option);
+    });
+    select.value = narratorVoice?.voiceId || '';
+    row.classList.toggle('voice-unmapped', !narratorVoice?.voiceId);
 
-      const previewBtn = document.createElement('button');
-      previewBtn.type = 'button';
-      previewBtn.className = 'secondary text-button voice-preview-btn';
-      previewBtn.textContent = '▶';
-      previewBtn.title = 'Preview this voice';
-      previewBtn.setAttribute('aria-label', 'Preview selected voice');
-      previewBtn.disabled = !select.value;
-      previewBtn.addEventListener('click', () => {
-        const chosen = availableVoices.find((voice) => voice.voiceId === select.value);
-        previewVoice(provider, chosen, (msg) => { if (els.statusText) els.statusText.textContent = msg; });
-      });
+    const previewBtn = document.createElement('button');
+    previewBtn.type = 'button';
+    previewBtn.className = 'secondary text-button voice-preview-btn';
+    previewBtn.textContent = '▶';
+    previewBtn.title = 'Preview this voice';
+    previewBtn.setAttribute('aria-label', 'Preview selected voice');
+    previewBtn.disabled = !select.value;
+    previewBtn.addEventListener('click', () => {
+      const chosen = availableVoices.find((voice) => voice.voiceId === select.value);
+      previewVoice(provider, chosen, (msg) => { if (els.statusText) els.statusText.textContent = msg; });
+    });
 
-      select.addEventListener('change', () => {
-        const chosen = availableVoices.find((voice) => voice.voiceId === select.value);
-        previewBtn.disabled = !chosen;
+    select.addEventListener('change', () => {
+      const chosen = availableVoices.find((voice) => voice.voiceId === select.value);
+      previewBtn.disabled = !chosen;
 
-        voiceStore.set(s => {
-          const map = { ...s.voiceMap[provider] };
-          if (chosen) map[speaker] = { voiceId: chosen.voiceId, label: chosen.label };
-          else delete map[speaker];
-          return { voiceMap: { ...s.voiceMap, [provider]: map } };
-        });
+      voiceStore.set(s => ({
+        narratorVoice: { ...s.narratorVoice, [provider]: chosen ? { voiceId: chosen.voiceId, label: chosen.label } : null },
+      }));
 
-        row.classList.toggle('voice-unmapped', !voiceStore.get().voiceMap[provider]?.[speaker]?.voiceId);
-        const record = getCurrentStoryboardRecord();
-        if (record) {
-          record.voiceMap = voiceStore.get().voiceMap;
-          queueSync(record);
-        }
-      });
-      const controls = document.createElement('div');
-      controls.className = 'voice-controls';
-      controls.append(select, previewBtn);
-      row.appendChild(controls);
-    }
-    els.voicesPanel.appendChild(row);
-  });
+      row.classList.toggle('voice-unmapped', !voiceStore.get().narratorVoice[provider]?.voiceId);
+      const record = getCurrentStoryboardRecord();
+      if (record) {
+        record.narratorVoice = voiceStore.get().narratorVoice;
+        queueSync(record);
+      }
+    });
+    const controls = document.createElement('div');
+    controls.className = 'voice-controls';
+    controls.append(select, previewBtn);
+    row.appendChild(controls);
+  }
+  els.voicesPanel.appendChild(row);
 }
 
 export function updateButtons(els) {
@@ -254,7 +246,7 @@ export function updateButtons(els) {
   const busy = uiState.operation != null;
   const hasScenes = sceneState.scenes.length > 0;
   const promptsReady = sceneState.scenes.filter((scene) => String(scene.prompt || '').trim()).length;
-  const dialogueReady = sceneState.scenes.filter((scene) => (scene.lines || []).some((line) => String(line?.text || '').trim())).length;
+  const dialogueReady = sceneState.scenes.filter((scene) => String(scene.narrationText || '').trim()).length;
   const imagesReady = sceneState.scenes.filter((scene) => (scene.versions || []).some((version) => version?.path)).length;
   const audioReady = sceneState.scenes.filter((scene) => (scene.audioVersions || []).some((version) => version?.path)).length;
   const videosReady = sceneState.scenes.filter((scene) => (scene.videoVersions || []).some((version) => version?.path)).length;
@@ -277,8 +269,8 @@ export function updateButtons(els) {
   configureGenerationAction(els.generateDialogueBtn, {
     available: allPromptsReady,
     prerequisite: hasScenes
-      ? `${sceneState.scenes.length - promptsReady} scene${sceneState.scenes.length - promptsReady === 1 ? '' : 's'} still need prompts before generating dialogue.`
-      : 'Generate prompts before generating dialogue.',
+      ? `${sceneState.scenes.length - promptsReady} scene${sceneState.scenes.length - promptsReady === 1 ? '' : 's'} still need prompts before generating narration.`
+      : 'Generate prompts before generating narration.',
     busy,
   });
   els.sceneCount.disabled = busy;
@@ -309,8 +301,8 @@ export function updateButtons(els) {
     serialState: batchState.audio.state,
     canStart: allDialogueReady,
     prerequisite: hasScenes
-      ? `${sceneState.scenes.length - dialogueReady} scene${sceneState.scenes.length - dialogueReady === 1 ? '' : 's'} still need dialogue before generating audio.`
-      : 'Generate dialogue before generating audio.',
+      ? `${sceneState.scenes.length - dialogueReady} scene${sceneState.scenes.length - dialogueReady === 1 ? '' : 's'} still need narration before generating audio.`
+      : 'Generate narration before generating audio.',
     busy
   });
 
@@ -391,10 +383,10 @@ function renderGenerationSummary(els, scenes, batchState) {
     return `${label} ${ready}/${total}${revisionNote}${runNote}`;
   };
   const promptCount = completed((scene) => Boolean(String(scene.prompt || '').trim()));
-  const dialogueCount = completed((scene) => (scene.lines || []).some((line) => String(line?.text || '').trim()));
+  const dialogueCount = completed((scene) => Boolean(String(scene.narrationText || '').trim()));
   const summary = [
     `Prompts ${promptCount}/${total}`,
-    `Dialogue ${dialogueCount}/${total}`,
+    `Narration ${dialogueCount}/${total}`,
     mediaSummary('Images', 'versions', batchState.images),
     mediaSummary('Video', 'videoVersions', batchState.videos),
     mediaSummary('Audio', 'audioVersions', batchState.audio),

@@ -17,6 +17,7 @@ model User {
   displayName        String              @map("display_name")
   passwordHash       String              @map("password_hash")
   status             String              @default("active")
+  platformRole       String              @default("user") @map("platform_role")
   createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
   memberships        Membership[]
@@ -30,6 +31,12 @@ model User {
   creditReservations CreditReservation[]
   creditLedger       CreditLedgerEntry[]
   chargingChanges    CreditAccount[]      @relation("CreditAccountChargingChangedBy")
+  purchasedSales     CreditSale[]         @relation("CreditSaleCustomer")
+  recordedSales      CreditSale[]         @relation("CreditSaleRecorder")
+  paymentCustomers   PaymentCustomer[]
+  checkoutAttempts   CheckoutAttempt[]
+  welcomePoliciesCreated WelcomeCreditPolicyVersion[] @relation("WelcomeCreditPolicyCreator")
+  adminAuditEvents   AdminAuditEvent[]    @relation("AdminAuditActor")
 
   @@map("users")
 }
@@ -51,6 +58,10 @@ model Workspace {
   creditAccount      CreditAccount?
   creditReservations CreditReservation[]
   creditLedger       CreditLedgerEntry[]
+  creditSales        CreditSale[]
+  paymentCustomers   PaymentCustomer[]
+  checkoutAttempts   CheckoutAttempt[]
+  adminAuditEvents   AdminAuditEvent[]
 
   @@map("workspaces")
 }
@@ -298,6 +309,23 @@ model SiteCreditRateVersion {
   @@map("site_credit_rate_versions")
 }
 
+model WelcomeCreditPolicyVersion {
+  id                   String              @id @db.Uuid
+  versionKey           String              @unique @map("version_key")
+  name                 String
+  creditMicros         BigInt              @map("credit_micros")
+  active               Boolean             @default(false)
+  effectiveAt          DateTime            @default(now()) @map("effective_at") @db.Timestamptz(3)
+  retiredAt            DateTime?           @map("retired_at") @db.Timestamptz(3)
+  createdByAdminId     String?             @map("created_by_admin_id") @db.Uuid
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  createdByAdmin       User?               @relation("WelcomeCreditPolicyCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict)
+  ledgerEntries        CreditLedgerEntry[]
+
+  @@index([active, effectiveAt])
+  @@map("welcome_credit_policy_versions")
+}
+
 model ProviderCostSnapshot {
   id                     String               @id @db.Uuid
   generationRequestId    String               @unique @map("generation_request_id") @db.Uuid
@@ -377,6 +405,8 @@ model CreditLedgerEntry {
   userId                     String?            @map("user_id") @db.Uuid
   reservationId              String?            @map("reservation_id") @db.Uuid
   generationRequestId        String?            @map("generation_request_id") @db.Uuid
+  saleId                     String?            @map("sale_id") @db.Uuid
+  welcomeCreditPolicyVersionId String?          @map("welcome_credit_policy_version_id") @db.Uuid
   type                       String
   availableDeltaCreditMicros BigInt             @map("available_delta_credit_micros")
   reservedDeltaCreditMicros  BigInt             @map("reserved_delta_credit_micros")
@@ -389,8 +419,157 @@ model CreditLedgerEntry {
   tenant                     Workspace          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user                       User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   reservation               CreditReservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  fundedCreditSale          CreditSale?         @relation("CreditSaleFunding")
+  creditSale                CreditSale?         @relation("CreditSaleLedger", fields: [saleId], references: [id], onDelete: Restrict)
+  welcomeCreditPolicyVersion WelcomeCreditPolicyVersion? @relation(fields: [welcomeCreditPolicyVersionId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, createdAt])
   @@index([reservationId])
+  @@index([saleId])
+  @@index([welcomeCreditPolicyVersionId])
   @@map("credit_ledger_entries")
+}
+
+model CreditPack {
+  id                   String            @id @db.Uuid
+  code                 String
+  version              Int
+  name                 String
+  currency             String            @default("USD") @db.Char(3)
+  unitAmount           BigInt            @map("unit_amount")
+  creditsGrantedMicros BigInt            @map("credits_granted_micros")
+  stripePriceId        String?           @unique @map("stripe_price_id")
+  taxBehavior          String            @default("exclusive") @map("tax_behavior")
+  status               String            @default("draft")
+  activeFrom           DateTime?         @map("active_from") @db.Timestamptz(3)
+  activeUntil          DateTime?         @map("active_until") @db.Timestamptz(3)
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  sales                CreditSale[]
+
+  @@unique([code, version])
+  @@index([status, activeFrom, activeUntil])
+  @@map("credit_packs")
+}
+
+model PaymentCustomer {
+  id                  String    @id @db.Uuid
+  tenantId            String    @map("tenant_id") @db.Uuid
+  userId              String    @map("user_id") @db.Uuid
+  processor           String    @default("stripe")
+  processorCustomerId String    @unique @map("processor_customer_id")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant              Workspace @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, processor])
+  @@index([userId])
+  @@map("payment_customers")
+}
+
+model CreditSale {
+  id                     String             @id @db.Uuid
+  tenantId               String             @map("tenant_id") @db.Uuid
+  customerUserId         String             @map("customer_user_id") @db.Uuid
+  creditPackId           String?            @map("credit_pack_id") @db.Uuid
+  cashAmountNanoUsd      BigInt             @map("cash_amount_nano_usd")
+  creditsPurchasedMicros BigInt           @map("credits_purchased_micros")
+  creditsGranted         BigInt             @map("credits_granted_micros")
+  currency               String             @default("USD") @db.Char(3)
+  paymentProvider        String             @map("payment_provider")
+  processor              String
+  processorCustomerId    String?            @map("processor_customer_id")
+  processorCheckoutSessionId String?         @unique @map("processor_checkout_session_id")
+  processorPaymentIntentId String?           @unique @map("processor_payment_intent_id")
+  externalPaymentId      String?            @unique @map("external_payment_id")
+  subtotalAmount         BigInt             @map("subtotal_amount")
+  taxAmount              BigInt             @default(0) @map("tax_amount")
+  totalAmount            BigInt             @map("total_amount")
+  refundedAmount         BigInt             @default(0) @map("refunded_amount")
+  creditsReversed        BigInt             @default(0) @map("credits_reversed_micros")
+  refundResolutionRequired Boolean          @default(false) @map("refund_resolution_required")
+  status                 String             @default("pending")
+  creditLedgerEntryId    String?            @unique @map("credit_ledger_entry_id") @db.Uuid
+  recordedByAdminId      String?            @map("recorded_by_admin_id") @db.Uuid
+  notes                  String?
+  occurredAt             DateTime           @map("occurred_at") @db.Timestamptz(3)
+  paidAt                 DateTime?           @map("paid_at") @db.Timestamptz(3)
+  refundedAt             DateTime?           @map("refunded_at") @db.Timestamptz(3)
+  createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant                 Workspace           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customerUser           User                @relation("CreditSaleCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  recordedByAdmin        User?               @relation("CreditSaleRecorder", fields: [recordedByAdminId], references: [id], onDelete: Restrict)
+  creditPack             CreditPack?         @relation(fields: [creditPackId], references: [id], onDelete: Restrict)
+  creditLedgerEntry      CreditLedgerEntry?  @relation("CreditSaleFunding", fields: [creditLedgerEntryId], references: [id], onDelete: Restrict)
+  ledgerEntries          CreditLedgerEntry[] @relation("CreditSaleLedger")
+  checkoutAttempts       CheckoutAttempt[]
+  paymentEvents          PaymentEvent[]
+
+  @@index([tenantId, occurredAt])
+  @@index([customerUserId, occurredAt])
+  @@map("credit_sales")
+}
+
+model CheckoutAttempt {
+  id                         String     @id @db.Uuid
+  saleId                     String     @map("sale_id") @db.Uuid
+  tenantId                   String     @map("tenant_id") @db.Uuid
+  userId                     String     @map("user_id") @db.Uuid
+  processor                  String     @default("stripe")
+  idempotencyKey             String     @unique @map("idempotency_key")
+  processorCheckoutSessionId String?    @unique @map("processor_checkout_session_id")
+  checkoutUrl                String?    @map("checkout_url")
+  status                     String     @default("pending")
+  error                      Json?
+  createdAt                  DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  completedAt                DateTime?  @map("completed_at") @db.Timestamptz(3)
+  sale                       CreditSale @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  tenant                     Workspace  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user                       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([saleId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("checkout_attempts")
+}
+
+model PaymentEvent {
+  id                String      @id @db.Uuid
+  processor         String      @default("stripe")
+  processorEventId  String      @unique @map("processor_event_id")
+  processorObjectId String?     @map("processor_object_id")
+  type              String
+  saleId            String?     @map("sale_id") @db.Uuid
+  payload           Json
+  status            String      @default("received")
+  error             String?
+  receivedAt        DateTime    @default(now()) @map("received_at") @db.Timestamptz(3)
+  processedAt       DateTime?   @map("processed_at") @db.Timestamptz(3)
+  sale              CreditSale? @relation(fields: [saleId], references: [id], onDelete: Restrict)
+
+  @@index([saleId, receivedAt])
+  @@index([status, receivedAt])
+  @@unique([processor, type, processorObjectId])
+  @@map("payment_events")
+}
+
+model AdminAuditEvent {
+  id          String    @id @db.Uuid
+  actorUserId String    @map("actor_user_id") @db.Uuid
+  tenantId    String?   @map("tenant_id") @db.Uuid
+  action      String
+  targetType  String    @map("target_type")
+  targetId    String    @map("target_id")
+  reason      String?
+  before      Json?
+  after       Json?
+  requestId   String?   @map("request_id")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  actor       User      @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  tenant      Workspace? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("admin_audit_events")
 }

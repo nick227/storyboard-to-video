@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Storyframe Credits</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/credits.css" />
+</head>
+<body>
+  <header class="site-topbar"><div class="site-topbar-inner"><a class="site-brand" href="/"><span class="site-brand-mark">SF</span><span class="site-brand-word">Storyframe</span></a><a href="/">Back to studio</a></div></header>
+  <main class="credits-shell">
+    <header class="credits-heading"><div><div class="eyebrow">Generation balance</div><h1>Site credits</h1><p>One-time purchases. No subscription.</p></div><div class="balance-card"><small>Available balance</small><strong id="creditBalance">—</strong></div></header>
+    <p id="checkoutNotice" class="checkout-notice" role="status"></p>
+    <section><h2>Choose a credit pack</h2><div id="creditPacks" class="pack-grid"></div></section>
+    <section class="purchase-history"><h2>Purchase history</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Pack</th><th>Total</th><th>Credits</th><th>Status</th></tr></thead><tbody id="purchasesBody"></tbody></table></div></section>
+  </main>
+  <script type="module" src="/modules/credits.js"></script>
+</body>
+</html>

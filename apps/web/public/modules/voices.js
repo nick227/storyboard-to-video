@@ -113,17 +113,19 @@ export async function deleteVoice(voiceId, label, setStatus) {
     
     voiceStore.set(state => {
       const sparkVoices = state.availableVoices.spark.filter((voice) => voice.voiceId !== voiceId);
-      const voiceMapSpark = { ...state.voiceMap.spark };
-      Object.keys(voiceMapSpark).forEach((speaker) => {
-        if (voiceMapSpark[speaker]?.voiceId === voiceId) delete voiceMapSpark[speaker];
-      });
+      const narratorVoice = { ...state.narratorVoice };
+      if (narratorVoice.spark?.voiceId === voiceId) narratorVoice.spark = null;
       return {
         availableVoices: { ...state.availableVoices, spark: sparkVoices },
-        voiceMap: { ...state.voiceMap, spark: voiceMapSpark }
+        narratorVoice,
       };
     });
 
-    queueSync(projectStore.get().storyboards.find(s => s.id === projectStore.get().currentId), setStatus);
+    const record = projectStore.get().storyboards.find(s => s.id === projectStore.get().currentId);
+    if (record) {
+      record.narratorVoice = voiceStore.get().narratorVoice;
+      queueSync(record, setStatus);
+    }
     if (setStatus) setStatus(`Voice "${label || voiceId}" deleted.`);
   } catch (error) {
     if (setStatus) setStatus(`Voice delete failed: ${error.message}`);

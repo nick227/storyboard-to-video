@@ -81,15 +81,40 @@ const videoGeneration = z.object({
   imagePath: z.string().trim().min(1).max(500),
 });
 
-const dialogueLine = z.object({ speaker: z.string().max(80).default('Narrator'), text: z.string().trim().min(1).max(2_000) });
+const narratorVoice = z.object({ voiceId: z.string(), label: z.string().optional() }).nullable().default(null);
 const audioGeneration = z.object({
   projectId,
   sceneId,
   sceneNumber: z.coerce.number().int().min(1).max(50).default(1),
   sceneTitle: z.string().max(200).default(''),
-  lines: z.array(dialogueLine).min(1).max(200),
+  narrationText: z.string().trim().min(1).max(6_000),
   provider: z.enum(['elevenlabs', 'piper', 'spark', 'stub']).default('stub'),
-  voiceMap: z.record(z.string(), z.any()).default({}),
+  voice: narratorVoice,
 });
 
-module.exports = { audioGeneration, createProject, exportProject, fallbackPolicy, imageGeneration, projectDocument, projectId, promptGeneration, regenerateAction, regeneratePrompt, videoGeneration };
+const dialogueScene = z.object({
+  sceneNumber: z.coerce.number().int().min(1).max(50).default(1),
+  title: z.string().max(200).default(''),
+  beat: z.string().max(2_000).default(''),
+  scriptFragment: z.string().max(20_000).default(''),
+});
+
+const generateDialogue = z.object({
+  projectId,
+  scenes: z.array(dialogueScene).min(1).max(50),
+  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
+  fallbackPolicy,
+});
+
+const regenerateDialogue = z.object({
+  projectId,
+  scene: z.record(z.any()),
+  sceneIndex: z.coerce.number().int().min(0).max(49).default(0),
+  previousText: z.string().max(2_000).default(''),
+  nextBeat: z.string().max(2_000).default(''),
+  instruction: z.string().max(500).default(''),
+  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
+  fallbackPolicy,
+});
+
+module.exports = { audioGeneration, createProject, exportProject, fallbackPolicy, generateDialogue, imageGeneration, projectDocument, projectId, promptGeneration, regenerateAction, regenerateDialogue, regeneratePrompt, videoGeneration };

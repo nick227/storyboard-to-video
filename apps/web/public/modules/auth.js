@@ -31,6 +31,9 @@ function showLoggedIn(els, session) {
   els.authUserLabel.title = `${session.user.email}\n${session.tenant.name}`;
   els.authUserAvatar.textContent = name.trim().slice(0, 1).toUpperCase() || '?';
   els.authLoggedIn.hidden = false;
+  if (els.adminConsoleLink) {
+    els.adminConsoleLink.hidden = !(session.isPlatformAdmin || ['admin', 'super_admin'].includes(session.user.platformRole));
+  }
 }
 
 // The server-side page guard keeps unauthenticated visitors off this page

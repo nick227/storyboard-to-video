@@ -23,9 +23,20 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
   const usage = new PrismaUsageRepository(prisma);
   const billing = new PrismaBillingRepository(prisma);
   const account = await identity.createUserWithPersonalWorkspace({ email: `billing-${crypto.randomUUID()}@example.com`, displayName: 'Billing Audit Test', passwordHash: 'test-only' });
+  await prisma.$transaction(async (db) => {
+    await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries DISABLE TRIGGER USER');
+    await db.creditLedgerEntry.deleteMany({ where: { tenantId: account.tenant.id, type: 'welcome_grant' } });
+    await db.creditAccount.update({ where: { tenantId: account.tenant.id }, data: { availableCreditMicros: 0n } });
+    await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries ENABLE TRIGGER USER');
+  });
   const trace = (jobId) => ({ tenantId: account.tenant.id, userId: account.user.id, projectId: 'billing-audit-test', jobId, idempotencyKey: `billing:${jobId}` });
   let testProvider;
+  let welcomePolicyId;
   try {
+    const welcomePolicy = await billing.createWelcomeCreditPolicyVersion({ versionKey: `welcome-test-${crypto.randomUUID()}`, name: 'Future registration test', creditMicros: 123000000n, active: false, createdByAdminId: account.user.id });
+    welcomePolicyId = welcomePolicy.id;
+    assert.equal((await billing.listWelcomeCreditPolicies()).some((policy) => policy.id === welcomePolicy.id), true);
+    await assert.rejects(() => prisma.welcomeCreditPolicyVersion.update({ where: { id: welcomePolicy.id }, data: { creditMicros: 1n } }), /immutable/);
     assert.throws(() => billing.createPriceVersion({
       versionKey: `unreconciled-${crypto.randomUUID()}`, provider: 'test', modality: 'text', model: 'test', currency: 'USD',
       rateCard: { type: 'flat', nanoUsdPerUnit: 1 }, reservationNanoUsd: 1n, evidenceStatus: 'documented', billable: true, active: false,
@@ -141,6 +152,7 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
       await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries DISABLE TRIGGER USER');
       await db.$executeRawUnsafe('ALTER TABLE provider_cost_snapshots DISABLE TRIGGER USER');
       await db.$executeRawUnsafe('ALTER TABLE credit_reservations DISABLE TRIGGER USER');
+      await db.$executeRawUnsafe('ALTER TABLE welcome_credit_policy_versions DISABLE TRIGGER USER');
       await db.creditLedgerEntry.deleteMany({ where: { tenantId: account.tenant.id } });
       await db.creditReservation.deleteMany({ where: { tenantId: account.tenant.id } });
       await db.providerCostSnapshot.deleteMany({ where: { generationRequest: { tenantId: account.tenant.id } } });
@@ -148,11 +160,13 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
       await db.generationRequest.deleteMany({ where: { tenantId: account.tenant.id } });
       await db.creditAccount.deleteMany({ where: { tenantId: account.tenant.id } });
       if (testProvider) await db.providerPriceVersion.deleteMany({ where: { provider: testProvider } });
+      if (welcomePolicyId) await db.welcomeCreditPolicyVersion.deleteMany({ where: { id: welcomePolicyId } });
       await db.workspace.deleteMany({ where: { id: account.tenant.id } });
       await db.user.deleteMany({ where: { id: account.user.id } });
       await db.$executeRawUnsafe('ALTER TABLE credit_reservations ENABLE TRIGGER USER');
       await db.$executeRawUnsafe('ALTER TABLE provider_cost_snapshots ENABLE TRIGGER USER');
       await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries ENABLE TRIGGER USER');
+      await db.$executeRawUnsafe('ALTER TABLE welcome_credit_policy_versions ENABLE TRIGGER USER');
     });
     await prisma.$disconnect();
   }

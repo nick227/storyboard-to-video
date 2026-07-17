@@ -63,8 +63,14 @@ test('usage tracking persists before execution and settles one immutable event p
     assert.equal(failed.status, 'failed');
     assert.equal(await prisma.usageEvent.count({ where: { generationRequestId: failed.id } }), 0);
   } finally {
-    if (tenantId) await prisma.workspace.deleteMany({ where: { id: tenantId } });
-    if (userId) await prisma.user.deleteMany({ where: { id: userId } });
+    if (tenantId) await prisma.$transaction(async (db) => {
+      await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries DISABLE TRIGGER USER');
+      await db.creditLedgerEntry.deleteMany({ where: { tenantId } });
+      await db.creditAccount.deleteMany({ where: { tenantId } });
+      await db.workspace.deleteMany({ where: { id: tenantId } });
+      if (userId) await db.user.deleteMany({ where: { id: userId } });
+      await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries ENABLE TRIGGER USER');
+    });
     await prisma.$disconnect();
   }
 });

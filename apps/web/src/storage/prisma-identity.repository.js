@@ -4,7 +4,7 @@ const { AppError } = require('../errors');
 const { createPrismaClient } = require('./prisma-client');
 
 function publicUser(user) {
-  return { id: user.id, email: user.email, displayName: user.displayName, status: user.status };
+  return { id: user.id, email: user.email, displayName: user.displayName, status: user.status, platformRole: user.platformRole || 'user' };
 }
 
 function legacyUuid(value, namespace) {
@@ -25,7 +25,19 @@ class PrismaIdentityRepository {
         const user = await db.user.create({ data: { id: crypto.randomUUID(), email, displayName, passwordHash } });
         const tenant = await db.workspace.create({ data: { id: crypto.randomUUID(), name: displayName ? `${displayName}'s workspace` : 'Personal workspace', type: 'personal' } });
         await db.membership.create({ data: { userId: user.id, tenantId: tenant.id, role: 'owner' } });
-        return { user: publicUser(user), tenant, role: 'owner' };
+        const welcomePolicy = await db.welcomeCreditPolicyVersion.findFirst({ where: { active: true, effectiveAt: { lte: new Date() } }, orderBy: { effectiveAt: 'desc' } });
+        if (welcomePolicy) {
+          const account = await db.creditAccount.create({ data: { id: crypto.randomUUID(), tenantId: tenant.id, availableCreditMicros: welcomePolicy.creditMicros } });
+          await db.creditLedgerEntry.create({ data: {
+            id: crypto.randomUUID(), accountId: account.id, tenantId: tenant.id, userId: user.id,
+            welcomeCreditPolicyVersionId: welcomePolicy.id, type: 'welcome_grant',
+            availableDeltaCreditMicros: welcomePolicy.creditMicros, reservedDeltaCreditMicros: 0n,
+            availableAfterCreditMicros: welcomePolicy.creditMicros, reservedAfterCreditMicros: 0n,
+            idempotencyKey: `welcome:${user.id}`,
+            metadata: { policyVersionKey: welcomePolicy.versionKey, creditMicros: welcomePolicy.creditMicros.toString() },
+          } });
+        }
+        return { user: publicUser(user), tenant, role: 'owner', welcomeCreditMicros: welcomePolicy?.creditMicros || 0n };
       });
     } catch (cause) {
       if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002') {

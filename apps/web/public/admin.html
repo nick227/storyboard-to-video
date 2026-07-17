@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Storyframe Admin</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/admin.css" />
+</head>
+<body>
+  <header class="site-topbar">
+    <div class="site-topbar-inner">
+      <a class="site-brand" href="/"><span class="site-brand-mark">SF</span><span class="site-brand-word">Storyframe</span></a>
+      <div class="admin-identity"><a href="/">Studio</a><span id="adminIdentity"></span><button id="adminLogout" type="button">Log out</button></div>
+    </div>
+  </header>
+  <main class="admin-shell">
+    <header class="admin-heading"><div><div class="eyebrow">Internal operations</div><h1>Admin console</h1></div><button id="adminRefresh" class="secondary">Refresh</button></header>
+    <nav class="admin-tabs" aria-label="Admin sections">
+      <button data-tab="overview" class="active">Overview</button><button data-tab="users">Users</button><button data-tab="commerce">Pricing &amp; sales</button><button data-tab="generations">Generations</button><button data-tab="audit">Audit</button>
+    </nav>
+    <p id="adminMessage" class="admin-message" role="status"></p>
+
+    <section id="tab-overview" class="admin-view">
+      <div class="admin-filter-row"><label>Start<input id="overviewStart" type="date" /></label><label>End<input id="overviewEnd" type="date" /></label><button id="overviewApply">Apply</button></div>
+      <div id="overviewCards" class="metric-grid"></div>
+      <div class="admin-grid-two"><article class="panel"><h2>Generation status</h2><div id="overviewStatuses"></div></article><article class="panel"><h2>Generation types</h2><div id="overviewTypes"></div></article></div>
+    </section>
+
+    <section id="tab-users" class="admin-view" hidden>
+      <div class="admin-filter-row"><label>Search<input id="userSearch" placeholder="Email or name" /></label><label>Status<select id="userStatus"><option value="">All</option><option>active</option><option>disabled</option></select></label><label>Role<select id="userRole"><option value="">All</option><option>user</option><option>admin</option><option>super_admin</option></select></label><button id="usersApply">Search</button></div>
+      <div class="table-wrap"><table><thead><tr><th>User</th><th>Tenant</th><th>Credits</th><th>Usage</th><th>Status</th><th>Role</th><th>Actions</th></tr></thead><tbody id="usersBody"></tbody></table></div>
+    </section>
+
+    <section id="tab-commerce" class="admin-view" hidden>
+      <div class="admin-grid-two">
+        <article class="panel"><h2>Record sale</h2><form id="saleForm" class="admin-form"><label>Customer user ID<input name="customerUserId" required /></label><label>Tenant ID<input name="tenantId" required /></label><label>Cash received (USD)<input name="cashUsd" type="number" min="0.01" step="0.01" required /></label><label>Site credits sold<input name="siteCredits" type="number" min="0.000001" step="0.000001" required /></label><label>Payment reference<input name="externalPaymentId" /></label><label>Notes<textarea name="notes" rows="2"></textarea></label><button class="primary">Record sale and grant credits</button></form></article>
+        <article class="panel"><h2>Site economics</h2><form id="markupForm" class="admin-form"><label>Markup version<input name="versionKey" placeholder="production-markup-v1" required /></label><label>Markup percent<input name="percent" type="number" min="0" step="0.01" required /></label><button>Create and activate markup</button></form><form id="creditRateForm" class="admin-form separated"><label>Credit-rate version<input name="versionKey" placeholder="production-credit-value-v1" required /></label><label>USD value per site credit<input name="usdPerCredit" type="number" min="0.000001" step="0.000001" required /></label><button>Create and activate conversion</button></form><form id="welcomeCreditForm" class="admin-form separated"><h3>New-user welcome credits</h3><p id="activeWelcomeCredits">Loading current policy…</p><label>Policy version<input name="versionKey" placeholder="welcome-v2" required /></label><label>Credits granted to new users<input name="credits" type="number" min="0.000001" step="0.000001" required /></label><button>Create and activate welcome grant</button></form></article>
+      </div>
+      <article class="panel"><h2>Provider prices</h2><div class="table-wrap"><table><thead><tr><th>Provider</th><th>Model</th><th>Type</th><th>Evidence</th><th>Active</th><th>Billable</th><th>Reservation</th></tr></thead><tbody id="pricesBody"></tbody></table></div></article>
+      <article class="panel"><h2>Stripe credit packs</h2><p>Draft packs become immutable when published with a Stripe Price ID.</p><div class="table-wrap"><table><thead><tr><th>Pack</th><th>USD price</th><th>Credits</th><th>Tax</th><th>Status</th><th>Stripe Price</th><th>Action</th></tr></thead><tbody id="creditPacksBody"></tbody></table></div></article>
+      <article class="panel"><h2>Recent sales</h2><div class="table-wrap"><table><thead><tr><th>When</th><th>Customer</th><th>Cash</th><th>Credits</th><th>Provider/reference</th><th>Status</th><th>Recorded by</th><th>Action</th></tr></thead><tbody id="salesBody"></tbody></table></div></article>
+    </section>
+
+    <section id="tab-generations" class="admin-view" hidden>
+      <div class="admin-filter-row"><label>Type<select id="generationType"><option value="">All</option><option>text</option><option>image</option><option>audio</option><option>video</option></select></label><label>Status<select id="generationStatus"><option value="">All</option><option>started</option><option>completed</option><option>failed</option></select></label><label>Provider<input id="generationProvider" placeholder="gemini" /></label><button id="generationsApply">Apply</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Started</th><th>User</th><th>Type/provider</th><th>Status</th><th>Usage</th><th>Provider cost</th><th>Charge</th><th>Margin</th><th>Job</th></tr></thead><tbody id="generationsBody"></tbody></table></div>
+    </section>
+
+    <section id="tab-audit" class="admin-view" hidden><div class="table-wrap"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Reason</th></tr></thead><tbody id="auditBody"></tbody></table></div></section>
+  </main>
+  <script type="module" src="/modules/admin.js"></script>
+</body>
+</html>

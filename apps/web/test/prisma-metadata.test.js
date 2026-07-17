@@ -47,8 +47,14 @@ test('Prisma metadata repositories persist tenant projects, assets, jobs, and id
     const replay = await idempotency.begin(created.id, 'metadata-request-001', { value: 1 }, { tenantId: account.tenant.id, userId: account.user.id });
     assert.deepEqual(replay.record.body, { ok: true });
   } finally {
-    if (tenantId) await prisma.workspace.deleteMany({ where: { id: tenantId } });
-    if (userId) await prisma.user.deleteMany({ where: { id: userId } });
+    if (tenantId) await prisma.$transaction(async (db) => {
+      await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries DISABLE TRIGGER USER');
+      await db.creditLedgerEntry.deleteMany({ where: { tenantId } });
+      await db.creditAccount.deleteMany({ where: { tenantId } });
+      await db.workspace.deleteMany({ where: { id: tenantId } });
+      if (userId) await db.user.deleteMany({ where: { id: userId } });
+      await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries ENABLE TRIGGER USER');
+    });
     await prisma.$disconnect();
     fs.rmSync(root, { recursive: true, force: true });
   }

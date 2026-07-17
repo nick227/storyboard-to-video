@@ -14,18 +14,22 @@ const { assetsRoutes } = require('./routes/assets.routes');
 const { authRoutes } = require('./routes/auth.routes');
 const { usageRoutes } = require('./routes/usage.routes');
 const { billingRoutes } = require('./routes/billing.routes');
+const { adminRoutes } = require('./routes/admin.routes');
+const { paymentRoutes, stripeWebhookHandler } = require('./routes/payment.routes');
+const { isPlatformAdmin } = require('./middleware/style-admin');
 
 function createApp(dependencies) {
   const app = express();
   registerMiddleware(app, dependencies);
   app.use('/api/auth', authRoutes(dependencies.auth));
-  app.use(['/api', '/projects', '/style-references'], dependencies.authenticate);
+  app.use(['/api', '/projects', '/style-references', '/user-style-references'], dependencies.authenticate);
   registerRoutes(app, dependencies);
   registerErrorHandler(app);
   return app;
 }
 
-function registerMiddleware(app, { config, auth }) {
+function registerMiddleware(app, { config, auth, payments }) {
+  app.post('/api/webhooks/stripe', express.raw({ type: 'application/json', limit: '2mb' }), stripeWebhookHandler(payments));
   app.use(express.json({ limit: config.limits.json }));
   app.use(requestId);
   app.use(pageGuard(auth));
@@ -36,20 +40,36 @@ function registerMiddleware(app, { config, auth }) {
 // visitor never receives the storyboard shell (no client-side flash to hide).
 function pageGuard(auth) {
   const GUARDED_APP_PATHS = new Set(['/', '/index.html']);
+  const ADMIN_PATHS = new Set(['/admin', '/admin.html']);
+  const CUSTOMER_PATHS = new Set(['/credits', '/credits.html']);
   const LOGIN_PATH = '/login.html';
   const safeRedirectTarget = (value) => (typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') ? value : '/');
 
   return async (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     const isAppPage = GUARDED_APP_PATHS.has(req.path);
+    const isAdminPage = ADMIN_PATHS.has(req.path);
+    const isCustomerPage = CUSTOMER_PATHS.has(req.path);
     const isLoginPage = req.path === LOGIN_PATH;
-    if (!isAppPage && !isLoginPage) return next();
+    if (!isAppPage && !isLoginPage && !isAdminPage && !isCustomerPage) return next();
 
     let identity = null;
     try { identity = await auth.resolve(req); } catch { identity = null; }
 
     if (isLoginPage) {
       if (identity) return res.redirect(safeRedirectTarget(req.query.redirect));
+      return next();
+    }
+    if (isAdminPage) {
+      if (!identity) return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || '/admin.html')}`);
+      const adminRequest = { auth: { userId: identity.user.id, platformRole: identity.user.platformRole, legacyId: identity.legacyId }, user: identity.user };
+      if (!isPlatformAdmin(adminRequest)) return res.status(403).send('Platform administration is not permitted.');
+      if (req.path === '/admin') return res.redirect('/admin.html');
+      return next();
+    }
+    if (isCustomerPage) {
+      if (!identity) return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || '/credits.html')}`);
+      if (req.path === '/credits') return res.redirect('/credits.html');
       return next();
     }
     if (identity) return next();
@@ -62,7 +82,9 @@ function registerRoutes(app, d) {
   app.use('/api/projects', createProjectRouter({ store: d.projectStore, queue: d.queue }));
   app.use('/api/jobs', createJobRouter({ queue: d.queue, store: d.projectStore }));
   app.use('/api/admin/usage', usageRoutes(d.usageRepository));
-  app.use('/api/admin/billing', billingRoutes(d.billingRepository, d.billing));
+  app.use('/api/admin/billing', billingRoutes(d.billingRepository, d.billing, d.adminRepository));
+  app.use('/api/admin', adminRoutes(d.adminRepository, d.queue, d.paymentRepository, d.payments));
+  app.use('/api/billing', paymentRoutes(d.paymentRepository, d.payments));
   app.use('/api/styles', stylesRoutes({ controller: d.controllers.styles, upload: d.upload }));
   app.use('/api/storyboard', storyboardRoutes({ controller: d.controllers.storyboard, idempotency: d.idempotency, execute: d.execute }));
   app.use('/api/images', imagesRoutes({ controller: d.controllers.media, idempotency: d.idempotency, execute: d.execute }));

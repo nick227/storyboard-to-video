@@ -48,7 +48,7 @@ class AuthService {
   }
 
   setRequestAuth(req, auth) {
-    req.auth = { userId: auth.user.id, tenantId: auth.tenant.id, role: auth.role, sessionId: auth.sessionId, method: auth.authMethod, legacyId: auth.legacyId };
+    req.auth = { userId: auth.user.id, tenantId: auth.tenant.id, role: auth.role, platformRole: auth.user.platformRole || 'user', sessionId: auth.sessionId, method: auth.authMethod, legacyId: auth.legacyId };
     req.user = auth.user;
     req.tenant = auth.tenant;
   }
@@ -101,7 +101,7 @@ class AuthService {
     const passwordMatches = await argon2.verify(identity?.passwordHash || DUMMY_PASSWORD_HASH, password).catch(() => false);
     const valid = identity?.status === 'active' && passwordMatches;
     if (!valid) throw new AppError('INVALID_CREDENTIALS', 'Email or password is incorrect', { status: 401 });
-    return this.startSession(res, { user: { id: identity.id, email: identity.email, displayName: identity.displayName, status: identity.status }, tenant: identity.tenant, role: identity.role });
+    return this.startSession(res, { user: { id: identity.id, email: identity.email, displayName: identity.displayName, status: identity.status, platformRole: identity.platformRole || 'user' }, tenant: identity.tenant, role: identity.role });
   }
 
   async logout(req, res) {

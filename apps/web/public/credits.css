@@ -1,0 +1,20 @@
+.credits-shell { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 44px 0 80px; }
+.credits-heading { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; margin-bottom: 34px; }
+.credits-heading h1 { margin: 5px 0; font-size: clamp(34px, 5vw, 56px); }
+.credits-heading p { color: var(--muted); margin: 0; }
+.balance-card { min-width: 210px; padding: 18px 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+.balance-card small { display: block; color: var(--muted); }
+.balance-card strong { display: block; margin-top: 6px; font-size: 28px; }
+.pack-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.credit-pack { padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+.credit-pack h3 { margin: 0; font-size: 22px; }
+.pack-price { display: block; margin: 18px 0 5px; font-size: 36px; }
+.pack-credits { color: var(--muted); }
+.credit-pack button { width: 100%; margin-top: 22px; }
+.checkout-notice { min-height: 24px; color: var(--accent); }
+.checkout-notice.error { color: var(--danger, #ff7474); }
+.purchase-history { margin-top: 46px; }
+.purchase-history table { width: 100%; border-collapse: collapse; }
+.purchase-history th, .purchase-history td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; }
+.status-pill { display: inline-block; padding: 4px 9px; border-radius: 999px; background: var(--panel-2); font-size: 12px; }
+@media (max-width: 760px) { .pack-grid { grid-template-columns: 1fr; } .credits-heading { align-items: stretch; flex-direction: column; } }

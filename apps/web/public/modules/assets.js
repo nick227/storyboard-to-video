@@ -4,7 +4,7 @@ export const loadedAssets = new Map();
  * Loads an authenticated asset and returns a blob URL.
  * Automatically revokes old URLs if re-fetching the same path.
  */
-export async function loadProtectedAsset(path) {
+export async function loadProtectedAsset(path, options = {}) {
   if (!path) return null;
   // Use existing cached blob URL if already loaded
   if (loadedAssets.has(path)) {
@@ -12,7 +12,7 @@ export async function loadProtectedAsset(path) {
   }
 
   try {
-    const res = await fetch(path);
+    const res = await fetch(path, { signal: options.signal });
 
     if (!res.ok) {
       if (res.status === 401) {
@@ -27,8 +27,7 @@ export async function loadProtectedAsset(path) {
     loadedAssets.set(path, url);
     return url;
   } catch (error) {
-    console.error('Error loading protected asset:', path, error);
-    return path; // Fallback to raw path
+    throw error;
   }
 }
 
@@ -45,10 +44,14 @@ export function revokeAllAssets() {
  * Downloads a protected URL as a file.
  */
 export async function downloadProtectedUrl(path, filename = '') {
-  const url = await loadProtectedAsset(path);
-  if (!url) return;
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
+  try {
+    const url = await loadProtectedAsset(path);
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+  } catch (error) {
+    if (error.name !== 'AbortError') console.error('Error downloading protected asset:', error);
+  }
 }

@@ -1,11 +1,11 @@
 const { AppError } = require('../errors');
 const { clampSceneCount, cleanText, extractJson, getAdditionalCommonPrompt } = require('../shared/text');
+const { chunk, neighborContextBlock } = require('../shared/batching');
 const { providerOutput } = require('../providers/result');
 
 const PROMPT_BATCH_SIZE = 5;
 const FRAGMENT_MAX_LENGTH = 20_000;
 const RECAP_NAME_CAP = 15;
-const NEIGHBOR_BEAT_MAX_LENGTH = 300;
 const BEAT_STOPWORDS = new Set(['The', 'A', 'An', 'This', 'That', 'These', 'Those', 'It', 'He', 'She', 'They', 'His', 'Her', 'Their', 'Its']);
 
 const BEAT_RULES = `BEAT RULES:
@@ -26,12 +26,6 @@ function compactAction(value, fallback = 'Subject moves.') {
   return compactWords(value, 24) || fallback;
 }
 
-function chunk(array, size) {
-  const out = [];
-  for (let i = 0; i < array.length; i += size) out.push(array.slice(i, i + size));
-  return out;
-}
-
 function extractNames(text) {
   return (String(text || '').match(/\b[A-Z][a-zA-Z'-]{1,}\b/g) || []).filter((word) => !BEAT_STOPWORDS.has(word));
 }
@@ -49,14 +43,6 @@ function createRecapTracker() {
       return { lastBeat, recurringNames: [...names].slice(-RECAP_NAME_CAP) };
     },
   };
-}
-
-function neighborContextBlock(previousBeat, nextBeat) {
-  const parts = [
-    previousBeat ? `Previous scene's action: ${cleanText(previousBeat, NEIGHBOR_BEAT_MAX_LENGTH)}.` : '',
-    nextBeat ? `Next scene's action: ${cleanText(nextBeat, NEIGHBOR_BEAT_MAX_LENGTH)}.` : '',
-  ].filter(Boolean).join(' ');
-  return parts ? `Neighboring context for continuity only (do not copy verbatim): ${parts}` : '';
 }
 
 // Deterministically slices the raw script into `sceneCount` fragments. This split is authoritative:

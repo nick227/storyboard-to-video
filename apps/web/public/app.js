@@ -40,6 +40,7 @@ const els = {
   saveStateBtn: document.getElementById('saveStateBtn'),
   downloadZipBtn: document.getElementById('downloadZipBtn'),
   authLoggedIn: document.getElementById('authLoggedIn'),
+  adminConsoleLink: document.getElementById('adminConsoleLink'),
   authUserAvatar: document.getElementById('authUserAvatar'),
   authUserLabel: document.getElementById('authUserLabel'),
   logoutBtn: document.getElementById('logoutBtn'),
@@ -110,7 +111,10 @@ const els = {
   entityModalTextarea: document.getElementById('entityModalTextarea'),
   entityModalTextHint: document.getElementById('entityModalTextHint'),
   entityModalRegenTextBtn: document.getElementById('entityModalRegenTextBtn'),
+  entityModalInstructionField: document.getElementById('entityModalInstructionField'),
+  entityModalInstruction: document.getElementById('entityModalInstruction'),
   entityModalStaleWarning: document.getElementById('entityModalStaleWarning'),
+  entityModalFallbackWarning: document.getElementById('entityModalFallbackWarning'),
   entityModalMedia: document.getElementById('entityModalMedia'),
   entityModalImage: document.getElementById('entityModalImage'),
   entityModalVideo: document.getElementById('entityModalVideo'),
@@ -173,8 +177,7 @@ function getGenerationPreflight(kind) {
     versions: scenes.reduce((sum, scene) => sum + (scene[key] || []).filter((version) => version?.path).length, 0),
   });
   const prompts = readyCount((scene) => Boolean(String(scene.prompt || '').trim()));
-  const dialogue = readyCount((scene) => (scene.lines || []).some((line) => String(line?.text || '').trim()));
-  const lines = scenes.reduce((sum, scene) => sum + (scene.lines || []).filter((line) => String(line?.text || '').trim()).length, 0);
+  const dialogue = readyCount((scene) => Boolean(String(scene.narrationText || '').trim()));
   const images = versionStats('versions');
   const audio = versionStats('audioVersions');
   const video = versionStats('videoVersions');
@@ -188,21 +191,21 @@ function getGenerationPreflight(kind) {
         ? `${prompts}/${total} current scenes have prompts. Downstream work: ${images.versions} image version${images.versions === 1 ? '' : 's'}, ${audio.versions} audio version${audio.versions === 1 ? '' : 's'}, and ${video.versions} video version${video.versions === 1 ? '' : 's'}.`
         : `No current scene prompts exist.${images.versions || audio.versions || video.versions ? ` Existing downstream work includes ${images.versions} image, ${audio.versions} audio, and ${video.versions} video versions.` : ''}`,
       impact: prompts
-        ? 'Scene structure and prompt text will be rebuilt. Dialogue and audio associations will be replaced. Existing image and video versions are retained by scene position and should be reviewed afterward.'
+        ? 'Scene structure and prompt text will be rebuilt. Spoken narration and audio associations will be replaced. Existing image and video versions are retained by scene position and should be reviewed afterward.'
         : 'Creates the initial scene structure and visual prompts. You can edit individual scenes after generation.',
       confirmLabel: 'Generate prompts',
     },
     dialogue: {
-      title: 'Generate dialogue?',
-      intro: 'This organizes dialogue and narration across every current scene.',
+      title: 'Generate spoken narration?',
+      intro: 'This writes a TTS-ready spoken narration passage for every current scene.',
       scope: `${total} scenes using ${selectedLabel(els.textProvider)}.`,
       previous: dialogue
-        ? `${dialogue}/${total} scenes currently contain ${lines} dialogue line${lines === 1 ? '' : 's'}. ${audio.versions} audio version${audio.versions === 1 ? '' : 's'} already exist.`
-        : `No current dialogue exists.${audio.versions ? ` ${audio.versions} stored audio version${audio.versions === 1 ? '' : 's'} may be associated with earlier dialogue.` : ''}`,
+        ? `${dialogue}/${total} scenes currently have spoken narration. ${audio.versions} audio version${audio.versions === 1 ? '' : 's'} already exist.`
+        : `No spoken narration exists yet.${audio.versions ? ` ${audio.versions} stored audio version${audio.versions === 1 ? '' : 's'} may be associated with earlier narration.` : ''}`,
       impact: dialogue
-        ? 'Current speaker lines will be replaced for all scenes. Existing audio is kept, but may no longer match and should be generated again.'
-        : 'Adds speaker lines to every scene and unlocks project-wide audio generation.',
-      confirmLabel: 'Generate dialogue',
+        ? 'The current narration passage will be replaced for all scenes. Existing audio is kept, but may no longer match and should be generated again.'
+        : 'Adds spoken narration to every scene and unlocks project-wide audio generation.',
+      confirmLabel: 'Generate narration',
     },
     images: {
       title: 'Generate images?',
@@ -216,8 +219,8 @@ function getGenerationPreflight(kind) {
     },
     audio: {
       title: 'Generate audio?',
-      intro: 'This renders the current dialogue sequentially for every scene.',
-      scope: `${total} scenes using ${selectedLabel(els.audioProvider)} and the current speaker assignments.`,
+      intro: 'This renders the current spoken narration sequentially for every scene.',
+      scope: `${total} scenes using ${selectedLabel(els.audioProvider)} and the selected narrator voice.`,
       previous: audio.versions
         ? `${audio.scenes}/${total} scenes already have ${audio.versions} stored audio version${audio.versions === 1 ? '' : 's'}.`
         : 'No audio has been generated for these scenes yet.',

@@ -239,6 +239,13 @@ label > span {
   font-weight: 700;
 }
 .user-chip-label { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13px; font-weight: 600; }
+.user-chip-admin {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.user-chip-admin:hover { color: var(--text); }
 .user-chip-logout {
   min-height: 28px;
   padding: 0 10px;

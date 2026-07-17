@@ -135,13 +135,12 @@ test('stub dialogue mode produces fallback narration without calling a remote pr
     { sceneNumber: 1, title: 'Scene 1', beat: 'A hero enters a town.' },
     { sceneNumber: 2, title: 'Scene 2', beat: 'The hero meets a stranger.' },
   ];
-  const result = await buildSceneDialogue({ scriptText: 'A hero enters a strange town.', scenes, provider: 'stub' });
+  const result = await buildSceneDialogue({ scenes, provider: 'stub' });
 
   assert.equal(result.usedFallback, true);
   assert.equal(result.scenesDialogue.length, 2);
-  assert.deepEqual(result.speakers, ['Narrator']);
   assert.match(result.warning, /stub/i);
-  assert.match(result.scenesDialogue[0].lines[0].text, /hero enters a town/i);
+  assert.match(result.scenesDialogue[0].narrationText, /hero enters a town/i);
 });
 
 test('stub prompt regeneration keeps a usable prompt without a remote provider', async () => {
