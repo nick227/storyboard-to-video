@@ -6,6 +6,8 @@ function integer(value, fallback, min, max) {
   return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
 }
 
+function enabled(value) { return String(value || '').toLowerCase() === 'true'; }
+
 function loadConfig(root = path.resolve(__dirname, '../..')) {
   const env = process.env;
   const paths = {
@@ -22,6 +24,7 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     port: integer(env.PORT, 3000, 1, 65535), paths,
     limits: { references: 8, referenceBytes: 8 * 1024 * 1024, script: 200_000, prompt: 20_000, line: 2_000, json: '10mb' },
     generationConcurrency: integer(env.GENERATION_CONCURRENCY, 1, 1, 32),
+    billing: { customerChargingEnabled: enabled(env.BILLING_CUSTOMER_CHARGING_ENABLED) },
     sparkUrl: String(env.SPARK_TTS_URL || 'http://localhost:8001').replace(/\/+$/, ''), sparkTimeout: integer(env.SPARK_TTS_TIMEOUT_MS, 120_000, 1, 600_000), sparkServiceToken: String(env.SPARK_SERVICE_TOKEN || ''),
     ltxUrl: String(env.LTX_VIDEO_URL || 'http://localhost:8000').replace(/\/+$/, ''), videoProvider: env.VIDEO_PROVIDER === 'stub' ? 'stub' : 'ltx',
     piperVoices: String(env.PIPER_VOICE_IDS || PIPER_VOICE_CATALOG.map((v) => v.id).join(',')).split(',').map((x) => x.trim()).filter(Boolean),
@@ -29,4 +32,4 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
   };
 }
 
-module.exports = { integer, loadConfig };
+module.exports = { enabled, integer, loadConfig };

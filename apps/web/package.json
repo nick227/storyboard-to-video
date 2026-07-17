@@ -8,12 +8,14 @@
     "prestart": "npm run prisma:build",
     "start": "nodemon --watch server.js --watch src --watch public --watch styles --watch style-references --ext js,json,html,css,md,png --exec node server.js",
     "test": "npm run prisma:build && node --require ./test/setup.js --test test/*.test.js",
-    "test:db": "npm run prisma:build && prisma migrate deploy && PRISMA_INTEGRATION_TESTS=1 node --require ./test/setup.js --test test/prisma-identity.test.js",
+    "test:db": "npm run prisma:build && prisma migrate deploy && PRISMA_INTEGRATION_TESTS=1 node --require ./test/setup.js --test test/prisma-*.test.js",
     "check": "npm run prisma:build && node --check server.js && node --check public/app.js && find src public/modules -name '*.js' -print0 | xargs -0 -n1 node --check",
     "prisma:generate": "prisma generate",
     "prisma:build": "prisma generate && tsc -p tsconfig.prisma.json",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
+    "metadata:import": "npm run prisma:build && node scripts/import-filesystem-metadata.js",
+    "validate:providers": "npm run prisma:build && node scripts/validate-provider-usage.js",
     "setup:piper": "node scripts/setup-piper.js"
   },
   "dependencies": {

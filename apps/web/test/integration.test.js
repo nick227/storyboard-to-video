@@ -6,14 +6,20 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const request = require('supertest');
-const { app, generationQueue, projectStore } = require('../server');
+const { app, generationQueue, projectStore, prisma } = require('../server');
 const { GenerationQueue } = require('../src/services/generation-queue');
 const { JobStore } = require('../src/storage/job-store');
 const { ProjectStore } = require('../src/storage/project-store');
 
 const auth = (token = 'alice-token') => ({ Authorization: `Bearer ${token}` });
 const id = (label) => `test-${label}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-function cleanupProject(projectId) { fs.rmSync(projectStore.projectDir(projectId), { recursive: true, force: true }); fs.rmSync(projectStore.tombstonePath(projectId), { force: true }); }
+async function cleanupProject(projectId) {
+  // Generation requests now anchor immutable usage and billing audit records.
+  // Project cleanup intentionally retains that history by its denormalized ID.
+  await prisma.project.deleteMany({ where: { id: projectId } });
+  await prisma.projectTombstone.deleteMany({ where: { projectId } });
+  fs.rmSync(projectStore.projectDir(projectId), { recursive: true, force: true });
+}
 
 test('concurrent project saves reject stale revisions', async (t) => {
   const projectId = id('revision'); t.after(() => cleanupProject(projectId));
@@ -25,16 +31,16 @@ test('concurrent project saves reject stale revisions', async (t) => {
   assert.equal(stale.body.error.code, 'REVISION_CONFLICT');
 });
 
-test('persisted queued and running jobs recover as interrupted', () => {
+test('persisted queued and running jobs recover as interrupted', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jobs-'));
   try {
     const store = new JobStore(root);
     store.save({ id: 'queued', type: 'image', projectId: 'p', status: 'queued', createdAt: new Date().toISOString() });
     store.save({ id: 'running', type: 'audio', projectId: 'p', status: 'running', createdAt: new Date().toISOString() });
     const queue = new GenerationQueue({ store });
-    assert.equal(queue.get('queued').status, 'interrupted');
-    assert.equal(queue.get('running').error.code, 'SERVER_RESTARTED');
-    assert.equal(queue.cancel('queued').status, 'interrupted');
+    assert.equal((await queue.get('queued')).status, 'interrupted');
+    assert.equal((await queue.get('running')).error.code, 'SERVER_RESTARTED');
+    assert.equal((await queue.cancel('queued')).status, 'interrupted');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -79,21 +85,22 @@ test('duplicate generation requests reuse the completed project-scoped result', 
   const second = await request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'same-request-001').send(body).expect(200);
   assert.equal(second.body.image.path, first.body.image.path);
   assert.equal(fs.readdirSync(projectStore.assetDir(projectId, 'images')).length, 1);
+  assert.equal(await prisma.usageEvent.count({ where: { projectId, modality: 'image' } }), 1);
 });
 
 test('duplicate active generation requests reuse the active job', async (t) => {
   const projectId = id('active-idem'); t.after(() => cleanupProject(projectId));
   await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Active idempotency', project: { scenes: [{ id: 'sc1' }] } }).expect(201);
   let release;
-  const blocker = generationQueue.add('test-blocker', null, () => new Promise((resolve) => { release = resolve; }));
+  const blocker = await generationQueue.add('test-blocker', null, () => new Promise((resolve) => { release = resolve; }));
   blocker.promise.catch(() => {});
   const body = { projectId, sceneId: 'sc1', sceneNumber: 1, sceneTitle: 'Opening', scenePrompt: 'A held request.', styleId: 'basic-cartoon', provider: 'stub' };
   const firstRequest = request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'active-request-001').send(body);
   const firstPromise = firstRequest.then((response) => response);
-  for (let attempts = 0; attempts < 20 && !generationQueue.list(projectId).length; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+  for (let attempts = 0; attempts < 20 && !(await generationQueue.list(projectId)).length; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 5));
   const duplicate = await request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'active-request-001').send(body).expect(202);
   assert.equal(duplicate.body.reused, true);
-  assert.equal(generationQueue.list(projectId).length, 1);
+  assert.equal((await generationQueue.list(projectId)).length, 1);
   release();
   assert.equal((await firstPromise).status, 200);
 });

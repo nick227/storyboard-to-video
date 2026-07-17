@@ -12,26 +12,44 @@ datasource db {
 }
 
 model User {
-  id           String       @id @db.Uuid
-  email        String       @unique
-  displayName  String       @map("display_name")
-  passwordHash String       @map("password_hash")
-  status       String       @default("active")
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
-  memberships  Membership[]
-  sessions     Session[]
+  id                 String              @id @db.Uuid
+  email              String              @unique
+  displayName        String              @map("display_name")
+  passwordHash       String              @map("password_hash")
+  status             String              @default("active")
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  memberships        Membership[]
+  sessions           Session[]
+  projects           Project[]           @relation("ProjectCreator")
+  jobs               GenerationJob[]
+  assets             Asset[]
+  idempotency        IdempotencyRecord[]
+  generationRequests GenerationRequest[]
+  usageEvents        UsageEvent[]
+  creditReservations CreditReservation[]
+  creditLedger       CreditLedgerEntry[]
 
   @@map("users")
 }
 
 model Workspace {
-  id          String       @id @db.Uuid
-  name        String
-  type        String       @default("personal")
-  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  memberships Membership[]
-  sessions    Session[]
+  id                 String              @id @db.Uuid
+  name               String
+  type               String              @default("personal")
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  memberships        Membership[]
+  sessions           Session[]
+  projects           Project[]
+  jobs               GenerationJob[]
+  assets             Asset[]
+  idempotency        IdempotencyRecord[]
+  tombstones         ProjectTombstone[]
+  generationRequests GenerationRequest[]
+  usageEvents        UsageEvent[]
+  creditAccount      CreditAccount?
+  creditReservations CreditReservation[]
+  creditLedger       CreditLedgerEntry[]
 
   @@map("workspaces")
 }
@@ -63,4 +81,310 @@ model Session {
   @@index([tenantId])
   @@index([expiresAt])
   @@map("sessions")
+}
+
+model Project {
+  id              String              @id @db.VarChar(80)
+  tenantId        String              @map("tenant_id") @db.Uuid
+  createdByUserId String              @map("created_by_user_id") @db.Uuid
+  title           String
+  revision        Int
+  incarnationId   String              @map("incarnation_id") @db.Uuid
+  document        Json
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant          Workspace           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy       User                @relation("ProjectCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  jobs            GenerationJob[]
+  assets          Asset[]
+  idempotency     IdempotencyRecord[]
+
+  @@index([tenantId, updatedAt])
+  @@map("projects")
+}
+
+model GenerationJob {
+  id             String     @id @db.Uuid
+  projectId      String?    @map("project_id") @db.VarChar(80)
+  sceneId        String?    @map("scene_id")
+  tenantId       String?    @map("tenant_id") @db.Uuid
+  userId         String?    @map("user_id") @db.Uuid
+  type           String
+  status         String
+  idempotencyKey String?    @map("idempotency_key")
+  result         Json?
+  error          Json?
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  startedAt      DateTime?  @map("started_at") @db.Timestamptz(3)
+  finishedAt     DateTime?  @map("finished_at") @db.Timestamptz(3)
+  project        Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenant         Workspace? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user           User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([tenantId, status])
+  @@map("generation_jobs")
+}
+
+model Asset {
+  id         String    @id @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  userId     String?   @map("user_id") @db.Uuid
+  projectId  String    @map("project_id") @db.VarChar(80)
+  type       String
+  fileName   String    @map("file_name")
+  storageKey String    @unique @map("storage_key")
+  publicPath String    @unique @map("public_path")
+  mimeType   String?   @map("mime_type")
+  byteSize   BigInt    @map("byte_size")
+  status     String    @default("committed")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(3)
+  tenant     Workspace @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, type, fileName])
+  @@index([tenantId, createdAt])
+  @@index([projectId, status])
+  @@map("assets")
+}
+
+model IdempotencyRecord {
+  id           String    @id @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  projectId    String    @map("project_id") @db.VarChar(80)
+  key          String
+  payloadHash  String    @map("payload_hash") @db.Char(64)
+  status       String
+  jobId        String?   @map("job_id") @db.Uuid
+  statusCode   Int?      @map("status_code")
+  responseBody Json?     @map("response_body")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(3)
+  tenant       Workspace @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+  @@index([tenantId, status])
+  @@map("idempotency_records")
+}
+
+model ProjectTombstone {
+  projectId     String    @id @map("project_id") @db.VarChar(80)
+  tenantId      String    @map("tenant_id") @db.Uuid
+  incarnationId String    @map("incarnation_id") @db.Uuid
+  deletedAt     DateTime  @default(now()) @map("deleted_at") @db.Timestamptz(3)
+  tenant        Workspace @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, deletedAt])
+  @@map("project_tombstones")
+}
+
+model GenerationRequest {
+  id                String      @id @db.Uuid
+  tenantId          String      @map("tenant_id") @db.Uuid
+  userId            String?     @map("user_id") @db.Uuid
+  projectId         String?     @map("project_id") @db.VarChar(80)
+  sceneId           String?     @map("scene_id")
+  jobId             String?     @map("job_id") @db.Uuid
+  idempotencyKey    String?     @map("idempotency_key")
+  sequence          Int
+  modality          String
+  provider          String
+  model             String
+  status            String
+  inputMetadata     Json?       @map("input_metadata")
+  outputMetadata    Json?       @map("output_metadata")
+  providerRequestId String?     @map("provider_request_id")
+  error             Json?
+  startedAt         DateTime    @default(now()) @map("started_at") @db.Timestamptz(3)
+  completedAt       DateTime?   @map("completed_at") @db.Timestamptz(3)
+  tenant            Workspace   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user              User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  usageEvent        UsageEvent?
+  costSnapshot      ProviderCostSnapshot?
+  creditReservation CreditReservation?
+
+  @@unique([jobId, sequence])
+  @@index([tenantId, startedAt])
+  @@index([projectId, startedAt])
+  @@index([provider, model, startedAt])
+  @@map("generation_requests")
+}
+
+model UsageEvent {
+  id                  String            @id @db.Uuid
+  generationRequestId String            @unique @map("generation_request_id") @db.Uuid
+  tenantId            String            @map("tenant_id") @db.Uuid
+  userId              String?           @map("user_id") @db.Uuid
+  projectId           String?           @map("project_id") @db.VarChar(80)
+  sceneId             String?           @map("scene_id")
+  jobId               String?           @map("job_id") @db.Uuid
+  modality            String
+  provider            String
+  model               String
+  providerRequestId   String?           @map("provider_request_id")
+  usage               Json
+  rawUsage            Json?             @map("raw_usage")
+  measurementStatus   String            @map("measurement_status")
+  occurredAt          DateTime          @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  generationRequest   GenerationRequest @relation(fields: [generationRequestId], references: [id], onDelete: Cascade)
+  tenant              Workspace         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user                User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  costSnapshot        ProviderCostSnapshot?
+
+  @@index([tenantId, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([provider, model, occurredAt])
+  @@map("usage_events")
+}
+
+model ProviderPriceVersion {
+  id                  String                 @id @db.Uuid
+  versionKey          String                 @unique @map("version_key")
+  provider            String
+  modality            String
+  model               String
+  currency            String                 @default("USD") @db.Char(3)
+  rateCard             Json                   @map("rate_card")
+  reservationNanoUsd  BigInt                 @map("reservation_nano_usd")
+  evidenceStatus      String                 @map("evidence_status")
+  reconciledAt        DateTime?              @map("reconciled_at") @db.Timestamptz(3)
+  reconciliationNotes String?                @map("reconciliation_notes")
+  sourceReference     String?                @map("source_reference")
+  billable            Boolean                @default(false)
+  active              Boolean                @default(false)
+  effectiveAt         DateTime               @default(now()) @map("effective_at") @db.Timestamptz(3)
+  retiredAt           DateTime?              @map("retired_at") @db.Timestamptz(3)
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  costSnapshots       ProviderCostSnapshot[]
+  reservations        CreditReservation[]
+
+  @@index([provider, modality, model, active])
+  @@map("provider_price_versions")
+}
+
+model MarkupPolicyVersion {
+  id                String              @id @db.Uuid
+  versionKey        String              @unique @map("version_key")
+  name              String
+  markupBasisPoints Int                 @map("markup_basis_points")
+  fixedNanoUsd      BigInt              @default(0) @map("fixed_nano_usd")
+  active            Boolean             @default(false)
+  effectiveAt       DateTime            @default(now()) @map("effective_at") @db.Timestamptz(3)
+  retiredAt         DateTime?           @map("retired_at") @db.Timestamptz(3)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  reservations      CreditReservation[]
+
+  @@index([active, effectiveAt])
+  @@map("markup_policy_versions")
+}
+
+model SiteCreditRateVersion {
+  id                   String              @id @db.Uuid
+  versionKey           String              @unique @map("version_key")
+  nanoUsdPerSiteCredit BigInt              @map("nano_usd_per_site_credit")
+  active               Boolean             @default(false)
+  effectiveAt          DateTime            @default(now()) @map("effective_at") @db.Timestamptz(3)
+  retiredAt            DateTime?           @map("retired_at") @db.Timestamptz(3)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  reservations         CreditReservation[]
+
+  @@index([active, effectiveAt])
+  @@map("site_credit_rate_versions")
+}
+
+model ProviderCostSnapshot {
+  id                     String               @id @db.Uuid
+  generationRequestId    String               @unique @map("generation_request_id") @db.Uuid
+  usageEventId           String               @unique @map("usage_event_id") @db.Uuid
+  providerPriceVersionId String               @map("provider_price_version_id") @db.Uuid
+  usageSnapshot          Json                 @map("usage_snapshot")
+  rateCardSnapshot       Json                 @map("rate_card_snapshot")
+  providerCostNanoUsd    BigInt               @map("provider_cost_nano_usd")
+  currency               String               @db.Char(3)
+  calculation            Json
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  generationRequest      GenerationRequest    @relation(fields: [generationRequestId], references: [id], onDelete: Restrict)
+  usageEvent             UsageEvent           @relation(fields: [usageEventId], references: [id], onDelete: Restrict)
+  providerPriceVersion   ProviderPriceVersion @relation(fields: [providerPriceVersionId], references: [id], onDelete: Restrict)
+  reservation            CreditReservation?
+
+  @@index([providerPriceVersionId, createdAt])
+  @@map("provider_cost_snapshots")
+}
+
+model CreditAccount {
+  id                       String              @id @db.Uuid
+  tenantId                 String              @unique @map("tenant_id") @db.Uuid
+  availableCreditMicros    BigInt              @default(0) @map("available_credit_micros")
+  reservedCreditMicros     BigInt              @default(0) @map("reserved_credit_micros")
+  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant                   Workspace           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ledgerEntries            CreditLedgerEntry[]
+
+  @@map("credit_accounts")
+}
+
+model CreditReservation {
+  id                         String                 @id @db.Uuid
+  generationRequestId        String                 @unique @map("generation_request_id") @db.Uuid
+  tenantId                   String                 @map("tenant_id") @db.Uuid
+  userId                     String?                @map("user_id") @db.Uuid
+  providerPriceVersionId     String?                @map("provider_price_version_id") @db.Uuid
+  markupPolicyVersionId      String?                @map("markup_policy_version_id") @db.Uuid
+  siteCreditRateVersionId    String?                @map("site_credit_rate_version_id") @db.Uuid
+  providerCostSnapshotId     String?                @unique @map("provider_cost_snapshot_id") @db.Uuid
+  chargingMode               String                 @map("charging_mode")
+  status                     String
+  estimatedProviderNanoUsd   BigInt                 @default(0) @map("estimated_provider_nano_usd")
+  quotedCreditMicros         BigInt                 @default(0) @map("quoted_credit_micros")
+  reservedCreditMicros       BigInt                 @default(0) @map("reserved_credit_micros")
+  finalProviderNanoUsd       BigInt?                @map("final_provider_nano_usd")
+  finalCustomerNanoUsd       BigInt?                @map("final_customer_nano_usd")
+  finalCreditMicros          BigInt?                @map("final_credit_micros")
+  failureReason              String?                @map("failure_reason")
+  createdAt                  DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  settledAt                  DateTime?              @map("settled_at") @db.Timestamptz(3)
+  generationRequest          GenerationRequest      @relation(fields: [generationRequestId], references: [id], onDelete: Restrict)
+  tenant                     Workspace              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user                       User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  providerPriceVersion       ProviderPriceVersion?  @relation(fields: [providerPriceVersionId], references: [id], onDelete: Restrict)
+  markupPolicyVersion        MarkupPolicyVersion?   @relation(fields: [markupPolicyVersionId], references: [id], onDelete: Restrict)
+  siteCreditRateVersion      SiteCreditRateVersion? @relation(fields: [siteCreditRateVersionId], references: [id], onDelete: Restrict)
+  providerCostSnapshot       ProviderCostSnapshot?  @relation(fields: [providerCostSnapshotId], references: [id], onDelete: Restrict)
+  ledgerEntries              CreditLedgerEntry[]
+
+  @@index([tenantId, createdAt])
+  @@index([status, createdAt])
+  @@map("credit_reservations")
+}
+
+model CreditLedgerEntry {
+  id                         String             @id @db.Uuid
+  accountId                  String             @map("account_id") @db.Uuid
+  tenantId                   String             @map("tenant_id") @db.Uuid
+  userId                     String?            @map("user_id") @db.Uuid
+  reservationId              String?            @map("reservation_id") @db.Uuid
+  generationRequestId        String?            @map("generation_request_id") @db.Uuid
+  type                       String
+  availableDeltaCreditMicros BigInt             @map("available_delta_credit_micros")
+  reservedDeltaCreditMicros  BigInt             @map("reserved_delta_credit_micros")
+  availableAfterCreditMicros BigInt             @map("available_after_credit_micros")
+  reservedAfterCreditMicros  BigInt             @map("reserved_after_credit_micros")
+  idempotencyKey             String             @unique @map("idempotency_key")
+  metadata                   Json?
+  createdAt                  DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  account                    CreditAccount      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  tenant                     Workspace          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user                       User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  reservation               CreditReservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([reservationId])
+  @@map("credit_ledger_entries")
 }

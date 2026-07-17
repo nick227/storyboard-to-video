@@ -1,5 +1,6 @@
 const { AppError } = require('../errors');
 const { cleanText, extractJson } = require('../shared/text');
+const { providerOutput } = require('../providers/result');
 
 function cleanLines(lines) {
   return (Array.isArray(lines) ? lines : []).map((line) => ({
@@ -16,7 +17,7 @@ function createDialogueService({ textProviders }) {
     if (provider === 'stub') return { scenesDialogue: fallback, speakers: ['Narrator'], usedFallback: true, warning: 'Stub text mode selected; local fallback dialogue was used.' };
     const prompt = `Return strict JSON {"scenes":[{"sceneNumber":1,"lines":[{"speaker":"...","text":"..."}]}]}. Produce concise voice-ready dialogue for exactly ${scenes.length} scenes. Keep recurring speaker names spelled consistently. Scenes: ${scenes.map((scene, index) => `${index + 1}. ${scene.title}: ${scene.beat}`).join('\n')}. Story: ${scriptText}`;
     try {
-      const parsed = extractJson(await textProviders.call(provider, prompt));
+      const parsed = extractJson(providerOutput(await textProviders.call(provider, prompt)));
       if (!Array.isArray(parsed?.scenes)) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid dialogue data', { status: 502 });
       if (parsed.scenes.length !== scenes.length && fallbackPolicy !== 'local') throw new AppError('INCOMPLETE_PROVIDER_RESPONSE', 'The provider returned incomplete dialogue', { status: 502 });
       const scenesDialogue = fallback.map((base, index) => {
@@ -36,7 +37,7 @@ function createDialogueService({ textProviders }) {
     if (provider === 'stub') return { lines: fallback, usedFallback: true, warning: 'Stub text mode selected; fallback dialogue was retained.' };
     const prompt = `Return strict JSON {"lines":[{"speaker":"...","text":"..."}]}. Rewrite concise voice-ready dialogue for scene ${sceneIndex + 1}. Story: ${scriptText}. Scene: ${scene.title} ${scene.beat}. Known speakers: ${knownSpeakers.join(', ') || 'none'}. Keep recurring speaker names spelled consistently.`;
     try {
-      const lines = cleanLines(extractJson(await textProviders.call(provider, prompt))?.lines);
+      const lines = cleanLines(extractJson(providerOutput(await textProviders.call(provider, prompt)))?.lines);
       if (!lines.length) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid dialogue data', { status: 502 });
       return { lines, usedFallback: false, warning: '' };
     } catch (error) {

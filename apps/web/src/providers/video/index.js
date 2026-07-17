@@ -4,6 +4,7 @@ const { signal } = require('../http');
 const { cleanText } = require('../../shared/text');
 const { stubVideo } = require('../../media/stub-media');
 const { AppError } = require('../../errors');
+const { providerRequestId, providerResult } = require('../result');
 
 function setting(env, name, fallback, min, max) {
   const value = Number.parseInt(env[name], 10);
@@ -15,7 +16,7 @@ function decimalSetting(env, name, fallback, min, max) {
   return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
 }
 
-function createVideoProvider(config, getCancellation) {
+function createVideoProvider(config, getCancellation, usageTracker) {
   const url = (name) => `${config.ltxUrl}${String(name).startsWith('/') ? name : `/${name}`}`;
   const headers = (includeJson = false) => ({
     ...(includeJson ? { 'Content-Type': 'application/json' } : {}),
@@ -44,11 +45,11 @@ function createVideoProvider(config, getCancellation) {
     }
   }
 
-  async function generate({ imagePath, prompt, motionIntensity = 'medium', outputPath }) {
+  async function generateCore({ imagePath, prompt, motionIntensity = 'medium', outputPath }) {
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     if (config.videoProvider === 'stub') {
       fs.copyFileSync(stubVideo(config), outputPath);
-      return outputPath;
+      return providerResult({ output: { outputPath }, provider: 'stub', model: 'stub-video-v1', usage: { videos: 1 }, measurementStatus: 'not_applicable' });
     }
 
     fs.mkdirSync(config.paths.ltxShared, { recursive: true });
@@ -91,11 +92,19 @@ function createVideoProvider(config, getCancellation) {
       }
       if (!fs.existsSync(stagedOutput)) throw new AppError('LTX_OUTPUT_MISSING', 'LTX-Video completed without creating output', { retryable: true });
       fs.copyFileSync(stagedOutput, outputPath);
-      return outputPath;
+      const frameRate = setting(config.env, 'VIDEO_FRAME_RATE', 24, 1, 60);
+      return providerResult({ output: { outputPath }, provider: 'ltx', model: config.env.LTX_VIDEO_MODEL || 'ltx-video', providerRequestId: providerRequestId(response, body), usage: { videos: 1, frames, frameRate, seconds: frames / frameRate, steps: setting(config.env, 'VIDEO_STEPS', 30, 5, 100), width: setting(config.env, 'VIDEO_WIDTH', 640, 64, 2048), height: setting(config.env, 'VIDEO_HEIGHT', 480, 64, 2048) }, rawUsage: body?.usage || body || null, measurementStatus: 'observed' });
     } finally {
       fs.rmSync(stagedImage, { force: true });
       fs.rmSync(stagedOutput, { force: true });
     }
+  }
+
+  function generate(input) {
+    const provider = config.videoProvider === 'stub' ? 'stub' : 'ltx';
+    const model = provider === 'stub' ? 'stub-video-v1' : (config.env.LTX_VIDEO_MODEL || 'ltx-video');
+    const operation = () => generateCore(input);
+    return usageTracker ? usageTracker.execute({ modality: 'video', provider, model, inputMetadata: { promptCharacters: String(input.prompt || '').length, motionIntensity: input.motionIntensity || 'medium' } }, operation) : operation();
   }
 
   return { generate, verify };

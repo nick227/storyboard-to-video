@@ -1,17 +1,22 @@
 const crypto = require('node:crypto');
-const { PrismaPg } = require('@prisma/adapter-pg');
-const { PrismaClient } = require('../../dist/generated/prisma/client.js');
 const { Prisma } = require('../../dist/generated/prisma/client.js');
 const { AppError } = require('../errors');
+const { createPrismaClient } = require('./prisma-client');
 
 function publicUser(user) {
   return { id: user.id, email: user.email, displayName: user.displayName, status: user.status };
 }
 
+function legacyUuid(value, namespace) {
+  const hex = crypto.createHash('sha256').update(`${namespace}:${value}`).digest('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 class PrismaIdentityRepository {
-  constructor(connectionString) {
-    if (!connectionString) throw new Error('DATABASE_URL is required');
-    this.prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  constructor(connectionOrClient) {
+    this.ownsClient = typeof connectionOrClient === 'string';
+    this.prisma = this.ownsClient ? createPrismaClient(connectionOrClient) : connectionOrClient;
+    if (!this.prisma) throw new Error('A Prisma client or DATABASE_URL is required');
   }
 
   async createUserWithPersonalWorkspace({ email, displayName, passwordHash }) {
@@ -28,6 +33,29 @@ class PrismaIdentityRepository {
       }
       throw cause;
     }
+  }
+
+  async ensureLegacyIdentity(legacyId) {
+    const userId = legacyUuid(legacyId, 'user');
+    const tenantId = legacyUuid(legacyId, 'tenant');
+    return this.prisma.$transaction(async (db) => {
+      const user = await db.user.upsert({
+        where: { id: userId },
+        update: {},
+        create: { id: userId, email: `${userId}@legacy.invalid`, displayName: legacyId, passwordHash: 'legacy-token-only', status: 'legacy' },
+      });
+      const tenant = await db.workspace.upsert({
+        where: { id: tenantId },
+        update: {},
+        create: { id: tenantId, name: legacyId, type: 'legacy' },
+      });
+      await db.membership.upsert({
+        where: { userId_tenantId: { userId, tenantId } },
+        update: {},
+        create: { userId, tenantId, role: 'owner' },
+      });
+      return { user: publicUser(user), tenant, role: 'owner', legacyId };
+    });
   }
 
   async findUserByEmail(email) {
@@ -55,8 +83,8 @@ class PrismaIdentityRepository {
   }
 
   async disconnect() {
-    await this.prisma.$disconnect();
+    if (this.ownsClient) await this.prisma.$disconnect();
   }
 }
 
-module.exports = { PrismaIdentityRepository };
+module.exports = { PrismaIdentityRepository, legacyUuid };

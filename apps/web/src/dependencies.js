@@ -1,8 +1,16 @@
 const { AsyncLocalStorage } = require('node:async_hooks');
+const { PrismaProjectRepository } = require('./storage/prisma-project.repository');
+const { PrismaJobRepository } = require('./storage/prisma-job.repository');
+const { PrismaIdempotencyRepository } = require('./storage/prisma-idempotency.repository');
+const { createPrismaClient } = require('./storage/prisma-client');
+const { PrismaUsageRepository } = require('./storage/prisma-usage.repository');
+const { PrismaBillingRepository } = require('./storage/prisma-billing.repository');
 const { ProjectStore } = require('./storage/project-store');
 const { JobStore } = require('./storage/job-store');
 const { IdempotencyStore } = require('./storage/idempotency-store');
 const { GenerationQueue } = require('./services/generation-queue');
+const { createProviderUsageService } = require('./services/provider-usage.service');
+const { createBillingService } = require('./services/billing.service');
 const { createStylesService } = require('./services/styles.service');
 const { createTextProviders } = require('./providers/text');
 const { createImageProviders } = require('./providers/image');
@@ -27,20 +35,26 @@ const { createVoiceController } = require('./controllers/voice.controller');
 const { createAssetsController } = require('./controllers/assets.controller');
 
 function createDependencies(config, overrides = {}) {
-  const projectStore = new ProjectStore(config.paths.projects);
+  const useTestAdapters = Boolean(overrides.identityStore && !overrides.prisma && !overrides.projectStore);
+  const prisma = useTestAdapters ? null : (overrides.prisma || createPrismaClient(config.env.DATABASE_URL));
+  const projectStore = overrides.projectStore || (useTestAdapters ? new ProjectStore(config.paths.projects) : new PrismaProjectRepository(config.paths.projects, prisma));
   const queue = new GenerationQueue({
     concurrency: config.generationConcurrency,
-    store: new JobStore(config.paths.jobs),
+    store: overrides.jobStore || (useTestAdapters ? new JobStore(config.paths.jobs) : new PrismaJobRepository(prisma)),
   });
-  const idempotencyStore = new IdempotencyStore(config.paths.idempotency);
+  const idempotencyStore = overrides.idempotencyStore || (useTestAdapters ? new IdempotencyStore(config.paths.idempotency) : new PrismaIdempotencyRepository(prisma));
   const generationContext = new AsyncLocalStorage();
-  const cancellation = () => generationContext.getStore();
+  const cancellation = () => generationContext.getStore()?.signal || generationContext.getStore();
+  const usageRepository = overrides.usageRepository || (prisma ? new PrismaUsageRepository(prisma) : null);
+  const billingRepository = overrides.billingRepository || (prisma ? new PrismaBillingRepository(prisma) : null);
+  const billing = overrides.billing || createBillingService({ repository: billingRepository, chargingEnabled: config.billing?.customerChargingEnabled });
+  const usageTracker = createProviderUsageService({ repository: usageRepository, generationContext, billing });
 
   const styles = createStylesService(config);
-  const textProviders = createTextProviders(config, cancellation);
-  const imageProvider = createImageProviders(config, textProviders, cancellation);
-  const audioProvider = createAudioProviders(config, cancellation);
-  const videoProvider = createVideoProvider(config, cancellation);
+  const textProviders = createTextProviders(config, cancellation, usageTracker);
+  const imageProvider = createImageProviders(config, textProviders, cancellation, usageTracker);
+  const audioProvider = createAudioProviders(config, cancellation, usageTracker);
+  const videoProvider = createVideoProvider(config, cancellation, usageTracker);
   const prompts = createPromptGenerationService({ textProviders, styles, limits: config.limits });
   const dialogue = createDialogueService({ textProviders });
   const images = createImageGenerationService({ config, styles, provider: imageProvider, projectStore });
@@ -50,11 +64,11 @@ function createDependencies(config, overrides = {}) {
   const voices = createVoiceService(config, cancellation, audioProvider);
   const media = createMediaController({ images, audio, videos, exports });
 
-  const identityStore = overrides.identityStore || new PrismaIdentityRepository(config.env.DATABASE_URL);
+  const identityStore = overrides.identityStore || new PrismaIdentityRepository(prisma);
   const auth = new AuthService({ identityStore });
 
   return {
-    config, projectStore, queue, idempotencyStore, generationContext,
+    config, prisma, projectStore, queue, idempotencyStore, usageRepository, usageTracker, billingRepository, billing, generationContext,
     styles, prompts, dialogue, images, audio, videos, exports, voices,
     upload: createUpload(config),
     auth,

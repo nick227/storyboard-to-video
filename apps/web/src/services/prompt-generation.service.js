@@ -1,5 +1,6 @@
 const { AppError } = require('../errors');
 const { clampSceneCount, cleanText, extractJson, getAdditionalCommonPrompt } = require('../shared/text');
+const { providerOutput } = require('../providers/result');
 
 const PROMPT_BATCH_SIZE = 5;
 const FRAGMENT_MAX_LENGTH = 20_000;
@@ -146,7 +147,7 @@ function createPromptGenerationService({ textProviders, limits }) {
       const batchStartIndex = b * PROMPT_BATCH_SIZE;
       const request = buildBatchRequest({ batchFragments, batchStartIndex, sceneCount: count, style, additional, recap: recap.describe() });
       try {
-        const parsed = extractJson(await textProviders.call(provider, request));
+        const parsed = extractJson(providerOutput(await textProviders.call(provider, request)));
         if (!Array.isArray(parsed?.scenes)) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid scene data', { status: 502, retryable: true });
         if (parsed.scenes.length !== batchFragments.length && fallbackPolicy !== 'local') {
           throw new AppError('INCOMPLETE_PROVIDER_RESPONSE', `The provider returned ${parsed.scenes.length} of ${batchFragments.length} scenes for batch ${b + 1}`, { status: 502, retryable: true });
@@ -188,7 +189,7 @@ function createPromptGenerationService({ textProviders, limits }) {
     const neighborBlock = neighborContextBlock(previousBeat, nextBeat);
     const request = `Return strict JSON only: {"prompt":"..."}. Rewrite the Visual Prompt for storyboard frame ${sceneIndex + 1} in 15-40 words. Show this physical action at its clearest single instant: ${scene.beat || ''}. State subject, pose, important object, location, and readable composition. Do not add a sequence, camera movement, or style wording. ${CONTINUITY_RULE}${neighborBlock ? ` ${neighborBlock}` : ''} ${legacy ? 'Story' : "Scene script excerpt (use ONLY this text as source)"}: ${source}. Title: ${scene.title || ''}. Existing Visual Prompt: ${scene.prompt || ''}. Note: ${extraPromptText || 'none'}. Selected style context (do not copy): ${style.promptText}. Additional context (do not copy): ${getAdditionalCommonPrompt(style.promptText, commonPromptText) || 'none'}.`;
     try {
-      const value = cleanText(extractJson(await textProviders.call(provider, request))?.prompt, limits.prompt);
+      const value = cleanText(extractJson(providerOutput(await textProviders.call(provider, request)))?.prompt, limits.prompt);
       if (!value) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid prompt data', { status: 502 });
       return { prompt: value, usedFallback: false, warning: '' };
     } catch (error) {
@@ -213,7 +214,7 @@ ${neighborBlock}
 ${legacy ? "Full story (this scene's exact excerpt is unavailable; use the whole story for context but keep the action scoped to this scene's described moment)" : "This scene's exact script excerpt (use ONLY this text as the source of the action)"}: ${source}
 Existing action (for reference, may be replaced): ${scene?.beat || 'none'}.`;
     try {
-      const value = compactAction(extractJson(await textProviders.call(provider, request))?.beat, '');
+      const value = compactAction(extractJson(providerOutput(await textProviders.call(provider, request)))?.beat, '');
       if (!value) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid action data', { status: 502 });
       return { beat: value, usedFallback: false, warning: '' };
     } catch (error) {

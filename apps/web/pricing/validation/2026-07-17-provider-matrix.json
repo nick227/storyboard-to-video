@@ -1,0 +1,277 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "provider-validation-2026-07-17-v1",
+  "createdAt": "2026-07-17T10:40:15.473Z",
+  "currency": "USD",
+  "smallestCostUnit": "nanoUSD",
+  "sourceReport": "apps/web/data/provider-validation/1784284879656.json",
+  "chargingApproval": "blocked_pending_dashboard_reconciliation",
+  "dataIntegrityWarnings": [
+    {
+      "scope": "generation_requests and usage_events created by this validation run",
+      "status": "known_local_timestamp_offset",
+      "details": "Before Prisma sessions were forced to UTC, the pg driver adapter stored/decoded this run's audit timestamps five hours later than the provider and JavaScript timestamps. Provider response IDs, report timestamps, usage, and costs are unaffected. Existing rows were not rewritten; future Prisma sessions use UTC and an integration test enforces clock parity."
+    }
+  ],
+  "pricingSources": [
+    {
+      "provider": "openai",
+      "priceVersion": "openai-public-pricing-captured-2026-07-17",
+      "classification": "documented",
+      "capturedAt": "2026-07-17",
+      "url": "https://developers.openai.com/api/docs/pricing"
+    },
+    {
+      "provider": "openai",
+      "priceVersion": "openai-image-pricing-captured-2026-07-17",
+      "classification": "documented",
+      "capturedAt": "2026-07-17",
+      "url": "https://developers.openai.com/api/docs/guides/image-generation#calculating-costs"
+    },
+    {
+      "provider": "google",
+      "priceVersion": "gemini-public-pricing-captured-2026-07-17",
+      "classification": "documented",
+      "capturedAt": "2026-07-17",
+      "url": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    {
+      "provider": "dezgo",
+      "priceVersion": "dezgo-sd1-public-pricing-captured-2026-07-17",
+      "classification": "documented",
+      "capturedAt": "2026-07-17",
+      "url": "https://dev.dezgo.com/pricing/sd1/"
+    }
+  ],
+  "cases": [
+    {
+      "name": "openai-text",
+      "provider": "openai",
+      "requestedModel": "gpt-4.1-mini",
+      "observedModel": "gpt-4.1-mini-2025-04-14",
+      "providerRequestId": "resp_021ba346d01ec684006a5a0692876881968a4c443846ba4d4e",
+      "jobId": "32c0d29c-ccfd-48fb-9c27-e2ac511df10d",
+      "usage": {
+        "classification": "observed",
+        "inputTokens": 13,
+        "cachedInputTokens": 0,
+        "outputTokens": 3,
+        "totalTokens": 16
+      },
+      "price": {
+        "classification": "documented",
+        "priceVersion": "openai-public-pricing-captured-2026-07-17",
+        "serviceTier": "standard",
+        "inputNanoUsdPerMillionTokens": 400000000,
+        "cachedInputNanoUsdPerMillionTokens": 100000000,
+        "outputNanoUsdPerMillionTokens": 1600000000
+      },
+      "calculatedProviderCost": {
+        "classification": "estimated",
+        "nanoUsd": 10000,
+        "usd": "0.000010000"
+      }
+    },
+    {
+      "name": "gemini-text",
+      "provider": "google",
+      "requestedModel": "gemini-3.5-flash",
+      "observedModel": "gemini-3.5-flash",
+      "providerRequestId": "kwZaav7mK8yfz7IPu-DsEA",
+      "jobId": "9a6b239c-b4cb-4b9b-9841-d0b954b6abf3",
+      "usage": {
+        "classification": "observed",
+        "inputTokens": 11,
+        "candidateTokens": 91,
+        "thinkingTokens": 202,
+        "billableOutputTokens": 293,
+        "totalTokens": 304
+      },
+      "price": {
+        "classification": "documented",
+        "priceVersion": "gemini-public-pricing-captured-2026-07-17",
+        "serviceTier": "standard",
+        "inputNanoUsdPerMillionTokens": 1500000000,
+        "outputIncludingThinkingNanoUsdPerMillionTokens": 9000000000
+      },
+      "calculatedProviderCost": {
+        "classification": "estimated",
+        "nanoUsd": 2653500,
+        "usd": "0.002653500"
+      }
+    },
+    {
+      "name": "openai-image",
+      "provider": "openai",
+      "requestedModel": "gpt-image-1",
+      "observedModel": "gpt-image-1",
+      "providerRequestId": "req_d21b6bb9f5344677a9ffe8b4718f125c",
+      "jobId": "c09b0ff9-5ecb-472d-bd35-f316d8408224",
+      "usage": {
+        "classification": "observed",
+        "size": "1024x1024",
+        "quality": "medium",
+        "images": 1,
+        "inputTextTokens": 17,
+        "inputImageTokens": 0,
+        "outputImageTokens": 1056,
+        "totalTokens": 1073
+      },
+      "price": {
+        "classification": "documented",
+        "priceVersion": "openai-image-pricing-captured-2026-07-17",
+        "inputTextNanoUsdPerMillionTokens": 5000000000,
+        "inputImageNanoUsdPerMillionTokens": 10000000000,
+        "outputImageNanoUsdPerMillionTokens": 40000000000
+      },
+      "calculatedProviderCost": {
+        "classification": "estimated",
+        "nanoUsd": 42325000,
+        "usd": "0.042325000"
+      }
+    },
+    {
+      "name": "gemini-image",
+      "provider": "google",
+      "requestedModel": "gemini-3.1-flash-image",
+      "observedModel": "gemini-3.1-flash-image",
+      "providerRequestId": "pwZaapqsBabVz7IP6N-kAQ",
+      "jobId": "e6c6db0e-dbf4-4b9f-81bc-96bffc360821",
+      "usage": {
+        "classification": "observed",
+        "inputTextTokens": 11,
+        "outputImageTokens": 1120,
+        "outputTextOrThinkingTokens": 328,
+        "totalTokens": 1459,
+        "images": 1
+      },
+      "price": {
+        "classification": "documented",
+        "priceVersion": "gemini-public-pricing-captured-2026-07-17",
+        "serviceTier": "standard",
+        "inputNanoUsdPerMillionTokens": 500000000,
+        "outputTextOrThinkingNanoUsdPerMillionTokens": 3000000000,
+        "outputImageNanoUsdPerMillionTokens": 60000000000
+      },
+      "calculatedProviderCost": {
+        "classification": "estimated",
+        "nanoUsd": 68189500,
+        "usd": "0.068189500"
+      }
+    },
+    {
+      "name": "dezgo-image",
+      "provider": "dezgo",
+      "requestedModel": "text2image",
+      "observedModel": "text2image",
+      "providerRequestId": null,
+      "nonBillingCorrelation": {
+        "inputSeed": "212490923"
+      },
+      "jobId": "6bacd383-60ce-4700-9c5e-3f5438790338",
+      "usage": {
+        "classification": "estimated",
+        "width": 1024,
+        "height": 1024,
+        "steps": 25,
+        "guidance": 7,
+        "sampler": "euler_a",
+        "images": 1
+      },
+      "price": {
+        "classification": "documented",
+        "priceVersion": "dezgo-sd1-public-pricing-captured-2026-07-17",
+        "documentedNanoUsdAt30Steps": 18100000,
+        "documentedSize": "1024x1024",
+        "scalingRule": "linear_by_steps"
+      },
+      "calculatedProviderCost": {
+        "classification": "estimated",
+        "nanoUsd": 15083333,
+        "usd": "0.015083333",
+        "caveat": "No exact per-request billing record or provider request ID is available. The estimate linearly scales the documented 30-step price to 25 steps."
+      },
+      "accountTransaction": {
+        "classification": "observed",
+        "transactionId": "48132eda-d31f-a6af-57e9-43d7b9392d78",
+        "transactionType": "job",
+        "function": "text2image",
+        "model": "realdream_12",
+        "startedAt": "2026-07-17T10:40:45.1720719Z",
+        "finishedAt": "2026-07-17T10:41:19.3416904Z",
+        "chargedNanoUsd": 15100000,
+        "chargedUsd": "0.015100000",
+        "differenceFromEstimateNanoUsd": 16667,
+        "correlation": "The transaction is the account's last transaction and matches the validation function and execution window. It is account evidence, not a provider request ID."
+      }
+    }
+  ],
+  "calculatedTotal": {
+    "classification": "estimated",
+    "nanoUsd": 128261333,
+    "usd": "0.128261333",
+    "displayUsdRoundedTo5Decimals": "0.12826"
+  },
+  "reconciliation": {
+    "status": "partially_reconciled",
+    "checkedAt": "2026-07-17T10:51:36Z",
+    "windowStart": "2026-07-17T10:40:15.473Z",
+    "windowEnd": "2026-07-17T10:51:36Z",
+    "dashboardReportedNanoUsd": null,
+    "differenceNanoUsd": null,
+    "rounding": {
+      "status": "unknown",
+      "notes": null
+    },
+    "minimumCharges": {
+      "status": "unknown",
+      "notes": null
+    },
+    "reportingDelay": {
+      "status": "unknown",
+      "notes": null
+    },
+    "providers": [
+      {
+        "provider": "openai",
+        "status": "blocked_missing_admin_key",
+        "checkedAt": "2026-07-17T10:51:36Z",
+        "method": "GET /v1/organization/costs for the UTC validation day",
+        "result": "HTTP 403 with the configured project API key",
+        "credentialRequirement": "OPENAI_ADMIN_KEY",
+        "dashboardReportedNanoUsd": null,
+        "rounding": "unknown",
+        "minimumCharge": "unknown",
+        "reportingDelay": "unknown"
+      },
+      {
+        "provider": "google",
+        "status": "blocked_missing_cloud_billing_access",
+        "checkedAt": "2026-07-17T10:51:36Z",
+        "method": "credential capability inspection",
+        "result": "GEMINI_API_KEY is configured; GOOGLE_APPLICATION_CREDENTIALS and GOOGLE_CLOUD_PROJECT are not configured",
+        "dashboardReportedNanoUsd": null,
+        "rounding": "unknown",
+        "minimumCharge": "unknown",
+        "reportingDelay": "unknown"
+      },
+      {
+        "provider": "dezgo",
+        "status": "reconciled_to_account_transaction",
+        "checkedAt": "2026-07-17T10:51:36Z",
+        "method": "GET /account/tx/last",
+        "transactionId": "48132eda-d31f-a6af-57e9-43d7b9392d78",
+        "dashboardReportedNanoUsd": 15100000,
+        "differenceFromEstimatedNanoUsd": 16667,
+        "rounding": "Observed account transaction amount has four decimal places in USD and rounds the $0.015083333 estimate upward to $0.0151.",
+        "minimumCharge": "unknown; one transaction cannot establish whether a minimum applies",
+        "reportingDelay": "No delay was visible in the transaction timestamps: the transaction time equals the recorded finish time. The endpoint was checked later, so maximum publication delay was not measured."
+      }
+    ],
+    "evidenceReferences": [
+      "OpenAI HTTP 403 from GET /v1/organization/costs using the configured project API key",
+      "Dezgo transaction 48132eda-d31f-a6af-57e9-43d7b9392d78 from GET /account/tx/last"
+    ],
+    "notes": "OpenAI and Google dashboard costs must be reconciled before this manifest can authorize active billing prices. Aggregate dashboard totals must exclude unrelated traffic in the same time window. The Dezgo calculated cost remains estimated even though its matching account transaction is observed."
+  }
+}

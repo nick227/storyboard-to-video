@@ -499,6 +499,8 @@ export function renderScenes() {
   const scenes = sceneStore.get().scenes;
   const operation = uiStore.get().operation;
   
+  els.storyboardSection.hidden = scenes.length === 0 && operation?.type !== 'prompts';
+
   if (!scenes.length && operation?.type === 'prompts') {
     renderEmptyPromptTargets();
     return;

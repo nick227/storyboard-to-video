@@ -19,6 +19,18 @@ class MemoryIdentityRepository {
     return { user: { id: user.id, email, displayName, status: user.status }, tenant, role: 'owner' };
   }
 
+  async ensureLegacyIdentity(legacyId) {
+    let user = this.users.find((item) => item.legacyId === legacyId);
+    if (user) {
+      const membership = this.memberships.find((item) => item.userId === user.id);
+      return { user, tenant: this.workspaces.find((item) => item.id === membership.tenantId), role: membership.role, legacyId };
+    }
+    user = { id: crypto.randomUUID(), email: null, displayName: legacyId, status: 'legacy', legacyId };
+    const tenant = { id: crypto.randomUUID(), name: legacyId, type: 'legacy' };
+    this.users.push(user); this.workspaces.push(tenant); this.memberships.push({ userId: user.id, tenantId: tenant.id, role: 'owner' });
+    return { user, tenant, role: 'owner', legacyId };
+  }
+
   async findUserByEmail(email) {
     const user = this.users.find((item) => item.email === email);
     const membership = this.memberships.find((item) => item.userId === user?.id);

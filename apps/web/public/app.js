@@ -27,6 +27,7 @@ const els = {
   fallbackPolicy: document.getElementById('fallbackPolicy'),
   statusText: document.getElementById('statusText'),
   generationSummaryText: document.getElementById('generationSummaryText'),
+  storyboardSection: document.getElementById('storyboardSection'),
   storyboardGrid: document.getElementById('storyboardGrid'),
   resizeSceneList: document.querySelector('.resize-scene-list'),
   sceneCardTemplate: document.getElementById('sceneCardTemplate'),
@@ -38,23 +39,10 @@ const els = {
   newStoryboardBtn: document.getElementById('newStoryboardBtn'),
   saveStateBtn: document.getElementById('saveStateBtn'),
   downloadZipBtn: document.getElementById('downloadZipBtn'),
-  authLoggedOut: document.getElementById('authLoggedOut'),
   authLoggedIn: document.getElementById('authLoggedIn'),
+  authUserAvatar: document.getElementById('authUserAvatar'),
   authUserLabel: document.getElementById('authUserLabel'),
-  loginBtn: document.getElementById('loginBtn'),
-  registerBtn: document.getElementById('registerBtn'),
   logoutBtn: document.getElementById('logoutBtn'),
-  authDialog: document.getElementById('authDialog'),
-  authDialogTitle: document.getElementById('authDialogTitle'),
-  authDialogClose: document.getElementById('authDialogClose'),
-  authForm: document.getElementById('authForm'),
-  authDisplayNameField: document.getElementById('authDisplayNameField'),
-  authDisplayName: document.getElementById('authDisplayName'),
-  authEmail: document.getElementById('authEmail'),
-  authPassword: document.getElementById('authPassword'),
-  authError: document.getElementById('authError'),
-  authSubmitBtn: document.getElementById('authSubmitBtn'),
-  authToggleMode: document.getElementById('authToggleMode'),
   
   // Generation Buttons
   generatePromptsBtn: document.getElementById('generatePromptsBtn'),
@@ -157,6 +145,19 @@ let generationConfirmResolve = null;
 
 function setStatus(msg) {
   if (els.statusText) els.statusText.textContent = msg;
+}
+
+// Runs one startup/reload stage in isolation so a failure in one loader (e.g. a
+// missing DOM binding or a stale project 404) can't take down unrelated ones.
+async function runStage(label, fn) {
+  try {
+    await fn();
+    return true;
+  } catch (error) {
+    console.error(`${label} failed:`, error);
+    setStatus(`${label} failed: ${error.message}`);
+    return false;
+  }
 }
 
 function selectedLabel(select) {
@@ -269,11 +270,12 @@ async function refreshVoicesForCurrentProvider() {
 }
 
 async function loadStoryboardIntoUI() {
-  await loadStyles(els);
-  await loadStyleReferences(els.styleSelect.value, els, setStatus);
-  await refreshVoicesForCurrentProvider();
+  const stylesLoaded = await runStage('Loading styles', () => loadStyles(els));
+  const referencesLoaded = await runStage('Loading style references', () => loadStyleReferences(els.styleSelect.value, els, setStatus));
+  const voicesLoaded = await runStage('Loading voices', () => refreshVoicesForCurrentProvider());
   renderVoicesPanel(els);
   updateButtons(els);
+  return stylesLoaded && referencesLoaded && voicesLoaded;
 }
 
 function attachEvents() {
@@ -509,12 +511,12 @@ async function init() {
   }
   setPersistenceScope(session.tenant.id);
 
-  await restoreStoryboardLibrary(els);
-  refreshSceneCountSuggestion({ apply: true });
+  const restored = await runStage('Restoring your storyboards', () => restoreStoryboardLibrary(els));
+  if (restored) refreshSceneCountSuggestion({ apply: true });
   renderStoryboardPicker(els);
-  await loadStoryboardIntoUI();
+  const loaded = await loadStoryboardIntoUI();
 
-  setStatus('Ready. Saved.');
+  if (restored && loaded) setStatus('Ready. Saved.');
 }
 
 init().catch(err => {

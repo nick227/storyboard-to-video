@@ -1,6 +1,7 @@
 import { projectStore, sceneStore, batchStore } from '../modules/store.js';
 import { createStoryboardRecord } from '../modules/persistence.js';
 import { loadProtectedAsset, loadedAssets, revokeAllAssets } from '../modules/assets.js';
+import { loadStyles } from '../modules/ui.js';
 
 function addResult(name, passed, message = '') {
   const ul = document.getElementById('test-results');
@@ -16,6 +17,20 @@ function assert(condition, message) {
 
 async function runTests() {
   try {
+    // Establish a session first: /index.html is auth-gated (server-side page guard), and
+    // several tests below fetch it for markup assertions. Without a session cookie those
+    // fetches silently redirect to /login.html instead of erroring, so later tests fail
+    // against login-page markup rather than the app shell.
+    await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: `frontend-test-${Date.now()}@example.com`,
+        displayName: 'Frontend Test',
+        password: 'frontend-test-password-123',
+      }),
+    });
+
     // Test 1: Store reactivity and basic scene modification
     let sceneUpdateCount = 0;
     const unsub = sceneStore.subscribe(() => { sceneUpdateCount++; });
@@ -161,6 +176,46 @@ async function runTests() {
     assert(appSource.includes("storyboardGrid.style.setProperty('--scene-columns', columns)"), 'Density controls should update the grid column count');
     assert(appSource.includes("candidate.setAttribute('aria-pressed', String(isActive))"), 'Density controls should announce the selected layout');
     addResult('Storyboard Density Controls', true);
+
+    // Test 18: Every DOM id app.js binds into `els` must exist in index.html, and vice
+    // versa for the ids rendering.js dereferences directly on `els`. This is a regression
+    // guard for #storyboardSection: it existed in index.html but was never bound into
+    // `els`, so renderScenes() threw on an undefined property and init() aborted before
+    // it ever reached loadStyles() — leaving the style dropdown silently empty.
+    assert(indexSource.includes('id="storyboardSection"'), 'index.html should define #storyboardSection');
+    assert(appSource.includes("storyboardSection: document.getElementById('storyboardSection')"), 'app.js should bind #storyboardSection into els');
+    assert(indexSource.includes('id="statusText"'), 'index.html should define #statusText');
+    assert(indexSource.includes('id="generationSummaryText"'), 'index.html should define #generationSummaryText');
+    addResult('Storyboard Section Binding Present', true);
+
+    // Test 19: The style dropdown must populate once loadStyles() runs, independent of
+    // whatever else initialization is doing. Mocks fetch so this doesn't depend on a
+    // live authenticated session.
+    const originalStylesFetch = window.fetch;
+    window.fetch = async (url) => {
+      if (url === '/api/styles') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            styles: [{ id: 'basic-cartoon', name: 'Basic Cartoon', promptText: 'Test prompt', references: { characters: [], world: [] } }],
+          }),
+        };
+      }
+      return originalStylesFetch(url);
+    };
+    try {
+      const styleSelect = document.getElementById('styleSelect');
+      const commonPromptText = document.getElementById('commonPromptText');
+      styleSelect.replaceChildren();
+      commonPromptText.value = '';
+      await loadStyles({ styleSelect, commonPromptText });
+      assert(styleSelect.options.length === 1, 'Style dropdown should populate after loadStyles() runs');
+      assert(styleSelect.options[0].value === 'basic-cartoon', 'Style dropdown should list the fetched style id');
+      addResult('Style Dropdown Populates After Init', true);
+    } finally {
+      window.fetch = originalStylesFetch;
+    }
 
   } catch (e) {
     addResult('Test Suite Execution', false, e.message);

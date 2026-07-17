@@ -27,6 +27,7 @@ module.exports = {
   generationQueue: dependencies.queue,
   getAdditionalCommonPrompt,
   projectStore: dependencies.projectStore,
+  prisma: dependencies.prisma,
   regenerateSceneDialogue: dependencies.dialogue.regenerate,
   regenerateSinglePrompt: dependencies.prompts.regenerate,
   resolveAudioAsset: createAssetResolver(config.paths.audio, '/audio'),

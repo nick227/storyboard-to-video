@@ -3,6 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { AppError } = require('../errors');
 const { cleanText, getAdditionalCommonPrompt, slugify } = require('../shared/text');
+const { providerOutput } = require('../providers/result');
 
 const DEFAULT_MOTION_PROMPT = [
   'Show clear continuous subject movement and follow-through; never a frozen hold.',
@@ -49,20 +50,21 @@ function buildVideoPrompt(input, style, configuredMotionPrompt = '') {
 }
 
 function createVideoGenerationService({ config, provider, projectStore, styles }) {
-  function resolve(publicPath, ownerId) {
+  async function resolve(publicPath, ownerId) {
     const match = String(publicPath || '').match(/^\/projects\/([^/]+)\/assets\/images\/([^/]+)$/);
     if (!match) return null;
     const projectId = decodeURIComponent(match[1]);
     const file = decodeURIComponent(match[2]);
-    projectStore.read(projectId, { ownerId });
     if (file !== path.basename(file)) return null;
+    if (projectStore.findAsset) return (await projectStore.findAsset(projectId, 'images', file, { ownerId })).sourcePath;
+    await projectStore.read(projectId, { ownerId });
     return path.join(projectStore.assetDir(projectId, 'images'), file);
   }
 
   return {
     verify: () => provider.verify(),
-    async generate(input, { ownerId, signal, jobId } = {}) {
-      const source = resolve(input.imagePath, ownerId);
+    async generate(input, { ownerId, userId, signal, jobId } = {}) {
+      const source = await resolve(input.imagePath, ownerId);
       if (!source || !fs.existsSync(source)) {
         throw new AppError('INVALID_PATH', 'A valid generated reference image is required', { status: 400 });
       }
@@ -70,25 +72,25 @@ function createVideoGenerationService({ config, provider, projectStore, styles }
       if (!style) throw new AppError('STYLE_NOT_FOUND', 'Unknown style', { status: 400 });
 
       const prompt = buildVideoPrompt(input, style, config.env.VIDEO_MOTION_PROMPT);
-      const lease = projectStore.acquireLease(input.projectId, { ownerId });
+      const lease = await projectStore.acquireLease(input.projectId, { ownerId, userId });
       await provider.verify();
       fs.mkdirSync(config.paths.videos, { recursive: true });
       const file = `${String(input.sceneNumber).padStart(2, '0')}-${slugify(input.sceneTitle || 'scene')}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.mp4`;
       const staged = path.join(config.paths.videos, file);
       try {
-        await provider.generate({
+        providerOutput(await provider.generate({
           imagePath: source,
           prompt,
           motionIntensity: input.motionIntensity,
           outputPath: staged,
-        });
-        const asset = projectStore.commitAsset(lease, 'videos', staged, { signal });
+        }));
+        const asset = await projectStore.commitAsset(lease, 'videos', staged, { signal, mimeType: 'video/mp4' });
         const version = { path: asset.path, prompt, sourceImagePath: input.imagePath, provider: config.videoProvider, createdAt: new Date().toISOString() };
         let scene, project;
         try {
-          ({ scene, project } = projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'video', version, jobId }));
+          ({ scene, project } = await projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'video', version, jobId }));
         } catch (error) {
-          fs.rmSync(asset.sourcePath, { force: true });
+          if (projectStore.rollbackAsset) await projectStore.rollbackAsset(asset); else fs.rmSync(asset.sourcePath, { force: true });
           throw error;
         }
         return {

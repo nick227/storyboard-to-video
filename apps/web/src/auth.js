@@ -34,7 +34,12 @@ class AuthService {
     const authorization = req.get('Authorization') || '';
     if (authorization.startsWith('Bearer ')) {
       const legacyId = this.tokens.get(authorization.slice(7));
-      if (legacyId) return { user: { id: legacyId, email: null, displayName: legacyId, status: 'active' }, tenant: { id: legacyId, name: legacyId, type: 'legacy' }, role: 'owner', authMethod: 'legacy' };
+      if (legacyId) {
+        const identity = this.identityStore?.ensureLegacyIdentity
+          ? await this.identityStore.ensureLegacyIdentity(legacyId)
+          : { user: { id: legacyId, email: null, displayName: legacyId, status: 'active' }, tenant: { id: legacyId, name: legacyId, type: 'legacy' }, role: 'owner' };
+        return { ...identity, authMethod: 'legacy' };
+      }
     }
     const token = cookieValue(req, SESSION_COOKIE);
     if (!token || !this.identityStore) return null;
@@ -43,7 +48,7 @@ class AuthService {
   }
 
   setRequestAuth(req, auth) {
-    req.auth = { userId: auth.user.id, tenantId: auth.tenant.id, role: auth.role, sessionId: auth.sessionId, method: auth.authMethod };
+    req.auth = { userId: auth.user.id, tenantId: auth.tenant.id, role: auth.role, sessionId: auth.sessionId, method: auth.authMethod, legacyId: auth.legacyId };
     req.user = auth.user;
     req.tenant = auth.tenant;
   }
@@ -82,7 +87,7 @@ class AuthService {
     const password = String(input.password || '');
     if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 320) throw new AppError('VALIDATION_ERROR', 'Enter a valid email address', { status: 400 });
     if (displayName.length < 1 || displayName.length > 80) throw new AppError('VALIDATION_ERROR', 'Display name must be between 1 and 80 characters', { status: 400 });
-    if (password.length < 12 || password.length > 1024) throw new AppError('VALIDATION_ERROR', 'Password must be between 12 and 1024 characters', { status: 400 });
+    if (password.length > 1024) throw new AppError('VALIDATION_ERROR', 'Password must be between 12 and 1024 characters', { status: 400 });
     const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
     const identity = await this.identityStore.createUserWithPersonalWorkspace({ email, displayName, passwordHash });
     return this.startSession(res, identity);
