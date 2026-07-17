@@ -256,9 +256,18 @@ export function updateButtons(els) {
   const promptsReady = sceneState.scenes.filter((scene) => String(scene.prompt || '').trim()).length;
   const dialogueReady = sceneState.scenes.filter((scene) => (scene.lines || []).some((line) => String(line?.text || '').trim())).length;
   const imagesReady = sceneState.scenes.filter((scene) => (scene.versions || []).some((version) => version?.path)).length;
+  const audioReady = sceneState.scenes.filter((scene) => (scene.audioVersions || []).some((version) => version?.path)).length;
+  const videosReady = sceneState.scenes.filter((scene) => (scene.videoVersions || []).some((version) => version?.path)).length;
+  
   const allPromptsReady = hasScenes && promptsReady === sceneState.scenes.length;
   const allDialogueReady = hasScenes && dialogueReady === sceneState.scenes.length;
   const allImagesReady = hasScenes && imagesReady === sceneState.scenes.length;
+
+  els.generatePromptsBtn.classList.toggle('was-clicked', promptsReady > 0);
+  els.generateDialogueBtn.classList.toggle('was-clicked', dialogueReady > 0);
+  els.startSerialBtn.classList.toggle('was-clicked', imagesReady > 0);
+  els.startAudioSerialBtn.classList.toggle('was-clicked', audioReady > 0);
+  els.startVideoSerialBtn.classList.toggle('was-clicked', videosReady > 0);
 
   configureGenerationAction(els.generatePromptsBtn, {
     available: Boolean(els.scriptText.value.trim()),

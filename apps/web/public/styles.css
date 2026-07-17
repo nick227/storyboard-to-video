@@ -354,6 +354,10 @@ label > span {
 .generation-action.is-locked .generation-action-icon { opacity: .55; }
 .generation-action.is-locked .generation-action-lock { display: block; }
 .generation-action.is-active { border-color: rgba(79,140,255,.65); background: var(--accent-soft); }
+.generation-action.was-clicked { background: rgba(129, 132, 130, 0.08); color: gray; }
+.generation-action.was-clicked .generation-action-icon { color: gray; }
+
+.generation-action.was-clicked:hover:not(:disabled) { background: rgba(79, 140, 255, 0.12); }
 .generation-action.danger { border-color: var(--danger); background: var(--danger); color: #fff; }
 .generation-action.danger .generation-action-icon { color: inherit; }
 .script-field textarea,

@@ -52,9 +52,15 @@ function billingRoutes(repository, billing) {
     const entry = await repository.grant({ tenantId: input.tenantId, userId: req.auth.userId, creditMicros: input.creditMicros, idempotencyKey: input.idempotencyKey, metadata: { notes: input.notes || null } });
     res.status(201).json(jsonSafe({ ok: true, entry }));
   }));
+  router.patch('/accounts/:tenantId/charging', asyncRoute(async (req, res) => {
+    const tenantId = uuid.parse(req.params.tenantId);
+    const input = z.object({ enabled: z.boolean(), idempotencyKey: z.string().min(1).max(200) }).parse(req.body);
+    const result = await repository.setChargingEnabled({ tenantId, enabled: input.enabled, actorUserId: req.auth.userId, idempotencyKey: input.idempotencyKey });
+    res.json(jsonSafe({ ok: true, ...result }));
+  }));
   router.post('/prices', asyncRoute(async (req, res) => {
     const input = priceInput.parse(req.body);
-    if (input.billable && input.evidenceStatus !== 'dashboard_reconciled') throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must be dashboard reconciled before it can be billable', { status: 409 });
+    if (input.billable && (input.evidenceStatus !== 'dashboard_reconciled' || !input.reconciledAt)) throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must have dated dashboard reconciliation before it can be billable', { status: 409 });
     let price = await repository.createPriceVersion({ ...input, active: false });
     if (input.active) price = await repository.configurePrice(price.id, { active: true });
     res.status(201).json(jsonSafe({ ok: true, price }));

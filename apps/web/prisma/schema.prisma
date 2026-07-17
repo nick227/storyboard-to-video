@@ -29,6 +29,7 @@ model User {
   usageEvents        UsageEvent[]
   creditReservations CreditReservation[]
   creditLedger       CreditLedgerEntry[]
+  chargingChanges    CreditAccount[]      @relation("CreditAccountChargingChangedBy")
 
   @@map("users")
 }
@@ -322,11 +323,16 @@ model CreditAccount {
   tenantId                 String              @unique @map("tenant_id") @db.Uuid
   availableCreditMicros    BigInt              @default(0) @map("available_credit_micros")
   reservedCreditMicros     BigInt              @default(0) @map("reserved_credit_micros")
+  chargingEnabled          Boolean             @default(false) @map("charging_enabled")
+  chargingChangedAt        DateTime?           @map("charging_changed_at") @db.Timestamptz(3)
+  chargingChangedByUserId  String?             @map("charging_changed_by_user_id") @db.Uuid
   createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
   tenant                   Workspace           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chargingChangedBy        User?               @relation("CreditAccountChargingChangedBy", fields: [chargingChangedByUserId], references: [id], onDelete: SetNull)
   ledgerEntries            CreditLedgerEntry[]
 
+  @@index([chargingEnabled])
   @@map("credit_accounts")
 }
 

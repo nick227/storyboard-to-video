@@ -10,8 +10,8 @@ function createBillingService({ repository, chargingEnabled = false }) {
     const estimatedProviderNanoUsd = price?.reservationNanoUsd || 0n;
     const estimatedCustomerNanoUsd = price && markup ? applyMarkup(estimatedProviderNanoUsd, markup) : 0n;
     const quotedCreditMicros = creditRate ? convertNanoUsdToCreditMicros(estimatedCustomerNanoUsd, creditRate) : 0n;
-    const live = Boolean(chargingEnabled && price?.billable && markup && creditRate);
-    const chargingMode = live ? 'live'
+    const liveEligible = Boolean(chargingEnabled && price?.billable && markup && creditRate);
+    const chargingMode = liveEligible ? 'live'
       : !chargingEnabled ? 'charging_disabled'
         : !price ? 'no_active_price'
           : !price.billable ? 'provider_not_billable'
@@ -22,7 +22,8 @@ function createBillingService({ repository, chargingEnabled = false }) {
       siteCreditRateVersionId: creditRate?.id || null, chargingMode,
       estimatedProviderNanoUsd, quotedCreditMicros,
     };
-    const reservation = live ? await repository.createLiveReservation(data) : await repository.createMonitoringReservation(data);
+    const reservation = liveEligible ? await repository.createLiveReservation(data) : await repository.createMonitoringReservation(data);
+    const live = reservation.chargingMode === 'live';
     return { reservation, price, markup, creditRate, live };
   }
 

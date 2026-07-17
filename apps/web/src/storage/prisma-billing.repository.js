@@ -29,8 +29,14 @@ class PrismaBillingRepository {
         create: { id: crypto.randomUUID(), tenantId: data.tenantId, availableCreditMicros: 0n, reservedCreditMicros: 0n },
       });
       const amount = data.quotedCreditMicros;
+      if (!account.chargingEnabled) {
+        return db.creditReservation.create({ data: {
+          id: crypto.randomUUID(), ...data, chargingMode: 'tenant_charging_disabled',
+          reservedCreditMicros: 0n, status: 'monitoring',
+        } });
+      }
       const moved = await db.creditAccount.updateMany({
-        where: { id: account.id, availableCreditMicros: { gte: amount } },
+        where: { id: account.id, chargingEnabled: true, availableCreditMicros: { gte: amount } },
         data: { availableCreditMicros: { decrement: amount }, reservedCreditMicros: { increment: amount } },
       });
       if (!moved.count) throw new AppError('INSUFFICIENT_CREDITS', 'Insufficient site credits for this generation', { status: 402, details: { requiredCreditMicros: amount.toString() } });
@@ -150,6 +156,26 @@ class PrismaBillingRepository {
     }, { isolationLevel: 'Serializable' });
   }
 
+  async setChargingEnabled({ tenantId, enabled, actorUserId, idempotencyKey }) {
+    return this.prisma.$transaction(async (db) => {
+      const prior = await db.creditLedgerEntry.findUnique({ where: { idempotencyKey } });
+      if (prior) return { account: await db.creditAccount.findUnique({ where: { tenantId } }), entry: prior, reused: true };
+      let account = await db.creditAccount.upsert({ where: { tenantId }, update: {}, create: { id: crypto.randomUUID(), tenantId } });
+      if (account.chargingEnabled === enabled) return { account, entry: null, reused: false, unchanged: true };
+      account = await db.creditAccount.update({ where: { id: account.id }, data: {
+        chargingEnabled: enabled, chargingChangedAt: new Date(), chargingChangedByUserId: actorUserId,
+      } });
+      const entry = await db.creditLedgerEntry.create({ data: {
+        id: crypto.randomUUID(), accountId: account.id, tenantId, userId: actorUserId,
+        type: enabled ? 'charging_enabled' : 'charging_disabled',
+        availableDeltaCreditMicros: 0n, reservedDeltaCreditMicros: 0n,
+        availableAfterCreditMicros: account.availableCreditMicros, reservedAfterCreditMicros: account.reservedCreditMicros,
+        idempotencyKey, metadata: { chargingEnabled: enabled },
+      } });
+      return { account, entry, reused: false, unchanged: false };
+    }, { isolationLevel: 'Serializable' });
+  }
+
   listPrices() { return this.prisma.providerPriceVersion.findMany({ orderBy: [{ provider: 'asc' }, { modality: 'asc' }, { model: 'asc' }, { effectiveAt: 'desc' }] }); }
   listMarkups() { return this.prisma.markupPolicyVersion.findMany({ orderBy: { effectiveAt: 'desc' } }); }
   listCreditRates() { return this.prisma.siteCreditRateVersion.findMany({ orderBy: { effectiveAt: 'desc' } }); }
@@ -164,7 +190,7 @@ class PrismaBillingRepository {
   }
 
   createPriceVersion(data) {
-    if (data.billable && data.evidenceStatus !== 'dashboard_reconciled') throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must be dashboard reconciled before it can be billable', { status: 409 });
+    if (data.billable && (data.evidenceStatus !== 'dashboard_reconciled' || !data.reconciledAt)) throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must have dated dashboard reconciliation before it can be billable', { status: 409 });
     return this.prisma.providerPriceVersion.create({ data: { id: crypto.randomUUID(), ...data } });
   }
   createMarkupVersion(data) { return this.prisma.markupPolicyVersion.create({ data: { id: crypto.randomUUID(), ...data } }); }
@@ -175,8 +201,9 @@ class PrismaBillingRepository {
       const current = await db.providerPriceVersion.findUnique({ where: { id } });
       if (!current) throw new AppError('PRICE_VERSION_NOT_FOUND', 'Provider price version not found', { status: 404 });
       const nextEvidence = evidenceStatus || current.evidenceStatus;
+      const nextReconciledAt = reconciledAt === undefined ? current.reconciledAt : reconciledAt;
       const nextBillable = billable == null ? current.billable : billable;
-      if (nextBillable && nextEvidence !== 'dashboard_reconciled') throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must be dashboard reconciled before it can be billable', { status: 409 });
+      if (nextBillable && (nextEvidence !== 'dashboard_reconciled' || !nextReconciledAt)) throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must have dated dashboard reconciliation before it can be billable', { status: 409 });
       if (active === true) await db.providerPriceVersion.updateMany({ where: { provider: current.provider, modality: current.modality, model: current.model, active: true, id: { not: id } }, data: { active: false, retiredAt: new Date() } });
       return db.providerPriceVersion.update({ where: { id }, data: {
         ...(active == null ? {} : { active, retiredAt: active ? null : new Date() }),
