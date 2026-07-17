@@ -110,8 +110,6 @@ const regenerateDialogue = z.object({
   projectId,
   scene: z.record(z.any()),
   sceneIndex: z.coerce.number().int().min(0).max(49).default(0),
-  previousText: z.string().max(2_000).default(''),
-  nextBeat: z.string().max(2_000).default(''),
   instruction: z.string().max(500).default(''),
   provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
   fallbackPolicy,

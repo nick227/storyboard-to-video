@@ -135,9 +135,64 @@ Root-level scripts (`npm run <script>` from the repo root) drive both apps: `dev
 - Set `DATABASE_URL` locally and in production. Prisma/PostgreSQL is authoritative for users, workspaces, memberships, and sessions.
 - `AUTH_TOKENS` remains available only as a test/local compatibility adapter.
 - Every account receives a personal workspace. Project documents, jobs, generation, exports, and asset downloads enforce workspace ownership.
-- Set `ADMIN_OWNER_IDS` to the user IDs allowed to mutate shared style references.
+- Set `ADMIN_OWNER_IDS` to the comma-separated user IDs that bootstrap the admin console and shared-resource administration.
 - `PROJECT_MAX_FILES` and `PROJECT_MAX_BYTES` set per-project asset limits.
 - Run remote deployments behind TLS and keep bearer tokens out of URLs and logs.
+
+### Create the initial administrator
+
+`ADMIN_OWNER_IDS` is the bootstrap mechanism for the first administrator. It grants admin access without directly editing the database or bypassing the application's authorization checks.
+
+1. Start the application and create the first account at `http://localhost:3000/login.html?mode=register`.
+2. Find that account's UUID:
+   ```bash
+   docker compose exec postgres psql -U storyboard -d storyboard \
+     -c 'SELECT id, email, platform_role FROM users ORDER BY created_at;'
+   ```
+3. Add the UUID to `apps/web/.env`:
+   ```dotenv
+   ADMIN_OWNER_IDS=00000000-0000-0000-0000-000000000000
+   ```
+   Multiple bootstrap administrators can be supplied as a comma-separated list.
+4. Restart `apps/web`, log in with that account, and open `http://localhost:3000/admin` (an **Admin** link also appears in the authenticated top bar).
+
+The bootstrap administrator can use **Admin → Users** to grant `admin` or `super_admin` to other accounts. Those roles are stored in PostgreSQL and do not depend on `ADMIN_OWNER_IDS`. An administrator cannot change their own role, and only a bootstrap administrator or existing `super_admin` can grant `super_admin`; this prevents accidental loss or escalation of administrative access. For a fully database-backed handoff, create a second account, promote it to `super_admin`, sign in as that account, and then promote the original account if desired.
+
+In production, `ADMIN_OWNER_IDS` has no implicit fallback and must be configured explicitly for bootstrap access. Keep it set until at least one database-backed `super_admin` has been verified. Removing it does not change previously assigned database roles.
+
+### Stripe one-time credit purchases
+
+Stripe Checkout is used only for one-time credit-pack purchases; subscriptions and Stripe Connect are not part of this integration. Configure both Stripe secrets before exposing Checkout:
+
+```dotenv
+PUBLIC_APP_URL=http://localhost:3000
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+For local webhook testing, install the Stripe CLI, sign in, and forward events to the raw-body endpoint:
+
+```bash
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
+```
+
+Use the `whsec_...` value printed by that command in `apps/web/.env`; it is different from the secret for a Dashboard-managed production endpoint. Register `/api/webhooks/stripe` in Stripe for at least:
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.expired`
+- `refund.created`
+- `charge.dispute.created`
+
+The migration seeds Starter, Creator, and Studio as draft database records. In Stripe, create matching one-time USD Prices with the same amount and tax behavior, then open **Admin → Pricing & sales → Stripe credit packs** and publish each draft with its `price_...` ID. Publishing retrieves the Price from Stripe and rejects mismatched currency, amount, tax behavior, inactive, or recurring Prices. Published pack terms cannot be edited; create a new pack version when price or granted credits change.
+
+Customers purchase from `/credits`. The browser redirect never grants credits: the success page polls the internal sale status while the signed webhook atomically funds the tenant ledger. Keep `BILLING_CUSTOMER_CHARGING_ENABLED=false` while validating paid-credit funding; this flag controls generation deductions, not the ability to purchase credits.
+
+### Free-user welcome credits
+
+New personal accounts receive the currently active welcome-credit policy during the same database transaction that creates their user, workspace, and membership. The migration seeds `welcome-v1` at 1,000 site credits as an initial development value. An administrator can replace it under **Admin → Pricing & sales → New-user welcome credits** after validating the amount needed for approximately 10–12 complete scenes across text, image, audio, and video.
+
+Welcome-credit policies are immutable versions. Activating a new version affects only accounts registered afterward; existing balances and historical `welcome_grant` ledger entries retain the exact policy version and amount they received.
 
 See [the multi-tenant foundation](docs/multi-tenant-foundation.md) for the ownership model and remaining migration work.
 

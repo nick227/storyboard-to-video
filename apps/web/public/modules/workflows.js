@@ -256,8 +256,6 @@ export async function regenerateDialogue(index, els, setStatus, instruction = ''
       body: JSON.stringify({
         scene,
         sceneIndex: index,
-        previousText: scenes[index - 1]?.narrationText?.slice(-200) || '',
-        nextBeat: scenes[index + 1]?.beat || '',
         instruction,
         provider: base.textProvider,
         projectId: base.projectId,
@@ -333,12 +331,23 @@ export async function regenerateImage(index, scene, els, setStatus) {
   }
 }
 
-export async function regenerateAudio(index, scene, els, setStatus) {
+export async function regenerateAudio(index, scene, els, setStatus, withinSerial = false) {
   const DAEMON_AUDIO_PROVIDERS = ['spark'];
   const scenes = sceneStore.get().scenes;
   const activeScene = scene || scenes[index];
   if (!activeScene || (!scene && uiStore.get().operation)) return;
   if (!activeScene.narrationText?.trim()) throw new Error('Scene has no spoken narration. Generate narration first.');
+  // Fallback narration is degraded placeholder text (the scene's terse action beat), not a real
+  // adaptation — synthesizing paid TTS from it would silently waste money on low-quality audio.
+  // Batch runs skip these scenes (and say so); an explicit single-scene regenerate throws so the
+  // user has to consciously deal with it rather than the app quietly proceeding.
+  if (activeScene.narrationIsFallback) {
+    if (withinSerial) {
+      if (setStatus) setStatus(`Skipped scene ${index + 1}: narration is fallback placeholder text, not real narration.`);
+      return true;
+    }
+    throw new Error("This scene's narration is fallback placeholder text, not real narration — regenerate narration before generating audio.");
+  }
 
   const audioProvider = voiceStore.get().audioProvider;
 
