@@ -14,16 +14,29 @@
       <div class="brand-block">
         <div class="eyebrow">Storyboard</div>
         <div class="storyboard-title-row">
-          <input id="storyboardTitle" class="storyboard-title" type="text" maxlength="200"
-            aria-label="Storyboard title" />
-          <select id="storyboardPicker" class="storyboard-picker" aria-label="Open a saved storyboard"
-            title="Open a saved storyboard"></select>
+          <div class="storyboard-combo">
+            <input id="storyboardTitle" class="storyboard-title" type="text" maxlength="200"
+              aria-label="Storyboard title" autocomplete="off" />
+            <button id="storyboardPickerToggle" class="storyboard-picker-toggle" type="button"
+              aria-haspopup="listbox" aria-expanded="false" aria-controls="storyboardPickerList"
+              aria-label="Open a saved storyboard" title="Open a saved storyboard">&#9662;</button>
+            <ul id="storyboardPickerList" class="storyboard-picker-list" role="listbox"
+              aria-label="Saved storyboards" hidden></ul>
+          </div>
         </div>
       </div>
       <div class="toolbar top-actions">
         <button id="newStoryboardBtn" class="secondary">New</button>
         <button id="saveStateBtn" class="secondary" disabled>Saved</button>
         <button id="downloadZipBtn" class="primary">Download</button>
+        <div id="authLoggedOut" class="auth-widget" hidden>
+          <button id="loginBtn" class="secondary" type="button">Log in</button>
+          <button id="registerBtn" class="secondary" type="button">Create account</button>
+        </div>
+        <div id="authLoggedIn" class="auth-widget" hidden>
+          <span id="authUserLabel" class="auth-user-label"></span>
+          <button id="logoutBtn" class="secondary" type="button">Log out</button>
+        </div>
       </div>
     </header>
 
@@ -497,6 +510,21 @@
       <span class="settings-modal-save-note">Saved</span>
       <button type="button" class="primary" data-close-settings>Done</button>
     </div>
+  </dialog>
+
+  <dialog id="authDialog" class="settings-modal auth-dialog" aria-labelledby="authDialogTitle">
+    <div class="settings-modal-header">
+      <div><div class="eyebrow">Storyboard account</div><h2 id="authDialogTitle">Welcome back</h2></div>
+      <button type="button" id="authDialogClose" class="secondary text-button settings-modal-close" aria-label="Close login">✕</button>
+    </div>
+    <form id="authForm" class="settings-modal-body auth-form" data-mode="login">
+      <label id="authDisplayNameField" hidden><span>Display name</span><input id="authDisplayName" name="displayName" autocomplete="name" maxlength="80" /></label>
+      <label><span>Email</span><input id="authEmail" name="email" type="email" autocomplete="email" maxlength="320" required /></label>
+      <label><span>Password</span><input id="authPassword" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="1024" required /></label>
+      <p id="authError" class="auth-error" role="alert"></p>
+      <button id="authSubmitBtn" class="primary" type="submit">Log in</button>
+      <button id="authToggleMode" class="secondary" type="button">New here? Create an account</button>
+    </form>
   </dialog>
 
   <dialog id="generationConfirmModal" class="generation-confirm-modal" aria-labelledby="generationConfirmTitle">

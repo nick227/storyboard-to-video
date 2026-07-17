@@ -12,9 +12,9 @@ class GenerationQueue {
     for (const saved of store?.loadAndInterrupt?.() || []) this.jobs.set(saved.id, saved);
   }
 
-  add(type, projectId, task, { sceneId } = {}) {
+  add(type, projectId, task, { sceneId, tenantId, userId } = {}) {
     const controller = new AbortController();
-    const job = { id: crypto.randomUUID(), type, projectId: projectId || null, sceneId: sceneId || null, status: 'queued', createdAt: new Date().toISOString(), controller };
+    const job = { id: crypto.randomUUID(), type, projectId: projectId || null, sceneId: sceneId || null, tenantId: tenantId || null, userId: userId || null, status: 'queued', createdAt: new Date().toISOString(), controller };
     job.promise = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject; });
     this.jobs.set(job.id, job);
     this.store?.save(job);
@@ -51,7 +51,7 @@ class GenerationQueue {
   }
 
   public(job, includePromise = false) {
-    const value = { id: job.id, type: job.type, projectId: job.projectId, sceneId: job.sceneId, status: job.status, createdAt: job.createdAt, startedAt: job.startedAt, finishedAt: job.finishedAt, result: job.result, error: job.error };
+    const value = { id: job.id, type: job.type, projectId: job.projectId, sceneId: job.sceneId, tenantId: job.tenantId, userId: job.userId, status: job.status, createdAt: job.createdAt, startedAt: job.startedAt, finishedAt: job.finishedAt, result: job.result, error: job.error };
     if (includePromise) value.promise = job.promise;
     return value;
   }

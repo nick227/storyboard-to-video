@@ -8,17 +8,17 @@ function createJobRouter({ queue, store }) {
   };
 
   router.get('/', (req, res) => {
-    const jobs = queue.list(req.query.projectId).filter((job) => canAccess(job, req.user.id));
+    const jobs = queue.list(req.query.projectId).filter((job) => canAccess(job, req.auth.tenantId));
     res.json({ ok: true, jobs });
   });
   router.get('/:jobId', (req, res) => {
     const job = queue.get(req.params.jobId);
-    if (!canAccess(job, req.user.id)) return res.status(404).json({ ok: false, error: { code: 'JOB_NOT_FOUND', message: 'Generation job not found', retryable: false } });
+    if (!canAccess(job, req.auth.tenantId)) return res.status(404).json({ ok: false, error: { code: 'JOB_NOT_FOUND', message: 'Generation job not found', retryable: false } });
     res.json({ ok: true, job });
   });
   router.delete('/:jobId', (req, res) => {
     const job = queue.get(req.params.jobId);
-    if (!canAccess(job, req.user.id)) return res.status(404).json({ ok: false, error: { code: 'JOB_NOT_FOUND', message: 'Generation job not found', retryable: false } });
+    if (!canAccess(job, req.auth.tenantId)) return res.status(404).json({ ok: false, error: { code: 'JOB_NOT_FOUND', message: 'Generation job not found', retryable: false } });
     res.json({ ok: true, job: queue.cancel(req.params.jobId) });
   });
   return router;

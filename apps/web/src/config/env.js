@@ -1,4 +1,5 @@
 const path = require('node:path');
+const { PIPER_VOICE_CATALOG } = require('./piper-voices');
 
 function integer(value, fallback, min, max) {
   const parsed = Number.parseInt(value, 10);
@@ -23,7 +24,7 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     generationConcurrency: integer(env.GENERATION_CONCURRENCY, 1, 1, 32),
     sparkUrl: String(env.SPARK_TTS_URL || 'http://localhost:8001').replace(/\/+$/, ''), sparkTimeout: integer(env.SPARK_TTS_TIMEOUT_MS, 120_000, 1, 600_000), sparkServiceToken: String(env.SPARK_SERVICE_TOKEN || ''),
     ltxUrl: String(env.LTX_VIDEO_URL || 'http://localhost:8000').replace(/\/+$/, ''), videoProvider: env.VIDEO_PROVIDER === 'stub' ? 'stub' : 'ltx',
-    piperVoices: String(env.PIPER_VOICE_IDS || 'en_US-lessac-medium,en_US-amy-medium,en_US-ryan-medium').split(',').map((x) => x.trim()).filter(Boolean),
+    piperVoices: String(env.PIPER_VOICE_IDS || PIPER_VOICE_CATALOG.map((v) => v.id).join(',')).split(',').map((x) => x.trim()).filter(Boolean),
     audio: { sampleRate: 24_000, channels: 1, bits: 16, gapMs: 250 }, env,
   };
 }

@@ -49,15 +49,16 @@ class ProjectStore {
   }
 
   assertOwner(document, ownerId) {
-    if (ownerId && document.ownerId !== ownerId) throw new AppError('PROJECT_NOT_FOUND', 'Project not found', { status: 404 });
+    if (ownerId && (document.tenantId || document.ownerId) !== ownerId) throw new AppError('PROJECT_NOT_FOUND', 'Project not found', { status: 404 });
   }
 
-  create(input = {}, { ownerId } = {}) {
+  create(input = {}, { ownerId, tenantId, createdByUserId } = {}) {
     const id = this.assertId(input.id || crypto.randomUUID());
     if (this.isTombstoned(id)) throw new AppError('PROJECT_DELETED', 'Project id has been permanently deleted', { status: 410 });
     if (fs.existsSync(this.documentPath(id))) throw new AppError('PROJECT_EXISTS', 'Project already exists', { status: 409 });
     const now = new Date().toISOString();
-    const document = this.normalize({ ...(input.project || {}), id, ownerId: ownerId || input.ownerId || 'local-user', title: input.title || input.project?.title || 'Untitled storyboard', revision: 1, incarnationId: crypto.randomUUID(), createdAt: now, updatedAt: now });
+    const scopeId = tenantId || ownerId || input.tenantId || input.ownerId || 'local-user';
+    const document = this.normalize({ ...(input.project || {}), id, tenantId: scopeId, createdByUserId: createdByUserId || input.createdByUserId || scopeId, title: input.title || input.project?.title || 'Untitled', revision: 1, incarnationId: crypto.randomUUID(), createdAt: now, updatedAt: now });
     this.atomicJson(this.documentPath(id), document);
     this.atomicJson(this.referencePath(id), {});
     return document;
@@ -65,16 +66,16 @@ class ProjectStore {
 
   read(id, { ownerId } = {}) {
     if (this.isTombstoned(id)) {
-      try { const tombstone = JSON.parse(fs.readFileSync(this.tombstonePath(id), 'utf8')); if (ownerId && tombstone.ownerId !== ownerId) throw new AppError('PROJECT_NOT_FOUND', 'Project not found', { status: 404 }); } catch (error) { if (error instanceof AppError) throw error; }
+      try { const tombstone = JSON.parse(fs.readFileSync(this.tombstonePath(id), 'utf8')); if (ownerId && (tombstone.tenantId || tombstone.ownerId) !== ownerId) throw new AppError('PROJECT_NOT_FOUND', 'Project not found', { status: 404 }); } catch (error) { if (error instanceof AppError) throw error; }
       throw new AppError('PROJECT_DELETED', 'Project has been deleted', { status: 410 });
     }
     const file = this.documentPath(id);
     if (!fs.existsSync(file)) throw new AppError('PROJECT_NOT_FOUND', 'Project not found', { status: 404 });
     try {
       let document = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (!Number.isInteger(document.revision) || !document.ownerId || !document.incarnationId || this.hasLegacyContinuity(document) || this.hasLegacyAssets(document)) {
+      if (!Number.isInteger(document.revision) || !document.tenantId || !document.incarnationId || this.hasLegacyContinuity(document) || this.hasLegacyAssets(document)) {
         const revision = Number.isInteger(document.revision) ? document.revision + 1 : 1;
-        document = this.normalize({ ...document, id, revision, ownerId: document.ownerId || 'local-user', incarnationId: document.incarnationId || crypto.randomUUID() });
+        document = this.normalize({ ...document, id, revision, tenantId: document.tenantId || document.ownerId || 'local-user', createdByUserId: document.createdByUserId || document.ownerId || 'local-user', incarnationId: document.incarnationId || crypto.randomUUID() });
         this.atomicJson(file, document);
         this.syncReferences(id, document.assetReferences || []);
       }
@@ -92,7 +93,7 @@ class ProjectStore {
     if (expectedRevision !== undefined && Number(expectedRevision) !== existing.revision) {
       throw new AppError('REVISION_CONFLICT', `Expected revision ${expectedRevision}, current revision is ${existing.revision}`, { status: 409, details: { expectedRevision: Number(expectedRevision), currentRevision: existing.revision } });
     }
-    const next = this.normalize({ ...document, id, ownerId: existing.ownerId, incarnationId: existing.incarnationId, revision: existing.revision + 1, createdAt: existing.createdAt, updatedAt: new Date().toISOString() });
+    const next = this.normalize({ ...document, id, tenantId: existing.tenantId || existing.ownerId, createdByUserId: existing.createdByUserId || existing.ownerId, incarnationId: existing.incarnationId, revision: existing.revision + 1, createdAt: existing.createdAt, updatedAt: new Date().toISOString() });
     this.atomicJson(this.documentPath(id), next);
     this.syncReferences(id, next.assetReferences || []);
     return next;
@@ -100,6 +101,9 @@ class ProjectStore {
 
   normalize(document) {
     const copy = this.migrateLegacyAssets(structuredClone(document));
+    copy.tenantId = copy.tenantId || copy.ownerId || 'local-user';
+    copy.createdByUserId = copy.createdByUserId || copy.ownerId || copy.tenantId;
+    delete copy.ownerId;
     delete copy.storyBible;
     delete copy.schemaVersion;
     copy.scenes = Array.isArray(copy.scenes) ? copy.scenes.map((scene) => {
@@ -185,7 +189,7 @@ class ProjectStore {
 
   acquireLease(id, { ownerId } = {}) {
     const document = this.read(id, { ownerId });
-    return Object.freeze({ projectId: id, incarnationId: document.incarnationId, ownerId: document.ownerId });
+    return Object.freeze({ projectId: id, incarnationId: document.incarnationId, ownerId: document.tenantId });
   }
 
   verifyLease(lease, signal) {
@@ -264,7 +268,7 @@ class ProjectStore {
 
   delete(id, { ownerId } = {}) {
     const document = this.read(id, { ownerId });
-    this.atomicJson(this.tombstonePath(id), { id, ownerId: document.ownerId, incarnationId: document.incarnationId, deletedAt: new Date().toISOString() });
+    this.atomicJson(this.tombstonePath(id), { id, tenantId: document.tenantId, incarnationId: document.incarnationId, deletedAt: new Date().toISOString() });
     fs.rmSync(this.projectDir(id), { recursive: true, force: true });
   }
 

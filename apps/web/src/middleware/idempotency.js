@@ -4,7 +4,7 @@ function requireIdempotency(store, projectStore) {
   return (req, res, next) => {
     const projectId = req.body?.projectId;
     if (!projectId) return next(new AppError('PROJECT_REQUIRED', 'projectId is required for generation', { status: 400 }));
-    try { projectStore.read(projectId, { ownerId: req.user.id }); } catch (error) { return next(error); }
+    try { projectStore.read(projectId, { ownerId: req.auth.tenantId }); } catch (error) { return next(error); }
     const key = String(req.get('Idempotency-Key') || '');
     if (!/^[a-zA-Z0-9_.:-]{8,200}$/.test(key)) return next(new AppError('IDEMPOTENCY_KEY_REQUIRED', 'A valid Idempotency-Key header is required', { status: 400 }));
     try {

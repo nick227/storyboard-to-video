@@ -9,6 +9,8 @@
 
 # Generated storyboard media, exports, and any ad-hoc local backups under it
 /apps/web/data/*
+/apps/web/src/generated/prisma/
+/apps/web/dist/generated/prisma/
 
 # Local Python environments and model weights
 /apps/voice-service/venv/

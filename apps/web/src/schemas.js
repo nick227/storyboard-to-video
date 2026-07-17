@@ -4,13 +4,13 @@ const projectId = z.string().trim().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/);
 const fallbackPolicy = z.enum(['fail', 'local']).default('local');
 const projectDocument = z.object({
   id: projectId.optional(),
-  title: z.string().trim().max(200).default('Untitled storyboard'),
+  title: z.string().trim().max(200).default('Untitled'),
   scenes: z.array(z.record(z.any())).max(50).default([]),
 }).passthrough();
 
 const createProject = z.object({
   id: projectId.optional(),
-  title: z.string().trim().min(1).max(200).default('Untitled storyboard'),
+  title: z.string().trim().min(1).max(200).default('Untitled'),
   project: projectDocument.optional(),
 }).default({});
 

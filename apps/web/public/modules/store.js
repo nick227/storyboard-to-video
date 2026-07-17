@@ -45,7 +45,7 @@ export const generationStore = new Store({
 export const voiceStore = new Store({
   audioProvider: 'stub',
   voiceMap: { elevenlabs: {}, piper: {}, spark: {}, stub: {} },
-  availableVoices: { elevenlabs: [], spark: [] }
+  availableVoices: { elevenlabs: [], spark: [], piper: [] }
 });
 
 export const batchStore = new Store({

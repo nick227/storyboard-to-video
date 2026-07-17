@@ -53,15 +53,20 @@ The two apps talk to each other over plain HTTP, configured entirely through env
    ```bash
    npm --prefix apps/web install
    ```
-3. (Optional) Install the local Piper voice engine for natural-sounding offline TTS:
+3. Start PostgreSQL and apply committed migrations:
+   ```bash
+   docker compose up -d postgres
+   npm --prefix apps/web run prisma:migrate:deploy
+   ```
+4. (Optional) Install the local Piper voice engine for natural-sounding offline TTS:
    ```bash
    npm run setup:piper
    ```
-4. Start the app:
+5. Start the app:
    ```bash
    npm run dev:web
    ```
-5. Open `http://localhost:3000`
+6. Open `http://localhost:3000`
 
 Root-level scripts (`npm run <script>` from the repo root) drive both apps: `dev:web`, `dev:voice`, `check`, `test`, `setup:piper`, `setup:spark`.
 
@@ -127,12 +132,14 @@ Root-level scripts (`npm run <script>` from the repo root) drive both apps: `dev
 
 ## Authentication and quotas
 
-- Set `AUTH_TOKENS` to comma-separated `bearer-token:owner-id` pairs. Production startup fails when it is missing.
-- Set `ADMIN_OWNER_IDS` to the owners allowed to mutate shared style references.
-- Local development defaults to `local-dev-token` for `local-user`; the browser asks for a replacement token after a 401.
-- Project documents, jobs, generation, exports, and asset downloads enforce project ownership.
+- Set `DATABASE_URL` locally and in production. Prisma/PostgreSQL is authoritative for users, workspaces, memberships, and sessions.
+- `AUTH_TOKENS` remains available only as a test/local compatibility adapter.
+- Every account receives a personal workspace. Project documents, jobs, generation, exports, and asset downloads enforce workspace ownership.
+- Set `ADMIN_OWNER_IDS` to the user IDs allowed to mutate shared style references.
 - `PROJECT_MAX_FILES` and `PROJECT_MAX_BYTES` set per-project asset limits.
 - Run remote deployments behind TLS and keep bearer tokens out of URLs and logs.
+
+See [the multi-tenant foundation](docs/multi-tenant-foundation.md) for the ownership model and remaining migration work.
 
 ## POC stakes
 1. Convert pasted narrative text into a controllable visual sequence.

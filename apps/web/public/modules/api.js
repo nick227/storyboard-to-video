@@ -1,6 +1,5 @@
 export async function api(url, options = {}) {
   const headers = { ...(options.headers || {}) };
-  headers.Authorization ||= `Bearer ${localStorage.getItem('storyboard-auth-token') || 'local-dev-token'}`;
   
   if (options.method === 'POST' && /^\/api\/(storyboard\/(generate|regenerate)|images\/generate|videos\/generate|audio\/generate)/.test(url)) {
     headers['Idempotency-Key'] ||= options.idempotencyKey || crypto.randomUUID();
@@ -10,7 +9,7 @@ export async function api(url, options = {}) {
     headers['Content-Type'] = 'application/json';
   }
 
-  const { authRetried, ...fetchOptions } = options;
+  const fetchOptions = options;
   const res = await fetch(url, { ...fetchOptions, headers });
   
   const raw = await res.text();
@@ -28,13 +27,7 @@ export async function api(url, options = {}) {
     error.retryable = detail?.retryable === true;
     error.status = res.status;
     
-    if (res.status === 401 && !authRetried) {
-      const token = window.prompt('Enter the project API access token:');
-      if (token) {
-        localStorage.setItem('storyboard-auth-token', token);
-        return api(url, { ...options, authRetried: true, headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` } });
-      }
-    }
+    if (res.status === 401) window.dispatchEvent(new CustomEvent('storyboard:unauthenticated'));
     throw error;
   }
   

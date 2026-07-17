@@ -1,13 +1,14 @@
 import { projectStore, sceneStore, voiceStore, uiStore, batchStore } from './modules/store.js';
-import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord } from './modules/persistence.js';
+import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope } from './modules/persistence.js';
 import { initRendering } from './modules/rendering.js';
 import { initTimeline } from './modules/timeline.js';
 import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, updateButtons } from './modules/ui.js';
 import { generatePrompts, generateDialogue, downloadZip, regenerateImage, regenerateAudio, regenerateVideo } from './modules/workflows.js';
 import { batchController } from './modules/batch.js';
 import { suggestSceneCount } from './modules/scene-count.js';
+import { initializeAuth } from './modules/auth.js';
 import {
-  loadElevenLabsVoices, loadSparkVoices, cloneVoice, switchMicrophone,
+  loadElevenLabsVoices, loadSparkVoices, loadPiperVoices, cloneVoice, switchMicrophone,
   openVoiceLibraryModal, closeVoiceLibraryCleanup, toggleVoiceRecording,
   renderVoiceLibraryList, resetVoiceRecordingUI, voiceRecordingState,
 } from './modules/voices.js';
@@ -32,10 +33,28 @@ const els = {
   
   // Navigation / Actions
   storyboardTitle: document.getElementById('storyboardTitle'),
-  storyboardPicker: document.getElementById('storyboardPicker'),
+  storyboardPickerToggle: document.getElementById('storyboardPickerToggle'),
+  storyboardPickerList: document.getElementById('storyboardPickerList'),
   newStoryboardBtn: document.getElementById('newStoryboardBtn'),
   saveStateBtn: document.getElementById('saveStateBtn'),
   downloadZipBtn: document.getElementById('downloadZipBtn'),
+  authLoggedOut: document.getElementById('authLoggedOut'),
+  authLoggedIn: document.getElementById('authLoggedIn'),
+  authUserLabel: document.getElementById('authUserLabel'),
+  loginBtn: document.getElementById('loginBtn'),
+  registerBtn: document.getElementById('registerBtn'),
+  logoutBtn: document.getElementById('logoutBtn'),
+  authDialog: document.getElementById('authDialog'),
+  authDialogTitle: document.getElementById('authDialogTitle'),
+  authDialogClose: document.getElementById('authDialogClose'),
+  authForm: document.getElementById('authForm'),
+  authDisplayNameField: document.getElementById('authDisplayNameField'),
+  authDisplayName: document.getElementById('authDisplayName'),
+  authEmail: document.getElementById('authEmail'),
+  authPassword: document.getElementById('authPassword'),
+  authError: document.getElementById('authError'),
+  authSubmitBtn: document.getElementById('authSubmitBtn'),
+  authToggleMode: document.getElementById('authToggleMode'),
   
   // Generation Buttons
   generatePromptsBtn: document.getElementById('generatePromptsBtn'),
@@ -246,6 +265,7 @@ async function refreshVoicesForCurrentProvider() {
   const provider = voiceStore.get().audioProvider;
   if (provider === 'elevenlabs') await loadElevenLabsVoices(setStatus);
   if (provider === 'spark') await loadSparkVoices(setStatus);
+  if (provider === 'piper') await loadPiperVoices(setStatus);
 }
 
 async function loadStoryboardIntoUI() {
@@ -292,17 +312,45 @@ function attachEvents() {
     await loadStoryboardIntoUI();
   });
 
-  els.storyboardPicker.addEventListener('change', async (e) => {
-    await openStoryboard(e.target.value, els);
+  const closeStoryboardPicker = () => {
+    els.storyboardPickerList.hidden = true;
+    els.storyboardPickerToggle.setAttribute('aria-expanded', 'false');
+  };
+  const openStoryboardPicker = () => {
+    els.storyboardPickerList.hidden = false;
+    els.storyboardPickerToggle.setAttribute('aria-expanded', 'true');
+  };
+
+  els.storyboardPickerToggle.addEventListener('click', () => {
+    if (els.storyboardPickerList.hidden) openStoryboardPicker();
+    else closeStoryboardPicker();
+  });
+
+  els.storyboardPickerList.addEventListener('click', async (event) => {
+    const item = event.target.closest('li[data-id]');
+    if (!item) return;
+    closeStoryboardPicker();
+    if (item.dataset.id === getCurrentStoryboardRecord()?.id) return;
+    await openStoryboard(item.dataset.id, els);
     refreshSceneCountSuggestion({ apply: true });
     renderStoryboardPicker(els);
     await loadStoryboardIntoUI();
   });
 
+  document.addEventListener('click', (event) => {
+    if (els.storyboardPickerList.hidden) return;
+    if (event.target === els.storyboardPickerToggle || els.storyboardPickerList.contains(event.target)) return;
+    closeStoryboardPicker();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !els.storyboardPickerList.hidden) closeStoryboardPicker();
+  });
+
   els.storyboardTitle.addEventListener('input', () => {
     saveStoryboard(els, false);
-    const selectedOption = els.storyboardPicker.selectedOptions[0];
-    if (selectedOption) selectedOption.textContent = getCurrentStoryboardRecord().title;
+    const current = getCurrentStoryboardRecord();
+    const selectedItem = els.storyboardPickerList.querySelector('li[aria-selected="true"]');
+    if (selectedItem) selectedItem.textContent = current.title;
   });
   els.storyboardTitle.addEventListener('blur', () => {
     els.storyboardTitle.value = getCurrentStoryboardRecord().title;
@@ -453,6 +501,13 @@ async function init() {
   initRendering(els);
   initTimeline(els);
   attachEvents();
+
+  const session = await initializeAuth(els);
+  if (!session) {
+    setStatus('Log in to open your storyboards.');
+    return;
+  }
+  setPersistenceScope(session.tenant.id);
 
   await restoreStoryboardLibrary(els);
   refreshSceneCountSuggestion({ apply: true });

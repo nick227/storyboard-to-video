@@ -3,8 +3,10 @@ import { getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from 
 import { loadProtectedAsset } from './assets.js';
 import { api } from './api.js';
 import { getSpeakersFromScenes } from './workflows.js';
+import { previewVoice } from './voices.js';
 
-const NO_MAPPING_AUDIO_PROVIDERS = ['stub', 'piper'];
+const NO_MAPPING_AUDIO_PROVIDERS = ['stub'];
+const PREVIEWABLE_AUDIO_PROVIDERS = ['elevenlabs', 'spark', 'piper'];
 
 const LEGACY_STYLE_PROMPTS = {
   'basic-cartoon': 'Ultra-low detail stick figure illustration of simple shapes and minimal colors. Thick black outlines, flat colors, white or lightly colored background, minimal props, playful composition, crude hand-drawn digital doodle feeling, clean readable silhouette, minimal texture, no realism.',
@@ -26,18 +28,19 @@ function migrateLegacyStylePrompt(saved, style, els) {
 export function renderStoryboardPicker(els) {
   const state = projectStore.get();
   const current = state.storyboards.find((storyboard) => storyboard.id === state.currentId);
-  if (els.storyboardTitle) els.storyboardTitle.value = current?.title || 'Untitled storyboard';
-  els.storyboardPicker.replaceChildren();
+  if (els.storyboardTitle) els.storyboardTitle.value = current?.title || 'Untitled';
+  els.storyboardPickerList.replaceChildren();
   state.storyboards
     .slice()
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
     .forEach((storyboard) => {
-      const option = document.createElement('option');
-      option.value = storyboard.id;
-      option.textContent = storyboard.title;
-      els.storyboardPicker.appendChild(option);
+      const item = document.createElement('li');
+      item.setAttribute('role', 'option');
+      item.dataset.id = storyboard.id;
+      item.textContent = storyboard.title;
+      item.setAttribute('aria-selected', String(storyboard.id === state.currentId));
+      els.storyboardPickerList.appendChild(item);
     });
-  els.storyboardPicker.value = state.currentId;
 }
 
 export async function loadStyles(els) {
@@ -168,7 +171,7 @@ export function renderVoicesPanel(els) {
   const state = voiceStore.get();
   const provider = state.audioProvider;
   const voiceMap = state.voiceMap[provider] || {};
-  const availableVoices = ['elevenlabs', 'spark'].includes(provider) ? (state.availableVoices[provider] || []) : [];
+  const availableVoices = PREVIEWABLE_AUDIO_PROVIDERS.includes(provider) ? (state.availableVoices[provider] || []) : [];
   
   els.voiceCloningBtn.hidden = provider !== 'spark';
   els.voicesPanel.innerHTML = '';
@@ -185,9 +188,7 @@ export function renderVoicesPanel(els) {
     if (NO_MAPPING_AUDIO_PROVIDERS.includes(provider)) {
       const note = document.createElement('span');
       note.className = 'voice-note';
-      note.textContent = provider === 'piper'
-        ? 'Local neural voice (Piper), auto-assigned per speaker (no mapping needed)'
-        : 'Local rudimentary voice, auto-assigned per speaker (no mapping needed)';
+      note.textContent = 'Local rudimentary voice, auto-assigned per speaker (no mapping needed)';
       row.appendChild(note);
     } else {
       const select = document.createElement('select');
@@ -205,16 +206,30 @@ export function renderVoicesPanel(els) {
       const mapped = voiceMap[speaker];
       select.value = mapped?.voiceId || '';
       row.classList.toggle('voice-unmapped', !mapped?.voiceId);
+
+      const previewBtn = document.createElement('button');
+      previewBtn.type = 'button';
+      previewBtn.className = 'secondary text-button voice-preview-btn';
+      previewBtn.textContent = '▶';
+      previewBtn.title = 'Preview this voice';
+      previewBtn.setAttribute('aria-label', 'Preview selected voice');
+      previewBtn.disabled = !select.value;
+      previewBtn.addEventListener('click', () => {
+        const chosen = availableVoices.find((voice) => voice.voiceId === select.value);
+        previewVoice(provider, chosen, (msg) => { if (els.statusText) els.statusText.textContent = msg; });
+      });
+
       select.addEventListener('change', () => {
         const chosen = availableVoices.find((voice) => voice.voiceId === select.value);
-        
+        previewBtn.disabled = !chosen;
+
         voiceStore.set(s => {
           const map = { ...s.voiceMap[provider] };
           if (chosen) map[speaker] = { voiceId: chosen.voiceId, label: chosen.label };
           else delete map[speaker];
           return { voiceMap: { ...s.voiceMap, [provider]: map } };
         });
-        
+
         row.classList.toggle('voice-unmapped', !voiceStore.get().voiceMap[provider]?.[speaker]?.voiceId);
         const record = getCurrentStoryboardRecord();
         if (record) {
@@ -222,7 +237,10 @@ export function renderVoicesPanel(els) {
           queueSync(record);
         }
       });
-      row.appendChild(select);
+      const controls = document.createElement('div');
+      controls.className = 'voice-controls';
+      controls.append(select, previewBtn);
+      row.appendChild(controls);
     }
     els.voicesPanel.appendChild(row);
   });
@@ -257,7 +275,7 @@ export function updateButtons(els) {
   els.sceneCount.disabled = busy;
   els.autoSceneCountBtn.disabled = busy;
   els.newStoryboardBtn.disabled = busy;
-  els.storyboardPicker.disabled = busy;
+  els.storyboardPickerToggle.disabled = busy;
   els.saveStateBtn.disabled = busy || els.saveStateBtn.textContent !== 'Retry save';
   els.downloadZipBtn.disabled = busy || !sceneState.scenes.some((scene) => scene.versions.length);
   els.characterRefInput.disabled = busy;

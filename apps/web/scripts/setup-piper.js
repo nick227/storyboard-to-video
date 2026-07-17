@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { PIPER_VOICE_CATALOG, piperVoiceHfPaths } = require('../src/config/piper-voices');
 
 const ROOT = path.join(__dirname, '..');
 const VENDOR_DIR = path.join(ROOT, 'vendor');
@@ -10,16 +11,7 @@ const VOICES_DIR = path.join(PIPER_DIR, 'voices');
 
 const PIPER_RELEASE_URL = 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz';
 
-function voiceUrls(id, subpath) {
-  const base = `https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/${subpath}`;
-  return { id, onnxUrl: `${base}/${id}.onnx`, configUrl: `${base}/${id}.onnx.json` };
-}
-
-const DEFAULT_VOICES = [
-  voiceUrls('en_US-lessac-medium', 'lessac/medium'),
-  voiceUrls('en_US-amy-medium', 'amy/medium'),
-  voiceUrls('en_US-ryan-medium', 'ryan/medium'),
-];
+const DEFAULT_VOICES = PIPER_VOICE_CATALOG.map(({ id }) => ({ id, ...piperVoiceHfPaths(id) }));
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });

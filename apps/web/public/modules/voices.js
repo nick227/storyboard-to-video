@@ -37,6 +37,51 @@ export async function loadSparkVoices(setStatus) {
   }
 }
 
+export async function loadPiperVoices(setStatus) {
+  if (voiceStore.get().availableVoices.piper.length) return;
+  try {
+    const data = await api('/api/audio/voices?provider=piper');
+    voiceStore.set(state => ({
+      availableVoices: { ...state.availableVoices, piper: data.voices || [] }
+    }));
+  } catch (error) {
+    if (setStatus) setStatus(`Could not load Piper voices: ${error.message}`);
+  }
+}
+
+let previewAudio = null;
+
+export async function previewVoice(provider, voice, setStatus) {
+  if (!voice?.voiceId) return;
+  if (previewAudio) {
+    previewAudio.pause();
+    previewAudio = null;
+  }
+  try {
+    let src;
+    if (provider === 'elevenlabs') {
+      src = voice.previewUrl;
+      if (!src) {
+        if (setStatus) setStatus('No preview available for this voice.');
+        return;
+      }
+    } else if (provider === 'spark') {
+      src = await loadProtectedAsset(`/api/audio/spark/voices/${encodeURIComponent(voice.voiceId)}/reference`);
+    } else if (provider === 'piper') {
+      if (setStatus) setStatus(`Synthesizing preview for "${voice.label || voice.voiceId}"...`);
+      src = await loadProtectedAsset(`/api/audio/piper/voices/${encodeURIComponent(voice.voiceId)}/preview`);
+    } else {
+      return;
+    }
+    if (!src) return;
+    previewAudio = new Audio(src);
+    await previewAudio.play();
+    if (setStatus) setStatus(`Previewing "${voice.label || voice.voiceId}".`);
+  } catch (error) {
+    if (setStatus) setStatus(`Preview failed: ${error.message}`);
+  }
+}
+
 export async function cloneVoice(blob, name, setStatus) {
   try {
     if (setStatus) setStatus(`Cloning voice "${name}"...`);

@@ -32,19 +32,18 @@ async function runTests() {
     assert(record.updatedAt != null, 'Record should have updatedAt timestamp');
     addResult('Project Record Creation', true);
 
-    // Test 3: Protected Asset Loader handles tokens
+    // Test 3: Protected Asset Loader relies on the HttpOnly session cookie
     // We mock fetch for this test
     const originalFetch = window.fetch;
     window.fetch = async (url, options) => {
       if (url === '/protected-mock') {
-        assert(options.headers.Authorization.startsWith('Bearer '), 'Should include Bearer token');
+        assert(!options?.headers?.Authorization, 'Should not expose an auth token to JavaScript');
         return { ok: true, blob: async () => new Blob(['mock data']) };
       }
       return originalFetch(url, options);
     };
     
     try {
-      localStorage.setItem('storyboard-auth-token', 'test-token');
       const url = await loadProtectedAsset('/protected-mock');
       assert(url.startsWith('blob:'), 'Should return a blob URL');
       addResult('Protected Asset Loader', true);

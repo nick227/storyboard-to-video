@@ -11,20 +11,22 @@ const { videosRoutes } = require('./routes/videos.routes');
 const { stylesRoutes } = require('./routes/styles.routes');
 const { exportsRoutes } = require('./routes/exports.routes');
 const { assetsRoutes } = require('./routes/assets.routes');
+const { authRoutes } = require('./routes/auth.routes');
 
 function createApp(dependencies) {
   const app = express();
   registerMiddleware(app, dependencies);
+  app.use('/api/auth', authRoutes(dependencies.auth));
+  app.use(['/api', '/projects', '/style-references'], dependencies.authenticate);
   registerRoutes(app, dependencies);
   registerErrorHandler(app);
   return app;
 }
 
-function registerMiddleware(app, { config, authenticate }) {
+function registerMiddleware(app, { config }) {
   app.use(express.json({ limit: config.limits.json }));
   app.use(requestId);
   app.use(express.static(config.paths.public));
-  app.use(['/api', '/projects', '/style-references'], authenticate);
 }
 
 function registerRoutes(app, d) {

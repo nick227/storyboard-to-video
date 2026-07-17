@@ -8,9 +8,12 @@ function optionValues(selectEl) {
   return [...selectEl.options].map((option) => option.value);
 }
 
-const STORYBOARD_LIBRARY_KEY = 'storyboard-poc-storyboards';
-const LEGACY_STORYBOARD_KEYS = ['storyboard-poc-current', 'storyboard-poc-draft'];
+let storyboardLibraryKey = 'storyboard-poc-storyboards:anonymous';
 export let serverSyncTimer = null;
+
+export function setPersistenceScope(tenantId) {
+  storyboardLibraryKey = `storyboard-poc-storyboards:${String(tenantId || 'anonymous')}`;
+}
 
 function parseStoredObject(raw) {
   if (!raw) return null;
@@ -22,7 +25,7 @@ function parseStoredObject(raw) {
   }
 }
 
-export function createStoryboardRecord(storyboard = {}, title = 'Untitled storyboard') {
+export function createStoryboardRecord(storyboard = {}, title = 'Untitled') {
   return {
     ...storyboard,
     id: typeof storyboard.id === 'string' && storyboard.id ? storyboard.id : crypto.randomUUID(),
@@ -33,7 +36,7 @@ export function createStoryboardRecord(storyboard = {}, title = 'Untitled storyb
 }
 
 export function initializeStoryboardLibrary() {
-  const stored = parseStoredObject(localStorage.getItem(STORYBOARD_LIBRARY_KEY));
+  const stored = parseStoredObject(localStorage.getItem(storyboardLibraryKey));
   if (stored && Array.isArray(stored.storyboards) && stored.storyboards.length) {
     const storyboards = stored.storyboards.map((item) => createStoryboardRecord(item));
     const currentId = storyboards.some((item) => item.id === stored.currentId)
@@ -43,16 +46,13 @@ export function initializeStoryboardLibrary() {
     return;
   }
 
-  const legacy = LEGACY_STORYBOARD_KEYS
-    .map((key) => parseStoredObject(localStorage.getItem(key)))
-    .find(Boolean);
-  const first = createStoryboardRecord(legacy || {});
+  const first = createStoryboardRecord({});
   projectStore.set({ version: 3, currentId: first.id, storyboards: [first] });
   persistStoryboardLibrary();
 }
 
 export function persistStoryboardLibrary() {
-  localStorage.setItem(STORYBOARD_LIBRARY_KEY, JSON.stringify(projectStore.get()));
+  localStorage.setItem(storyboardLibraryKey, JSON.stringify(projectStore.get()));
 }
 
 export function getCurrentStoryboardRecord() {
@@ -200,6 +200,17 @@ function restoreStoryboardFields(els) {
 
 export async function restoreStoryboardLibrary(els) {
   initializeStoryboardLibrary();
+  const response = await api('/api/projects');
+  const state = projectStore.get();
+  const merged = new Map((state.storyboards || []).map((project) => [project.id, project]));
+  for (const serverProject of response.projects || []) {
+    const local = merged.get(serverProject.id);
+    merged.set(serverProject.id, local ? { ...serverProject, ...local, revision: serverProject.revision } : createStoryboardRecord(serverProject));
+  }
+  const storyboards = [...merged.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  const currentId = storyboards.some((project) => project.id === state.currentId) ? state.currentId : storyboards[0]?.id;
+  projectStore.set({ version: 3, currentId, storyboards });
+  persistStoryboardLibrary();
   await hydrateCurrentProjectFromServer();
   restoreStoryboardFields(els);
 }
@@ -214,7 +225,7 @@ export async function openStoryboard(id, els) {
 
 export function createStoryboard(els) {
   revokeAllAssets();
-  const record = createStoryboardRecord({}, 'Untitled storyboard');
+  const record = createStoryboardRecord({}, 'Untitled');
   projectStore.set((state) => ({ currentId: record.id, storyboards: [...state.storyboards, record] }));
   persistStoryboardLibrary();
   sceneStore.set({ scenes: [], lastPromptInputs: null });
@@ -232,7 +243,7 @@ export function saveStoryboard(els, immediate = false) {
   if (!record) return;
 
   Object.assign(record, {
-    title: String(els.storyboardTitle?.value || '').trim() || 'Untitled storyboard',
+    title: String(els.storyboardTitle?.value || '').trim() || 'Untitled',
     scriptText: els.scriptText.value,
     sceneCount: Number(els.sceneCount.value) || 8,
     sceneCountMode: els.sceneCount.dataset.mode === 'manual' ? 'manual' : 'auto',

@@ -93,30 +93,80 @@ label > span {
   text-transform: uppercase;
   margin-bottom: 4px;
 }
-.storyboard-title {
+.storyboard-combo {
+  position: relative;
+  display: flex;
+  align-items: center;
   flex: 1 1 auto;
   min-width: 0;
   max-width: 720px;
+  border-bottom: 1px solid transparent;
+}
+.storyboard-combo:hover { border-bottom-color: var(--line); }
+.storyboard-combo:focus-within { border-bottom-color: var(--line); background-color: rgba(255,255,255,0.03); }
+.storyboard-title {
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 4px 0;
   border: 0;
-  border-bottom: 1px solid transparent;
   border-radius: 0;
   background-color: transparent;
   font-size: clamp(24px, 3vw, 34px);
   font-weight: 750;
   line-height: 1.2;
 }
-.storyboard-title:hover { border-bottom-color: var(--line); }
-.storyboard-title:focus { background-color: rgba(255,255,255,0.03); }
-.storyboard-picker {
-  flex: 0 1 190px;
-  width: 190px;
-  padding: 7px 30px 7px 10px;
+.storyboard-picker-toggle {
+  flex: 0 0 auto;
+  padding: 4px 4px;
+  border: 0;
+  background: transparent;
   color: var(--muted);
-  background-color: transparent;
+  font-size: 14px;
   cursor: pointer;
 }
-.top-actions { flex: 0 0 auto; }
+.storyboard-picker-toggle:hover { color: var(--text); }
+.storyboard-picker-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 240px;
+  max-width: 100%;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.storyboard-picker-list[hidden] { display: none; }
+.storyboard-picker-list li {
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.storyboard-picker-list li:hover { background-color: rgba(255,255,255,0.06); }
+.storyboard-picker-list li[aria-selected="true"] {
+  background-color: rgba(255,255,255,0.1);
+  font-weight: 600;
+}
+.top-actions { flex: 0 0 auto; flex-wrap: wrap; }
+.auth-widget { display: flex; align-items: center; gap: 8px; padding-left: 8px; border-left: 1px solid var(--line); }
+.auth-widget[hidden] { display: none; }
+.auth-user-label { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.auth-dialog { width: min(430px, calc(100vw - 24px)); }
+.auth-form { display: grid; gap: 14px; }
+.auth-form label[hidden] { display: none; }
+.auth-error { min-height: 18px; margin: 0; color: #ff8b86; font-size: 12px; }
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -127,7 +177,7 @@ label > span {
 .panel-tight { padding: 12px 16px; }
 .concept-grid {
   display: grid;
-  grid-template-columns: 70% 30%;
+  grid-template-columns: 70% 29%;
   gap: 14px;
   align-items: start;
 }
@@ -855,6 +905,16 @@ button.text-button {
 .voice-speaker { font-weight: 700; }
 .voice-note { color: var(--muted); font-size: 12px; }
 .voice-row.voice-unmapped { border-color: var(--danger); }
+.voice-controls { display: flex; align-items: center; gap: 6px; }
+.voice-preview-btn {
+  min-height: 30px;
+  min-width: 30px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 50%;
+}
+.voice-preview-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .voices-panel-header {
   display: flex;
   align-items: center;
@@ -1203,13 +1263,14 @@ button.text-button {
 @media (max-width: 700px) {
   .app-shell { padding: 12px; }
   .storyboard-title-row { align-items: stretch; flex-direction: column; }
-  .storyboard-picker { flex-basis: auto; width: 100%; }
+  .storyboard-combo { max-width: 100%; }
   .story-setup-grid, .settings-fields, .reference-groups, .compact-fields { grid-template-columns: 1fr; }
   .section-heading { align-items: flex-start; flex-direction: column; }
   .section-heading button { width: 100%; }
   .batch-actions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
   .voice-row { align-items: stretch; flex-direction: column; }
   .voice-row select { width: 100%; min-width: 0; }
+  .voice-controls select { flex: 1; }
   .voice-record-controls { flex-wrap: wrap; }
   .voice-library-item { flex-wrap: wrap; }
   .settings-modal { max-height: calc(100vh - 24px); }

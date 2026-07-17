@@ -11,17 +11,12 @@ export async function loadProtectedAsset(path) {
     return loadedAssets.get(path);
   }
 
-  const token = localStorage.getItem('storyboard-auth-token') || 'local-dev-token';
   try {
-    const res = await fetch(path, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
+    const res = await fetch(path);
 
     if (!res.ok) {
       if (res.status === 401) {
-        // Just return path on 401, maybe the browser can handle it or we prompt via api.js
+        window.dispatchEvent(new CustomEvent('storyboard:unauthenticated'));
         return path;
       }
       throw new Error(`Failed to load asset: ${res.status}`);

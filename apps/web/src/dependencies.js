@@ -18,6 +18,7 @@ const { createVoiceService } = require('./services/voice.service');
 const { requireIdempotency } = require('./middleware/idempotency');
 const { createJobExecution } = require('./jobs/execution');
 const { AuthService } = require('./auth');
+const { PrismaIdentityRepository } = require('./storage/prisma-identity.repository');
 const { createUpload } = require('./middleware/upload');
 const { createStoryboardController } = require('./controllers/storyboard.controller');
 const { createMediaController } = require('./controllers/media.controller');
@@ -25,7 +26,7 @@ const { createStylesController } = require('./controllers/styles.controller');
 const { createVoiceController } = require('./controllers/voice.controller');
 const { createAssetsController } = require('./controllers/assets.controller');
 
-function createDependencies(config) {
+function createDependencies(config, overrides = {}) {
   const projectStore = new ProjectStore(config.paths.projects);
   const queue = new GenerationQueue({
     concurrency: config.generationConcurrency,
@@ -46,14 +47,18 @@ function createDependencies(config) {
   const audio = createAudioGenerationService({ config, provider: audioProvider, projectStore });
   const videos = createVideoGenerationService({ config, provider: videoProvider, projectStore, styles });
   const exports = createExportService({ config, projectStore });
-  const voices = createVoiceService(config, cancellation);
+  const voices = createVoiceService(config, cancellation, audioProvider);
   const media = createMediaController({ images, audio, videos, exports });
+
+  const identityStore = overrides.identityStore || new PrismaIdentityRepository(config.env.DATABASE_URL);
+  const auth = new AuthService({ identityStore });
 
   return {
     config, projectStore, queue, idempotencyStore, generationContext,
     styles, prompts, dialogue, images, audio, videos, exports, voices,
     upload: createUpload(config),
-    authenticate: new AuthService().middleware(),
+    auth,
+    authenticate: auth.middleware(),
     idempotency: requireIdempotency(idempotencyStore, projectStore),
     execute: createJobExecution({ queue, projectStore, idempotencyStore, generationContext }),
     controllers: {
