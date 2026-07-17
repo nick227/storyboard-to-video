@@ -8,44 +8,317 @@ import { formatPlaybackTime } from './timeline.js';
 let els = {};
 let activeScenePlayback = null;
 let scenePlaybackCleanups = [];
+let confirmResolve = null;
+let entityModalSceneId = null;
+let entityModalType = null;
+let entityModalMediaPath;
+
+function linesToText(lines) {
+  return (lines || []).map((line) => `${line.speaker || 'Narrator'}: ${line.text || ''}`).join('\n');
+}
+function textToLines(text) {
+  return String(text || '').split('\n').map((row) => row.trim()).filter(Boolean).map((row) => {
+    const colonIndex = row.indexOf(':');
+    if (colonIndex === -1) return { speaker: 'Narrator', text: row };
+    return { speaker: row.slice(0, colonIndex).trim() || 'Narrator', text: row.slice(colonIndex + 1).trim() };
+  }).filter((line) => line.text);
+}
+
+const ENTITY_CONFIG = {
+  prompt: {
+    title: 'Visual Prompt',
+    kind: 'text',
+    fieldLabel: 'Visual prompt',
+    getValue: (scene) => scene.prompt || '',
+    setValue: (scene, value) => { scene.prompt = value; },
+    regen: (index, els, cb) => regeneratePrompt(index, els, cb),
+  },
+  dialogue: {
+    title: 'Dialogue',
+    kind: 'text',
+    fieldLabel: 'Dialogue',
+    getValue: (scene) => linesToText(scene.lines),
+    setValue: (scene, value) => { scene.lines = textToLines(value); },
+    regen: (index, els, cb) => regenerateDialogue(index, els, cb),
+  },
+  image: {
+    title: 'Image',
+    kind: 'image',
+    versions: (scene) => scene.versions,
+    activeIndex: (scene) => scene.activeVersionIndex,
+    selectVersion: (scene, vIndex) => { scene.activeVersionIndex = vIndex; scene.activeVisualType = 'image'; },
+    regen: (index, els, cb) => regenerateImage(index, null, els, cb).catch(() => {}),
+  },
+  audio: {
+    title: 'Audio',
+    kind: 'audio',
+    versions: (scene) => scene.audioVersions,
+    activeIndex: (scene) => scene.activeAudioVersionIndex,
+    selectVersion: (scene, vIndex) => { scene.activeAudioVersionIndex = vIndex; },
+    regen: (index, els, cb) => regenerateAudio(index, null, els, cb).catch(() => {}),
+  },
+  video: {
+    title: 'Video',
+    kind: 'video',
+    versions: (scene) => scene.videoVersions,
+    activeIndex: (scene) => scene.activeVideoVersionIndex,
+    selectVersion: (scene, vIndex) => { scene.activeVideoVersionIndex = vIndex; scene.activeVisualType = 'video'; },
+    regen: (index, els, cb) => regenerateVideo(index, null, els, cb).catch(() => {}),
+  },
+};
+
+function isEntityLoading(type, scene, operation) {
+  if (!operation) return false;
+  switch (type) {
+    case 'prompt': return operation.type === 'prompts' || (operation.type === 'prompt' && operation.sceneId === scene.id);
+    case 'image': return ['image', 'imagesSerial'].includes(operation.type) && operation.sceneId === scene.id;
+    case 'dialogue': return operation.type === 'dialogueAll' || (operation.type === 'dialogue' && operation.sceneId === scene.id);
+    case 'audio': return ['audio', 'audioSerial'].includes(operation.type) && operation.sceneId === scene.id;
+    case 'video': return ['video', 'videosSerial'].includes(operation.type) && operation.sceneId === scene.id;
+    default: return false;
+  }
+}
+
+function setupConfirmModal() {
+  const modal = els.confirmRegenModal;
+  if (!modal || modal.dataset.wired) return;
+  modal.dataset.wired = 'true';
+  els.confirmRegenCancelBtn.addEventListener('click', () => modal.close());
+  els.confirmRegenConfirmBtn.addEventListener('click', () => modal.close('confirm'));
+  modal.addEventListener('click', (event) => { if (event.target === modal) modal.close(); });
+  modal.addEventListener('close', () => {
+    const confirmed = modal.returnValue === 'confirm';
+    modal.returnValue = '';
+    const resolve = confirmResolve;
+    confirmResolve = null;
+    if (resolve) resolve(confirmed);
+  });
+}
+
+function confirmRegeneration(message) {
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+    els.confirmRegenMessage.textContent = message;
+    els.confirmRegenModal.showModal();
+  });
+}
+
+function currentEntityModalSceneIndex() {
+  if (!entityModalSceneId) return -1;
+  return sceneStore.get().scenes.findIndex((s) => s.id === entityModalSceneId);
+}
+
+function openEntityModal(index, type) {
+  const scene = sceneStore.get().scenes[index];
+  if (!scene || !ENTITY_CONFIG[type]) return;
+  entityModalSceneId = scene.id;
+  entityModalType = type;
+  entityModalMediaPath = undefined;
+  els.entityModal.showModal();
+  renderEntityModal();
+}
+
+function renderEntityModalMedia(scene, type, config) {
+  const versions = config.versions(scene);
+  const active = versions[config.activeIndex(scene)];
+  const path = active?.path || null;
+  els.entityModalMediaEmpty.hidden = Boolean(path);
+  if (path === entityModalMediaPath) return; // unchanged — don't disrupt any in-progress playback
+  entityModalMediaPath = path;
+
+  els.entityModalImage.hidden = true;
+  els.entityModalVideo.hidden = true;
+  els.entityModalAudio.hidden = true;
+  els.entityModalImage.removeAttribute('src');
+  els.entityModalVideo.pause();
+  els.entityModalVideo.removeAttribute('src');
+  els.entityModalAudio.pause();
+  els.entityModalAudio.removeAttribute('src');
+  if (!path) return;
+
+  if (type === 'image') {
+    loadProtectedAsset(path).then((url) => { if (url) els.entityModalImage.src = url; });
+    els.entityModalImage.hidden = false;
+  } else if (type === 'video') {
+    loadProtectedAsset(path).then((url) => { if (url) els.entityModalVideo.src = url; });
+    els.entityModalVideo.hidden = false;
+  } else if (type === 'audio') {
+    loadProtectedAsset(path).then((url) => { if (url) els.entityModalAudio.src = url; });
+    els.entityModalAudio.hidden = false;
+  }
+}
+
+function renderEntityModalHistory(scene, type, config, busy) {
+  if (config.kind === 'text') { els.entityModalHistory.hidden = true; return; }
+  const versions = config.versions(scene);
+  const activeIdx = config.activeIndex(scene);
+  els.entityModalHistory.hidden = versions.length === 0;
+  els.entityModalHistoryCount.textContent = `${versions.length} version${versions.length === 1 ? '' : 's'}`;
+  els.entityModalHistoryList.className = type === 'audio' ? 'audio-version-list' : 'version-list';
+  els.entityModalHistoryList.innerHTML = '';
+
+  if (type === 'audio') {
+    versions.forEach((version, vIndex) => {
+      const thumb = document.createElement('div');
+      thumb.className = `audio-version-thumb ${vIndex === activeIdx ? 'active' : ''}`;
+      const meta = document.createElement('div');
+      meta.className = 'audio-version-meta';
+      const label = document.createElement('strong');
+      label.textContent = `Version ${vIndex + 1}`;
+      const provider = document.createElement('span');
+      provider.textContent = version.provider || 'Audio';
+      meta.append(label, provider);
+      const audio = document.createElement('audio');
+      audio.controls = true;
+      loadProtectedAsset(version.path).then((url) => { if (url) audio.src = url; });
+      audio.addEventListener('play', () => activeScenePlayback?.pause());
+      const selectBtn = document.createElement('button');
+      selectBtn.type = 'button';
+      selectBtn.className = 'audio-version-select';
+      selectBtn.dataset.vindex = String(vIndex);
+      selectBtn.textContent = vIndex === activeIdx ? 'Current' : 'Use this version';
+      selectBtn.classList.toggle('is-current', vIndex === activeIdx);
+      selectBtn.disabled = busy || vIndex === activeIdx;
+      thumb.append(meta, audio, selectBtn);
+      els.entityModalHistoryList.appendChild(thumb);
+    });
+    return;
+  }
+
+  versions.forEach((version, vIndex) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `version-thumb ${vIndex === activeIdx ? 'active' : ''}`;
+    btn.dataset.vindex = String(vIndex);
+    btn.disabled = busy;
+    let mediaEl;
+    if (type === 'video') {
+      mediaEl = document.createElement('video');
+      mediaEl.muted = true;
+      mediaEl.preload = 'metadata';
+      mediaEl.style.cssText = 'display:block;width:100%;height:72px;object-fit:cover';
+    } else {
+      mediaEl = document.createElement('img');
+      mediaEl.alt = `Scene version ${vIndex + 1}`;
+    }
+    loadProtectedAsset(version.path).then((url) => { if (url) mediaEl.src = url; });
+    const meta = document.createElement('div');
+    meta.className = 'version-meta';
+    meta.textContent = `v${vIndex + 1}`;
+    btn.append(mediaEl, meta);
+    els.entityModalHistoryList.appendChild(btn);
+  });
+}
+
+function renderEntityModal() {
+  if (!entityModalType || !els.entityModal.open) return;
+  const index = currentEntityModalSceneIndex();
+  if (index === -1) { els.entityModal.close(); return; }
+  const scene = sceneStore.get().scenes[index];
+  const type = entityModalType;
+  const config = ENTITY_CONFIG[type];
+  const operation = uiStore.get().operation;
+  const busy = operation != null;
+  const isLoading = isEntityLoading(type, scene, operation);
+
+  els.entityModalSceneLabel.textContent = `Scene ${index + 1}`;
+  els.entityModalTitle.textContent = config.title;
+
+  const showBeat = type === 'prompt';
+  els.entityModalBeatField.hidden = !showBeat;
+  if (showBeat && document.activeElement !== els.entityModalBeat) els.entityModalBeat.value = scene.beat || '';
+  els.entityModalBeat.disabled = busy;
+
+  const isText = config.kind === 'text';
+  els.entityModalTextField.hidden = !isText;
+  els.entityModalTextFieldLabel.textContent = config.fieldLabel || '';
+  if (isText && document.activeElement !== els.entityModalTextarea) els.entityModalTextarea.value = config.getValue(scene);
+  els.entityModalTextarea.disabled = busy;
+  els.entityModalTextHint.hidden = type !== 'dialogue';
+
+  els.entityModalMedia.hidden = isText;
+  if (!isText) renderEntityModalMedia(scene, type, config);
+
+  els.entityModalRegenBtn.disabled = busy;
+  els.entityModalRegenBtn.classList.toggle('is-loading', isLoading);
+  els.entityModalRegenBtn.textContent = isLoading ? 'Regenerating' : 'Regenerate';
+  els.entityModalStatus.textContent = isLoading ? 'Regeneration in progress…' : (busy ? 'Another operation is running…' : '');
+
+  renderEntityModalHistory(scene, type, config, busy);
+}
+
+function setupEntityModal() {
+  const modal = els.entityModal;
+  if (!modal || modal.dataset.wired) return;
+  modal.dataset.wired = 'true';
+
+  const pauseOtherPlayers = () => {
+    activeScenePlayback?.pause();
+    [els.timelineVideo, els.timelineAudio].forEach((el) => { if (el && !el.paused) el.pause(); });
+  };
+  els.entityModalVideo.addEventListener('play', pauseOtherPlayers);
+  els.entityModalAudio.addEventListener('play', pauseOtherPlayers);
+
+  els.closeEntityModalBtn.addEventListener('click', () => modal.close());
+  modal.addEventListener('click', (event) => { if (event.target === modal) modal.close(); });
+  modal.addEventListener('close', () => {
+    entityModalSceneId = null;
+    entityModalType = null;
+    entityModalMediaPath = undefined;
+    els.entityModalVideo.pause();
+    els.entityModalVideo.removeAttribute('src');
+    els.entityModalAudio.pause();
+    els.entityModalAudio.removeAttribute('src');
+    els.entityModalImage.removeAttribute('src');
+  });
+
+  els.entityModalRegenBtn.addEventListener('click', () => {
+    const index = currentEntityModalSceneIndex();
+    if (index === -1) return;
+    const config = ENTITY_CONFIG[entityModalType];
+    confirmRegeneration(`Regenerate the ${config.title.toLowerCase()} for scene ${index + 1}? This replaces the current version.`).then((confirmed) => {
+      if (confirmed) config.regen(index, els, (t) => els.statusText.textContent = t);
+    });
+  });
+
+  els.entityModalBeat.addEventListener('input', debounce(() => {
+    const index = currentEntityModalSceneIndex();
+    if (index === -1) return;
+    const scenes = sceneStore.get().scenes;
+    scenes[index].beat = els.entityModalBeat.value;
+    sceneStore.set({ scenes: [...scenes] });
+    const record = getCurrentStoryboardRecord();
+    if (record) { record.scenes = sceneStore.get().scenes; queueSync(record, (t) => els.statusText.textContent = t); }
+  }, 500));
+
+  els.entityModalTextarea.addEventListener('input', debounce(() => {
+    const index = currentEntityModalSceneIndex();
+    if (index === -1) return;
+    const scenes = sceneStore.get().scenes;
+    ENTITY_CONFIG[entityModalType].setValue(scenes[index], els.entityModalTextarea.value);
+    sceneStore.set({ scenes: [...scenes] });
+    const record = getCurrentStoryboardRecord();
+    if (record) { record.scenes = sceneStore.get().scenes; queueSync(record, (t) => els.statusText.textContent = t); }
+    if (entityModalType === 'dialogue') renderVoicesPanel(els, (t) => els.statusText.textContent = t);
+  }, 500));
+
+  els.entityModalHistoryList.addEventListener('click', (event) => {
+    const index = currentEntityModalSceneIndex();
+    if (index === -1) return;
+    const target = event.target.closest('.audio-version-select') || event.target.closest('.version-thumb');
+    if (!target || target.disabled) return;
+    const scenes = sceneStore.get().scenes;
+    ENTITY_CONFIG[entityModalType].selectVersion(scenes[index], parseInt(target.dataset.vindex, 10));
+    sceneStore.set({ scenes: [...scenes] });
+    const record = getCurrentStoryboardRecord();
+    if (record) { record.scenes = sceneStore.get().scenes; queueSync(record); }
+  });
+}
 
 export function initRendering(domEls) {
   els = domEls;
-  
-  els.storyboardGrid.addEventListener('input', debounce((e) => {
-    const card = e.target.closest('.scene-card');
-    if (!card) return;
-    const sceneId = card.dataset.sceneId;
-    const scene = sceneStore.get().scenes.find(s => s.id === sceneId);
-    if (!scene) return;
-    
-    let changed = false;
-    if (e.target.classList.contains('scene-title-input')) {
-      scene.title = e.target.value; changed = true;
-    } else if (e.target.classList.contains('scene-beat')) {
-      scene.beat = e.target.value; changed = true;
-    } else if (e.target.classList.contains('scene-prompt')) {
-      scene.prompt = e.target.value; changed = true;
-    } else if (e.target.classList.contains('scene-dialogue')) {
-      const text = e.target.value;
-      scene.lines = String(text || '').split('\n').map((row) => row.trim()).filter(Boolean).map((row) => {
-        const colonIndex = row.indexOf(':');
-        if (colonIndex === -1) return { speaker: 'Narrator', text: row };
-        return { speaker: row.slice(0, colonIndex).trim() || 'Narrator', text: row.slice(colonIndex + 1).trim() };
-      }).filter((line) => line.text);
-      changed = true;
-      renderVoicesPanel(els, (text) => els.statusText.textContent = text);
-    }
-    
-    if (changed) {
-      sceneStore.set({ scenes: [...sceneStore.get().scenes] });
-      const record = getCurrentStoryboardRecord();
-      if (record) {
-        record.scenes = sceneStore.get().scenes;
-        queueSync(record, (text) => els.statusText.textContent = text);
-      }
-    }
-  }, 500));
+  setupConfirmModal();
+  setupEntityModal();
 
   els.storyboardGrid.addEventListener('click', (e) => {
     const card = e.target.closest('.scene-card');
@@ -54,43 +327,13 @@ export function initRendering(domEls) {
     const index = sceneStore.get().scenes.findIndex(s => s.id === sceneId);
     const scene = sceneStore.get().scenes[index];
     if (!scene) return;
-    
-    if (e.target.classList.contains('regen-prompt-btn')) {
-      regeneratePrompt(index, els, (t) => els.statusText.textContent = t);
-    } else if (e.target.classList.contains('regen-image-btn')) {
-      regenerateImage(index, null, els, (t) => els.statusText.textContent = t).catch(() => {});
-    } else if (e.target.classList.contains('regen-video-btn')) {
-      regenerateVideo(index, null, els, (t) => els.statusText.textContent = t).catch(() => {});
-    } else if (e.target.classList.contains('regen-dialogue-btn')) {
-      regenerateDialogue(index, els, (t) => els.statusText.textContent = t);
-    } else if (e.target.classList.contains('regen-audio-btn')) {
-      regenerateAudio(index, null, els, (t) => els.statusText.textContent = t).catch(() => {});
-    } else if (e.target.closest('.version-thumb')) {
-      const btn = e.target.closest('.version-thumb');
-      const vIndex = parseInt(btn.dataset.vindex, 10);
-      const isVideo = btn.dataset.type === 'video';
-      if (isVideo) {
-        scene.activeVideoVersionIndex = vIndex;
-        scene.activeVisualType = 'video';
-      } else {
-        scene.activeVersionIndex = vIndex;
-        scene.activeVisualType = 'image';
-      }
-      sceneStore.set({ scenes: [...sceneStore.get().scenes] });
-      const record = getCurrentStoryboardRecord();
-      if (record) { record.scenes = sceneStore.get().scenes; queueSync(record); }
-    } else if (e.target.closest('.audio-version-select')) {
-      const btn = e.target.closest('.audio-version-select');
-      const vIndex = parseInt(btn.dataset.vindex, 10);
-      scene.activeAudioVersionIndex = vIndex;
-      sceneStore.set({ scenes: [...sceneStore.get().scenes] });
-      const record = getCurrentStoryboardRecord();
-      if (record) { record.scenes = sceneStore.get().scenes; queueSync(record); }
-    }
+
+    const iconBtn = e.target.closest('.scene-status-icon');
+    if (iconBtn && !iconBtn.disabled) openEntityModal(index, iconBtn.dataset.status);
   });
-  
-  sceneStore.subscribe(() => renderScenes());
-  uiStore.subscribe(() => renderScenes());
+
+  sceneStore.subscribe(() => { renderScenes(); renderEntityModal(); });
+  uiStore.subscribe(() => { renderScenes(); renderEntityModal(); });
 }
 
 function renderEmptyPromptTargets() {
@@ -221,31 +464,21 @@ export function renderScenes() {
     node.dataset.sceneId = scene.id;
 
     const sceneIndexEl = node.querySelector('.scene-index');
-    const titleInput = node.querySelector('.scene-title-input');
-    const beatEl = node.querySelector('.scene-beat');
-    const promptEl = node.querySelector('.scene-prompt');
+    const titleEl = node.querySelector('.scene-title');
     const imageEl = node.querySelector('.scene-image');
     const videoEl = node.querySelector('.scene-video');
     const placeholderEl = node.querySelector('.scene-placeholder');
-    const imageVersionListEl = node.querySelector('.image-version-list');
-    const videoVersionListEl = node.querySelector('.video-version-list');
-    const versionCountEl = node.querySelector('.version-count');
-    const imageVersionCountEl = node.querySelector('.image-version-count');
-    const videoVersionCountEl = node.querySelector('.video-version-count');
-    const dialogueEl = node.querySelector('.scene-dialogue');
-    const audioVersionListEl = node.querySelector('.audio-version-list');
-    const audioVersionCountEl = node.querySelector('.audio-version-count');
     const playbackEl = node.querySelector('.scene-playback');
     const playbackToggleEl = node.querySelector('.scene-playback-toggle');
     const playbackTimelineEl = node.querySelector('.scene-playback-timeline');
     const playbackTimeEl = node.querySelector('.scene-playback-time');
     const playbackAudioEl = node.querySelector('.scene-playback-audio');
 
-    sceneIndexEl.textContent = `Scene ${index + 1}`;
-    titleInput.value = scene.title;
-    beatEl.value = scene.beat;
-    promptEl.value = scene.prompt;
-    dialogueEl.value = (scene.lines || []).map((line) => `${line.speaker || 'Narrator'}: ${line.text || ''}`).join('\n');
+    sceneIndexEl.dataset.index = String(index + 1);
+    titleEl.textContent = scene.title || `Scene ${index + 1}`;
+
+    const busy = operation != null;
+    const loadingByType = Object.fromEntries(Object.keys(ENTITY_CONFIG).map((type) => [type, isEntityLoading(type, scene, operation)]));
 
     const sceneStatus = {
       prompt: Boolean(String(scene.prompt || '').trim()),
@@ -256,20 +489,22 @@ export function renderScenes() {
     };
     for (const [type, isPresent] of Object.entries(sceneStatus)) {
       const statusIcon = node.querySelector(`[data-status="${type}"]`);
-      const label = `${type[0].toUpperCase()}${type.slice(1)} ${isPresent ? 'ready' : 'missing'}`;
+      const isLoading = loadingByType[type];
+      const label = isLoading
+        ? `Regenerating ${type}...`
+        : isPresent
+          ? `Regenerate ${type}`
+          : `${type[0].toUpperCase()}${type.slice(1)} missing`;
       statusIcon.classList.toggle('is-present', isPresent);
+      statusIcon.classList.toggle('is-loading', isLoading);
+      statusIcon.disabled = !isPresent || busy;
       statusIcon.setAttribute('aria-label', label);
       statusIcon.title = label;
     }
 
-    node.querySelector('.beat-summary').textContent = scene.beat ? scene.beat : 'Add beat, prompt, and dialogue';
-    const completeDetailCount = [scene.beat, scene.prompt, scene.lines.length].filter(Boolean).length;
-    node.querySelector('.detail-completeness').textContent = `${completeDetailCount}/3`;
-    node.querySelector('.scene-details').open = completeDetailCount < 2;
-
     const activeVersion = scene.versions[scene.activeVersionIndex];
     const activeVideoVersion = scene.videoVersions[scene.activeVideoVersionIndex];
-    
+
     if (scene.activeVisualType === 'video' && activeVideoVersion?.path) {
       loadProtectedAsset(activeVideoVersion.path).then(url => { if (url) videoEl.src = url; });
       if (activeVersion?.path) {
@@ -293,59 +528,11 @@ export function renderScenes() {
       placeholderEl.style.display = 'flex';
     }
 
-    const visualVersionCount = scene.versions.length + scene.videoVersions.length;
-    versionCountEl.textContent = `${visualVersionCount} item${visualVersionCount === 1 ? '' : 's'}`;
-    imageVersionCountEl.textContent = scene.versions.length;
-    videoVersionCountEl.textContent = scene.videoVersions.length;
-    imageVersionListEl.innerHTML = '';
-    videoVersionListEl.innerHTML = '';
-    
-    node.querySelector('.visual-history-block').hidden = visualVersionCount === 0;
-    node.querySelector('.image-history-group').hidden = scene.versions.length === 0;
-    node.querySelector('.video-history-group').hidden = scene.videoVersions.length === 0;
-    
-    scene.versions.forEach((version, vIndex) => {
-      const btn = document.createElement('button');
-      btn.className = `version-thumb ${scene.activeVisualType === 'image' && vIndex === scene.activeVersionIndex ? 'active' : ''}`;
-      btn.dataset.vindex = vIndex;
-      btn.dataset.type = 'image';
-      btn.disabled = operation != null;
-      const image = document.createElement('img');
-      loadProtectedAsset(version.path).then(url => { if (url) image.src = url; });
-      image.alt = `Scene version ${vIndex + 1}`;
-      const meta = document.createElement('div');
-      meta.className = 'version-meta';
-      meta.textContent = `v${vIndex + 1}`;
-      btn.append(image, meta);
-      imageVersionListEl.appendChild(btn);
-    });
-
-    scene.videoVersions.forEach((version, vIndex) => {
-      const btn = document.createElement('button');
-      btn.className = `version-thumb ${scene.activeVisualType === 'video' && vIndex === scene.activeVideoVersionIndex ? 'active' : ''}`;
-      btn.dataset.vindex = vIndex;
-      btn.dataset.type = 'video';
-      btn.disabled = operation != null;
-      const video = document.createElement('video');
-      loadProtectedAsset(version.path).then(url => { if (url) video.src = url; });
-      video.muted = true;
-      video.preload = 'metadata';
-      video.style.cssText = 'display:block;width:100%;height:72px;object-fit:cover';
-      const meta = document.createElement('div');
-      meta.className = 'version-meta';
-      meta.textContent = `video v${vIndex + 1}`;
-      btn.append(video, meta);
-      videoVersionListEl.appendChild(btn);
-    });
-
-    audioVersionCountEl.textContent = `${scene.audioVersions.length} version${scene.audioVersions.length === 1 ? '' : 's'}`;
-    node.querySelector('.audio-version-block').hidden = scene.audioVersions.length === 0;
-    audioVersionListEl.innerHTML = '';
     const activeAudioVersion = scene.audioVersions[scene.activeAudioVersionIndex];
     if (activeAudioVersion?.path) {
       loadProtectedAsset(activeAudioVersion.path).then(url => { if (url) playbackAudioEl.src = url; });
     }
-    
+
     scenePlaybackCleanups.push(setupScenePlayback({
       container: playbackEl,
       toggle: playbackToggleEl,
@@ -357,63 +544,10 @@ export function renderScenes() {
       hasAudio: Boolean(activeAudioVersion?.path),
     }));
 
-    scene.audioVersions.forEach((version, vIndex) => {
-      const thumb = document.createElement('div');
-      thumb.className = `audio-version-thumb ${vIndex === scene.activeAudioVersionIndex ? 'active' : ''}`;
-      const meta = document.createElement('div');
-      meta.className = 'audio-version-meta';
-      const label = document.createElement('strong');
-      label.textContent = `Version ${vIndex + 1}`;
-      const provider = document.createElement('span');
-      provider.textContent = version.provider || 'Audio';
-      meta.append(label, provider);
-      const audio = document.createElement('audio');
-      audio.controls = true;
-      loadProtectedAsset(version.path).then(url => { if (url) audio.src = url; });
-      audio.addEventListener('play', () => activeScenePlayback?.pause());
-      const selectBtn = document.createElement('button');
-      selectBtn.type = 'button';
-      selectBtn.className = 'audio-version-select';
-      selectBtn.dataset.vindex = vIndex;
-      selectBtn.disabled = operation != null;
-      selectBtn.textContent = vIndex === scene.activeAudioVersionIndex ? 'Current' : 'Use this version';
-      selectBtn.classList.toggle('is-current', vIndex === scene.activeAudioVersionIndex);
-      selectBtn.disabled = operation != null || vIndex === scene.activeAudioVersionIndex;
-      thumb.append(meta, audio, selectBtn);
-      audioVersionListEl.appendChild(thumb);
-    });
+    node.classList.toggle('is-busy', Object.values(loadingByType).some(Boolean));
+    node.querySelector('.image-loading').classList.toggle('visible', loadingByType.image);
+    node.querySelector('.video-loading').classList.toggle('visible', loadingByType.video);
 
-    const regenPromptBtn = node.querySelector('.regen-prompt-btn');
-    const regenImageBtn = node.querySelector('.regen-image-btn');
-    const regenVideoBtn = node.querySelector('.regen-video-btn');
-    const regenDialogueBtn = node.querySelector('.regen-dialogue-btn');
-    const regenAudioBtn = node.querySelector('.regen-audio-btn');
-    
-    const busy = operation != null;
-    const promptLoading = operation?.type === 'prompts' || (operation?.type === 'prompt' && operation.sceneId === scene.id);
-    const imageLoading = ['image', 'imagesSerial'].includes(operation?.type) && operation.sceneId === scene.id;
-    const dialogueLoading = operation?.type === 'dialogueAll' || (operation?.type === 'dialogue' && operation.sceneId === scene.id);
-    const audioLoading = ['audio', 'audioSerial'].includes(operation?.type) && operation.sceneId === scene.id;
-    const videoLoading = ['video', 'videosSerial'].includes(operation?.type) && operation.sceneId === scene.id;
-    
-    node.classList.toggle('is-busy', promptLoading || imageLoading || dialogueLoading || audioLoading || videoLoading);
-    node.querySelector('.prompt-loading').classList.toggle('visible', promptLoading);
-    node.querySelector('.image-loading').classList.toggle('visible', imageLoading);
-    node.querySelector('.video-loading').classList.toggle('visible', videoLoading);
-    
-    regenPromptBtn.disabled = busy;
-    regenImageBtn.disabled = busy;
-    regenVideoBtn.disabled = busy || !scene.versions.length;
-    regenDialogueBtn.disabled = busy;
-    regenAudioBtn.disabled = busy || !scene.lines.length;
-    
-    regenImageBtn.textContent = scene.versions.length ? 'Regenerate image' : 'Generate image';
-    regenVideoBtn.textContent = scene.videoVersions.length ? 'Regenerate video' : 'Generate video';
-    regenAudioBtn.textContent = scene.audioVersions.length ? 'Regenerate audio' : 'Generate audio';
-    
-    regenVideoBtn.title = scene.versions.length ? '' : 'Generate an image first';
-    regenAudioBtn.title = scene.lines.length ? '' : 'Generate dialogue first';
-    
     els.storyboardGrid.appendChild(node);
   });
 }

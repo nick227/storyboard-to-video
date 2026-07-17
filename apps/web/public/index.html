@@ -1,347 +1,393 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Storyboard Image POC</title>
-    <link rel="stylesheet" href="/styles.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <div class="brand-block">
-          <div class="eyebrow">Storyboard</div>
-          <div class="storyboard-title-row">
-            <input id="storyboardTitle" class="storyboard-title" type="text" maxlength="200" aria-label="Storyboard title" />
-            <select id="storyboardPicker" class="storyboard-picker" aria-label="Open a saved storyboard" title="Open a saved storyboard"></select>
-          </div>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Storyboard Image POC</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="eyebrow">Storyboard</div>
+        <div class="storyboard-title-row">
+          <input id="storyboardTitle" class="storyboard-title" type="text" maxlength="200"
+            aria-label="Storyboard title" />
+          <select id="storyboardPicker" class="storyboard-picker" aria-label="Open a saved storyboard"
+            title="Open a saved storyboard"></select>
         </div>
-        <div class="toolbar top-actions">
-          <button id="newStoryboardBtn" class="secondary">New</button>
-          <button id="saveStateBtn" class="secondary" disabled>Saved</button>
-          <button id="downloadZipBtn" class="primary">Download</button>
+      </div>
+      <div class="toolbar top-actions">
+        <button id="newStoryboardBtn" class="secondary">New</button>
+        <button id="saveStateBtn" class="secondary" disabled>Saved</button>
+        <button id="downloadZipBtn" class="primary">Download</button>
+      </div>
+    </header>
+
+    <section class="concept-grid">
+      <article class="panel concept-column story-concept">
+        <div class="concept-heading">
+          <h2>Story</h2>
         </div>
-      </header>
+        <textarea id="scriptText" class="script-textarea" rows="7"
+          placeholder="Paste story or script here..."></textarea>
+      </article>
 
-      <section class="concept-grid">
-        <article class="panel concept-column story-concept">
-          <div class="concept-heading">
-            <div class="eyebrow">Source</div>
-            <h2>Story</h2>
-          </div>
-          <details class="inline-settings">
-            <summary>Script/ Screenplay</summary>
-            <textarea id="scriptText" class="script-textarea" rows="7" placeholder="Paste story or script here..."></textarea>
-          </details>
-          <div class="compact-fields">
-            <label>
-              <span>Scene count</span>
-              <div class="scene-count-control">
-                <input id="sceneCount" type="number" min="1" max="50" value="8" />
-                <button id="autoSceneCountBtn" class="secondary" type="button" title="Use the suggested scene count for this script">Auto: 1</button>
-              </div>
-            </label>
-            <label>
-              <span>Text provider</span>
-              <select id="textProvider">
-                <option value="gemini">Gemini</option>
-                <option value="openai">OpenAI</option>
-                <option value="stub">Local stub</option>
-              </select>
-            </label>
-            <input type="hidden" id="fallbackPolicy" value="local" />
-          </div>
-        </article>
+      <!-- Entity generation panels -->
 
-        <article class="panel concept-column image-concept">
-          <div class="concept-heading">
-            <div class="eyebrow">Generation</div>
-            <h2>Images</h2>
-          </div>
-          <div class="compact-fields">
-              <label>
-                <span>Style</span>
-                <select id="styleSelect"></select>
-              </label>
+      <!-- ooo -->
 
-              <label>
-                <span>Image provider</span>
-                <select id="imageProvider">
-                  <option value="gemini">Gemini</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="dezgo">Dezgo</option>
-                  <option value="stub">Stub Preview (no API)</option>
-                </select>
-              </label>
-          </div>
-          <details class="inline-settings">
-            <summary>Common Prompt</summary>
+      <article class="panel concept-column video-concept">
+        <div class="concept-heading">
+          <h2>Settings</h2>
+        </div>
 
+        <!-- o -->
+
+        <div class="compact-fields">
           <label>
-            <textarea id="commonPromptText" rows="3" placeholder="Style direction applied to prompts and images."></textarea>
-          </label>
-          </details>
-          <details id="styleReferencesDetails" class="inline-settings">
-            <summary>Style references</summary>
-            <div class="reference-groups">
-              <div class="style-ref-col">
-                <div class="style-ref-col-header">
-                  <strong>Character references</strong>
-                  <label class="upload-chip">
-                    <input id="characterRefInput" type="file" accept="image/*" multiple hidden />
-                    <span>Upload</span>
-                  </label>
-                </div>
-                <div id="characterRefs" class="style-ref-list"></div>
-              </div>
-              <div class="style-ref-col">
-                <div class="style-ref-col-header">
-                  <strong>World references</strong>
-                  <label class="upload-chip">
-                    <input id="worldRefInput" type="file" accept="image/*" multiple hidden />
-                    <span>Upload</span>
-                  </label>
-                </div>
-                <div id="worldRefs" class="style-ref-list"></div>
-              </div>
-            </div>
-          </details>
-          <div class="concept-actions">
-            <button id="generatePromptsBtn">Generate prompts</button>
-            <button id="startSerialBtn" class="primary">Generate images</button>
-          </div>
-        </article>
-
-        <article class="panel concept-column audio-concept">
-          <div class="concept-heading">
-            <div class="eyebrow">Generation</div>
-            <h2>Audio</h2>
-          </div>
-          <label>
-            <span>Audio provider</span>
-            <select id="audioProvider">
-              <option value="stub">Local rudimentary voice (no API)</option>
-              <option value="piper">Piper (local, natural)</option>
-              <option value="spark">Voice cloning (local, custom)</option>
-              <option value="elevenlabs">ElevenLabs</option>
+            <span>Text provider</span>
+            <select id="textProvider">
+              <option value="gemini">Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="stub">Local stub</option>
             </select>
           </label>
-          <button type="button" id="voiceCloningBtn" class="secondary" hidden>Voice Cloning</button>
-          <details class="inline-settings">
-            <summary>Voices</summary>
-            <div id="voicesPanel" class="voices-panel"></div>
-          </details>
-          <div class="concept-actions">
-            <button id="generateDialogueBtn">Generate dialogue</button>
-            <button id="startAudioSerialBtn" class="primary">Generate audio</button>
-          </div>
-        </article>
-
-        <article class="panel concept-column video-concept">
-          <div class="concept-heading">
-            <div class="eyebrow">Generation</div>
-            <h2>Video</h2>
-          </div>
-          <p class="concept-description">Generate video versions from the current image selected in each scene.</p>
+          <input type="hidden" id="fallbackPolicy" value="local" />
           <label>
-            <span>Motion intensity</span>
+            <span>Motion</span>
             <select id="videoMotionIntensity">
               <option value="subtle">Subtle</option>
               <option value="medium" selected>Medium</option>
               <option value="high">High</option>
             </select>
           </label>
-          <div class="concept-actions">
-            <button id="startVideoSerialBtn" class="primary">Generate videos</button>
-          </div>
-        </article>
-      </section>
-
-      <section class="panel panel-tight status-panel">
-        <div class="status-row">
-          <span class="status-dot" aria-hidden="true"></span>
-          <span id="statusText" role="status" aria-live="polite">Idle</span>
-        </div>
-      </section>
-
-      <section class="storyboard-section">
-        <div class="storyboard-heading">
-          <div>
-            <div class="eyebrow">Scenes</div>
-            <h2>Storyboard</h2>
-          </div>
-        </div>
-        <div id="storyboardGrid" class="storyboard-grid"></div>
-      </section>
-
-      <section class="panel timeline-section" id="timelineSection" hidden>
-        <div class="storyboard-heading">
-          <div>
-            <div class="eyebrow">Preview</div>
-            <h2>Composite Timeline</h2>
-          </div>
-          <span class="timeline-hint">Plays each scene's active video/image and audio back to back</span>
         </div>
 
-        <div class="timeline-stage">
-          <video class="timeline-stage-video" id="timelineVideo" muted playsinline preload="auto"></video>
-          <img class="timeline-stage-image" id="timelineImage" alt="Timeline preview" />
-          <div class="timeline-stage-empty" id="timelineStageEmpty">No preview yet</div>
-        </div>
-        <audio id="timelineAudio" preload="auto"></audio>
+        <!-- o -->
 
-        <div class="timeline-controls">
-          <button type="button" class="timeline-toggle" id="timelineToggle" aria-label="Play combined timeline" disabled>Play</button>
-          <div class="timeline-track-wrap" id="timelineTrackWrap">
-            <div class="timeline-track-inner" id="timelineTrackInner">
-              <div class="timeline-thumbs" id="timelineThumbs"></div>
-              <canvas class="timeline-waveform-canvas" id="timelineWaveformCanvas" height="48"></canvas>
-              <div class="timeline-playhead" id="timelinePlayhead"></div>
+        <div class="compact-fields">
+          <label>
+            <span>Style</span>
+            <select id="styleSelect"></select>
+          </label>
+
+          <label>
+            <span>Image provider</span>
+            <select id="imageProvider">
+              <option value="gemini">Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="dezgo">Dezgo</option>
+              <option value="stub">Stub Preview (no API)</option>
+            </select>
+          </label>
+        </div>
+
+        <!-- o -->
+
+        <details class="inline-settings">
+          <summary>Common Prompt</summary>
+          <label>
+            <textarea id="commonPromptText" rows="3"
+              placeholder="Style direction applied to prompts and images."></textarea>
+          </label>
+        </details>
+        <details id="styleReferencesDetails" class="inline-settings">
+          <summary>Style references</summary>
+          <div class="reference-groups">
+            <div class="style-ref-col">
+              <div class="style-ref-col-header">
+                <strong>Character references</strong>
+                <label class="upload-chip">
+                  <input id="characterRefInput" type="file" accept="image/*" multiple hidden />
+                  <span>Upload</span>
+                </label>
+              </div>
+              <div id="characterRefs" class="style-ref-list"></div>
+            </div>
+            <div class="style-ref-col">
+              <div class="style-ref-col-header">
+                <strong>World references</strong>
+                <label class="upload-chip">
+                  <input id="worldRefInput" type="file" accept="image/*" multiple hidden />
+                  <span>Upload</span>
+                </label>
+              </div>
+              <div id="worldRefs" class="style-ref-list"></div>
             </div>
           </div>
-          <span class="timeline-time" id="timelineTime">0:00 / 0:00</span>
-        </div>
-      </section>
-    </div>
+        </details>
 
-    <template id="sceneCardTemplate">
-      <article class="scene-card">
-        <div class="scene-header">
+        <!-- o -->
+
+        <details class="inline-settings">
+          <summary>Audio Settings</summary>
           <div>
-            <div class="scene-index"></div>
-            <input class="scene-title-input" type="text" aria-label="Scene title" />
-          </div>
-          <div class="scene-status" role="list" aria-label="Scene status">
-            <span class="scene-status-icon" data-status="prompt" role="listitem" aria-label="Prompt missing" title="Prompt missing">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
-            </span>
-            <span class="scene-status-icon" data-status="image" role="listitem" aria-label="Image missing" title="Image missing">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
-            </span>
-            <span class="scene-status-icon" data-status="dialogue" role="listitem" aria-label="Dialogue missing" title="Dialogue missing">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/><path d="M8 9h8M8 13h5"/></svg>
-            </span>
-            <span class="scene-status-icon" data-status="audio" role="listitem" aria-label="Audio missing" title="Audio missing">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
-            </span>
-            <span class="scene-status-icon" data-status="video" role="listitem" aria-label="Video missing" title="Video missing">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="15" height="14" x="2" y="5" rx="2"/><path d="m17 10 5-3v10l-5-3Z"/></svg>
-            </span>
-          </div>
-        </div>
-
-        <div class="scene-image-wrap">
-          <img class="scene-image" alt="Scene preview" />
-          <video class="scene-video scene-image" muted playsinline preload="metadata" aria-label="Animated scene preview"></video>
-          <div class="scene-placeholder">No image yet</div>
-          <div class="image-loading target-loading" role="status"><span class="spinner"></span><span>Generating image</span></div>
-          <div class="video-loading target-loading" role="status"><span class="spinner"></span><span>Generating video</span></div>
-        </div>
-
-        <div class="scene-playback" hidden>
-          <button type="button" class="scene-playback-toggle" aria-label="Play combined scene">Play</button>
-          <input class="scene-playback-timeline" type="range" min="0" max="0" value="0" step="0.01" aria-label="Scene playback position" />
-          <span class="scene-playback-time">0:00 / 0:00</span>
-          <audio class="scene-playback-audio" preload="metadata"></audio>
-        </div>
-
-        <details class="scene-generation">
-          <summary class="scene-generation-heading">Generate</summary>
-          <div class="scene-generation-actions">
-            <button class="regen-image-btn">Image</button>
-            <button class="regen-video-btn">Video</button>
-            <button class="regen-audio-btn">Audio</button>
-          </div>
-        </details>
-
-        <details class="scene-history scene-generation">
-          <summary class="scene-generation-heading">History</summary>
-          <div>
-        <details class="scene-section scene-details">
-          <summary>
-            <span><strong>Scene details</strong><span class="beat-summary"></span></span>
-            <span class="detail-completeness"></span>
-          </summary>
-          <div class="scene-section-body scene-fields">
-            <label>
-              <span>Physical action</span>
-              <textarea class="scene-beat" rows="2"></textarea>
-            </label>
-
-            <label>
-              <span class="field-heading"><span>Visual prompt</span><button type="button" class="regen-prompt-btn text-button">Regenerate</button></span>
-              <textarea class="scene-prompt" rows="5"></textarea>
-              <div class="prompt-loading target-loading" role="status"><span class="spinner"></span><span>Generating prompt</span></div>
-            </label>
-
-            <label>
-              <span class="field-heading"><span>Dialogue</span><button type="button" class="regen-dialogue-btn text-button">Regenerate</button></span>
-              <textarea class="scene-dialogue" rows="4" placeholder="Narrator: ..."></textarea>
-              <small>One line per speaker: “Speaker: line”</small>
-            </label>
+        <label>
+          <span>Audio provider</span>
+          <select id="audioProvider">
+            <option value="stub">Local rudimentary voice (no API)</option>
+            <option value="piper">Piper (local, natural)</option>
+            <option value="spark">Voice cloning (local, custom)</option>
+            <option value="elevenlabs">ElevenLabs</option>
+          </select>
+        </label>
+        <button type="button" id="voiceCloningBtn" class="secondary" hidden>Voice Cloning</button>
+        <div id="voicesPanel" class="voices-panel"></div>
 
           </div>
         </details>
 
-        <details class="scene-section visual-history-block">
-          <summary><strong>Visual history</strong><span class="version-count"></span></summary>
-          <div class="scene-section-body history-groups">
-            <section class="history-group image-history-group">
-              <div class="history-heading"><strong>Images</strong><span class="image-version-count"></span></div>
-              <div class="image-version-list version-list"></div>
-            </section>
-            <section class="history-group video-history-group">
-              <div class="history-heading"><strong>Videos</strong><span class="video-version-count"></span></div>
-              <div class="video-version-list version-list"></div>
-            </section>
-          </div>
-        </details>
-
-        <details class="scene-section audio-version-block">
-          <summary><strong>Audio history</strong><span class="audio-version-count"></span></summary>
-          <div class="scene-section-body audio-version-list"></div>
-        </details>
-
-
-          </div>
-        </details>
-
+        <!-- o -->
 
       </article>
-    </template>
 
-    <dialog id="voiceLibraryModal" class="voice-library-modal">
-      <div class="modal-header">
-        <h2>Voice Library</h2>
-        <button type="button" id="closeVoiceLibraryBtn" class="secondary text-button" aria-label="Close">✕</button>
+      <!-- End entity generation panels -->
+
+    </section>
+
+    <section class="row mb-20">
+      <div class="scene-count-control row">
+        <input id="sceneCount" type="number" min="1" max="50" value="8" />
+        <button id="autoSceneCountBtn" class="secondary" type="button"
+          title="Use the suggested scene count for this script">Auto: 1</button>
       </div>
-      <p class="field-note">Cloned voices are saved here and can be reused for any speaker, in any storyboard — separate from the audio clips generated for individual scenes.</p>
+      <div class="process-section prompts row">
+        <button id="generatePromptsBtn">Generate prompts</button>
+        <button id="generateDialogueBtn">Generate dialogue</button>
+      </div>
+      <div class="process-section images row">
+        <button id="startSerialBtn" class="primary">Generate images</button>
+      </div>
+      <div class="process-section audio row">
+        <button id="startAudioSerialBtn" class="primary">Generate audio</button>
+      </div>
+      <div class="process-section video row">
+        <button id="startVideoSerialBtn" class="primary">Generate videos</button>
+      </div>
 
-      <div id="voiceLibraryList" class="voice-library-list"></div>
+    </section>
 
-      <div class="voice-library-record">
-        <div class="group-heading"><h3>Record a new voice</h3></div>
-        <label>
-          <span>Microphone</span>
-          <select id="voiceMicSelect"></select>
-        </label>
-        <div class="voice-mic-status">
-          <span id="voiceMicStatus" class="field-note">Requesting microphone access...</span>
-        </div>
-        <canvas id="voiceWaveformCanvas" class="voice-waveform-canvas" width="480" height="60"></canvas>
-        <small class="field-note">The wave above reacts live to your selected microphone, even before you hit record — speak now to confirm you picked the right one. For best cloning quality, read naturally for at least 10-15 seconds.</small>
-        <div class="voice-record-controls">
-          <button type="button" id="voiceRecordBtn" class="secondary" disabled>Record</button>
-        </div>
-        <audio id="voiceRecordPreview" class="voice-recorder-preview" controls hidden></audio>
-        <small id="voiceDurationNote" class="field-note voice-duration-note" hidden></small>
-        <div class="voice-record-save">
-          <input type="text" id="voiceNameInput" placeholder="Voice name" />
-          <button type="button" id="voiceSaveBtn" class="primary" disabled>Save as voice</button>
+    <section class="panel panel-tight status-panel">
+      <div class="status-row">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="statusText" role="status" aria-live="polite">Idle</span>
+      </div>
+    </section>
+
+    <section class="storyboard-section">
+      <div class="storyboard-heading">
+        <div>
+          <div class="eyebrow">Scenes</div>
+          <h2>Storyboard</h2>
         </div>
       </div>
-    </dialog>
+      <div id="storyboardGrid" class="storyboard-grid"></div>
+    </section>
 
-    <script type="module" src="/app.js"></script>
-  </body>
+    <section class="panel timeline-section" id="timelineSection" hidden>
+      <div class="storyboard-heading">
+        <div>
+          <div class="eyebrow">Preview</div>
+          <h2>Composite Timeline</h2>
+        </div>
+        <span class="timeline-hint">Plays each scene's active video/image and audio back to back</span>
+      </div>
+
+      <div class="timeline-stage">
+        <video class="timeline-stage-video" id="timelineVideo" muted playsinline preload="auto"></video>
+        <video class="timeline-stage-video" id="timelineVideoB" muted playsinline preload="auto"
+          style="display:none;"></video>
+        <img class="timeline-stage-image" id="timelineImage" alt="Timeline preview" />
+        <div class="timeline-stage-empty" id="timelineStageEmpty">No preview yet</div>
+      </div>
+      <audio id="timelineAudio" preload="auto"></audio>
+      <audio id="timelineAudioB" preload="auto"></audio>
+
+      <div class="timeline-controls">
+        <button type="button" class="timeline-toggle" id="timelineToggle" aria-label="Play combined timeline"
+          disabled>Play</button>
+        <div class="timeline-track-wrap" id="timelineTrackWrap">
+          <div class="timeline-track-inner" id="timelineTrackInner">
+            <div class="timeline-thumbs" id="timelineThumbs"></div>
+            <canvas class="timeline-waveform-canvas" id="timelineWaveformCanvas" height="48"></canvas>
+            <div class="timeline-playhead" id="timelinePlayhead"></div>
+          </div>
+        </div>
+        <span class="timeline-time" id="timelineTime">0:00 / 0:00</span>
+        <div class="timeline-volume">
+          <button type="button" class="timeline-mute" id="timelineMute" aria-label="Mute combined timeline"
+            aria-pressed="false" disabled>Mute</button>
+          <input class="timeline-volume-slider" id="timelineVolumeSlider" type="range" min="0" max="1" step="0.01"
+            value="1" aria-label="Timeline volume" disabled />
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <template id="sceneCardTemplate">
+    <article class="scene-card">
+      <div class="scene-header">
+        <div class="scene-heading">
+          <div class="scene-index"></div>
+          <h3 class="scene-title"></h3>
+        </div>
+        <div class="scene-status" aria-label="Scene status — also regenerate buttons">
+          <button type="button" class="scene-status-icon" data-status="prompt" disabled aria-label="Prompt missing"
+            title="Prompt missing">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+              <path d="M14 2v6h6M8 13h8M8 17h5" />
+            </svg>
+            <span class="status-icon-spinner" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="scene-status-icon" data-status="image" disabled aria-label="Image missing"
+            title="Image missing">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <circle cx="9" cy="9" r="2" />
+              <path d="m21 15-5-5L5 21" />
+            </svg>
+            <span class="status-icon-spinner" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="scene-status-icon" data-status="dialogue" disabled aria-label="Dialogue missing"
+            title="Dialogue missing">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
+              <path d="M8 9h8M8 13h5" />
+            </svg>
+            <span class="status-icon-spinner" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="scene-status-icon" data-status="audio" disabled aria-label="Audio missing"
+            title="Audio missing">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M11 5 6 9H2v6h4l5 4Z" />
+              <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
+            </svg>
+            <span class="status-icon-spinner" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="scene-status-icon" data-status="video" disabled aria-label="Video missing"
+            title="Video missing">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect width="15" height="14" x="2" y="5" rx="2" />
+              <path d="m17 10 5-3v10l-5-3Z" />
+            </svg>
+            <span class="status-icon-spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="scene-image-wrap">
+        <img class="scene-image" alt="Scene preview" />
+        <video class="scene-video scene-image" muted playsinline preload="metadata"
+          aria-label="Animated scene preview"></video>
+        <div class="scene-placeholder">No image yet</div>
+        <div class="image-loading target-loading" role="status"><span class="spinner"></span><span>Generating
+            image</span></div>
+        <div class="video-loading target-loading" role="status"><span class="spinner"></span><span>Generating
+            video</span></div>
+      </div>
+
+      <div class="scene-playback" hidden>
+        <button type="button" class="scene-playback-toggle" aria-label="Play combined scene">Play</button>
+        <input class="scene-playback-timeline" type="range" min="0" max="0" value="0" step="0.01"
+          aria-label="Scene playback position" />
+        <span class="scene-playback-time">0:00 / 0:00</span>
+        <audio class="scene-playback-audio" preload="metadata"></audio>
+      </div>
+    </article>
+  </template>
+
+  <dialog id="entityModal" class="entity-modal">
+    <div class="modal-header">
+      <div>
+        <div class="eyebrow" id="entityModalSceneLabel"></div>
+        <h2 id="entityModalTitle"></h2>
+      </div>
+      <button type="button" id="closeEntityModalBtn" class="secondary text-button" aria-label="Close">✕</button>
+    </div>
+
+    <label id="entityModalBeatField" class="entity-modal-field" hidden>
+      <span>Physical action</span>
+      <textarea id="entityModalBeat" rows="2"></textarea>
+    </label>
+
+    <label id="entityModalTextField" class="entity-modal-field" hidden>
+      <span id="entityModalTextFieldLabel"></span>
+      <textarea id="entityModalTextarea" rows="8"></textarea>
+      <small id="entityModalTextHint" class="field-note" hidden>One line per speaker: “Speaker: line”</small>
+    </label>
+
+    <div id="entityModalMedia" class="entity-modal-media" hidden>
+      <img id="entityModalImage" alt="Scene image" hidden />
+      <video id="entityModalVideo" controls playsinline hidden></video>
+      <audio id="entityModalAudio" controls hidden></audio>
+      <div id="entityModalMediaEmpty" class="entity-modal-media-empty">No version yet</div>
+    </div>
+
+    <div class="entity-modal-actions">
+      <span id="entityModalStatus" class="field-note"></span>
+      <button type="button" id="entityModalRegenBtn" class="primary">Regenerate</button>
+    </div>
+
+    <div id="entityModalHistory" class="entity-modal-history" hidden>
+      <div class="history-heading"><strong>History</strong><span id="entityModalHistoryCount"></span></div>
+      <div id="entityModalHistoryList" class="version-list"></div>
+    </div>
+  </dialog>
+
+  <dialog id="voiceLibraryModal" class="voice-library-modal">
+    <div class="modal-header">
+      <h2>Voice Library</h2>
+      <button type="button" id="closeVoiceLibraryBtn" class="secondary text-button" aria-label="Close">✕</button>
+    </div>
+    <p class="field-note">Cloned voices are saved here and can be reused for any speaker, in any storyboard — separate
+      from the audio clips generated for individual scenes.</p>
+
+    <div id="voiceLibraryList" class="voice-library-list"></div>
+
+    <div class="voice-library-record">
+      <div class="group-heading">
+        <h3>Record a new voice</h3>
+      </div>
+      <label>
+        <span>Microphone</span>
+        <select id="voiceMicSelect"></select>
+      </label>
+      <div class="voice-mic-status">
+        <span id="voiceMicStatus" class="field-note">Requesting microphone access...</span>
+      </div>
+      <canvas id="voiceWaveformCanvas" class="voice-waveform-canvas" width="480" height="60"></canvas>
+      <small class="field-note">The wave above reacts live to your selected microphone, even before you hit record —
+        speak now to confirm you picked the right one. For best cloning quality, read naturally for at least 10-15
+        seconds.</small>
+      <div class="voice-record-controls">
+        <button type="button" id="voiceRecordBtn" class="secondary" disabled>Record</button>
+      </div>
+      <audio id="voiceRecordPreview" class="voice-recorder-preview" controls hidden></audio>
+      <small id="voiceDurationNote" class="field-note voice-duration-note" hidden></small>
+      <div class="voice-record-save">
+        <input type="text" id="voiceNameInput" placeholder="Voice name" />
+        <button type="button" id="voiceSaveBtn" class="primary" disabled>Save as voice</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="confirmRegenModal" class="confirm-modal">
+    <div class="modal-header">
+      <h2>Regenerate</h2>
+    </div>
+    <p id="confirmRegenMessage" class="field-note"></p>
+    <div class="confirm-modal-actions">
+      <button type="button" id="confirmRegenCancelBtn" class="secondary">Cancel</button>
+      <button type="button" id="confirmRegenConfirmBtn" class="primary">Regenerate</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+
 </html>

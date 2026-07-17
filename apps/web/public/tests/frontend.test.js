@@ -108,6 +108,12 @@ async function runTests() {
     assert(renderingSource.includes("statusIcon.setAttribute('aria-label', label)"), 'Scene status icons should announce their state');
     addResult('Scene Header Status Indicators', true);
 
+    // Test 12: Generated scene titles are displayed without exposing an edit control.
+    assert(!sceneTemplate.content.querySelector('.scene-title-input'), 'Scene titles should not be editable');
+    assert(sceneTemplate.content.querySelector('.scene-title'), 'Scene titles should remain visible as headings');
+    assert(!renderingSource.includes("classList.contains('scene-title-input')"), 'Scene title edits should not be persisted');
+    addResult('Read-Only Scene Titles', true);
+
   } catch (e) {
     addResult('Test Suite Execution', false, e.message);
     console.error(e);

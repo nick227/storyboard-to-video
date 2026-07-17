@@ -10,6 +10,10 @@ let timelineController = null;
 let timelineBuildToken = 0;
 let lastTimelineSignature = null;
 let sharedAudioContext = null;
+// Kept at module scope (not inside setupTimelinePlayback) so the user's volume/mute choice
+// survives a rebuild — the controller is torn down and recreated on every scene edit.
+let timelineVolume = 1;
+let timelineMuted = false;
 
 let els = {};
 
@@ -117,9 +121,33 @@ async function buildTimelineSegments() {
 }
 
 function setupTimelinePlayback(segments, totalDuration, trackWidth) {
-  const { timelineVideo: video, timelineAudio: audio, timelineImage: image, timelineStageEmpty: emptyEl,
+  const { timelineVideo, timelineVideoB, timelineAudio, timelineAudioB, timelineImage: image, timelineStageEmpty: emptyEl,
     timelineToggle: toggle, timelineTime: timeLabel, timelinePlayhead: playhead,
-    timelineTrackWrap: trackWrap, timelineTrackInner: trackInner } = els;
+    timelineTrackWrap: trackWrap, timelineTrackInner: trackInner,
+    timelineMute: muteBtn, timelineVolumeSlider: volumeSlider } = els;
+
+  // Two video/audio elements, ping-ponged: while segment N plays on the "active" slot, the next
+  // segment's media is silently preloaded into the "standby" slot ahead of time. Transitioning
+  // is then just pause(old)+play(new) back to back with no fresh network/decode wait in between
+  // — that wait (abort -> emptied -> load -> ready, easily 100ms+ off a cold cache) was showing
+  // up as an audible gap and a stalled playhead between every clip.
+  const videoEls = [timelineVideo, timelineVideoB];
+  const audioEls = [timelineAudio, timelineAudioB];
+  let activeSlot = 0;
+  const activeVideo = () => videoEls[activeSlot];
+  const activeAudio = () => audioEls[activeSlot];
+  const standbyVideo = () => videoEls[1 - activeSlot];
+  const standbyAudio = () => audioEls[1 - activeSlot];
+
+  // Video never carries the composite's sound (it's always element-muted; the audio elements are
+  // the sole audio source), so volume/mute only ever needs to apply to the two audio elements.
+  audioEls.forEach((el) => { el.volume = timelineVolume; el.muted = timelineMuted; });
+  volumeSlider.value = String(timelineVolume);
+  const updateMuteButton = () => {
+    muteBtn.textContent = timelineMuted || timelineVolume === 0 ? 'Unmute' : 'Mute';
+    muteBtn.setAttribute('aria-pressed', String(timelineMuted));
+  };
+  updateMuteButton();
 
   // Playback position is tracked from the real audio/video element's currentTime rather than
   // wall-clock elapsed time. Driving the clock off performance.now() let it outrun the actual
@@ -133,10 +161,11 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
   let stillClockOffset = 0;
   let segmentEnteredAt = 0;
   let dragging = false;
+  let preloadedIndex = -1; // which segment index is currently warmed up in the standby slot
 
   const localTimeForSegment = (segment) => {
-    if (segment.audioPath) return audio.currentTime;
-    if (segment.videoPath) return video.currentTime;
+    if (segment.audioPath) return activeAudio().currentTime;
+    if (segment.videoPath) return activeVideo().currentTime;
     return stillClockOffset + (performance.now() - stillClockAt) / 1000;
   };
 
@@ -150,45 +179,81 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     return index === -1 ? segments.length - 1 : index;
   };
 
-  const applyVisualSource = (segment) => {
+  // Loads a segment's media into a specific video/audio element pair without touching visibility
+  // — used both to prep the active slot and to silently warm the standby slot ahead of time.
+  const applySourceToSlot = (segment, slotVideo, slotAudio) => {
     if (segment.videoPath) {
-      video.loop = Boolean(segment.audioPath && segment.audioDuration > segment.videoDuration);
-      if (video.getAttribute('src') !== segment.videoPath) video.src = segment.videoPath;
-      video.style.display = 'block';
-      image.style.display = 'none';
-      image.removeAttribute('src');
+      slotVideo.loop = Boolean(segment.audioPath && segment.audioDuration > segment.videoDuration);
+      if (slotVideo.getAttribute('src') !== segment.videoPath) slotVideo.src = segment.videoPath;
     } else {
-      video.removeAttribute('src');
-      video.style.display = 'none';
-      if (segment.imagePath) {
-        image.src = segment.imagePath;
-        image.style.display = 'block';
-      } else {
-        image.removeAttribute('src');
-        image.style.display = 'none';
-      }
+      // A hidden video must be fully stopped, not just detached — otherwise a video that was
+      // looping (see video.loop above) keeps decoding and looping its old resource in the
+      // background for every subsequent segment, wasting decode resources for the rest of
+      // playback and competing with whatever audio is trying to play.
+      slotVideo.pause();
+      slotVideo.loop = false;
+      slotVideo.removeAttribute('src');
     }
     if (segment.audioPath) {
-      if (audio.getAttribute('src') !== segment.audioPath) audio.src = segment.audioPath;
+      if (slotAudio.getAttribute('src') !== segment.audioPath) slotAudio.src = segment.audioPath;
     } else {
-      audio.removeAttribute('src');
+      slotAudio.pause();
+      slotAudio.removeAttribute('src');
+    }
+  };
+
+  // Shows/hides the two video elements and the still image for whichever segment is now active.
+  // The standby video always stays hidden while it preloads in the background.
+  const applyActiveVisibility = (segment) => {
+    videoEls.forEach((el, i) => { el.style.display = (i === activeSlot && segment.videoPath) ? 'block' : 'none'; });
+    if (segment.videoPath) {
+      image.style.display = 'none';
+      image.removeAttribute('src');
+    } else if (segment.imagePath) {
+      image.src = segment.imagePath;
+      image.style.display = 'block';
+    } else {
+      image.removeAttribute('src');
+      image.style.display = 'none';
     }
     emptyEl.style.display = (segment.videoPath || segment.imagePath) ? 'none' : 'flex';
   };
 
-  // Fast path for normal forward playback: always starts at local time 0, so there's nothing to
-  // wait for or seek — just swap sources and let them play from the top.
+  // Silently warms the standby slot with whatever comes after `afterIndex`, well ahead of when
+  // it'll actually be needed (called as soon as a segment becomes active, giving its full
+  // duration for the next one to buffer). Safe to call repeatedly.
+  const preloadNext = (afterIndex) => {
+    const nextIndex = afterIndex + 1;
+    if (nextIndex >= segments.length || preloadedIndex === nextIndex) return;
+    preloadedIndex = nextIndex;
+    applySourceToSlot(segments[nextIndex], standbyVideo(), standbyAudio());
+  };
+
+  // Fast path for normal forward playback: if the next segment was already preloaded into the
+  // standby slot, this just flips which slot is active and plays it — no fresh load, no gap.
+  // Falls back to loading directly into the active slot the same way as before if it wasn't
+  // preloaded (e.g. the very first segment).
   const enterSegment = (index, shouldPlay) => {
-    currentSegmentIndex = index;
     const segment = segments[index];
-    applyVisualSource(segment);
+    if (preloadedIndex === index) {
+      const outgoingVideo = activeVideo();
+      const outgoingAudio = activeAudio();
+      activeSlot = 1 - activeSlot;
+      outgoingVideo.pause();
+      outgoingAudio.pause();
+    } else {
+      applySourceToSlot(segment, activeVideo(), activeAudio());
+    }
+    currentSegmentIndex = index;
+    applyActiveVisibility(segment);
     stillClockOffset = 0;
     stillClockAt = performance.now();
     segmentEnteredAt = performance.now();
     if (shouldPlay) {
-      if (segment.videoPath) video.play().catch(() => {});
-      if (segment.audioPath) audio.play().catch(() => {});
+      if (segment.videoPath) activeVideo().play().catch(() => {});
+      if (segment.audioPath) activeAudio().play().catch(() => {});
     }
+    preloadNext(index);
   };
 
   const waitUntilReady = (el) => (el.readyState >= 1 ? Promise.resolve() : new Promise((resolve) => {
@@ -197,12 +262,16 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     el.addEventListener('error', done);
   }));
 
-  // Used for scrubbing / resuming mid-segment, where we need an accurate seek before playing.
+  // Used for scrubbing / resuming mid-segment: always targets the active slot directly (a jump
+  // can land anywhere, so any standby preload is irrelevant) and waits for real readiness before
+  // seeking, since we need an exact currentTime, not just "start from the top".
   const seekWithinSegment = async (index, localTime, shouldPlay) => {
     currentSegmentIndex = index;
     const segment = segments[index];
-    applyVisualSource(segment);
+    applySourceToSlot(segment, activeVideo(), activeAudio());
+    applyActiveVisibility(segment);
     segmentEnteredAt = performance.now();
+    preloadedIndex = -1; // standby preload state is now stale relative to this jump
 
     const positionEl = async (el, path, duration) => {
       if (!path) { el.pause(); return; }
@@ -214,14 +283,15 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     };
 
     await Promise.all([
-      positionEl(video, segment.videoPath, segment.videoDuration),
-      positionEl(audio, segment.audioPath, segment.audioDuration),
+      positionEl(activeVideo(), segment.videoPath, segment.videoDuration),
+      positionEl(activeAudio(), segment.audioPath, segment.audioDuration),
     ]);
     if (currentSegmentIndex !== index) return;
     if (!segment.audioPath && !segment.videoPath) {
       stillClockOffset = localTime;
       stillClockAt = performance.now();
     }
+    preloadNext(index);
   };
 
   const seekTo = (target, shouldPlay) => {
@@ -236,8 +306,8 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     if (animationFrame) cancelAnimationFrame(animationFrame);
     animationFrame = null;
     playing = false;
-    video.pause();
-    audio.pause();
+    videoEls.forEach((el) => el.pause());
+    audioEls.forEach((el) => el.pause());
     toggle.textContent = globalCurrentTime >= totalDuration ? 'Replay' : 'Play';
     toggle.setAttribute('aria-label', toggle.textContent === 'Replay' ? 'Replay combined timeline' : 'Play combined timeline');
     document.querySelectorAll('.scene-playback-audio, .audio-version-thumb audio').forEach((el) => {
@@ -287,6 +357,21 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
 
   const onToggleClick = () => { if (playing) pause(); else play(); };
 
+  const onMuteClick = () => {
+    timelineMuted = !timelineMuted;
+    audioEls.forEach((el) => { el.muted = timelineMuted; });
+    updateMuteButton();
+  };
+  const onVolumeInput = () => {
+    timelineVolume = Number(volumeSlider.value) || 0;
+    audioEls.forEach((el) => { el.volume = timelineVolume; });
+    if (timelineMuted && timelineVolume > 0) {
+      timelineMuted = false;
+      audioEls.forEach((el) => { el.muted = false; });
+    }
+    updateMuteButton();
+  };
+
   const timeForClientX = (clientX) => {
     const rect = trackInner.getBoundingClientRect();
     const ratio = trackWidth ? Math.min(Math.max((clientX - rect.left) / trackWidth, 0), 1) : 0;
@@ -316,23 +401,29 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     pause,
     cleanup() {
       pause();
-      video.removeAttribute('src');
-      audio.removeAttribute('src');
+      videoEls.forEach((el) => el.removeAttribute('src'));
+      audioEls.forEach((el) => el.removeAttribute('src'));
       image.removeAttribute('src');
       toggle.removeEventListener('click', onToggleClick);
       trackWrap.removeEventListener('pointerdown', onTrackPointerDown);
       trackWrap.removeEventListener('pointermove', onTrackPointerMove);
       trackWrap.removeEventListener('pointerup', endDrag);
       trackWrap.removeEventListener('pointercancel', endDrag);
+      muteBtn.removeEventListener('click', onMuteClick);
+      volumeSlider.removeEventListener('input', onVolumeInput);
     },
   };
 
   toggle.disabled = false;
+  muteBtn.disabled = false;
+  volumeSlider.disabled = false;
   toggle.addEventListener('click', onToggleClick);
   trackWrap.addEventListener('pointerdown', onTrackPointerDown);
   trackWrap.addEventListener('pointermove', onTrackPointerMove);
   trackWrap.addEventListener('pointerup', endDrag);
   trackWrap.addEventListener('pointercancel', endDrag);
+  muteBtn.addEventListener('click', onMuteClick);
+  volumeSlider.addEventListener('input', onVolumeInput);
 
   enterSegment(0, false);
   updateDisplay();

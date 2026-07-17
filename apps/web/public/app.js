@@ -63,13 +63,43 @@ const els = {
   voiceDurationNote: document.getElementById('voiceDurationNote'),
   voiceNameInput: document.getElementById('voiceNameInput'),
   voiceSaveBtn: document.getElementById('voiceSaveBtn'),
-  
+
+  // Regeneration confirmation
+  confirmRegenModal: document.getElementById('confirmRegenModal'),
+  confirmRegenMessage: document.getElementById('confirmRegenMessage'),
+  confirmRegenCancelBtn: document.getElementById('confirmRegenCancelBtn'),
+  confirmRegenConfirmBtn: document.getElementById('confirmRegenConfirmBtn'),
+
+  // Scene entity modal
+  entityModal: document.getElementById('entityModal'),
+  entityModalSceneLabel: document.getElementById('entityModalSceneLabel'),
+  entityModalTitle: document.getElementById('entityModalTitle'),
+  closeEntityModalBtn: document.getElementById('closeEntityModalBtn'),
+  entityModalBeatField: document.getElementById('entityModalBeatField'),
+  entityModalBeat: document.getElementById('entityModalBeat'),
+  entityModalTextField: document.getElementById('entityModalTextField'),
+  entityModalTextFieldLabel: document.getElementById('entityModalTextFieldLabel'),
+  entityModalTextarea: document.getElementById('entityModalTextarea'),
+  entityModalTextHint: document.getElementById('entityModalTextHint'),
+  entityModalMedia: document.getElementById('entityModalMedia'),
+  entityModalImage: document.getElementById('entityModalImage'),
+  entityModalVideo: document.getElementById('entityModalVideo'),
+  entityModalAudio: document.getElementById('entityModalAudio'),
+  entityModalMediaEmpty: document.getElementById('entityModalMediaEmpty'),
+  entityModalStatus: document.getElementById('entityModalStatus'),
+  entityModalRegenBtn: document.getElementById('entityModalRegenBtn'),
+  entityModalHistory: document.getElementById('entityModalHistory'),
+  entityModalHistoryCount: document.getElementById('entityModalHistoryCount'),
+  entityModalHistoryList: document.getElementById('entityModalHistoryList'),
+
   // Timeline
   timelineSection: document.getElementById('timelineSection'),
   timelineVideo: document.getElementById('timelineVideo'),
+  timelineVideoB: document.getElementById('timelineVideoB'),
   timelineImage: document.getElementById('timelineImage'),
   timelineStageEmpty: document.getElementById('timelineStageEmpty'),
   timelineAudio: document.getElementById('timelineAudio'),
+  timelineAudioB: document.getElementById('timelineAudioB'),
   timelineToggle: document.getElementById('timelineToggle'),
   timelineTime: document.getElementById('timelineTime'),
   timelineTrackWrap: document.getElementById('timelineTrackWrap'),
@@ -77,6 +107,8 @@ const els = {
   timelineThumbs: document.getElementById('timelineThumbs'),
   timelineWaveformCanvas: document.getElementById('timelineWaveformCanvas'),
   timelinePlayhead: document.getElementById('timelinePlayhead'),
+  timelineMute: document.getElementById('timelineMute'),
+  timelineVolumeSlider: document.getElementById('timelineVolumeSlider'),
 };
 
 function setStatus(msg) {
