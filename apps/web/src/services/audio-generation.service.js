@@ -5,7 +5,7 @@ const { slugify } = require('../shared/text');
 
 function createAudioGenerationService({ config, provider, projectStore }) {
   return {
-    async generate(input, { ownerId, signal } = {}) {
+    async generate(input, { ownerId, signal, jobId } = {}) {
       const lease = projectStore.acquireLease(input.projectId, { ownerId });
       const result = await provider.generate({ provider: input.provider, lines: input.lines, voiceMap: input.voiceMap });
       fs.mkdirSync(config.paths.audio, { recursive: true });
@@ -14,7 +14,15 @@ function createAudioGenerationService({ config, provider, projectStore }) {
       try {
         fs.writeFileSync(staged, result.buffer);
         const asset = projectStore.commitAsset(lease, 'audio', staged, { signal });
-        return { audio: { fileName: file, path: asset.path, mimeType: result.mimeType, provider: input.provider } };
+        const version = { path: asset.path, provider: input.provider, createdAt: new Date().toISOString() };
+        let scene, project;
+        try {
+          ({ scene, project } = projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'audio', version, jobId }));
+        } catch (error) {
+          fs.rmSync(asset.sourcePath, { force: true });
+          throw error;
+        }
+        return { audio: { fileName: file, path: asset.path, mimeType: result.mimeType, provider: input.provider }, scene, revision: project.revision };
       } finally {
         fs.rmSync(staged, { force: true });
       }

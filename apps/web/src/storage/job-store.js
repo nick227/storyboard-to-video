@@ -6,7 +6,7 @@ class JobStore {
   constructor(root) { this.root = path.resolve(root); fs.mkdirSync(this.root, { recursive: true }); }
   file(id) { return path.join(this.root, `${id}.json`); }
   save(job) {
-    const value = { id: job.id, type: job.type, projectId: job.projectId, idempotencyKey: job.idempotencyKey, status: job.status, createdAt: job.createdAt, startedAt: job.startedAt, finishedAt: job.finishedAt, result: job.result, error: job.error };
+    const value = { id: job.id, type: job.type, projectId: job.projectId, sceneId: job.sceneId, idempotencyKey: job.idempotencyKey, status: job.status, createdAt: job.createdAt, startedAt: job.startedAt, finishedAt: job.finishedAt, result: job.result, error: job.error };
     const temp = path.join(this.root, `.${job.id}-${crypto.randomUUID()}.tmp`);
     const fd = fs.openSync(temp, 'wx', 0o600);
     try { fs.writeFileSync(fd, `${JSON.stringify(value, null, 2)}\n`); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }

@@ -69,11 +69,6 @@ export function prefillCommonPrompt(styleId, els) {
 }
 
 export function renderStyleReferences(els) {
-  if (!els.styleReferencesDetails.open) {
-    els.characterRefs.replaceChildren();
-    els.worldRefs.replaceChildren();
-    return;
-  }
   const refs = generationStore.get().styleReferences;
   renderStyleReferenceList(els.characterRefs, refs.characters || [], 'characters', els);
   renderStyleReferenceList(els.worldRefs, refs.world || [], 'world', els);
@@ -118,7 +113,7 @@ function renderStyleReferenceList(container, items, type, els) {
 export async function loadStyleReferences(styleId, els, setStatus) {
   generationStore.set({ styleReferences: { characters: [], world: [] } });
   renderStyleReferences(els);
-  els.styleReferencesDetails.setAttribute('aria-busy', 'true');
+  els.styleReferencesModal.setAttribute('aria-busy', 'true');
   try {
     const data = await api(`/api/styles/${encodeURIComponent(styleId)}/references`);
     if (els.styleSelect.value !== styleId) return;
@@ -130,7 +125,7 @@ export async function loadStyleReferences(styleId, els, setStatus) {
     renderStyleReferences(els);
     if (setStatus) setStatus(`Could not load references: ${error.message}`);
   } finally {
-    if (els.styleSelect.value === styleId) els.styleReferencesDetails.removeAttribute('aria-busy');
+    if (els.styleSelect.value === styleId) els.styleReferencesModal.removeAttribute('aria-busy');
   }
 }
 
@@ -239,13 +234,28 @@ export function updateButtons(els) {
   const batchState = batchStore.get();
   
   const busy = uiState.operation != null;
-  const promptsCanBeGenerated = !sceneState.scenes.length || 
-    !(sceneState.lastPromptInputs && 
-      sceneState.lastPromptInputs.scriptText === els.scriptText.value &&
-      sceneState.lastPromptInputs.commonPromptText === els.commonPromptText.value);
+  const hasScenes = sceneState.scenes.length > 0;
+  const promptsReady = sceneState.scenes.filter((scene) => String(scene.prompt || '').trim()).length;
+  const dialogueReady = sceneState.scenes.filter((scene) => (scene.lines || []).some((line) => String(line?.text || '').trim())).length;
+  const imagesReady = sceneState.scenes.filter((scene) => (scene.versions || []).some((version) => version?.path)).length;
+  const allPromptsReady = hasScenes && promptsReady === sceneState.scenes.length;
+  const allDialogueReady = hasScenes && dialogueReady === sceneState.scenes.length;
+  const allImagesReady = hasScenes && imagesReady === sceneState.scenes.length;
 
-  els.generatePromptsBtn.disabled = busy || !promptsCanBeGenerated;
-  els.generatePromptsBtn.textContent = 'Generate prompts';
+  configureGenerationAction(els.generatePromptsBtn, {
+    available: Boolean(els.scriptText.value.trim()),
+    prerequisite: 'Add a story before generating prompts.',
+    busy,
+  });
+  configureGenerationAction(els.generateDialogueBtn, {
+    available: allPromptsReady,
+    prerequisite: hasScenes
+      ? `${sceneState.scenes.length - promptsReady} scene${sceneState.scenes.length - promptsReady === 1 ? '' : 's'} still need prompts before generating dialogue.`
+      : 'Generate prompts before generating dialogue.',
+    busy,
+  });
+  els.sceneCount.disabled = busy;
+  els.autoSceneCountBtn.disabled = busy;
   els.newStoryboardBtn.disabled = busy;
   els.storyboardPicker.disabled = busy;
   els.saveStateBtn.disabled = busy || els.saveStateBtn.textContent !== 'Retry save';
@@ -253,15 +263,15 @@ export function updateButtons(els) {
   els.characterRefInput.disabled = busy;
   els.worldRefInput.disabled = busy;
   els.audioProvider.disabled = busy;
-  els.generateDialogueBtn.disabled = busy || !sceneState.scenes.length;
-  els.generateDialogueBtn.textContent = sceneState.scenes.some((scene) => scene.lines.length) ? 'Regenerate dialogue' : 'Generate dialogue';
-
   configureBatchButton(els.startSerialBtn, {
     noun: 'images',
     generating: batchState.images.generating,
     stopRequested: batchState.images.stopRequested,
     serialState: batchState.images.state,
-    canStart: sceneState.scenes.length > 0,
+    canStart: allPromptsReady,
+    prerequisite: hasScenes
+      ? `${sceneState.scenes.length - promptsReady} scene${sceneState.scenes.length - promptsReady === 1 ? '' : 's'} still need prompts before generating images.`
+      : 'Generate prompts before generating images.',
     busy
   });
   
@@ -270,7 +280,10 @@ export function updateButtons(els) {
     generating: batchState.audio.generating,
     stopRequested: batchState.audio.stopRequested,
     serialState: batchState.audio.state,
-    canStart: sceneState.scenes.some((scene) => scene.lines.length),
+    canStart: allDialogueReady,
+    prerequisite: hasScenes
+      ? `${sceneState.scenes.length - dialogueReady} scene${sceneState.scenes.length - dialogueReady === 1 ? '' : 's'} still need dialogue before generating audio.`
+      : 'Generate dialogue before generating audio.',
     busy
   });
 
@@ -279,7 +292,10 @@ export function updateButtons(els) {
     generating: batchState.videos?.generating,
     stopRequested: batchState.videos?.stopRequested,
     serialState: batchState.videos?.state,
-    canStart: sceneState.scenes.some((scene) => scene.versions.length),
+    canStart: allImagesReady,
+    prerequisite: hasScenes
+      ? `${sceneState.scenes.length - imagesReady} scene${sceneState.scenes.length - imagesReady === 1 ? '' : 's'} still need images before generating video.`
+      : 'Generate images before generating video.',
     busy
   });
 
@@ -292,24 +308,70 @@ export function updateButtons(els) {
     els.generatePromptsBtn.classList.remove('is-loading');
     els.generatePromptsBtn.setAttribute('aria-busy', 'false');
   }
+
+  els.generateDialogueBtn.classList.toggle('is-loading', uiState.operation?.type === 'dialogueAll');
+  els.generateDialogueBtn.setAttribute('aria-busy', String(uiState.operation?.type === 'dialogueAll'));
+  renderGenerationSummary(els, sceneState.scenes, batchState);
 }
 
-function configureBatchButton(button, { noun, generating, stopRequested, serialState, canStart, busy }) {
+function setGenerationActionLabel(button, label) {
+  const labelElement = button.querySelector('.action-label');
+  if (labelElement) labelElement.textContent = label;
+}
+
+function configureGenerationAction(button, { available, prerequisite, busy }) {
+  button.disabled = busy;
+  button.dataset.locked = String(!available);
+  button.dataset.prerequisite = prerequisite;
+  button.classList.toggle('is-locked', !available);
+  button.setAttribute('aria-disabled', String(!available || busy));
+  button.title = available ? '' : prerequisite;
+}
+
+function configureBatchButton(button, { noun, generating, stopRequested, canStart, prerequisite, busy }) {
   if (!button) return;
   button.classList.remove('primary', 'secondary', 'danger');
   button.setAttribute('aria-busy', String(generating));
   if (generating) {
-    button.textContent = stopRequested ? 'Stopping…' : `Stop ${noun}`;
+    setGenerationActionLabel(button, stopRequested ? 'Stopping…' : `Stop ${noun}`);
     button.classList.add('danger');
     button.disabled = stopRequested;
+    button.dataset.locked = 'false';
+    button.classList.remove('is-locked');
+    button.setAttribute('aria-disabled', String(stopRequested));
+    button.title = stopRequested ? `Stopping ${noun} generation` : `Stop ${noun} generation`;
     return;
   }
 
-  if (serialState === 'paused') button.textContent = `Resume ${noun}`;
-  else if (serialState === 'failed') button.textContent = `Retry ${noun}`;
-  else if (serialState === 'complete') button.textContent = `Regenerate ${noun}`;
-  else button.textContent = `Generate ${noun}`;
-  
-  button.classList.add(['paused', 'failed'].includes(serialState) ? 'primary' : 'secondary');
-  button.disabled = busy || !canStart;
+  setGenerationActionLabel(button, noun[0].toUpperCase() + noun.slice(1));
+  configureGenerationAction(button, { available: canStart, prerequisite, busy });
+}
+
+function renderGenerationSummary(els, scenes, batchState) {
+  if (!els.generationSummaryText) return;
+  if (!scenes.length) {
+    els.generationSummaryText.textContent = 'No generations yet';
+    els.generationSummaryText.title = 'No generations yet';
+    return;
+  }
+  const total = scenes.length;
+  const completed = (predicate) => scenes.filter(predicate).length;
+  const mediaSummary = (label, versionsKey, batch) => {
+    const ready = completed((scene) => (scene[versionsKey] || []).some((version) => version?.path));
+    const versions = scenes.reduce((sum, scene) => sum + (scene[versionsKey] || []).filter((version) => version?.path).length, 0);
+    const revisionNote = versions > ready ? `, ${versions} versions` : '';
+    const runNote = batch?.state === 'failed' ? ', last run failed' : batch?.state === 'paused' ? ', run stopped' : '';
+    return `${label} ${ready}/${total}${revisionNote}${runNote}`;
+  };
+  const promptCount = completed((scene) => Boolean(String(scene.prompt || '').trim()));
+  const dialogueCount = completed((scene) => (scene.lines || []).some((line) => String(line?.text || '').trim()));
+  const summary = [
+    `Prompts ${promptCount}/${total}`,
+    `Dialogue ${dialogueCount}/${total}`,
+    mediaSummary('Images', 'versions', batchState.images),
+    mediaSummary('Video', 'videoVersions', batchState.videos),
+    mediaSummary('Audio', 'audioVersions', batchState.audio),
+  ].join(' · ');
+  els.generationSummaryText.textContent = summary;
+  els.generationSummaryText.title = summary;
 }

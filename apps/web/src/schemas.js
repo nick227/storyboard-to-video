@@ -24,13 +24,40 @@ const promptGeneration = z.object({
   fallbackPolicy,
 });
 
+const regeneratePrompt = z.object({
+  projectId,
+  scene: z.record(z.any()),
+  sceneIndex: z.coerce.number().int().min(0).max(49).default(0),
+  previousBeat: z.string().max(2_000).default(''),
+  nextBeat: z.string().max(2_000).default(''),
+  styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
+  commonPromptText: z.string().max(20_000).default(''),
+  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
+  extraPromptText: z.string().max(20_000).default(''),
+  fallbackPolicy,
+  scriptText: z.string().max(200_000).default(''),
+});
+
+const regenerateAction = z.object({
+  projectId,
+  scene: z.record(z.any()),
+  sceneIndex: z.coerce.number().int().min(0).max(49).default(0),
+  previousBeat: z.string().max(2_000).default(''),
+  nextBeat: z.string().max(2_000).default(''),
+  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
+  fallbackPolicy,
+  scriptText: z.string().max(200_000).default(''),
+});
+
 const exportProject = z.object({
   projectId,
 });
 
+const sceneId = z.string().trim().min(1).max(120);
+
 const imageGeneration = z.object({
   projectId,
-  sceneId: z.string().trim().max(120).optional(),
+  sceneId,
   sceneNumber: z.coerce.number().int().min(1).max(50).default(1),
   sceneTitle: z.string().max(200).default(''),
   scenePrompt: z.string().trim().min(1).max(20_000),
@@ -42,6 +69,7 @@ const imageGeneration = z.object({
 
 const videoGeneration = z.object({
   projectId,
+  sceneId,
   sceneNumber: z.coerce.number().int().min(1).max(50).default(1),
   sceneTitle: z.string().max(200).default(''),
   scenePrompt: z.string().max(20_000).default(''),
@@ -56,6 +84,7 @@ const videoGeneration = z.object({
 const dialogueLine = z.object({ speaker: z.string().max(80).default('Narrator'), text: z.string().trim().min(1).max(2_000) });
 const audioGeneration = z.object({
   projectId,
+  sceneId,
   sceneNumber: z.coerce.number().int().min(1).max(50).default(1),
   sceneTitle: z.string().max(200).default(''),
   lines: z.array(dialogueLine).min(1).max(200),
@@ -63,4 +92,4 @@ const audioGeneration = z.object({
   voiceMap: z.record(z.string(), z.any()).default({}),
 });
 
-module.exports = { audioGeneration, createProject, exportProject, fallbackPolicy, imageGeneration, projectDocument, projectId, promptGeneration, videoGeneration };
+module.exports = { audioGeneration, createProject, exportProject, fallbackPolicy, imageGeneration, projectDocument, projectId, promptGeneration, regenerateAction, regeneratePrompt, videoGeneration };

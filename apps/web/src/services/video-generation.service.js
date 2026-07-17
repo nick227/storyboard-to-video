@@ -61,7 +61,7 @@ function createVideoGenerationService({ config, provider, projectStore, styles }
 
   return {
     verify: () => provider.verify(),
-    async generate(input, { ownerId, signal } = {}) {
+    async generate(input, { ownerId, signal, jobId } = {}) {
       const source = resolve(input.imagePath, ownerId);
       if (!source || !fs.existsSync(source)) {
         throw new AppError('INVALID_PATH', 'A valid generated reference image is required', { status: 400 });
@@ -83,6 +83,14 @@ function createVideoGenerationService({ config, provider, projectStore, styles }
           outputPath: staged,
         });
         const asset = projectStore.commitAsset(lease, 'videos', staged, { signal });
+        const version = { path: asset.path, prompt, sourceImagePath: input.imagePath, provider: config.videoProvider, createdAt: new Date().toISOString() };
+        let scene, project;
+        try {
+          ({ scene, project } = projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'video', version, jobId }));
+        } catch (error) {
+          fs.rmSync(asset.sourcePath, { force: true });
+          throw error;
+        }
         return {
           video: {
             fileName: file,
@@ -92,6 +100,8 @@ function createVideoGenerationService({ config, provider, projectStore, styles }
             mimeType: 'video/mp4',
             provider: config.videoProvider,
           },
+          scene,
+          revision: project.revision,
         };
       } finally {
         fs.rmSync(staged, { force: true });

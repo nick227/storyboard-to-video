@@ -310,7 +310,7 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     audioEls.forEach((el) => el.pause());
     toggle.textContent = globalCurrentTime >= totalDuration ? 'Replay' : 'Play';
     toggle.setAttribute('aria-label', toggle.textContent === 'Replay' ? 'Replay combined timeline' : 'Play combined timeline');
-    document.querySelectorAll('.scene-playback-audio, .audio-version-thumb audio').forEach((el) => {
+    document.querySelectorAll('.scene-audio, .audio-version-thumb audio').forEach((el) => {
       if (!el.paused) el.pause();
     });
   };
@@ -340,7 +340,7 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
   const play = () => {
     if (!totalDuration || dragging) return;
 
-    document.querySelectorAll('.scene-playback-audio, .audio-version-thumb audio, .scene-video').forEach((el) => {
+    document.querySelectorAll('.scene-audio, .audio-version-thumb audio, .scene-video').forEach((el) => {
       if (!el.paused && typeof el.pause === 'function') el.pause();
     });
 

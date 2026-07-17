@@ -12,9 +12,9 @@ class GenerationQueue {
     for (const saved of store?.loadAndInterrupt?.() || []) this.jobs.set(saved.id, saved);
   }
 
-  add(type, projectId, task) {
+  add(type, projectId, task, { sceneId } = {}) {
     const controller = new AbortController();
-    const job = { id: crypto.randomUUID(), type, projectId: projectId || null, status: 'queued', createdAt: new Date().toISOString(), controller };
+    const job = { id: crypto.randomUUID(), type, projectId: projectId || null, sceneId: sceneId || null, status: 'queued', createdAt: new Date().toISOString(), controller };
     job.promise = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject; });
     this.jobs.set(job.id, job);
     this.store?.save(job);
@@ -51,7 +51,7 @@ class GenerationQueue {
   }
 
   public(job, includePromise = false) {
-    const value = { id: job.id, type: job.type, projectId: job.projectId, status: job.status, createdAt: job.createdAt, startedAt: job.startedAt, finishedAt: job.finishedAt, result: job.result, error: job.error };
+    const value = { id: job.id, type: job.type, projectId: job.projectId, sceneId: job.sceneId, status: job.status, createdAt: job.createdAt, startedAt: job.startedAt, finishedAt: job.finishedAt, result: job.result, error: job.error };
     if (includePromise) value.promise = job.promise;
     return value;
   }
@@ -70,7 +70,7 @@ class GenerationQueue {
     job.startedAt = new Date().toISOString();
     this.store?.save(job);
     try {
-      const result = await task(job.controller.signal);
+      const result = await task(job.controller.signal, job.id);
       if (job.controller.signal.aborted) throw job.controller.signal.reason;
       job.status = 'succeeded'; job.result = result; this.store?.save(job); job.resolve(result);
     } catch (error) {

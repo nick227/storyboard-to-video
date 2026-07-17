@@ -5,7 +5,7 @@ const { getAdditionalCommonPrompt, slugify } = require('../shared/text');
 
 function createImageGenerationService({ config, styles, provider, projectStore }) {
   return {
-    async generate(input, { ownerId, signal } = {}) {
+    async generate(input, { ownerId, signal, jobId } = {}) {
       const style = styles.find(input.styleId);
       if (!style) {
         const error = new Error('Unknown style');
@@ -23,7 +23,15 @@ function createImageGenerationService({ config, styles, provider, projectStore }
       try {
         fs.writeFileSync(staged, result.buffer);
         const asset = projectStore.commitAsset(lease, 'images', staged, { signal });
-        return { image: { fileName: file, path: asset.path, prompt, mimeType: result.mimeType }, referenceCount: references.length };
+        const version = { path: asset.path, prompt, createdAt: new Date().toISOString() };
+        let scene, project;
+        try {
+          ({ scene, project } = projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'image', version, jobId }));
+        } catch (error) {
+          fs.rmSync(asset.sourcePath, { force: true });
+          throw error;
+        }
+        return { image: { fileName: file, path: asset.path, prompt, mimeType: result.mimeType }, referenceCount: references.length, scene, revision: project.revision };
       } finally {
         fs.rmSync(staged, { force: true });
       }

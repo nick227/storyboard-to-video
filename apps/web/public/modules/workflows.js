@@ -47,6 +47,8 @@ export function normalizeScene(scene, index) {
     title: String(scene?.title || `Scene ${index + 1}`),
     beat: String(scene?.beat || ''),
     prompt: String(scene?.prompt || ''),
+    scriptFragment: typeof scene?.scriptFragment === 'string' ? scene.scriptFragment : '',
+    promptGeneratedFromBeat: typeof scene?.promptGeneratedFromBeat === 'string' ? scene.promptGeneratedFromBeat : '',
     versions,
     activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
     lines,
@@ -88,6 +90,7 @@ export async function generatePrompts(els, setStatus) {
     const previousScenes = sceneStore.get().scenes;
     const nextScenes = (data.scenes || []).map((nextScene, index) => normalizeScene({
       ...nextScene,
+      promptGeneratedFromBeat: nextScene.beat,
       id: previousScenes[index]?.id || nextScene.id,
       versions: previousScenes[index]?.versions || [],
       activeVersionIndex: previousScenes[index]?.activeVersionIndex || 0,
@@ -132,6 +135,8 @@ export async function regeneratePrompt(index, els, setStatus) {
         scriptText: base.scriptText,
         scene,
         sceneIndex: index,
+        previousBeat: scenes[index - 1]?.beat || '',
+        nextBeat: scenes[index + 1]?.beat || '',
         styleId: base.styleId,
         commonPromptText: base.commonPromptText,
         provider: base.textProvider,
@@ -139,8 +144,9 @@ export async function regeneratePrompt(index, els, setStatus) {
         fallbackPolicy: base.fallbackPolicy,
       }),
     });
-    
+
     scene.prompt = data.prompt || scene.prompt;
+    if (!data.usedFallback) scene.promptGeneratedFromBeat = scene.beat;
     sceneStore.set({ scenes: [...scenes] }); // trigger reactivity
     const record = getCurrentStoryboardRecord();
     if (record) {
@@ -151,6 +157,46 @@ export async function regeneratePrompt(index, els, setStatus) {
     if (setStatus) setStatus(data.usedFallback ? data.warning : `Prompt updated for scene ${index + 1}.`);
   } catch (error) {
     if (setStatus) setStatus(`Prompt regeneration failed: ${error.message}`);
+  } finally {
+    uiStore.set({ operation: null });
+  }
+}
+
+export async function regenerateAction(index, els, setStatus) {
+  const scenes = sceneStore.get().scenes;
+  const scene = scenes[index];
+  if (!scene || uiStore.get().operation) return;
+
+  uiStore.set({ operation: { type: 'action', sceneId: scene.id } });
+  try {
+    await ensureProjectSynced();
+    if (setStatus) setStatus(`Regenerating action for scene ${index + 1}...`);
+    const base = getPayloadBase(els);
+    const data = await api('/api/storyboard/regenerate-action', {
+      method: 'POST',
+      body: JSON.stringify({
+        scriptText: base.scriptText,
+        scene,
+        sceneIndex: index,
+        previousBeat: scenes[index - 1]?.beat || '',
+        nextBeat: scenes[index + 1]?.beat || '',
+        provider: base.textProvider,
+        projectId: base.projectId,
+        fallbackPolicy: base.fallbackPolicy,
+      }),
+    });
+
+    scene.beat = data.beat || scene.beat;
+    sceneStore.set({ scenes: [...scenes] });
+    const record = getCurrentStoryboardRecord();
+    if (record) {
+      record.scenes = scenes;
+      queueSync(record, setStatus);
+    }
+
+    if (setStatus) setStatus(data.usedFallback ? data.warning : `Action updated for scene ${index + 1}.`);
+  } catch (error) {
+    if (setStatus) setStatus(`Action regeneration failed: ${error.message}`);
   } finally {
     uiStore.set({ operation: null });
   }
@@ -265,21 +311,18 @@ export async function regenerateImage(index, scene, els, setStatus) {
       }),
     });
 
-    activeScene.versions.push({
-      path: data.image.path,
-      prompt: data.image.prompt,
-      createdAt: new Date().toISOString(),
-    });
-    activeScene.activeVersionIndex = activeScene.versions.length - 1;
-    activeScene.activeVisualType = 'image';
-    
+    activeScene.versions = data.scene.versions;
+    activeScene.activeVersionIndex = data.scene.activeVersionIndex;
+    activeScene.activeVisualType = data.scene.activeVisualType;
+
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
     if (record) {
       record.scenes = scenes;
+      record.revision = data.revision;
       queueSync(record, setStatus);
     }
-    
+
     if (setStatus) setStatus(`Image ready for scene ${index + 1}. ${data.referenceCount || 0} style refs used.`);
   } catch (error) {
     if (setStatus) setStatus(`Image generation failed for scene ${index + 1}: ${error.message}`);
@@ -311,6 +354,7 @@ export async function regenerateAudio(index, scene, els, setStatus) {
       method: 'POST',
       body: JSON.stringify({
         sceneNumber: index + 1,
+        sceneId: activeScene.id,
         sceneTitle: activeScene.title,
         lines: activeScene.lines,
         provider: audioProvider,
@@ -319,20 +363,17 @@ export async function regenerateAudio(index, scene, els, setStatus) {
       }),
     });
 
-    activeScene.audioVersions.push({
-      path: data.audio.path,
-      provider: audioProvider,
-      createdAt: new Date().toISOString(),
-    });
-    activeScene.activeAudioVersionIndex = activeScene.audioVersions.length - 1;
-    
+    activeScene.audioVersions = data.scene.audioVersions;
+    activeScene.activeAudioVersionIndex = data.scene.activeAudioVersionIndex;
+
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
     if (record) {
       record.scenes = scenes;
+      record.revision = data.revision;
       queueSync(record, setStatus);
     }
-    
+
     if (setStatus) setStatus(`Audio ready for scene ${index + 1}.`);
   } catch (error) {
     if (setStatus) setStatus(`Audio generation failed for scene ${index + 1}: ${error.message}`);
@@ -405,6 +446,7 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
       method: 'POST',
       body: JSON.stringify({
         sceneNumber: index + 1,
+        sceneId: activeScene.id,
         sceneTitle: activeScene.title,
         scenePrompt: activeScene.prompt,
         sceneBeat: activeScene.beat,
@@ -415,24 +457,19 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
         projectId: base.projectId,
       }),
     });
-    
-    activeScene.videoVersions.push({
-      path: data.video.path,
-      prompt: data.video.prompt,
-      sourceImagePath: data.video.sourceImagePath,
-      provider: data.video.provider,
-      createdAt: new Date().toISOString(),
-    });
-    activeScene.activeVideoVersionIndex = activeScene.videoVersions.length - 1;
-    activeScene.activeVisualType = 'video';
-    
+
+    activeScene.videoVersions = data.scene.videoVersions;
+    activeScene.activeVideoVersionIndex = data.scene.activeVideoVersionIndex;
+    activeScene.activeVisualType = data.scene.activeVisualType;
+
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
     if (record) {
       record.scenes = scenes;
+      record.revision = data.revision;
       queueSync(record, setStatus);
     }
-    
+
     if (setStatus) setStatus(`Video ready for scene ${index + 1}.`);
     return false;
   } catch (error) {

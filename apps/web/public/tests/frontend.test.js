@@ -114,6 +114,55 @@ async function runTests() {
     assert(!renderingSource.includes("classList.contains('scene-title-input')"), 'Scene title edits should not be persisted');
     addResult('Read-Only Scene Titles', true);
 
+    // Test 13: Scene playback is a single image-overlay control with no timeline chrome.
+    assert(sceneTemplate.content.querySelector('.scene-media-toggle'), 'Scene media should expose an overlay playback button');
+    assert(!sceneTemplate.content.querySelector('.scene-playback'), 'Scene cards should not contain a separate playback section');
+    assert(!sceneTemplate.content.querySelector('.scene-playback-timeline'), 'Scene cards should not contain a playback timeline');
+    assert(!sceneTemplate.content.querySelector('.scene-playback-time'), 'Scene cards should not contain playback timers');
+    assert(renderingSource.includes("setToggleState('playing')"), 'The overlay should expose its playing state');
+    addResult('Minimal Scene Media Overlay', true);
+
+    // Test 14: Secondary settings use consistent modal launchers instead of disclosure menus.
+    const indexSource = await (await fetch('/index.html')).text();
+    ['commonPromptSettingsBtn', 'styleReferencesSettingsBtn', 'audioSettingsBtn'].forEach((id) => {
+      assert(indexSource.includes(`id="${id}"`), `${id} should be present`);
+    });
+    ['commonPromptModal', 'styleReferencesModal', 'audioSettingsModal'].forEach((id) => {
+      assert(indexSource.includes(`<dialog id="${id}" class="settings-modal"`), `${id} should use the shared settings modal`);
+    });
+    assert(!indexSource.includes('class="inline-settings"'), 'Legacy collapsible settings should be removed');
+    addResult('Settings Modal Launchers', true);
+
+    // Test 15: Global generation actions stay stable, grouped, and explain prerequisites.
+    const uiSource = await (await fetch('/modules/ui.js')).text();
+    assert(indexSource.includes('class="generation-toolbar'), 'Generation controls should use the slim grouped toolbar');
+    assert(indexSource.includes('generation-group-label">Scenes'), 'Toolbar should label the Scenes group');
+    assert(indexSource.includes('generation-group-label">Writing'), 'Toolbar should label the Writing group');
+    assert(indexSource.includes('generation-group-label">Media'), 'Toolbar should label the Media group');
+    assert(uiSource.includes("button.dataset.locked = String(!available)"), 'Unavailable stages should expose prerequisite locks');
+    assert(!uiSource.includes('Regenerate dialogue'), 'Dialogue should not switch to a regenerate label');
+    assert(!uiSource.includes('Regenerate ${noun}'), 'Media actions should not switch to regenerate labels');
+    assert(uiSource.includes('renderGenerationSummary'), 'The status bar should summarize generation completion');
+    addResult('Stable Grouped Generation Toolbar', true);
+
+    // Test 16: Consequential global generation actions require an informative preflight.
+    assert(indexSource.includes('id="generationConfirmModal"'), 'Generation confirmation modal should be present');
+    assert(indexSource.includes('Existing work'), 'Preflight should summarize previous generation work');
+    assert(indexSource.includes('What happens next'), 'Preflight should explain the effect of continuing');
+    assert(appSource.includes("requestGenerationConfirmation('prompts')"), 'Prompt generation should require confirmation');
+    assert(appSource.includes("requestGenerationConfirmation('dialogue')"), 'Dialogue generation should require confirmation');
+    assert(appSource.includes("requestGenerationConfirmation('images')"), 'Image generation should require confirmation');
+    assert(appSource.includes("requestGenerationConfirmation('audio')"), 'Audio generation should require confirmation');
+    assert(appSource.includes("requestGenerationConfirmation('videos')"), 'Video generation should require confirmation');
+    addResult('Generation Preflight Confirmation', true);
+
+    // Test 17: Storyboard density controls expose six layouts and wire them to the grid.
+    assert((indexSource.match(/class="resize-scenes/g) || []).length === 6, 'Storyboard should expose six density choices');
+    assert(indexSource.includes('data-columns="6" aria-label="Show 6 scenes per row" aria-pressed="true"'), 'Six columns should be selected by default');
+    assert(appSource.includes("storyboardGrid.style.setProperty('--scene-columns', columns)"), 'Density controls should update the grid column count');
+    assert(appSource.includes("candidate.setAttribute('aria-pressed', String(isActive))"), 'Density controls should announce the selected layout');
+    addResult('Storyboard Density Controls', true);
+
   } catch (e) {
     addResult('Test Suite Execution', false, e.message);
     console.error(e);

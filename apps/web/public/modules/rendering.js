@@ -1,9 +1,8 @@
 import { sceneStore, uiStore, debounce } from './store.js';
-import { regeneratePrompt, regenerateDialogue, regenerateImage, regenerateAudio, regenerateVideo } from './workflows.js';
+import { regeneratePrompt, regenerateAction, regenerateDialogue, regenerateImage, regenerateAudio, regenerateVideo } from './workflows.js';
 import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
 import { loadProtectedAsset } from './assets.js';
 import { renderVoicesPanel } from './ui.js';
-import { formatPlaybackTime } from './timeline.js';
 
 let els = {};
 let activeScenePlayback = null;
@@ -32,6 +31,7 @@ const ENTITY_CONFIG = {
     getValue: (scene) => scene.prompt || '',
     setValue: (scene, value) => { scene.prompt = value; },
     regen: (index, els, cb) => regeneratePrompt(index, els, cb),
+    regenBeat: (index, els, cb) => regenerateAction(index, els, cb),
   },
   dialogue: {
     title: 'Dialogue',
@@ -70,7 +70,8 @@ const ENTITY_CONFIG = {
 function isEntityLoading(type, scene, operation) {
   if (!operation) return false;
   switch (type) {
-    case 'prompt': return operation.type === 'prompts' || (operation.type === 'prompt' && operation.sceneId === scene.id);
+    case 'prompt': return operation.type === 'prompts' || ((operation.type === 'prompt' || operation.type === 'action') && operation.sceneId === scene.id);
+    case 'action': return operation.type === 'action' && operation.sceneId === scene.id;
     case 'image': return ['image', 'imagesSerial'].includes(operation.type) && operation.sceneId === scene.id;
     case 'dialogue': return operation.type === 'dialogueAll' || (operation.type === 'dialogue' && operation.sceneId === scene.id);
     case 'audio': return ['audio', 'audioSerial'].includes(operation.type) && operation.sceneId === scene.id;
@@ -136,14 +137,17 @@ function renderEntityModalMedia(scene, type, config) {
   els.entityModalAudio.removeAttribute('src');
   if (!path) return;
 
+  // entityModalMediaPath may have moved on to a different version/scene by the time this
+  // resolves (fast version-switching, or the modal closing) — re-check before assigning so a
+  // late response can't clobber whatever is actually being shown now.
   if (type === 'image') {
-    loadProtectedAsset(path).then((url) => { if (url) els.entityModalImage.src = url; });
+    loadProtectedAsset(path).then((url) => { if (url && entityModalMediaPath === path) els.entityModalImage.src = url; });
     els.entityModalImage.hidden = false;
   } else if (type === 'video') {
-    loadProtectedAsset(path).then((url) => { if (url) els.entityModalVideo.src = url; });
+    loadProtectedAsset(path).then((url) => { if (url && entityModalMediaPath === path) els.entityModalVideo.src = url; });
     els.entityModalVideo.hidden = false;
   } else if (type === 'audio') {
-    loadProtectedAsset(path).then((url) => { if (url) els.entityModalAudio.src = url; });
+    loadProtectedAsset(path).then((url) => { if (url && entityModalMediaPath === path) els.entityModalAudio.src = url; });
     els.entityModalAudio.hidden = false;
   }
 }
@@ -225,6 +229,7 @@ function renderEntityModal() {
   els.entityModalTitle.textContent = config.title;
 
   const showBeat = type === 'prompt';
+  const hasBeatRegen = Boolean(config.regenBeat);
   els.entityModalBeatField.hidden = !showBeat;
   if (showBeat && document.activeElement !== els.entityModalBeat) els.entityModalBeat.value = scene.beat || '';
   els.entityModalBeat.disabled = busy;
@@ -239,6 +244,29 @@ function renderEntityModal() {
   els.entityModalMedia.hidden = isText;
   if (!isText) renderEntityModalMedia(scene, type, config);
 
+  // Text kinds (prompt/dialogue) regenerate via the inline per-field buttons; the shared bottom
+  // button is only meaningful for media kinds, which have no per-field header to hang a button on.
+  // `isLoading` above is intentionally broad (spins the status icon for either the action or the
+  // prompt regenerating), but each inline button must reflect only its OWN field's operation —
+  // otherwise regenerating the action would make the (untouched) visual-prompt button spin too.
+  const beatLoading = isEntityLoading('action', scene, operation);
+  const promptFieldLoading = type === 'prompt'
+    ? (operation?.type === 'prompts' || (operation?.type === 'prompt' && operation.sceneId === scene.id))
+    : isLoading;
+  els.entityModalRegenBeatBtn.hidden = !(showBeat && hasBeatRegen);
+  els.entityModalRegenBeatBtn.disabled = busy;
+  els.entityModalRegenBeatBtn.classList.toggle('is-loading', beatLoading);
+  els.entityModalRegenBeatBtn.textContent = beatLoading ? 'Regenerating…' : 'Regenerate';
+
+  els.entityModalRegenTextBtn.hidden = !isText;
+  els.entityModalRegenTextBtn.disabled = busy;
+  els.entityModalRegenTextBtn.classList.toggle('is-loading', promptFieldLoading);
+  els.entityModalRegenTextBtn.textContent = promptFieldLoading ? 'Regenerating…' : 'Regenerate';
+
+  const stale = type === 'prompt' && Boolean(scene.beat) && Boolean(scene.promptGeneratedFromBeat) && scene.beat !== scene.promptGeneratedFromBeat;
+  els.entityModalStaleWarning.hidden = !stale;
+
+  els.entityModalRegenBtn.hidden = isText;
   els.entityModalRegenBtn.disabled = busy;
   els.entityModalRegenBtn.classList.toggle('is-loading', isLoading);
   els.entityModalRegenBtn.textContent = isLoading ? 'Regenerating' : 'Regenerate';
@@ -276,7 +304,26 @@ function setupEntityModal() {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
     const config = ENTITY_CONFIG[entityModalType];
-    confirmRegeneration(`Regenerate the ${config.title.toLowerCase()} for scene ${index + 1}? This replaces the current version.`).then((confirmed) => {
+    confirmRegeneration(`Regenerate the ${config.title.toLowerCase()} for scene ${index + 1}? This creates a new version and makes it active.`).then((confirmed) => {
+      if (confirmed) config.regen(index, els, (t) => els.statusText.textContent = t);
+    });
+  });
+
+  els.entityModalRegenBeatBtn.addEventListener('click', () => {
+    const index = currentEntityModalSceneIndex();
+    if (index === -1) return;
+    const config = ENTITY_CONFIG[entityModalType];
+    if (!config.regenBeat) return;
+    confirmRegeneration(`Regenerate the physical action for scene ${index + 1}? This does not change the visual prompt.`).then((confirmed) => {
+      if (confirmed) config.regenBeat(index, els, (t) => els.statusText.textContent = t);
+    });
+  });
+
+  els.entityModalRegenTextBtn.addEventListener('click', () => {
+    const index = currentEntityModalSceneIndex();
+    if (index === -1) return;
+    const config = ENTITY_CONFIG[entityModalType];
+    confirmRegeneration(`Regenerate the ${(config.fieldLabel || config.title).toLowerCase()} for scene ${index + 1}? This replaces the current version.`).then((confirmed) => {
       if (confirmed) config.regen(index, els, (t) => els.statusText.textContent = t);
     });
   });
@@ -284,21 +331,26 @@ function setupEntityModal() {
   els.entityModalBeat.addEventListener('input', debounce(() => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
-    const scenes = sceneStore.get().scenes;
-    scenes[index].beat = els.entityModalBeat.value;
-    sceneStore.set({ scenes: [...scenes] });
+    const value = els.entityModalBeat.value;
+    const scenes = sceneStore.get().scenes.map((scene, i) => (i === index ? { ...scene, beat: value } : scene));
+    sceneStore.set({ scenes });
     const record = getCurrentStoryboardRecord();
-    if (record) { record.scenes = sceneStore.get().scenes; queueSync(record, (t) => els.statusText.textContent = t); }
+    if (record) { record.scenes = scenes; queueSync(record, (t) => els.statusText.textContent = t); }
   }, 500));
 
   els.entityModalTextarea.addEventListener('input', debounce(() => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
-    const scenes = sceneStore.get().scenes;
-    ENTITY_CONFIG[entityModalType].setValue(scenes[index], els.entityModalTextarea.value);
-    sceneStore.set({ scenes: [...scenes] });
+    const value = els.entityModalTextarea.value;
+    const scenes = sceneStore.get().scenes.map((scene, i) => {
+      if (i !== index) return scene;
+      const next = { ...scene };
+      ENTITY_CONFIG[entityModalType].setValue(next, value);
+      return next;
+    });
+    sceneStore.set({ scenes });
     const record = getCurrentStoryboardRecord();
-    if (record) { record.scenes = sceneStore.get().scenes; queueSync(record, (t) => els.statusText.textContent = t); }
+    if (record) { record.scenes = scenes; queueSync(record, (t) => els.statusText.textContent = t); }
     if (entityModalType === 'dialogue') renderVoicesPanel(els, (t) => els.statusText.textContent = t);
   }, 500));
 
@@ -307,11 +359,16 @@ function setupEntityModal() {
     if (index === -1) return;
     const target = event.target.closest('.audio-version-select') || event.target.closest('.version-thumb');
     if (!target || target.disabled) return;
-    const scenes = sceneStore.get().scenes;
-    ENTITY_CONFIG[entityModalType].selectVersion(scenes[index], parseInt(target.dataset.vindex, 10));
-    sceneStore.set({ scenes: [...scenes] });
+    const vIndex = parseInt(target.dataset.vindex, 10);
+    const scenes = sceneStore.get().scenes.map((scene, i) => {
+      if (i !== index) return scene;
+      const next = { ...scene };
+      ENTITY_CONFIG[entityModalType].selectVersion(next, vIndex);
+      return next;
+    });
+    sceneStore.set({ scenes });
     const record = getCurrentStoryboardRecord();
-    if (record) { record.scenes = sceneStore.get().scenes; queueSync(record); }
+    if (record) { record.scenes = scenes; queueSync(record); }
   });
 }
 
@@ -347,7 +404,7 @@ function renderEmptyPromptTargets() {
   }
 }
 
-function setupScenePlayback({ container, toggle, timeline, timeLabel, video, audio, hasVideo, hasAudio }) {
+function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio }) {
   let playing = false;
   let duration = 0;
   let currentTime = 0;
@@ -355,17 +412,15 @@ function setupScenePlayback({ container, toggle, timeline, timeLabel, video, aud
   let animationFrame = null;
 
   const mediaDuration = (element, enabled) => enabled && Number.isFinite(element.duration) ? element.duration : 0;
-  const updateDisplay = () => {
-    timeline.value = String(currentTime);
-    timeLabel.textContent = `${formatPlaybackTime(currentTime)} / ${formatPlaybackTime(duration)}`;
+  const setToggleState = (state) => {
+    toggle.dataset.state = state;
+    const action = state === 'playing' ? 'Pause' : state === 'ended' ? 'Replay' : 'Play';
+    toggle.setAttribute('aria-label', `${action} scene`);
   };
   const updateDuration = () => {
     duration = Math.max(mediaDuration(video, hasVideo), mediaDuration(audio, hasAudio));
-    timeline.max = String(duration || 0);
-    timeline.disabled = duration <= 0;
     toggle.disabled = duration <= 0;
     currentTime = Math.min(currentTime, duration || 0);
-    updateDisplay();
   };
   const positionMedia = (target, shouldPlay) => {
     const videoDuration = mediaDuration(video, hasVideo);
@@ -391,13 +446,11 @@ function setupScenePlayback({ container, toggle, timeline, timeLabel, video, aud
     playing = false;
     video.pause();
     audio.pause();
-    toggle.textContent = currentTime >= duration && duration ? 'Replay' : 'Play';
-    toggle.setAttribute('aria-label', toggle.textContent === 'Replay' ? 'Replay combined scene' : 'Play combined scene');
+    setToggleState(currentTime >= duration && duration ? 'ended' : 'paused');
     if (activeScenePlayback === controller) activeScenePlayback = null;
   };
   const tick = (now) => {
     currentTime = Math.min(duration, (now - startedAt) / 1000);
-    updateDisplay();
     if (currentTime >= duration) {
       positionMedia(duration, false);
       pause();
@@ -413,8 +466,7 @@ function setupScenePlayback({ container, toggle, timeline, timeLabel, video, aud
     if (currentTime >= duration) currentTime = 0;
     activeScenePlayback = controller;
     playing = true;
-    toggle.textContent = 'Pause';
-    toggle.setAttribute('aria-label', 'Pause combined scene');
+    setToggleState('playing');
     startedAt = performance.now() - currentTime * 1000;
     positionMedia(currentTime, true);
     animationFrame = requestAnimationFrame(tick);
@@ -428,20 +480,15 @@ function setupScenePlayback({ container, toggle, timeline, timeLabel, video, aud
     },
   };
 
-  container.hidden = !(hasVideo || hasAudio);
-  timeline.disabled = true;
+  toggle.hidden = !(hasVideo || hasAudio);
   toggle.disabled = true;
+  video.loop = false; // explicit initial state — positionMedia() only ever sets this once playback starts
+  setToggleState('paused');
   video.addEventListener('loadedmetadata', updateDuration);
   video.addEventListener('durationchange', updateDuration);
   audio.addEventListener('loadedmetadata', updateDuration);
   audio.addEventListener('durationchange', updateDuration);
   toggle.addEventListener('click', () => { if (playing) pause(); else play(); });
-  timeline.addEventListener('input', () => {
-    currentTime = Number(timeline.value) || 0;
-    if (playing) startedAt = performance.now() - currentTime * 1000;
-    positionMedia(currentTime, playing);
-    updateDisplay();
-  });
   updateDuration();
   return controller.cleanup;
 }
@@ -468,11 +515,8 @@ export function renderScenes() {
     const imageEl = node.querySelector('.scene-image');
     const videoEl = node.querySelector('.scene-video');
     const placeholderEl = node.querySelector('.scene-placeholder');
-    const playbackEl = node.querySelector('.scene-playback');
-    const playbackToggleEl = node.querySelector('.scene-playback-toggle');
-    const playbackTimelineEl = node.querySelector('.scene-playback-timeline');
-    const playbackTimeEl = node.querySelector('.scene-playback-time');
-    const playbackAudioEl = node.querySelector('.scene-playback-audio');
+    const playbackToggleEl = node.querySelector('.scene-media-toggle');
+    const playbackAudioEl = node.querySelector('.scene-audio');
 
     sceneIndexEl.dataset.index = String(index + 1);
     titleEl.textContent = scene.title || `Scene ${index + 1}`;
@@ -534,10 +578,7 @@ export function renderScenes() {
     }
 
     scenePlaybackCleanups.push(setupScenePlayback({
-      container: playbackEl,
       toggle: playbackToggleEl,
-      timeline: playbackTimelineEl,
-      timeLabel: playbackTimeEl,
       video: videoEl,
       audio: playbackAudioEl,
       hasVideo: scene.activeVisualType === 'video' && Boolean(activeVideoVersion?.path),

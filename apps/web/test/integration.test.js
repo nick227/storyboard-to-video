@@ -73,8 +73,8 @@ test('asset deletion rejects explicit active-version references', () => {
 
 test('duplicate generation requests reuse the completed project-scoped result', async (t) => {
   const projectId = id('idem'); t.after(() => cleanupProject(projectId));
-  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Idempotency' }).expect(201);
-  const body = { projectId, sceneNumber: 1, sceneTitle: 'Opening', scenePrompt: 'A bright room.', styleId: 'basic-cartoon', provider: 'stub' };
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Idempotency', project: { scenes: [{ id: 'sc1' }] } }).expect(201);
+  const body = { projectId, sceneId: 'sc1', sceneNumber: 1, sceneTitle: 'Opening', scenePrompt: 'A bright room.', styleId: 'basic-cartoon', provider: 'stub' };
   const first = await request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'same-request-001').send(body).expect(200);
   const second = await request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'same-request-001').send(body).expect(200);
   assert.equal(second.body.image.path, first.body.image.path);
@@ -83,11 +83,11 @@ test('duplicate generation requests reuse the completed project-scoped result', 
 
 test('duplicate active generation requests reuse the active job', async (t) => {
   const projectId = id('active-idem'); t.after(() => cleanupProject(projectId));
-  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Active idempotency' }).expect(201);
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Active idempotency', project: { scenes: [{ id: 'sc1' }] } }).expect(201);
   let release;
   const blocker = generationQueue.add('test-blocker', null, () => new Promise((resolve) => { release = resolve; }));
   blocker.promise.catch(() => {});
-  const body = { projectId, sceneNumber: 1, sceneTitle: 'Opening', scenePrompt: 'A held request.', styleId: 'basic-cartoon', provider: 'stub' };
+  const body = { projectId, sceneId: 'sc1', sceneNumber: 1, sceneTitle: 'Opening', scenePrompt: 'A held request.', styleId: 'basic-cartoon', provider: 'stub' };
   const firstRequest = request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'active-request-001').send(body);
   const firstPromise = firstRequest.then((response) => response);
   for (let attempts = 0; attempts < 20 && !generationQueue.list(projectId).length; attempts += 1) await new Promise((resolve) => setTimeout(resolve, 5));
@@ -126,8 +126,8 @@ test('unfinished cleanup transactions roll back during restart recovery', () => 
 
 test('authentication and ownership protect project documents and assets', async (t) => {
   const projectId = id('owner'); t.after(() => cleanupProject(projectId));
-  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Private' }).expect(201);
-  const body = { projectId, sceneNumber: 1, sceneTitle: 'Private', scenePrompt: 'Private image.', styleId: 'basic-cartoon', provider: 'stub' };
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Private', project: { scenes: [{ id: 'sc1' }] } }).expect(201);
+  const body = { projectId, sceneId: 'sc1', sceneNumber: 1, sceneTitle: 'Private', scenePrompt: 'Private image.', styleId: 'basic-cartoon', provider: 'stub' };
   const generated = await request(app).post('/api/images/generate').set(auth()).set('Idempotency-Key', 'private-request-001').send(body).expect(200);
   await request(app).get(`/api/projects/${projectId}`).expect(401);
   await request(app).get(`/api/projects/${projectId}`).set(auth('bob-token')).expect(404);
@@ -142,4 +142,37 @@ test('authentication and ownership protect project documents and assets', async 
 test('validation errors retain the shared error contract behind authentication', async () => {
   const response = await request(app).post('/api/storyboard/generate-prompts').set(auth()).set('Idempotency-Key', 'invalid-request-001').send({ projectId: 'missing', scriptText: '', sceneCount: 500 }).expect(400);
   assert.equal(response.body.error.code, 'VALIDATION_ERROR'); assert.ok(response.body.error.requestId);
+});
+
+test('successful generate-prompts populates a script fragment for every scene', async (t) => {
+  const projectId = id('fragments'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Fragments' }).expect(201);
+  const body = { projectId, scriptText: 'A hero opens a door. A shadow crosses the hallway. The house creaks in the wind.', sceneCount: 3, styleId: 'basic-cartoon', provider: 'stub' };
+  const response = await request(app).post('/api/storyboard/generate-prompts').set(auth()).set('Idempotency-Key', 'gen-prompts-fragments-001').send(body).expect(200);
+  assert.equal(response.body.scenes.length, 3);
+  response.body.scenes.forEach((scene) => assert.ok(typeof scene.scriptFragment === 'string' && scene.scriptFragment.length > 0));
+});
+
+test('regenerate-prompt now enforces request validation', async () => {
+  const response = await request(app).post('/api/storyboard/regenerate-prompt').set(auth()).set('Idempotency-Key', 'invalid-regen-prompt-001').send({ projectId: 'missing' }).expect(400);
+  assert.equal(response.body.error.code, 'VALIDATION_ERROR');
+});
+
+test('regenerate-action rejects a scene with no fragment and no script text', async (t) => {
+  const projectId = id('action-missing'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Action missing' }).expect(201);
+  const body = { projectId, scene: { beat: 'A hero waits.', prompt: 'A hero stands still.' }, sceneIndex: 0, provider: 'gemini' };
+  const response = await request(app).post('/api/storyboard/regenerate-action').set(auth()).set('Idempotency-Key', 'regen-action-missing-001').send(body).expect(400);
+  assert.equal(response.body.error.code, 'SCENE_FRAGMENT_MISSING');
+});
+
+test('regenerate-action succeeds via stub and never returns a prompt field', async (t) => {
+  const projectId = id('action-ok'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Action ok' }).expect(201);
+  const genBody = { projectId, scriptText: 'A hero opens a door and steps outside into the light.', sceneCount: 1, styleId: 'basic-cartoon', provider: 'stub' };
+  const generated = await request(app).post('/api/storyboard/generate-prompts').set(auth()).set('Idempotency-Key', 'regen-action-ok-gen-001').send(genBody).expect(200);
+  const scene = generated.body.scenes[0];
+  const body = { projectId, scene, sceneIndex: 0, provider: 'stub' };
+  const response = await request(app).post('/api/storyboard/regenerate-action').set(auth()).set('Idempotency-Key', 'regen-action-ok-001').send(body).expect(200);
+  assert.deepEqual(Object.keys(response.body).sort(), ['beat', 'usedFallback', 'warning']);
 });

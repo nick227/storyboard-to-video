@@ -3,6 +3,12 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { AppError } = require('../errors');
 
+const SCENE_ASSET_FIELDS = Object.freeze({
+  image: { list: 'versions', activeIndex: 'activeVersionIndex', visualType: 'image' },
+  audio: { list: 'audioVersions', activeIndex: 'activeAudioVersionIndex', visualType: null },
+  video: { list: 'videoVersions', activeIndex: 'activeVideoVersionIndex', visualType: 'video' },
+});
+
 class ProjectStore {
   constructor(root, options = {}) {
     this.root = path.resolve(root);
@@ -231,6 +237,29 @@ class ProjectStore {
       throw error;
     }
     return { fileName: safeName, sourcePath: destination, path: publicPath };
+  }
+
+  attachSceneVersion(lease, { sceneId, kind, version, jobId }) {
+    const fields = SCENE_ASSET_FIELDS[kind];
+    if (!fields) throw new AppError('INVALID_ASSET_TYPE', 'Invalid scene asset kind', { status: 400 });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const document = this.read(lease.projectId, { ownerId: lease.ownerId });
+      if (document.incarnationId !== lease.incarnationId) throw new AppError('PROJECT_LEASE_EXPIRED', 'Project generation lease is no longer valid', { status: 409 });
+      const scene = document.scenes?.find((item) => item.id === sceneId);
+      if (!scene) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
+      const list = Array.isArray(scene[fields.list]) ? scene[fields.list] : [];
+      if (jobId && list.some((entry) => entry?.jobId === jobId)) return { project: document, scene };
+      scene[fields.list] = [...list, { ...version, jobId }];
+      scene[fields.activeIndex] = scene[fields.list].length - 1;
+      if (fields.visualType) scene.activeVisualType = fields.visualType;
+      try {
+        const next = this.write(lease.projectId, document, { expectedRevision: document.revision, ownerId: lease.ownerId });
+        return { project: next, scene: next.scenes.find((item) => item.id === sceneId) };
+      } catch (error) {
+        if (error.code !== 'REVISION_CONFLICT') throw error;
+      }
+    }
+    throw new AppError('PROJECT_WRITE_CONFLICT', 'Could not persist scene asset after repeated conflicts', { status: 409 });
   }
 
   delete(id, { ownerId } = {}) {
