@@ -22,6 +22,13 @@ async function cleanupProject(projectId) {
   fs.rmSync(projectStore.projectDir(projectId), { recursive: true, force: true });
 }
 
+test('public home introduces the product while the studio remains authenticated', async () => {
+  await request(app).get('/').expect(200).expect(/Your story/).expect(/In your voice/);
+  await request(app).get('/studio.html').expect(302).expect('Location', /login\.html\?redirect=%2Fstudio\.html/);
+  await request(app).get('/studio').set(auth('bob-token')).expect(302).expect('Location', '/studio.html');
+  await request(app).get('/studio.html').set(auth('bob-token')).expect(200).expect(/id="storyboardTitle"/);
+});
+
 test('admin console and API require a platform administrator', async () => {
   await request(app).get('/admin.html').set(auth('alice-token')).expect(200).expect(/Admin console/);
   await request(app).get('/admin.html').set(auth('bob-token')).expect(403);

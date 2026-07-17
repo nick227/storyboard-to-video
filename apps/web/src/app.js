@@ -36,10 +36,10 @@ function registerMiddleware(app, { config, auth, payments }) {
   app.use(express.static(config.paths.public));
 }
 
-// Server-rendered guard for the two HTML entry points, so an unauthenticated
+// Server-rendered guard for the authenticated HTML entry points, so an unauthenticated
 // visitor never receives the storyboard shell (no client-side flash to hide).
 function pageGuard(auth) {
-  const GUARDED_APP_PATHS = new Set(['/', '/index.html']);
+  const GUARDED_APP_PATHS = new Set(['/studio', '/studio.html']);
   const ADMIN_PATHS = new Set(['/admin', '/admin.html']);
   const CUSTOMER_PATHS = new Set(['/credits', '/credits.html']);
   const LOGIN_PATH = '/login.html';
@@ -72,8 +72,11 @@ function pageGuard(auth) {
       if (req.path === '/credits') return res.redirect('/credits.html');
       return next();
     }
-    if (identity) return next();
-    return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || '/')}`);
+    if (identity) {
+      if (req.path === '/studio') return res.redirect('/studio.html');
+      return next();
+    }
+    return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || '/studio.html')}`);
   };
 }
 

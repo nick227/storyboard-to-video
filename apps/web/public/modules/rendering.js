@@ -620,23 +620,27 @@ export function renderScenes() {
         loadProtectedAsset(currentPosterPath, { signal }).then(url => { if (url && imageEl.dataset.assetPath === currentPosterPath) imageEl.src = url; }).catch(handleAssetError);
       }
       imageEl.style.display = 'block';
-      videoEl.removeAttribute('src');
-      videoEl.removeAttribute('poster');
-      videoEl.dataset.assetPath = '';
-      videoEl.dataset.posterPath = '';
+      if (videoEl.dataset.assetPath || videoEl.dataset.posterPath) {
+        videoEl.removeAttribute('src');
+        videoEl.removeAttribute('poster');
+        videoEl.dataset.assetPath = '';
+        videoEl.dataset.posterPath = '';
+        videoEl.load();
+      }
       videoEl.style.display = 'none';
-      videoEl.load();
       placeholderEl.style.display = 'none';
     } else {
       imageEl.removeAttribute('src');
       imageEl.dataset.assetPath = '';
       imageEl.style.display = 'none';
-      videoEl.removeAttribute('src');
-      videoEl.removeAttribute('poster');
-      videoEl.dataset.assetPath = '';
-      videoEl.dataset.posterPath = '';
+      if (videoEl.dataset.assetPath || videoEl.dataset.posterPath) {
+        videoEl.removeAttribute('src');
+        videoEl.removeAttribute('poster');
+        videoEl.dataset.assetPath = '';
+        videoEl.dataset.posterPath = '';
+        videoEl.load();
+      }
       videoEl.style.display = 'none';
-      videoEl.load();
       placeholderEl.style.display = 'flex';
     }
 
@@ -646,9 +650,11 @@ export function renderScenes() {
       playbackAudioEl.dataset.assetPath = currentAudioPath;
       loadProtectedAsset(currentAudioPath, { signal }).then(url => { if (url && playbackAudioEl.dataset.assetPath === currentAudioPath) playbackAudioEl.src = url; }).catch(handleAssetError);
     } else if (!currentAudioPath) {
-      playbackAudioEl.removeAttribute('src');
-      playbackAudioEl.dataset.assetPath = '';
-      playbackAudioEl.load();
+      if (playbackAudioEl.dataset.assetPath) {
+        playbackAudioEl.removeAttribute('src');
+        playbackAudioEl.dataset.assetPath = '';
+        playbackAudioEl.load();
+      }
     }
 
     const hasVideo = scene.activeVisualType === 'video' && Boolean(currentVideoPath);

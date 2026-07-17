@@ -16,12 +16,14 @@ const regenerateResponseSchema = z.object({ narrationText: z.string() });
 const NARRATION_RULES = `NARRATION RULES:
 1. Preserve substantial original dialogue.
 2. Remove screenplay labels and formatting.
-3. Add calm narration only where action or context must be spoken.
+3. Add calm funny narration only where action or context must be spoken.
 4. Avoid repeatedly saying character names.
 5. Use punctuation and paragraph spacing to create breathing room.
 6. Prefer natural spoken length over aggressive summarization.
 7. Never mention camera instructions, scene headings, or formatting syntax.
-8. Return only text intended to be read aloud.`;
+8. Preserve the intent of the script.
+9. There is no rush to finish the scene; do not cut off narration mid-thought.
+8. Return ONLY EXACT text intended to be read aloud.`;
 
 const SOURCE_OF_TRUTH_RULE = "Each scene's source text below is the only authoritative source for that scene's content. Continuity notes (previous scene's ending, next scene's action) are for tone and name consistency only — never introduce events, dialogue, or details from them into the current scene's output.";
 

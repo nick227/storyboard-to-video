@@ -17,7 +17,7 @@ function assert(condition, message) {
 
 async function runTests() {
   try {
-    // Establish a session first: /index.html is auth-gated (server-side page guard), and
+    // Establish a session first: /studio.html is auth-gated (server-side page guard), and
     // several tests below fetch it for markup assertions. Without a session cookie those
     // fetches silently redirect to /login.html instead of erroring, so later tests fail
     // against login-page markup rather than the app shell.
@@ -137,7 +137,7 @@ async function runTests() {
     addResult('Minimal Scene Media Overlay', true);
 
     // Test 14: Secondary settings use consistent modal launchers instead of disclosure menus.
-    const indexSource = await (await fetch('/index.html')).text();
+    const indexSource = await (await fetch('/studio.html')).text();
     ['commonPromptSettingsBtn', 'styleReferencesSettingsBtn', 'audioSettingsBtn'].forEach((id) => {
       assert(indexSource.includes(`id="${id}"`), `${id} should be present`);
     });
@@ -177,15 +177,15 @@ async function runTests() {
     assert(appSource.includes("candidate.setAttribute('aria-pressed', String(isActive))"), 'Density controls should announce the selected layout');
     addResult('Storyboard Density Controls', true);
 
-    // Test 18: Every DOM id app.js binds into `els` must exist in index.html, and vice
+    // Test 18: Every DOM id app.js binds into `els` must exist in studio.html, and vice
     // versa for the ids rendering.js dereferences directly on `els`. This is a regression
     // guard for #storyboardSection: it existed in index.html but was never bound into
     // `els`, so renderScenes() threw on an undefined property and init() aborted before
     // it ever reached loadStyles() — leaving the style dropdown silently empty.
-    assert(indexSource.includes('id="storyboardSection"'), 'index.html should define #storyboardSection');
+    assert(indexSource.includes('id="storyboardSection"'), 'studio.html should define #storyboardSection');
     assert(appSource.includes("storyboardSection: document.getElementById('storyboardSection')"), 'app.js should bind #storyboardSection into els');
-    assert(indexSource.includes('id="statusText"'), 'index.html should define #statusText');
-    assert(indexSource.includes('id="generationSummaryText"'), 'index.html should define #generationSummaryText');
+    assert(indexSource.includes('id="statusText"'), 'studio.html should define #statusText');
+    assert(indexSource.includes('id="generationSummaryText"'), 'studio.html should define #generationSummaryText');
     addResult('Storyboard Section Binding Present', true);
 
     // Test 19: The style dropdown must populate once loadStyles() runs, independent of
