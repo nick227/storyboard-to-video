@@ -124,6 +124,92 @@ Site-wide default reference images are discovered dynamically from the filesyste
    - Create directories `apps/web/style-references/<new-style-id>/characters/` and `apps/web/style-references/<new-style-id>/world/`.
    - Place your default reference images inside them. The application will auto-discover both the style and its default images.
 
+## AI Generation Pipeline & Prompt Strategy
+
+The Storyboard POC leverages a multi-stage, multi-modal AI pipeline to translate a narrative script into synchronized storyboard scenes with custom voices, visuals, and animations.
+
+### AI Generation Types
+
+The generation pipeline comprises six distinct AI capabilities:
+
+| Generation Type | Model Roles & Functions | Input Data Sources | Output Format / Constraints |
+| :--- | :--- | :--- | :--- |
+| **Dialogue & Narration** | Adapts source screenplays/scripts into a natural, spoken-word narrative voiceover. Strips formatting markup, preserves verbatim dialogue, and handles scenic transitions. | Source script fragment + scene action beat | Paragraph prose (cleaned & length-capped to 6,000 characters). |
+| **Action Beats** | Summarizes the scene text into a terse, active-voice summary of the main physical action. | Source script fragment | Caveman-simple present-tense phrase (5–24 words). |
+| **Visual Prompts** | Converts the action beat into a detailed keyframe description focusing on subject, poses, and location composition without style keywords. | Action beat + script fragment + neighboring beats | Detailed scene description (15–40 words). |
+| **Image Generation** | Renders style-consistent visuals by merging the style prompt, common modifiers, scene-level visual prompts, and visual references. | Visual prompt + Style template + Common prompt + Ref images | Image file (`PNG`, `JPEG`, `WebP`, or `GIF`). |
+| **Video (Motion) Generation** | Animates a generated keyframe image based on the style and intensity of motion specified. | Generated image + Motion prompts (intensity & style motion guides) | Animated MP4 video. |
+| **Audio & Voice (TTS)** | Generates speech for characters and narration using local/offline or API cloud models, including custom clone voices. | Spoken narration text + voice selection / clone recording | WAV or MP3 audio file. |
+
+---
+
+### Key Scripts & Prompts Reference
+
+The prompts and prompt strategies are hardcoded into the following service layers:
+
+- **Dialogue & Narration Generation**: [dialogue.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/dialogue.service.js)
+  - Key Constants: `NARRATION_RULES_ENRICHED` (rules for cinematic descriptions), `NARRATION_RULES_LITERAL` (rules for strict script read-throughs), and `ATTRIBUTION_RULE` (guidelines to prevent repetitive "[Name] said" tags).
+- **Prompt & Beat Generation**: [prompt-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/prompt-generation.service.js)
+  - Key Constants: `BEAT_RULES` (physical action structure guidelines) and `CONTINUITY_RULE` (rules to ensure characters remain identical in adjacent frames).
+- **Image Generation Service**: [image-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/image-generation.service.js)
+  - Manages how style-specific templates from `apps/web/styles/` and character/world reference paths are fed to image generation models.
+- **Video Motion Generation**: [video-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/video-generation.service.js)
+  - Key Constants: `INTENSITY_MOTION_PROMPTS` (subtle/medium/high presets), `STYLE_MOTION_PROMPTS` (style-specific physics guides), and `VIDEO_PROMPT_WORD_BUDGET`.
+- **Style Templates**: Configured dynamically via markdown files inside `apps/web/styles/`, managed by [styles.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/styles.service.js).
+
+---
+
+### Prompt Strategy & Data Flow
+
+```mermaid
+graph TD
+    A[Raw Script / Story] -->|splitIntoFragments| B(Scene Fragments)
+    B -->|generate - dialogue.service.js| C(Narration & Dialogue Prose)
+    C -->|generate - prompt-generation.service.js| D(Action Beat)
+    D -->|regenerate - prompt-generation.service.js| E(Visual Prompt)
+    E -->|generate - image-generation.service.js| F(Generated Image)
+    F -->|generate - video-generation.service.js| G(Generated Video)
+    
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style F fill:#9f9,stroke:#333,stroke-width:2px
+    style G fill:#9f9,stroke:#333,stroke-width:2px
+```
+
+1. **Deterministic Segmentation**: The raw script is parsed and split into `sceneCount` fragments using paragraph/sentence boundaries (see `splitIntoFragments` in [prompt-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/prompt-generation.service.js)). This split is authoritative, ensuring AI models stay bounded to specific scene chunks.
+2. **Narration Adaptation**: The LLM processes the fragment to extract spoken narration and dialogue. It operates under two modes:
+   - **Enriched Mode**: Elaborates on atmosphere, sensory details, and scene headings.
+   - **Literal Mode**: Remains strictly faithful to the text, only adding minimal action cues to keep the audio coherent.
+3. **Physical Action Beat Summarization**: The LLM extracts a caveman-simple summary (the "Beat") using present tense, helping frame-level generation focus on a single physical motion.
+4. **Visual Prompt Generation**: The Beat is expanded into a camera-agnostic description of composition, pose, subjects, and objects. The generator is provided with neighboring context (`previousBeat` and `nextBeat`) to align characters and visual continuity.
+5. **Image Assembly**: The prompt sent to the image provider combines style rules + common prompt overrides + scene visual prompt + user additions. Reference images (character and world assets) are sent alongside the prompt text (up to 14 images on Gemini) to maintain consistent identities.
+6. **Video Motion Assembly**: Motion is generated by sending the final image, plus a prompt mixing the story action, motion intensity directives (subtle/medium/high), and style-specific motion characteristics (e.g., snappy cartoon recoil vs. heavy gothic drift).
+
+---
+
+### Tuning Prompts & Responses (Developer Guide)
+
+When fine-tuning prompt templates, behaviors, or word limits, follow these development guidelines:
+
+#### 1. Invalidate Caches After Prompt Updates
+The application uses exact-input caching to prevent redundant API calls when regenerating prompts and narration. If you edit any prompt templates or rules (e.g. `BEAT_RULES` or `NARRATION_RULES_ENRICHED`), you **must** increment the template version flags so that the system invalidates older cache entries:
+- In [prompt-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/prompt-generation.service.js): Increment `PROMPT_TEMPLATE_VERSION` and `ACTION_TEMPLATE_VERSION`.
+- In [dialogue.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/dialogue.service.js): Increment `NARRATION_TEMPLATE_VERSION`.
+
+#### 2. Fine-Tuning Style Prompt Templates
+To customize an existing style or add a new one:
+1. Locate the markdown file under `apps/web/styles/<style-id>.md`.
+2. The first line **must** be a header defining the style name (e.g., `# Retro Synthwave`).
+3. Subsequent lines should contain the style tokens, aesthetic descriptors, and lighting cues (e.g., `Vibrant neon palette, volumetric lighting, scanlines, digital grit...`). Keep style templates descriptive but avoid camera movements or subject specificities.
+
+#### 3. Adjusting Prompt Word Budgets
+If you find that the models are generating overly long prompts that exceed API payload limits or cause generation drift, you can adjust word budgets inside:
+- **Video Prompts**: Update the `VIDEO_PROMPT_WORD_BUDGET` rules in [video-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/video-generation.service.js).
+- **Visual Prompts**: Update `limits.prompt` in the dependency injection configuration (which maps to limits enforced in `prompt-generation.service.js`).
+
+#### 4. Editing LLM Directives & Instruction Constraints
+If the model habitually fails on specific aspects (e.g., repeating character names, using passive voice, or generating camera cuts):
+- Update the rule definitions in [dialogue.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/dialogue.service.js) (e.g. `ATTRIBUTION_RULE` or `NARRATION_RULES_ENRICHED`).
+- Update `BEAT_RULES` in [prompt-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/prompt-generation.service.js) to enforce stronger present-tense physical verbs.
 
 ## Storage
 - Storyboards are cached in localStorage for responsive editing and synchronized to `apps/web/data/projects/<project-id>/project.json`

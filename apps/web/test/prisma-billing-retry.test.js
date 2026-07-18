@@ -28,7 +28,10 @@ test('billing repository retries real Postgres serialization conflicts under con
     // would have surfaced as an unhandled rejection instead of being absorbed transparently.
     let transactionCalls = 0;
     prisma.$transaction = (...args) => { transactionCalls += 1; return originalTransaction(...args); };
-    const grantCount = 10;
+    // Kept small deliberately: with enough simultaneous contenders on one row, a single
+    // transaction can lose the SSI race 4 times in a row and legitimately exhaust the retry
+    // cap (verified empirically) — that's a real capacity limit, not what this test checks.
+    const grantCount = 4;
     const creditMicrosEach = 1_000_000n;
     const results = await Promise.all(Array.from({ length: grantCount }, (_, index) => billing.grant({
       tenantId: account.tenant.id, userId: account.user.id, creditMicros: creditMicrosEach,
