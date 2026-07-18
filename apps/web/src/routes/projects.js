@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-function createProjectRouter({ store, queue, upload, sceneReferences, styles, prompts, imageProvider, prisma, config }) {
+function createProjectRouter({ store, queue, upload, sceneReferences, styles, prompts, referenceGeneration, imageProvider, prisma, config }) {
   const router = express.Router();
   const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 
@@ -132,7 +132,7 @@ function createProjectRouter({ store, queue, upload, sceneReferences, styles, pr
     if (useStory && prompts) {
       const project = await store.read(projectId, { ownerId: req.auth.tenantId });
       if (project.scriptText) {
-        const storyPrompt = await prompts.generateVisualPromptFromScript({ scriptText: project.scriptText, provider, mode });
+        const storyPrompt = await referenceGeneration.generateVisualPromptFromScript({ scriptText: project.scriptText, provider, mode });
         if (storyPrompt) {
           finalPrompt = finalPrompt ? `${storyPrompt}\n\n${finalPrompt}` : storyPrompt;
         }

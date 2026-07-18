@@ -7,7 +7,6 @@ const { startServer } = require('./src/server');
 const { createAssetResolver } = require('./src/media/assets');
 const { buildWavBuffer, concatenatePcmLines } = require('./src/media/wav');
 const { clampSceneCount, getAdditionalCommonPrompt } = require('./src/shared/text');
-const { splitIntoScenes } = require('./src/services/prompt-generation.service');
 const { providerError } = require('./src/providers/http');
 
 const config = loadConfig();
@@ -29,10 +28,9 @@ module.exports = {
   projectStore: dependencies.projectStore,
   prisma: dependencies.prisma,
   regenerateSceneDialogue: dependencies.dialogue.regenerate,
-  regenerateSinglePrompt: dependencies.prompts.regenerate,
+  regenerateSinglePrompt: dependencies.prompts.regeneratePrompt,
   resolveAudioAsset: createAssetResolver(config.paths.audio, '/audio'),
   resolveGeneratedAsset: createAssetResolver(config.paths.generated, '/generated'),
   resolveVideoAsset: createAssetResolver(config.paths.videos, '/videos'),
-  splitIntoScenes,
   verifyVideoProvider: dependencies.videos.verify,
 };

@@ -245,8 +245,9 @@ function getGenerationPreflight(kind, context = {}) {
         if (!selection[stage]) return `${label}: skipped`;
         const s = status[stage] || {};
         if (stage === 'planning') {
-          if (s.missing > 0) return `${label}: run planning`;
+          if (s.total === 0 || s.missing > 0) return `${label}: run planning`;
           if (s.stale > 0) return `${label}: update ${s.stale} stale prompt${s.stale === 1 ? '' : 's'}`;
+          if (s.hasChanges) return `${label}: update script/settings changes`;
           redundant.push(label);
           return `${label}: no changes detected, will still re-run`;
         }

@@ -72,13 +72,13 @@ export function prefillCommonPrompt(styleId, els) {
   els.commonPromptText.value = style?.promptText || '';
 }
 
-export function renderStyleReferences(els) {
+export function renderStyleReferences(els, setStatus) {
   const refs = generationStore.get().styleReferences;
-  renderStyleReferenceList(els.characterRefs, refs.characters || [], 'characters', els);
-  renderStyleReferenceList(els.worldRefs, refs.world || [], 'world', els);
+  renderStyleReferenceList(els.characterRefs, refs.characters || [], 'characters', els, setStatus);
+  renderStyleReferenceList(els.worldRefs, refs.world || [], 'world', els, setStatus);
 }
 
-function renderStyleReferenceList(container, items, type, els) {
+function renderStyleReferenceList(container, items, type, els, setStatus) {
   container.innerHTML = '';
   if (!items.length) {
     const empty = document.createElement('div');
@@ -105,9 +105,9 @@ function renderStyleReferenceList(container, items, type, els) {
     const button = document.createElement('button');
     button.textContent = '×';
     button.className = 'ref-delete-btn';
-    button.setAttribute('aria-label', `Delete ${item.fileName}`);
-    button.title = `Delete ${item.fileName}`;
-    button.addEventListener('click', () => deleteStyleReference(type, item.fileName, els));
+    button.setAttribute('aria-label', `Remove ${item.fileName}`);
+    button.title = `Remove ${item.fileName}`;
+    button.addEventListener('click', () => deleteStyleReference(type, item.fileName, els, setStatus));
     meta.append(name);
     card.append(image, meta, button);
     container.appendChild(card);
@@ -116,17 +116,17 @@ function renderStyleReferenceList(container, items, type, els) {
 
 export async function loadStyleReferences(styleId, els, setStatus) {
   generationStore.set({ styleReferences: { characters: [], world: [] } });
-  renderStyleReferences(els);
+  renderStyleReferences(els, setStatus);
   els.styleReferencesPanel.setAttribute('aria-busy', 'true');
   try {
     const data = await api(`/api/styles/${encodeURIComponent(styleId)}/references`);
     if (els.styleSelect.value !== styleId) return;
     generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
-    renderStyleReferences(els);
+    renderStyleReferences(els, setStatus);
   } catch (error) {
     if (els.styleSelect.value !== styleId) return;
     generationStore.set({ styleReferences: { characters: [], world: [] } });
-    renderStyleReferences(els);
+    renderStyleReferences(els, setStatus);
     if (setStatus) setStatus(`Could not load references: ${error.message}`);
   } finally {
     if (els.styleSelect.value === styleId) els.styleReferencesPanel.removeAttribute('aria-busy');
@@ -145,7 +145,7 @@ export async function uploadStyleReferences(type, files, els, setStatus) {
       body: form,
     });
     generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
-    renderStyleReferences(els);
+    renderStyleReferences(els, setStatus);
     if (setStatus) setStatus(`${type} references uploaded.`);
   } catch (error) {
     if (setStatus) setStatus(`Reference upload failed: ${error.message}`);
@@ -160,10 +160,10 @@ async function deleteStyleReference(type, fileName, els, setStatus) {
       body: JSON.stringify({ type, fileName }),
     });
     generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
-    renderStyleReferences(els);
-    if (setStatus) setStatus('Reference deleted.');
+    renderStyleReferences(els, setStatus);
+    if (setStatus) setStatus('Reference removed.');
   } catch (error) {
-    if (setStatus) setStatus(`Delete failed: ${error.message}`);
+    if (setStatus) setStatus(`Remove failed: ${error.message}`);
   }
 }
 
@@ -276,13 +276,14 @@ export function renderStageBar(els) {
 
   const status = computeStageStatus(sceneState.scenes, batchState, uiState.operation, getCachedJobs(), record?.stageRuns || {});
 
-  els.stagePlanningStatus.textContent = stageStatusLabel(status.planning);
-  els.stageImagesStatus.textContent = stageStatusLabel(status.images);
-  els.stageAudioStatus.textContent = stageStatusLabel(status.audio);
-  els.stageVideoStatus.textContent = stageStatusLabel(status.video);
+  if (els.stagePlanningStatus) els.stagePlanningStatus.textContent = stageStatusLabel(status.planning);
+  if (els.stageImagesStatus) els.stageImagesStatus.textContent = stageStatusLabel(status.images);
+  if (els.stageAudioStatus) els.stageAudioStatus.textContent = stageStatusLabel(status.audio);
+  if (els.stageVideoStatus) els.stageVideoStatus.textContent = stageStatusLabel(status.video);
 
   const selection = getStageSelection(status);
   for (const [key, button] of [['planning', els.stagePlanningBtn], ['images', els.stageImagesBtn], ['audio', els.stageAudioBtn], ['video', els.stageVideoBtn]]) {
+    if (!button) continue;
     const stage = status[key];
     const hasWork = stage.missing > 0 || stage.stale > 0 || stage.failed > 0;
     button.classList.toggle('is-running', stage.running);
@@ -307,10 +308,14 @@ export function renderStageBar(els) {
   const planningActive = Boolean(uiState.operation && PLANNING_OPERATION_TYPES.includes(uiState.operation.type));
   const running = Boolean(activeMediaStage) || planningActive;
 
-  els.startPauseBtn.textContent = running ? 'Pause' : 'Start';
-  els.startPauseBtn.dataset.running = String(running);
-  els.startPauseBtn.disabled = busy && !running;
-  els.cancelRunBtn.disabled = !running;
+  if (els.startPauseBtn) {
+    els.startPauseBtn.textContent = running ? 'Pause' : 'Start';
+    els.startPauseBtn.dataset.running = String(running);
+    els.startPauseBtn.disabled = busy && !running;
+  }
+  if (els.cancelRunBtn) {
+    els.cancelRunBtn.disabled = !running;
+  }
 
   if (els.settingsSceneCountInput) {
     const isAutoChecked = els.settingsSceneCountAutoCheckbox && els.settingsSceneCountAutoCheckbox.checked;
@@ -774,7 +779,7 @@ async function addImageToActive(path, fileName) {
         body: form
       });
       generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
-      renderStyleReferences(domEls);
+      renderStyleReferences(domEls, setStatus);
       renderActiveList();
       if (setStatus) setStatus(`Added to active ${type}.`);
     } catch (err) {
@@ -794,7 +799,7 @@ async function removeImageFromActive(path, fileName) {
         body: JSON.stringify({ type, fileName }),
       });
       generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
-      renderStyleReferences(domEls);
+      renderStyleReferences(domEls, setStatus);
       renderActiveList();
       if (setStatus) setStatus(`Removed from active ${type}.`);
     } catch (err) {

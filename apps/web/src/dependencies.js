@@ -24,6 +24,7 @@ const { createImageProviders } = require('./providers/image');
 const { createAudioProviders } = require('./providers/audio');
 const { createVideoProvider } = require('./providers/video');
 const { createPromptGenerationService } = require('./services/prompt-generation.service');
+const { createReferenceGenerationService } = require('./services/reference-generation.service');
 const { createDialogueService } = require('./services/dialogue.service');
 const { createImageGenerationService } = require('./services/image-generation.service');
 const { createAudioGenerationService } = require('./services/audio-generation.service');
@@ -74,6 +75,7 @@ function createDependencies(config, overrides = {}) {
   const audioProvider = createAudioProviders(config, cancellation, usageTracker);
   const videoProvider = createVideoProvider(config, cancellation, usageTracker);
   const prompts = createPromptGenerationService({ textProviders, styles, limits: config.limits, generationCache });
+  const referenceGeneration = createReferenceGenerationService({ textProviders });
   const dialogue = createDialogueService({ textProviders, generationCache });
   const images = createImageGenerationService({ config, styles, provider: imageProvider, projectStore });
   const audio = createAudioGenerationService({ config, provider: audioProvider, projectStore });
@@ -88,7 +90,7 @@ function createDependencies(config, overrides = {}) {
 
   return {
     config, prisma, projectStore, queue, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, billingRepository, billing, adminRepository, paymentRepository, payments, generationContext,
-    styles, prompts, dialogue, images, audio, videos, sceneReferences, exports, voices, imageProvider,
+    styles, prompts, referenceGeneration, dialogue, images, audio, videos, sceneReferences, exports, voices, imageProvider,
     upload: createUpload(config),
     auth,
     authenticate: auth.middleware(),

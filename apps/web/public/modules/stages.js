@@ -1,7 +1,7 @@
 import { api, cancelActiveProjectJobs } from './api.js';
-import { sceneStore, uiStore, projectStore, batchStore } from './store.js';
+import { sceneStore, uiStore, projectStore, batchStore, voiceStore } from './store.js';
 import { generateDialogue, generatePrompts, regeneratePrompt, addRecommendedScenes, regenerateImage, regenerateAudio, regenerateVideo } from './workflows.js';
-import { suggestSceneCountFromNarration } from './scene-count.js';
+import { suggestSceneCount, suggestSceneCountFromNarration } from './scene-count.js';
 import { batchController } from './batch.js';
 import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
 
@@ -9,7 +9,10 @@ import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
 
 // Provenance fields (promptGeneratedFromBeat / promptGeneratedFromNarration / audio version
 // narrationText) are server-authored (see prompt-generation.service.js / audio-generation.service.js)
-// so staleness survives reloads and concurrent tabs instead of depending on client-held state.
+// so staleness survives reloads and concurrent tabs instead of depending on client-held state. The
+// audio provider check is the one exception: it compares against the currently selected
+// voiceStore.audioProvider so switching providers immediately marks existing audio stale, even
+// though that selection isn't itself part of the persisted version's provenance snapshot.
 export function computeStaleness(scene) {
   const activeImage = (scene.versions || [])[scene.activeVersionIndex] || null;
   const activeAudio = (scene.audioVersions || [])[scene.activeAudioVersionIndex] || null;
@@ -25,7 +28,10 @@ export function computeStaleness(scene) {
   // `prompt` field is the full composed provider prompt (style + common + scene + extra) and can
   // never equal `scene.prompt` alone, which would make every image read as permanently stale.
   const imageStale = Boolean(activeImage?.path) && String(activeImage.scenePrompt || '') !== String(scene.prompt || '');
-  const audioStale = Boolean(activeAudio?.path) && String(activeAudio.narrationText || '') !== String(scene.narrationText || '');
+  const audioStale = Boolean(activeAudio?.path) && (
+    String(activeAudio.narrationText || '') !== String(scene.narrationText || '') ||
+    String(activeAudio.provider || '') !== String(voiceStore.get().audioProvider || '')
+  );
   const videoStale = Boolean(activeVideo?.path) && String(activeVideo.sourceImagePath || '') !== String(activeImage?.path || '');
 
   return { promptStale, imageStale, audioStale, videoStale };
@@ -59,6 +65,40 @@ function mediaTally(scenes, { hasVersion, isStale, jobType, recentJobs }) {
   return { total: scenes.length, done, stale, missing, failed };
 }
 
+export function hasPlanningChanges(scenes, record) {
+  if (!scenes || scenes.length === 0) return true;
+  if (!record) return false;
+  const last = record.lastPromptInputs;
+  if (!last) return false;
+
+  const norm = (val) => String(val || '').trim();
+
+  const scriptChanged = norm(last.scriptText) !== norm(record.scriptText);
+  const commonPromptChanged = norm(last.commonPromptText) !== norm(record.commonPromptText);
+  const styleChanged = norm(last.styleId) !== norm(record.styleId);
+  const providerChanged = norm(last.textProvider) !== norm(record.textProvider);
+  const enrichChanged = Boolean(last.enrich) !== Boolean(record.enrich);
+
+  // Compare sceneCount
+  const lastCount = Number(last.sceneCount) || 8;
+  const isAuto = record.sceneCountMode === 'auto';
+  const customVal = record.sceneCount ? Number(record.sceneCount) : null;
+  let currentCount = 8;
+  if (isAuto) {
+    if (scenes && scenes.length > 0) {
+      currentCount = suggestSceneCountFromNarration(scenes) || scenes.length;
+    } else {
+      currentCount = suggestSceneCount(record.scriptText) || 8;
+    }
+  } else {
+    currentCount = customVal || 8;
+  }
+
+  const countChanged = lastCount !== currentCount;
+
+  return scriptChanged || commonPromptChanged || styleChanged || providerChanged || enrichChanged || countChanged;
+}
+
 // `recentJobs` is the project's job list from `GET /api/jobs?projectId=` (already durable and
 // tenant-scoped) — `failed` must be derivable after a reload, so it is never read from batchState
 // alone. `stageRuns` is the one bit of persisted USER INTENT (`record.stageRuns`, only ever written
@@ -67,6 +107,8 @@ function mediaTally(scenes, { hasVersion, isStale, jobType, recentJobs }) {
 // Everything else here is recomputed from live scene content on every call; nothing else is persisted.
 export function computeStageStatus(scenes, batchState, uiOperation, recentJobs = [], stageRuns = {}) {
   const total = scenes.length;
+  const record = getCurrentStoryboardRecord();
+  const planningChanged = record ? hasPlanningChanges(scenes, record) : false;
 
   const promptsReady = scenes.filter((scene) => hasText(scene.prompt)).length;
   const dialogueReady = scenes.filter((scene) => hasText(scene.narrationText)).length;
@@ -84,6 +126,7 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
     running: uiOperation != null && ['prompts', 'dialogueAll', 'prompt', 'dialogue', 'action', 'splitScene'].includes(uiOperation.type),
     paused: false,
     label: total ? `${total} scenes` : 'Not started',
+    hasChanges: planningChanged,
   };
   planning.done = Math.max(0, planning.done);
 
@@ -434,9 +477,9 @@ export async function runCreateStoryFlow(preset, els, setStatus, { autoAcceptRec
     // A brand-new project (no scenes at all yet) always needs the full sequence — computeStageStatus
     // reports `missing: 0` for an empty scene list (there's nothing to divide a ratio by), which is
     // NOT the same as "already planned."
-    if (planningStatus.missing > 0 || planningStatus.total === 0) {
-      // No plan yet, or an incomplete one: run the full sequence (segment -> narrate -> scene
-      // count -> prompts), same as a standalone Planning run.
+    if (planningStatus.missing > 0 || planningStatus.total === 0 || planningStatus.hasChanges) {
+      // No plan yet, or an incomplete one, or script/settings changed: run the full sequence
+      // (segment -> narrate -> scene count -> prompts), same as a standalone Planning run.
       const decision = onSceneCountDecision || (autoAcceptRecommendations ? async ({ recommended }) => recommended : undefined);
       const planningResult = await runPlanning(els, setStatus, { onSceneCountDecision: decision });
       if (planningResult.stoppedAt) return planningResult;
@@ -476,7 +519,9 @@ export function stageHasActionableWork(stage, stageStatus) {
   // A brand-new project has no scenes yet, so every stage's tally reads 0/0/0 — but Planning is
   // still the one stage that always has something to do in that state (it's what creates the
   // scenes). Images/Audio/Video genuinely have nothing to do until scenes exist.
-  if (stage === 'planning' && stageStatus.total === 0) return true;
+  if (stage === 'planning') {
+    if (stageStatus.total === 0 || stageStatus.hasChanges) return true;
+  }
   return stageStatus.missing > 0 || stageStatus.stale > 0 || stageStatus.failed > 0;
 }
 

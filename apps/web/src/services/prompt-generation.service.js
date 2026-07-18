@@ -5,14 +5,12 @@ const { providerOutput } = require('../providers/result');
 
 const PROMPT_BATCH_SIZE = 5;
 const FRAGMENT_MAX_LENGTH = 20_000;
-const RECAP_NAME_CAP = 15;
 
-// Bump whenever BEAT_RULES/the regenerate()/regenerateAction() request text changes meaningfully —
+// Bump whenever BEAT_RULES/the regeneratePrompt()/regenerateAction() request text changes meaningfully —
 // invalidates old exact-input cache entries so a prompt-quality improvement can't silently keep
 // serving pre-improvement results forever.
 const PROMPT_TEMPLATE_VERSION = 1;
 const ACTION_TEMPLATE_VERSION = 1;
-const BEAT_STOPWORDS = new Set(['The', 'A', 'An', 'This', 'That', 'These', 'Those', 'It', 'He', 'She', 'They', 'His', 'Her', 'Their', 'Its']);
 
 const BEAT_RULES = `BEAT RULES:
 - One primary physical action, usually 5-20 words; never more than 24 words.
@@ -32,21 +30,15 @@ function compactAction(value, fallback = 'Subject moves.') {
   return compactWords(value, 24) || fallback;
 }
 
-function extractNames(text) {
-  return (String(text || '').match(/\b[A-Z][a-zA-Z'-]{1,}\b/g) || []).filter((word) => !BEAT_STOPWORDS.has(word));
-}
-
 function createRecapTracker() {
-  const names = new Set();
   let lastBeat = '';
   return {
     update(batchScenes) {
-      batchScenes.forEach((scene) => extractNames(scene.beat).forEach((name) => names.add(name)));
       lastBeat = batchScenes[batchScenes.length - 1]?.beat || lastBeat;
     },
     describe() {
-      if (!lastBeat && !names.size) return null;
-      return { lastBeat, recurringNames: [...names].slice(-RECAP_NAME_CAP) };
+      if (!lastBeat) return null;
+      return { lastBeat };
     },
   };
 }
@@ -63,18 +55,22 @@ function createRecapTracker() {
 function splitIntoFragments(scriptText, sceneCount) {
   const count = clampSceneCount(sceneCount);
   const source = cleanText(scriptText, 200_000);
-  let chunks = source.split(/\n{2,}|(?<=[.!?])\s+(?=[A-Z])/).map((item) => item.trim()).filter(Boolean);
-  if (!chunks.length) chunks = ['A simple opening scene introducing the story.'];
+  if (!source) return [];
+
+  let chunks = source.split(/\r?\n+/).map((item) => item.trim()).filter(Boolean);
+  if (!chunks.length) return [];
+
   if (chunks.length < count) {
     const words = source.split(/\s+/).filter(Boolean);
     if (words.length >= count) {
-      chunks = Array.from({ length: count }, (_, index) => words.slice(Math.floor(index * words.length / count), Math.floor((index + 1) * words.length / count)).join(' '));
+      chunks = Array.from({ length: count }, (_, index) =>
+        words.slice(Math.floor(index * words.length / count), Math.floor((index + 1) * words.length / count)).join(' ')
+      );
     } else if (words.length > chunks.length) {
-      // Not enough words to fill the requested count either, but splitting to word-level still
-      // yields more distinct pieces than the sentence/paragraph split alone got us.
       chunks = words;
     }
   }
+
   const achievableCount = Math.min(count, chunks.length);
   return Array.from({ length: achievableCount }, (_, index) => {
     const start = Math.floor(index * chunks.length / achievableCount);
@@ -99,53 +95,40 @@ function fallbackSceneFromFragment(fragment, index) {
   };
 }
 
-// Kept for backward compatibility: server.js re-exports this, and test/server.test.js calls it
-// directly. Equivalent to splitting into fragments and immediately compacting each into a scene.
-function splitIntoScenes(scriptText, sceneCount) {
-  return splitIntoFragments(scriptText, sceneCount).map(fallbackSceneFromFragment);
-}
-
 // Splitting one existing scene into sub-scenes (mid-storyboard expansion): the scene's own
-// scriptFragment is the default, authoritative source. But that fragment can be too short to
-// support the requested count (splitIntoFragments already refuses to duplicate a chunk across
-// multiple fragments — it just returns fewer). When a richer source is available — the scene's own
-// AI narration, only ever passed here when Enrich is on — and it can support MORE distinct pieces
-// than the fragment could, prefer splitting that instead. This never widens what the scene "is
-// about"; it only gives the splitter more real text to work with when the original is too sparse.
+// scriptFragment is the default, authoritative source.
 function splitSceneIntoScenes(scriptFragment, count, narrationText) {
-  const fromFragment = splitIntoScenes(scriptFragment, count);
+  const splitAndMap = (text, n) => splitIntoFragments(text, n).map(fallbackSceneFromFragment);
+  const fromFragment = splitAndMap(scriptFragment, count);
   if (fromFragment.length >= count || !narrationText) return fromFragment;
-  const fromNarration = splitIntoScenes(narrationText, count);
+  const fromNarration = splitAndMap(narrationText, count);
   return fromNarration.length > fromFragment.length ? fromNarration : fromFragment;
 }
 
-// When Enrich is on and a scene already has REAL AI-generated narration (not a degraded fallback —
-// a terse beat/title placeholder is never "richer" than the fragment it stands in for), that
-// narration is a richer source for what the frame should show than the terser original script
-// fragment — but the fragment stays present as secondary/grounding context so the model can't
-// invent beyond it.
-function fragmentSourceBlock(fragment, enrich) {
-  if (enrich && fragment.narrationText && !fragment.narrationIsFallback) {
-    return `Narration (the primary source for this scene's beat and prompt — richer than the original fragment below): ${cleanText(fragment.narrationText, 6_000)}
-Original script fragment (secondary grounding context only): ${fragment.scriptFragment}`;
+// Keep scriptFragment as the grounding source; optionally use valid enriched narration as the primary visual source.
+// Simplified into a neutral buildSceneSourceContext without claims like “richer.”
+function buildSceneSourceContext(fragment, enrich) {
+  const hasNarration = enrich && fragment.narrationText && !fragment.narrationIsFallback;
+  if (hasNarration) {
+    return `Narration: ${cleanText(fragment.narrationText, 6_000)}\nScript fragment: ${fragment.scriptFragment}`;
   }
   return fragment.scriptFragment;
 }
 
 function buildBatchRequest({ batchFragments, batchStartIndex, sceneCount, style, additional, recap, enrich }) {
   const scenesBlock = batchFragments
-    .map((fragment, i) => `${batchStartIndex + i + 1}. ${fragmentSourceBlock(fragment, enrich)}`)
+    .map((fragment, i) => `${batchStartIndex + i + 1}. ${buildSceneSourceContext(fragment, enrich)}`)
     .join('\n\n');
   const recapBlock = recap
-    ? `Continuity carried from earlier scenes — do not restate, just stay consistent: previous scene's action: "${recap.lastBeat}". Recurring named characters/objects so far: ${recap.recurringNames.join(', ') || 'none noted yet'}.`
-    : 'This is the first batch of scenes; there is no prior continuity yet.';
+    ? `Continuity: previous scene's action: "${recap.lastBeat}".`
+    : 'No prior continuity.';
+
   return `Return strict JSON only: {"scenes":[{"sceneNumber":N,"title":"...","beat":"...","prompt":"..."}]}.
 Create storyboard scenes ${batchStartIndex + 1}-${batchStartIndex + batchFragments.length} of ${sceneCount} total sequential scenes, exactly one object per source block listed below, using ONLY that block's own text as the source for that scene's beat and prompt.
 
 ${recapBlock}
 
 ${BEAT_RULES}
-- Keep recurring named characters and objects (per the continuity note above) consistent with earlier scenes.
 
 PROMPT RULES:
 - Describe the single keyframe at the action's clearest physical moment in 15-40 words.
@@ -225,22 +208,35 @@ function createPromptGenerationService({ textProviders, limits, generationCache 
     return { scenes, usedFallback: anyFallbackUsed, warning: warnings.join(' ') || (anyFallbackUsed ? 'Local fallback filled some scenes.' : '') };
   }
 
-  async function regenerate({ scriptText, scene, sceneIndex, previousBeat = '', nextBeat = '', style, commonPromptText, provider, extraPromptText, fallbackPolicy = 'local', enrich = true, tenantId, bypassCache = false }) {
+  async function regeneratePrompt({ scene, sceneIndex, previousBeat = '', nextBeat = '', style, commonPromptText, provider, extraPromptText, fallbackPolicy = 'local', enrich = true, tenantId, bypassCache = false }) {
     const fallback = `${scene.prompt || ''} ${extraPromptText || ''}`.trim();
     if (provider === 'stub') return { prompt: fallback, usedFallback: true, warning: 'Stub text mode selected; the existing prompt was retained.' };
 
-    const legacy = !scene?.scriptFragment;
-    const source = cleanText(legacy ? scriptText : scene.scriptFragment, legacy ? 200_000 : FRAGMENT_MAX_LENGTH);
-    if (!source) throw new AppError('SCENE_FRAGMENT_MISSING', 'Scene has no script fragment and no script text was provided to regenerate its prompt', { status: 400 });
+    const source = cleanText(scene?.scriptFragment, FRAGMENT_MAX_LENGTH);
+    if (!source) throw new AppError('SCENE_FRAGMENT_MISSING', 'Scene has no script fragment', { status: 400 });
     const usedNarrationSource = enrich && Boolean(scene?.narrationText) && !scene?.narrationIsFallback;
     const sourceBlock = usedNarrationSource
-      ? `Narration (the primary source — richer than the fragment below): ${cleanText(scene.narrationText, 6_000)}. Original script fragment (secondary grounding context only): ${source}`
-      : `${legacy ? 'Story' : 'Scene script excerpt (use ONLY this text as source)'}: ${source}`;
+      ? `Narration: ${cleanText(scene.narrationText, 6_000)}.\nScript fragment: ${source}`
+      : `Scene script excerpt (use ONLY this text as source): ${source}`;
 
     // Exact-input reuse: only for this single-scene regenerate, never the bulk batch generate() above.
     const fingerprintInput = tenantId ? {
       tenantId, operation: 'prompt.regenerate', provider, promptTemplateVersion: PROMPT_TEMPLATE_VERSION,
-      source: JSON.stringify({ source, beat: scene.beat || '', usedNarrationSource, narrationText: usedNarrationSource ? scene.narrationText : '', previousBeat, nextBeat, extraPromptText, style: style.id, commonPromptText }),
+      source: JSON.stringify({
+        source,
+        sceneIndex,
+        title: scene.title || '',
+        beat: scene.beat || '',
+        existingPrompt: scene.prompt || '',
+        usedNarrationSource,
+        narrationText: usedNarrationSource ? scene.narrationText : '',
+        previousBeat,
+        nextBeat,
+        extraPromptText,
+        styleId: style.id,
+        stylePromptText: style.promptText || '',
+        commonPromptText,
+      }),
       settings: { enrich },
     } : null;
     if (fingerprintInput && generationCache && !bypassCache) {
@@ -272,17 +268,16 @@ function createPromptGenerationService({ textProviders, limits, generationCache 
     }
   }
 
-  async function regenerateAction({ scriptText, scene, sceneIndex, previousBeat = '', nextBeat = '', provider, fallbackPolicy = 'local', tenantId, bypassCache = false }) {
-    const legacy = !scene?.scriptFragment;
-    const source = cleanText(legacy ? scriptText : scene?.scriptFragment, legacy ? 200_000 : FRAGMENT_MAX_LENGTH);
+  async function regenerateAction({ scene, sceneIndex, previousBeat = '', nextBeat = '', provider, fallbackPolicy = 'local', tenantId, bypassCache = false }) {
+    const source = cleanText(scene?.scriptFragment, FRAGMENT_MAX_LENGTH);
     const fallback = compactAction(source, scene?.beat || 'Subject moves.');
 
     if (provider === 'stub') return { beat: fallback, usedFallback: true, warning: 'Stub text mode selected; local fallback action was used.' };
-    if (!source) throw new AppError('SCENE_FRAGMENT_MISSING', 'Scene has no script fragment and no script text was provided to regenerate its action', { status: 400 });
+    if (!source) throw new AppError('SCENE_FRAGMENT_MISSING', 'Scene has no script fragment', { status: 400 });
 
     const fingerprintInput = tenantId ? {
       tenantId, operation: 'action.regenerate', provider, promptTemplateVersion: ACTION_TEMPLATE_VERSION,
-      source: JSON.stringify({ source, previousBeat, nextBeat, existingBeat: scene?.beat || '' }),
+      source: JSON.stringify({ source, sceneIndex, previousBeat, nextBeat, existingBeat: scene?.beat || '' }),
     } : null;
     if (fingerprintInput && generationCache && !bypassCache) {
       const cached = await generationCache.lookup(fingerprintInput);
@@ -294,7 +289,7 @@ function createPromptGenerationService({ textProviders, limits, generationCache 
 ${BEAT_RULES}
 - Keep recurring named characters and objects consistent with neighboring scenes.
 ${neighborBlock}
-${legacy ? "Full story (this scene's exact excerpt is unavailable; use the whole story for context but keep the action scoped to this scene's described moment)" : "This scene's exact script excerpt (use ONLY this text as the source of the action)"}: ${source}
+This scene's exact script excerpt (use ONLY this text as the source of the action): ${source}
 Existing action (for reference, may be replaced): ${scene?.beat || 'none'}.`;
     try {
       const value = compactAction(extractJson(providerOutput(await textProviders.call(provider, request)))?.beat, '');
@@ -308,26 +303,7 @@ Existing action (for reference, may be replaced): ${scene?.beat || 'none'}.`;
     }
   }
 
-  async function generateVisualPromptFromScript({ scriptText, provider, mode }) {
-    if (provider === 'stub') return 'A cartoon scene from the story.';
-    let instructions = '';
-    if (mode === 'character-reference') {
-      instructions = 'Analyze this story and describe the visual appearance, attire, and physical traits of the main characters in 30-80 words. State only visual traits, no style wording. Return strict JSON: {"prompt": "..."}.';
-    } else if (mode === 'world-reference') {
-      instructions = 'Analyze this story and describe the locations, set design, environment, and general atmosphere in 30-80 words. State only visual environment details, no style wording. Return strict JSON: {"prompt": "..."}.';
-    } else {
-      instructions = 'Analyze this story and generate a descriptive visual scene description (Visual Prompt) in 30-80 words. State the main subjects, actions, environment, and mood. No style wording. Return strict JSON: {"prompt": "..."}.';
-    }
-    const request = `${instructions}\nStory:\n${scriptText}`;
-    try {
-      const parsed = extractJson(providerOutput(await textProviders.call(provider, request)));
-      return parsed?.prompt || '';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  return { compactAction, generate, regenerate, regenerateAction, splitIntoFragments, splitIntoScenes, splitSceneIntoScenes, generateVisualPromptFromScript };
+  return { compactAction, generate, regeneratePrompt, regenerateAction, splitIntoFragments, splitSceneIntoScenes, fallbackSceneFromFragment };
 }
 
-module.exports = { compactAction, createPromptGenerationService, fallbackSceneFromFragment, splitIntoFragments, splitIntoScenes, splitSceneIntoScenes };
+module.exports = { compactAction, createPromptGenerationService, fallbackSceneFromFragment, splitIntoFragments, splitSceneIntoScenes };

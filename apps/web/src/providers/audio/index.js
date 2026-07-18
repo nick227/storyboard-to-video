@@ -9,7 +9,7 @@ const PIPER_SAMPLE_RATE=22050; // native rate of Piper's "medium" quality voices
 // One narrator voice per project/provider: every scene is a single synthesis call over its whole
 // narrationText, not a per-speaker loop — there is no more per-line voice routing to do.
 function createAudioProviders(config,getCancellation,usageTracker){
-  async function stub(text){const pcm=await text2wav(text,{voice:'en',speed:145,pitch:48,amplitude:100});return{buffer:buildWavBuffer(pcm),mimeType:'audio/wav',extension:'wav'};}
+  async function stub(text){const {pcm,...fmt}=parseWavPcm(await text2wav(text,{voice:'en',speed:145,pitch:48,amplitude:100}));return{buffer:buildWavBuffer(pcm,fmt),mimeType:'audio/wav',extension:'wav'};}
   function piperLine(text,voice){return new Promise((resolve,reject)=>{const model=`${config.paths.piperVoices}/${voice}.onnx`;if(!fs.existsSync(config.paths.piper)||!fs.existsSync(model))return reject(new Error('Piper is not installed. Run npm run setup:piper.'));const chunks=[];const child=spawn(config.paths.piper,['--model',model,'--output-raw'],{stdio:['pipe','pipe','pipe']});let stderr='';child.stdout.on('data',(x)=>chunks.push(x));child.stderr.on('data',(x)=>stderr+=x);child.on('error',reject);child.on('close',(code)=>code===0?resolve(Buffer.concat(chunks)):reject(new Error(`Piper failed (${code}): ${stderr.trim()}`)));child.stdin.end(text);});}
   function resolvePiperVoice(voiceId){return config.piperVoices.includes(voiceId)?voiceId:null;}
   async function piper(text,voice){const resolved=resolvePiperVoice(voice?.voiceId)||config.piperVoices[0];const pcm=await piperLine(text,resolved);const opts={sampleRate:PIPER_SAMPLE_RATE};return{buffer:buildWavBuffer(pcm,opts),mimeType:'audio/wav',extension:'wav'};}

@@ -37,11 +37,11 @@ test('prompt regenerate: identical input reuses the cached result with no second
     const service = createPromptGenerationService({ textProviders: provider, limits: { prompt: 20000 }, generationCache });
     const input = { scene: SCENE, sceneIndex: 0, style: STYLE, provider: 'gemini', tenantId: 'tenant-a' };
 
-    const first = await service.regenerate(input);
+    const first = await service.regeneratePrompt(input);
     assert.equal(provider.calls(), 1);
     assert.equal(first.cacheHit, undefined);
 
-    const second = await service.regenerate(input);
+    const second = await service.regeneratePrompt(input);
     assert.equal(provider.calls(), 1, 'identical input must not trigger a second provider call');
     assert.equal(second.cacheHit, true);
     assert.equal(second.prompt, first.prompt);
@@ -60,8 +60,8 @@ test('prompt regenerate: bypassCache forces a fresh provider call and preserves 
     const service = createPromptGenerationService({ textProviders: provider, limits: { prompt: 20000 }, generationCache });
     const input = { scene: SCENE, sceneIndex: 0, style: STYLE, provider: 'gemini', tenantId: 'tenant-a' };
 
-    const first = await service.regenerate(input);
-    const second = await service.regenerate({ ...input, bypassCache: true });
+    const first = await service.regeneratePrompt(input);
+    const second = await service.regeneratePrompt({ ...input, bypassCache: true });
     assert.equal(provider.calls(), 2, 'an explicit bypass must always call the provider again');
     assert.notEqual(second.prompt, first.prompt);
 
@@ -70,7 +70,21 @@ test('prompt regenerate: bypassCache forces a fresh provider call and preserves 
     // proving the bypass did not overwrite/destroy it.
     const fingerprint = require('../src/shared/fingerprint').computeFingerprint({
       tenantId: 'tenant-a', operation: 'prompt.regenerate', provider: 'gemini', promptTemplateVersion: 1,
-      source: JSON.stringify({ source: SCENE.scriptFragment, beat: SCENE.beat, usedNarrationSource: false, narrationText: '', previousBeat: '', nextBeat: '', extraPromptText: undefined, style: STYLE.id, commonPromptText: undefined }),
+      source: JSON.stringify({
+        source: SCENE.scriptFragment,
+        sceneIndex: 0,
+        title: SCENE.title || '',
+        beat: SCENE.beat,
+        existingPrompt: SCENE.prompt,
+        usedNarrationSource: false,
+        narrationText: '',
+        previousBeat: '',
+        nextBeat: '',
+        extraPromptText: undefined,
+        styleId: STYLE.id,
+        stylePromptText: STYLE.promptText,
+        commonPromptText: undefined,
+      }),
       settings: { enrich: true },
     });
     const allFilesForFingerprint = fs.readdirSync(store.root).filter((name) => name.startsWith(store.prefix('tenant-a', fingerprint.fingerprintHash)));
@@ -93,8 +107,8 @@ test('prompt regenerate: cache is scoped per tenant — an identical fingerprint
     const inputA = { scene: SCENE, sceneIndex: 0, style: STYLE, provider: 'gemini', tenantId: 'tenant-a' };
     const inputB = { ...inputA, tenantId: 'tenant-b' };
 
-    await service.regenerate(inputA);
-    const resultB = await service.regenerate(inputB);
+    await service.regeneratePrompt(inputA);
+    const resultB = await service.regeneratePrompt(inputB);
     assert.equal(provider.calls(), 2, 'a different tenant must never be served from another tenant\'s cache entry');
     assert.equal(resultB.cacheHit, undefined);
   } finally {
@@ -114,14 +128,14 @@ test('narration regenerate: identical input reuses the cached result; explicit b
     const scene = { ...SCENE };
     const input = { scene, sceneIndex: 0, provider: 'gemini', tenantId: 'tenant-a' };
 
-    const first = await dialogue.regenerate(input);
+    const first = await dialogue.regenerateNarration(input);
     assert.equal(provider.calls(), 1);
-    const second = await dialogue.regenerate(input);
+    const second = await dialogue.regenerateNarration(input);
     assert.equal(provider.calls(), 1, 'identical narration regenerate input must reuse the cached result');
     assert.equal(second.cacheHit, true);
     assert.equal(second.narrationText, first.narrationText);
 
-    const third = await dialogue.regenerate({ ...input, bypassCache: true });
+    const third = await dialogue.regenerateNarration({ ...input, bypassCache: true });
     assert.equal(provider.calls(), 2, 'bypassCache must force a fresh provider call');
     assert.notEqual(third.narrationText, first.narrationText);
   } finally {

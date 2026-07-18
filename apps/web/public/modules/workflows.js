@@ -78,6 +78,8 @@ export function normalizeScene(scene, index) {
     videoVersions,
     activeVideoVersionIndex: videoVersions.length ? Math.min(Math.max(requestedVideoIndex, 0), videoVersions.length - 1) : 0,
     activeVisualType,
+    referenceImages: Array.isArray(scene?.referenceImages) ? scene.referenceImages : [],
+    disabledProjectReferenceImages: Array.isArray(scene?.disabledProjectReferenceImages) ? scene.disabledProjectReferenceImages : [],
   };
 }
 
@@ -130,11 +132,20 @@ export async function generatePrompts(els, setStatus, { rebuildFromSource = fals
       narrationIsFallback: reuseExistingScenes ? Boolean(previousScenes[index]?.narrationIsFallback) : false,
       audioVersions: reuseExistingScenes ? (previousScenes[index]?.audioVersions || []) : [],
       activeAudioVersionIndex: reuseExistingScenes ? (previousScenes[index]?.activeAudioVersionIndex || 0) : 0,
+      referenceImages: reuseExistingScenes ? (previousScenes[index]?.referenceImages || []) : [],
+      disabledProjectReferenceImages: reuseExistingScenes ? (previousScenes[index]?.disabledProjectReferenceImages || []) : [],
     }, index));
     
     sceneStore.set({ 
       scenes: nextScenes,
-      lastPromptInputs: { scriptText: base.scriptText, commonPromptText: base.commonPromptText } 
+      lastPromptInputs: {
+        scriptText: base.scriptText,
+        sceneCount: base.sceneCount,
+        styleId: base.styleId,
+        commonPromptText: base.commonPromptText,
+        textProvider: base.textProvider,
+        enrich: base.enrich,
+      } 
     });
     
     const record = getCurrentStoryboardRecord();

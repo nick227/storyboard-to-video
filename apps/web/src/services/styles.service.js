@@ -10,9 +10,33 @@ function createStylesService(config) {
   const referenceDir = (id, type) => path.join(config.paths.styleReferences, sanitize(id), normalizeType(type));
   const userReferenceDir = (id, type, userId) => path.join(config.paths.userStyleReferences, String(userId), sanitize(id), normalizeType(type));
   const publicPath = (id, type, file, isUser) => isUser ? `/user-style-references/${sanitize(id)}/${normalizeType(type)}/${encodeURIComponent(file)}` : `/style-references/${sanitize(id)}/${normalizeType(type)}/${encodeURIComponent(file)}`;
+  const hiddenDefaultsPath = (userId) => path.join(config.paths.userStyleReferences, String(userId), 'hidden-defaults.json');
+  function readHiddenDefaults(userId) {
+    if (!userId) return {};
+    try { return JSON.parse(fs.readFileSync(hiddenDefaultsPath(userId), 'utf8')) || {}; } catch (_) { return {}; }
+  }
+  function writeHiddenDefaults(userId, data) {
+    const file = hiddenDefaultsPath(userId);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data));
+  }
+  function isHiddenDefault(id, type, fileName, userId) {
+    if (!userId) return false;
+    const list = readHiddenDefaults(userId)?.[sanitize(id)]?.[normalizeType(type)];
+    return Array.isArray(list) && list.includes(fileName);
+  }
+  function hideDefault(id, type, fileName, userId) {
+    const styleKey = sanitize(id), normalized = normalizeType(type);
+    const hidden = readHiddenDefaults(userId);
+    hidden[styleKey] = hidden[styleKey] || {};
+    const list = new Set(hidden[styleKey][normalized] || []);
+    list.add(fileName);
+    hidden[styleKey][normalized] = [...list];
+    writeHiddenDefaults(userId, hidden);
+  }
   function referenceFiles(id, type, userId) {
     const globalDir = referenceDir(id, type); fs.mkdirSync(globalDir, { recursive: true });
-    const globalFiles = fs.readdirSync(globalDir).filter((f) => /\.(png|jpe?g|webp|gif)$/i.test(f)).sort().map((f) => ({ fileName: f, path: path.join(globalDir, f), url: publicPath(id, type, f, false), type: normalizeType(type), isUserUploaded: false }));
+    const globalFiles = fs.readdirSync(globalDir).filter((f) => /\.(png|jpe?g|webp|gif)$/i.test(f)).filter((f) => !isHiddenDefault(id, type, f, userId)).sort().map((f) => ({ fileName: f, path: path.join(globalDir, f), url: publicPath(id, type, f, false), type: normalizeType(type), isUserUploaded: false }));
     let userFiles = [];
     if (userId) {
       const userDir = userReferenceDir(id, type, userId); fs.mkdirSync(userDir, { recursive: true });
@@ -48,11 +72,19 @@ function createStylesService(config) {
     if (!find(id, userId)) throw new AppError('STYLE_NOT_FOUND', 'Unknown style', { status: 404 });
     const safe = path.basename(fileName || '');
     if (!safe || safe !== fileName) throw new AppError('INVALID_PATH', 'Invalid reference filename', { status: 400 });
-    const userDir = userReferenceDir(id, type, userId);
-    const targetPath = path.join(userDir, safe);
-    if (!fs.existsSync(targetPath)) throw new AppError('NOT_FOUND', 'User reference not found or cannot be deleted', { status: 404 });
-    fs.rmSync(targetPath, { force: true });
-    return references(id, userId);
+    const userPath = path.join(userReferenceDir(id, type, userId), safe);
+    if (fs.existsSync(userPath)) {
+      fs.rmSync(userPath, { force: true });
+      return references(id, userId);
+    }
+    // Global default references are shared across every user of this style, so removal here can't
+    // delete the file from disk (that would remove it for everyone) — hide it for this user instead.
+    const globalPath = path.join(referenceDir(id, type), safe);
+    if (fs.existsSync(globalPath)) {
+      hideDefault(id, type, safe, userId);
+      return references(id, userId);
+    }
+    throw new AppError('NOT_FOUND', 'Reference not found or cannot be removed', { status: 404 });
   }
   return { find, list, normalizeType, referenceDir, userReferenceDir, referenceFiles, referencePaths, referenceSources, references, remove, sanitize, upload };
 }

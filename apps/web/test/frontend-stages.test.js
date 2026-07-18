@@ -9,6 +9,7 @@ const path = require('node:path');
 
 const stagesPromise = import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
 const sceneCountPromise = import(path.join(__dirname, '..', 'public', 'modules', 'scene-count.js'));
+const storePromise = import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
 
 function scene(overrides = {}) {
   return {
@@ -50,10 +51,25 @@ test('computeStaleness: image is stale when its stored generation prompt no long
 
 test('computeStaleness: audio is stale when its stored narration snapshot no longer matches the scene narration', async () => {
   const { computeStaleness } = await stagesPromise;
-  const fresh = scene({ narrationText: 'Mara steps in.', audioVersions: [{ path: '/a.mp3', narrationText: 'Mara steps in.' }], activeAudioVersionIndex: 0 });
+  // `provider: 'stub'` matches voiceStore's default `audioProvider` so this fixture isolates the
+  // narration comparison — otherwise it would also read as stale via the provider check below.
+  const fresh = scene({ narrationText: 'Mara steps in.', audioVersions: [{ path: '/a.mp3', narrationText: 'Mara steps in.', provider: 'stub' }], activeAudioVersionIndex: 0 });
   assert.equal(computeStaleness(fresh).audioStale, false);
-  const stale = scene({ narrationText: 'Mara bursts in.', audioVersions: [{ path: '/a.mp3', narrationText: 'Mara steps in.' }], activeAudioVersionIndex: 0 });
+  const stale = scene({ narrationText: 'Mara bursts in.', audioVersions: [{ path: '/a.mp3', narrationText: 'Mara steps in.', provider: 'stub' }], activeAudioVersionIndex: 0 });
   assert.equal(computeStaleness(stale).audioStale, true);
+});
+
+test('computeStaleness: audio is stale when its stored provider no longer matches the currently selected voice provider', async () => {
+  const { computeStaleness } = await stagesPromise;
+  const { voiceStore } = await storePromise;
+  const fresh = scene({ narrationText: 'Mara steps in.', audioVersions: [{ path: '/a.mp3', narrationText: 'Mara steps in.', provider: 'stub' }], activeAudioVersionIndex: 0 });
+  assert.equal(computeStaleness(fresh).audioStale, false);
+  voiceStore.set({ audioProvider: 'spark' });
+  try {
+    assert.equal(computeStaleness(fresh).audioStale, true);
+  } finally {
+    voiceStore.set({ audioProvider: 'stub' });
+  }
 });
 
 test('computeStaleness: video is stale when its source image no longer matches the active image version', async () => {
@@ -198,4 +214,100 @@ test('toggleStageSelection: a box is never permanently disabled — the user can
   assert.equal(getStageSelection(status).audio, true, 'the user must be able to select it anyway, to force a run');
   toggleStageSelection('audio', status);
   assert.equal(getStageSelection(status).audio, false, 'and deselect it again');
+});
+
+test('hasPlanningChanges: detects changes when script or settings differ from lastPromptInputs', async () => {
+  const { hasPlanningChanges } = await stagesPromise;
+  const scenes = [scene()];
+  
+  const recordNoChanges = {
+    scriptText: 'test script',
+    commonPromptText: 'common',
+    styleId: 'style',
+    textProvider: 'gemini',
+    enrich: true,
+    sceneCountMode: 'manual',
+    sceneCount: 1,
+    lastPromptInputs: {
+      scriptText: 'test script',
+      commonPromptText: 'common',
+      styleId: 'style',
+      textProvider: 'gemini',
+      enrich: true,
+      sceneCount: 1,
+    }
+  };
+  assert.equal(hasPlanningChanges(scenes, recordNoChanges), false, 'no changes should be detected when inputs match');
+
+  const recordScriptChanged = {
+    ...recordNoChanges,
+    scriptText: 'new script text',
+  };
+  assert.equal(hasPlanningChanges(scenes, recordScriptChanged), true, 'should detect script changes');
+
+  const recordProviderChanged = {
+    ...recordNoChanges,
+    textProvider: 'openai',
+  };
+  assert.equal(hasPlanningChanges(scenes, recordProviderChanged), true, 'should detect text provider changes');
+
+  const recordStyleChanged = {
+    ...recordNoChanges,
+    styleId: 'new-style',
+  };
+  assert.equal(hasPlanningChanges(scenes, recordStyleChanged), true, 'should detect style changes');
+
+  const recordCountChanged = {
+    ...recordNoChanges,
+    sceneCount: 5,
+  };
+  assert.equal(hasPlanningChanges(scenes, recordCountChanged), true, 'should detect scene count changes');
+
+  assert.equal(hasPlanningChanges([], recordNoChanges), true, 'empty scenes should always indicate changes');
+});
+
+test('stageHasActionableWork: returns true for planning when hasChanges is true', async () => {
+  const { stageHasActionableWork } = await stagesPromise;
+  const statusNoChanges = { total: 1, missing: 0, stale: 0, failed: 0, hasChanges: false };
+  assert.equal(stageHasActionableWork('planning', statusNoChanges), false, 'should have no actionable work if no changes and not missing/stale');
+
+  const statusWithChanges = { total: 1, missing: 0, stale: 0, failed: 0, hasChanges: true };
+  assert.equal(stageHasActionableWork('planning', statusWithChanges), true, 'should have actionable work when hasChanges is true');
+});
+
+test('computeStageStatus: sets planning.hasChanges based on hasPlanningChanges', async () => {
+  const { computeStageStatus } = await stagesPromise;
+  const { projectStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+  
+  const record = {
+    id: 'p1',
+    scriptText: 'new script text',
+    commonPromptText: 'common',
+    styleId: 'style',
+    textProvider: 'gemini',
+    enrich: true,
+    sceneCountMode: 'manual',
+    sceneCount: 1,
+    lastPromptInputs: {
+      scriptText: 'old script text',
+      commonPromptText: 'common',
+      styleId: 'style',
+      textProvider: 'gemini',
+      enrich: true,
+      sceneCount: 1,
+    }
+  };
+
+  projectStore.set({
+    currentId: 'p1',
+    storyboards: [record]
+  });
+
+  const scenes = [scene()];
+  const batchState = { images: { state: 'idle' }, audio: { state: 'idle' }, videos: { state: 'idle' } };
+  const status = computeStageStatus(scenes, batchState, null, [], {});
+  assert.equal(status.planning.hasChanges, true, 'planning.hasChanges should be true when scriptText changed');
+  
+  // Cleanup
+  projectStore.set({ currentId: null, storyboards: [] });
 });

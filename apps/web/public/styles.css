@@ -598,10 +598,7 @@ details > summary::marker { color: var(--muted); }
 .style-ref-item {
   position: relative;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-  background: #0b0f14;
+  padding: 1px;
 }
 .style-ref-item img {
   display: block;
@@ -1028,7 +1025,7 @@ button.text-button {
 
 .settings-modal {
   width: min(720px, calc(100vw - 24px));
-  max-height: min(82vh, 760px);
+  max-height: min(90vh, 860px);
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 18px;
