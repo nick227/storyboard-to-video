@@ -51,14 +51,12 @@ function buildVideoPrompt(input, style, configuredMotionPrompt = '') {
 
 function createVideoGenerationService({ config, provider, projectStore, styles }) {
   async function resolve(publicPath, ownerId) {
-    const match = String(publicPath || '').match(/^\/projects\/([^/]+)\/assets\/images\/([^/]+)$/);
+    if (!publicPath) return null;
+    const match = String(publicPath).match(/^\/projects\/([^/]+)\/assets\/[^/]+\/[^/]+$/);
     if (!match) return null;
     const projectId = decodeURIComponent(match[1]);
-    const file = decodeURIComponent(match[2]);
-    if (file !== path.basename(file)) return null;
-    if (projectStore.findAsset) return (await projectStore.findAsset(projectId, 'images', file, { ownerId })).sourcePath;
-    await projectStore.read(projectId, { ownerId });
-    return path.join(projectStore.assetDir(projectId, 'images'), file);
+    const asset = await projectStore.resolveAsset(projectId, publicPath, { ownerId });
+    return asset?.sourcePath || null;
   }
 
   return {

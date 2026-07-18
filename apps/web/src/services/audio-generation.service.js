@@ -15,7 +15,10 @@ function createAudioGenerationService({ config, provider, projectStore }) {
       try {
         fs.writeFileSync(staged, result.buffer);
         const asset = await projectStore.commitAsset(lease, 'audio', staged, { signal, mimeType: result.mimeType });
-        const version = { path: asset.path, provider: input.provider, createdAt: new Date().toISOString() };
+        // `narrationText` mirrors how image versions already store the `prompt` they were generated
+        // from and video versions store `sourceImagePath` — lets audio staleness be derived the same
+        // way (compare this snapshot to the scene's current narrationText) without a separate flag.
+        const version = { path: asset.path, provider: input.provider, narrationText: input.narrationText, createdAt: new Date().toISOString() };
         let scene, project;
         try {
           ({ scene, project } = await projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'audio', version, jobId }));

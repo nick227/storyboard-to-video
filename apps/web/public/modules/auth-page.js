@@ -16,7 +16,7 @@ const els = {
 
 function safeRedirectTarget() {
   const raw = new URLSearchParams(window.location.search).get('redirect');
-  return raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/studio.html';
+  return raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/studio';
 }
 
 function setMode(mode) {

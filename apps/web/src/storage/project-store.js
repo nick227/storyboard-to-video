@@ -31,7 +31,7 @@ class ProjectStore {
   isTombstoned(id) { return fs.existsSync(this.tombstonePath(id)); }
 
   assetDir(id, type, { create = true } = {}) {
-    if (!['images', 'audio', 'videos', 'exports'].includes(type)) throw new AppError('INVALID_ASSET_TYPE', 'Invalid asset type', { status: 400 });
+    if (!['images', 'audio', 'videos', 'exports', 'ai-references', 'scene-images'].includes(type)) throw new AppError('INVALID_ASSET_TYPE', 'Invalid asset type', { status: 400 });
     const dir = path.join(this.projectDir(id), 'assets', type);
     if (create) fs.mkdirSync(dir, { recursive: true });
     return dir;
@@ -297,7 +297,7 @@ class ProjectStore {
     const moved = [];
     fs.mkdirSync(trash, { recursive: true });
     try {
-      for (const type of ['images', 'audio', 'videos', 'exports']) {
+      for (const type of ['images', 'audio', 'videos', 'exports', 'ai-references', 'scene-images']) {
         const dir = this.assetDir(id, type);
         for (const fileName of fs.readdirSync(dir)) {
           const publicPath = `/projects/${encodeURIComponent(id)}/assets/${type}/${encodeURIComponent(fileName)}`;
@@ -338,6 +338,28 @@ class ProjectStore {
     return fs.readdirSync(this.root, { withFileTypes: true }).filter((entry) => entry.isDirectory() && !entry.name.startsWith('.')).flatMap((entry) => {
       try { return [this.read(entry.name, { ownerId })]; } catch (_) { return []; }
     }).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  }
+
+  async resolveAsset(projectId, publicPath, { ownerId } = {}) {
+    await this.read(projectId, { ownerId });
+    const match = String(publicPath || '').match(/^\/projects\/([^/]+)\/assets\/([^/]+)\/([^/]+)$/);
+    if (!match) return null;
+    const pathProjectId = decodeURIComponent(match[1]);
+    if (pathProjectId !== projectId) return null;
+    const type = match[2];
+    const fileName = decodeURIComponent(match[3]);
+    if (fileName !== path.basename(fileName)) return null;
+
+    const sourcePath = path.join(this.assetDir(projectId, type, { create: false }), fileName);
+    if (!fs.existsSync(sourcePath)) return null;
+
+    return {
+      projectId,
+      type,
+      fileName,
+      sourcePath,
+      path: publicPath
+    };
   }
 }
 

@@ -1,7 +1,6 @@
 const crypto = require('node:crypto');
 const { AppError } = require('../errors');
-
-function json(value) { return value == null ? undefined : JSON.parse(JSON.stringify(value)); }
+const { json, serializable } = require('./prisma-shared');
 
 class PrismaBillingRepository {
   constructor(prisma) { this.prisma = prisma; }
@@ -21,7 +20,7 @@ class PrismaBillingRepository {
   }
 
   async createLiveReservation(data) {
-    return this.prisma.$transaction(async (db) => {
+    return serializable(this.prisma, async (db) => {
       const existing = await db.creditReservation.findUnique({ where: { generationRequestId: data.generationRequestId } });
       if (existing) return existing;
       let account = await db.creditAccount.upsert({
@@ -52,11 +51,11 @@ class PrismaBillingRepository {
         idempotencyKey: `reservation:${reservation.id}`, metadata: { quotedCreditMicros: amount.toString() },
       } });
       return reservation;
-    }, { isolationLevel: 'Serializable' });
+    });
   }
 
   async settle({ reservationId, generationRequestId, usageEventId, price, usage, providerCostNanoUsd, calculation, customerNanoUsd, finalCreditMicros }) {
-    return this.prisma.$transaction(async (db) => {
+    return serializable(this.prisma, async (db) => {
       let reservation = await db.creditReservation.findUnique({ where: { id: reservationId } });
       if (!reservation) throw new Error('Billing reservation not found');
       if (['settled', 'settled_not_charged'].includes(reservation.status)) return reservation;
@@ -102,11 +101,11 @@ class PrismaBillingRepository {
         } });
       }
       return reservation;
-    }, { isolationLevel: 'Serializable' });
+    });
   }
 
   async release(generationRequestId, reason) {
-    return this.prisma.$transaction(async (db) => {
+    return serializable(this.prisma, async (db) => {
       let reservation = await db.creditReservation.findUnique({ where: { generationRequestId } });
       if (!reservation || ['released', 'failed_not_charged', 'settled', 'settled_not_charged'].includes(reservation.status)) return reservation;
       if (reservation.chargingMode !== 'live') return db.creditReservation.update({ where: { id: reservation.id }, data: { status: 'failed_not_charged', failureReason: String(reason || 'provider_failed').slice(0, 500), settledAt: new Date() } });
@@ -124,7 +123,7 @@ class PrismaBillingRepository {
         metadata: { reason: reservation.failureReason },
       } });
       return reservation;
-    }, { isolationLevel: 'Serializable' });
+    });
   }
 
   async completeWithoutCost(generationRequestId, reason = 'no_active_price') {
@@ -142,7 +141,7 @@ class PrismaBillingRepository {
   }
 
   async grant({ tenantId, userId = null, creditMicros, idempotencyKey, metadata }) {
-    return this.prisma.$transaction(async (db) => {
+    return serializable(this.prisma, async (db) => {
       const prior = await db.creditLedgerEntry.findUnique({ where: { idempotencyKey } });
       if (prior) return prior;
       let account = await db.creditAccount.upsert({ where: { tenantId }, update: {}, create: { id: crypto.randomUUID(), tenantId } });
@@ -153,11 +152,11 @@ class PrismaBillingRepository {
         availableAfterCreditMicros: account.availableCreditMicros, reservedAfterCreditMicros: account.reservedCreditMicros,
         idempotencyKey, metadata: json(metadata),
       } });
-    }, { isolationLevel: 'Serializable' });
+    });
   }
 
   async setChargingEnabled({ tenantId, enabled, actorUserId, idempotencyKey }) {
-    return this.prisma.$transaction(async (db) => {
+    return serializable(this.prisma, async (db) => {
       const prior = await db.creditLedgerEntry.findUnique({ where: { idempotencyKey } });
       if (prior) return { account: await db.creditAccount.findUnique({ where: { tenantId } }), entry: prior, reused: true };
       let account = await db.creditAccount.upsert({ where: { tenantId }, update: {}, create: { id: crypto.randomUUID(), tenantId } });
@@ -173,7 +172,7 @@ class PrismaBillingRepository {
         idempotencyKey, metadata: { chargingEnabled: enabled },
       } });
       return { account, entry, reused: false, unchanged: false };
-    }, { isolationLevel: 'Serializable' });
+    });
   }
 
   listPrices() { return this.prisma.providerPriceVersion.findMany({ orderBy: [{ provider: 'asc' }, { modality: 'asc' }, { model: 'asc' }, { effectiveAt: 'desc' }] }); }
@@ -198,14 +197,14 @@ class PrismaBillingRepository {
   createCreditRateVersion(data) { return this.prisma.siteCreditRateVersion.create({ data: { id: crypto.randomUUID(), ...data } }); }
 
   async createWelcomeCreditPolicyVersion(data) {
-    return this.prisma.$transaction(async (db) => {
+    return serializable(this.prisma, async (db) => {
       if (data.active) await db.welcomeCreditPolicyVersion.updateMany({ where: { active: true }, data: { active: false, retiredAt: new Date() } });
       return db.welcomeCreditPolicyVersion.create({ data: { id: crypto.randomUUID(), ...data } });
-    }, { isolationLevel: 'Serializable' });
+    });
   }
 
   async configurePrice(id, { active, billable, evidenceStatus, reconciledAt, reconciliationNotes }) {
-    return this.prisma.$transaction(async (db) => {
+    return serializable(this.prisma, async (db) => {
       const current = await db.providerPriceVersion.findUnique({ where: { id } });
       if (!current) throw new AppError('PRICE_VERSION_NOT_FOUND', 'Provider price version not found', { status: 404 });
       const nextEvidence = evidenceStatus || current.evidenceStatus;
@@ -219,7 +218,7 @@ class PrismaBillingRepository {
         ...(reconciledAt !== undefined ? { reconciledAt } : {}),
         ...(reconciliationNotes !== undefined ? { reconciliationNotes } : {}),
       } });
-    }, { isolationLevel: 'Serializable' });
+    });
   }
 
   async activateMarkup(id) {

@@ -20,20 +20,19 @@
       <ul id="storyboardPickerList"></ul>
       <button id="newStoryboardBtn"></button>
       <textarea id="scriptText"></textarea>
-      <input id="sceneCount" type="number" />
-      <button id="autoSceneCountBtn"></button>
+      <input id="settingsSceneCountInput" type="number" />
+      <input id="settingsSceneCountAutoCheckbox" type="checkbox" />
+      <button id="settingsSceneCountAutoBtn"></button>
       <select id="styleSelect"></select>
       <select id="textProvider"></select>
+      <select id="planningModeSelect"></select>
       <input id="fallbackPolicy" />
       <select id="imageProvider"></select>
       <select id="audioProvider"></select>
       <textarea id="commonPromptText"></textarea>
-      <button id="commonPromptSettingsBtn"></button>
-      <button id="styleReferencesSettingsBtn"></button>
-      <button id="audioSettingsBtn"></button>
-      <dialog id="commonPromptModal"><button data-close-settings></button></dialog>
-      <dialog id="styleReferencesModal"><button data-close-settings></button></dialog>
-      <dialog id="audioSettingsModal"><button data-close-settings></button></dialog>
+      <button id="settingsBtn"></button>
+      <dialog id="settingsModal"><button data-close-settings></button></dialog>
+      <div id="styleReferencesPanel"></div>
       <dialog id="generationConfirmModal">
         <h2 id="generationConfirmTitle"></h2>
         <p id="generationConfirmIntro"></p>
@@ -54,14 +53,14 @@
       <span id="generationSummaryText"></span>
       <div id="storyboardGrid"></div>
       <template id="sceneCardTemplate">
-        <article class="scene-card"><div class="scene-index"></div><h3 class="scene-title"></h3><div class="scene-status"><span class="scene-status-icon" data-status="prompt"></span><span class="scene-status-icon" data-status="image"></span><span class="scene-status-icon" data-status="dialogue"></span><span class="scene-status-icon" data-status="audio"></span><span class="scene-status-icon" data-status="video"></span></div><textarea class="scene-beat"></textarea><textarea class="scene-prompt"></textarea><img class="scene-image" /><button class="scene-media-toggle"></button><div class="scene-placeholder"></div><div class="image-version-list"></div><span class="version-count"></span><span class="image-version-count"></span><textarea class="scene-dialogue"></textarea><div class="audio-version-list"></div><span class="audio-version-count"></span><div class="current-audio"></div><audio class="current-audio-player"></audio><span class="current-audio-version"></span><button class="regen-prompt-btn"></button><button class="regen-image-btn"></button><button class="regen-dialogue-btn"></button><button class="regen-audio-btn"></button><div class="prompt-loading"></div><div class="image-loading"></div><span class="beat-summary"></span><span class="detail-completeness"></span><details class="scene-details"></details><div class="scene-history"></div><div class="visual-history-block"></div><div class="image-history-group"></div><div class="audio-version-block"></div></article>
+        <article class="scene-card"><div class="scene-index"></div><h3 class="scene-title"></h3><div class="scene-status"><span class="scene-status-icon" data-status="prompt"></span><span class="scene-status-icon" data-status="reference"></span><span class="scene-status-icon" data-status="image"></span><span class="scene-status-icon" data-status="dialogue"></span><span class="scene-status-icon" data-status="audio"></span><span class="scene-status-icon" data-status="video"></span></div><textarea class="scene-beat"></textarea><textarea class="scene-prompt"></textarea><img class="scene-image" /><button class="scene-media-toggle"></button><div class="scene-placeholder"></div><div class="image-version-list"></div><span class="version-count"></span><span class="image-version-count"></span><textarea class="scene-dialogue"></textarea><div class="audio-version-list"></div><span class="audio-version-count"></span><div class="current-audio"></div><audio class="current-audio-player"></audio><span class="current-audio-version"></span><button class="regen-prompt-btn"></button><button class="regen-image-btn"></button><button class="regen-dialogue-btn"></button><button class="regen-audio-btn"></button><div class="prompt-loading"></div><div class="image-loading"></div><span class="beat-summary"></span><span class="detail-completeness"></span><details class="scene-details"></details><div class="scene-history"></div><div class="visual-history-block"></div><div class="image-history-group"></div><div class="audio-version-block"></div></article>
       </template>
       <div id="characterRefs"></div>
       <div id="worldRefs"></div>
       <input id="characterRefInput" />
       <input id="worldRefInput" />
       <div id="voicesPanel"></div>
-      <button id="voiceCloningBtn"></button>
+
       <dialog id="voiceLibraryModal"></dialog>
       <button id="closeVoiceLibraryBtn"></button>
       <div id="voiceLibraryList"></div>

@@ -1,12 +1,14 @@
-import { sceneStore, uiStore, debounce } from './store.js';
-import { regeneratePrompt, regenerateAction, regenerateDialogue, regenerateImage, regenerateAudio, regenerateVideo } from './workflows.js';
-import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
+import { sceneStore, generationStore, uiStore, debounce } from './store.js';
+import { regeneratePrompt, regenerateAction, regenerateDialogue, regenerateImage, regenerateAudio, regenerateVideo, splitSceneInPlace } from './workflows.js';
+import { ensureProjectSynced, getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from './persistence.js';
 import { loadProtectedAsset } from './assets.js';
+import { api } from './api.js';
+import { suggestSceneCountFromNarration } from './scene-count.js';
+import { computeStaleness } from './stages.js';
 
 let els = {};
 let activeScenePlayback = null;
 let scenePlaybackCleanups = new Map();
-let renderAbortController = null;
 
 const debouncedQueueSync = debounce(() => {
   const record = getCurrentStoryboardRecord();
@@ -22,11 +24,39 @@ const modalState = {
   mediaAbortController: null,
 };
 
+const referenceModalState = { sceneId: null };
+
 const STATUS_LABELS = { dialogue: 'Narration' };
 
 const handleAssetError = (err) => {
   if (err.name !== 'AbortError') console.error('Asset load error:', err);
 };
+
+function setElementProtectedAsset(element, propertyName, path, cacheKeyName = propertyName) {
+  const datasetKey = cacheKeyName + 'Path';
+  const abortKey = '_' + cacheKeyName + 'Abort';
+  
+  if (element.dataset[datasetKey] !== path) {
+    element.dataset[datasetKey] = path;
+    if (element[abortKey]) {
+      element[abortKey].abort();
+      element[abortKey] = null;
+    }
+    if (path) {
+      const controller = new AbortController();
+      element[abortKey] = controller;
+      loadProtectedAsset(path, { signal: controller.signal })
+        .then(url => {
+          if (url && element.dataset[datasetKey] === path) {
+            element[propertyName] = url;
+          }
+        })
+        .catch(handleAssetError);
+    } else {
+      element.removeAttribute(propertyName);
+    }
+  }
+}
 
 const ENTITY_CONFIG = {
   prompt: {
@@ -122,6 +152,139 @@ function openEntityModal(index, type) {
   modalState.mediaPath = undefined;
   els.entityModal.showModal();
   renderEntityModal();
+}
+
+function currentReferenceSceneIndex() {
+  return sceneStore.get().scenes.findIndex((scene) => scene.id === referenceModalState.sceneId);
+}
+
+function referenceEmpty(text) {
+  const empty = document.createElement('div');
+  empty.className = 'scene-reference-empty';
+  empty.textContent = text;
+  return empty;
+}
+
+function referenceImage(url, alt) {
+  const image = document.createElement('img');
+  image.alt = alt;
+  image.loading = 'lazy';
+  loadProtectedAsset(url).then((src) => { if (src) image.src = src; }).catch(handleAssetError);
+  return image;
+}
+
+function renderSceneReferencesModal() {
+  if (!els.sceneReferencesModal?.open) return;
+  const index = currentReferenceSceneIndex();
+  if (index === -1) { els.sceneReferencesModal.close(); return; }
+  const scene = sceneStore.get().scenes[index];
+  const disabled = new Set(scene.disabledProjectReferenceImages || []);
+  const defaults = Object.values(generationStore.get().styleReferences || {}).flat();
+  const uploaded = scene.referenceImages || [];
+  els.sceneReferencesModalSceneLabel.textContent = `Scene ${index + 1} · ${scene.title || 'Untitled'}`;
+  els.sceneDefaultReferences.replaceChildren();
+  els.sceneUploadedReferences.replaceChildren();
+
+  if (!defaults.length) els.sceneDefaultReferences.appendChild(referenceEmpty('No project default references are configured for the selected style.'));
+  defaults.forEach((item) => {
+    const card = document.createElement('div');
+    const isEnabled = !disabled.has(item.url);
+    card.className = `scene-reference-item${isEnabled ? '' : ' is-disabled'}`;
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox'; checkbox.checked = isEnabled; checkbox.dataset.defaultReference = item.url;
+    const name = document.createElement('span'); name.textContent = item.fileName;
+    label.append(checkbox, name);
+    card.append(referenceImage(item.url, item.fileName), label);
+    els.sceneDefaultReferences.appendChild(card);
+  });
+
+  if (!uploaded.length) els.sceneUploadedReferences.appendChild(referenceEmpty('No scene-only references uploaded.'));
+  uploaded.forEach((item) => {
+    const card = document.createElement('div'); card.className = 'scene-reference-item';
+    const name = document.createElement('div'); name.className = 'scene-reference-name';
+    const text = document.createElement('span'); text.textContent = item.fileName || 'Scene reference'; name.appendChild(text);
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'ref-delete-btn'; remove.textContent = '×';
+    remove.dataset.sceneReferencePath = item.path; remove.setAttribute('aria-label', `Delete ${item.fileName || 'scene reference'}`);
+    card.append(referenceImage(item.path, item.fileName || 'Scene reference'), name, remove);
+    els.sceneUploadedReferences.appendChild(card);
+  });
+  els.sceneReferenceInput.disabled = uploaded.length >= 8;
+}
+
+function replaceSceneFromReferenceResponse(data) {
+  const scenes = sceneStore.get().scenes.map((scene) => scene.id === data.scene.id ? data.scene : scene);
+  sceneStore.set({ scenes });
+  const record = getCurrentStoryboardRecord();
+  if (record) {
+    record.scenes = scenes;
+    record.revision = data.revision;
+    persistStoryboardLibrary();
+  }
+}
+
+function setupSceneReferencesModal() {
+  const modal = els.sceneReferencesModal;
+  if (!modal || modal.dataset.wired) return;
+  modal.dataset.wired = 'true';
+  modal.querySelectorAll('[data-close-scene-references]').forEach((button) => button.addEventListener('click', () => modal.close()));
+  modal.addEventListener('click', (event) => { if (event.target === modal) modal.close(); });
+  modal.addEventListener('close', () => { referenceModalState.sceneId = null; els.sceneReferenceInput.value = ''; });
+
+  els.sceneDefaultReferences.addEventListener('change', (event) => {
+    const checkbox = event.target.closest('[data-default-reference]');
+    const index = currentReferenceSceneIndex();
+    if (!checkbox || index === -1) return;
+    const url = checkbox.dataset.defaultReference;
+    const scenes = sceneStore.get().scenes.map((scene, sceneIndex) => {
+      if (sceneIndex !== index) return scene;
+      const disabled = new Set(scene.disabledProjectReferenceImages || []);
+      if (checkbox.checked) disabled.delete(url); else disabled.add(url);
+      return { ...scene, disabledProjectReferenceImages: [...disabled] };
+    });
+    sceneStore.set({ scenes });
+    const record = getCurrentStoryboardRecord();
+    if (record) { record.scenes = scenes; queueSync(record, (text) => { els.sceneReferencesSaveNote.textContent = text; }); }
+  });
+
+  els.sceneReferenceInput.addEventListener('change', async (event) => {
+    const files = event.target.files;
+    const index = currentReferenceSceneIndex();
+    if (!files?.length || index === -1) return;
+    const scene = sceneStore.get().scenes[index];
+    const record = getCurrentStoryboardRecord();
+    try {
+      modal.setAttribute('aria-busy', 'true'); els.sceneReferencesSaveNote.textContent = 'Uploading…';
+      await ensureProjectSynced();
+      const form = new FormData(); [...files].forEach((file) => form.append('files', file));
+      const data = await api(`/api/projects/${encodeURIComponent(record.id)}/scenes/${encodeURIComponent(scene.id)}/references`, { method: 'POST', body: form });
+      replaceSceneFromReferenceResponse(data); els.sceneReferencesSaveNote.textContent = 'Uploaded';
+    } catch (error) { els.sceneReferencesSaveNote.textContent = `Upload failed: ${error.message}`; }
+    finally { modal.removeAttribute('aria-busy'); event.target.value = ''; renderSceneReferencesModal(); }
+  });
+
+  els.sceneUploadedReferences.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-scene-reference-path]');
+    const index = currentReferenceSceneIndex();
+    if (!button || index === -1) return;
+    const scene = sceneStore.get().scenes[index]; const record = getCurrentStoryboardRecord();
+    try {
+      modal.setAttribute('aria-busy', 'true'); els.sceneReferencesSaveNote.textContent = 'Deleting…';
+      await ensureProjectSynced();
+      const data = await api(`/api/projects/${encodeURIComponent(record.id)}/scenes/${encodeURIComponent(scene.id)}/references`, { method: 'DELETE', body: JSON.stringify({ path: button.dataset.sceneReferencePath }) });
+      replaceSceneFromReferenceResponse(data); els.sceneReferencesSaveNote.textContent = 'Deleted';
+    } catch (error) { els.sceneReferencesSaveNote.textContent = `Delete failed: ${error.message}`; }
+    finally { modal.removeAttribute('aria-busy'); renderSceneReferencesModal(); }
+  });
+}
+
+function openSceneReferencesModal(index) {
+  const scene = sceneStore.get().scenes[index];
+  if (!scene) return;
+  referenceModalState.sceneId = scene.id;
+  els.sceneReferencesSaveNote.textContent = 'Changes apply to this scene';
+  els.sceneReferencesModal.showModal();
+  renderSceneReferencesModal();
 }
 
 function renderEntityModalMedia(scene, type, config) {
@@ -262,6 +425,16 @@ function renderEntityModal() {
 
   els.entityModalFallbackWarning.hidden = !(type === 'dialogue' && Boolean(scene.narrationIsFallback));
 
+  // Scene expansion is an explicit storyboard-edit action the user opts into here, never an
+  // incidental side effect of regenerating an image (see entityModalRegenBtn above).
+  const expandSuggestion = type === 'dialogue' && !scene.narrationIsFallback ? suggestSceneCountFromNarration([scene]) : 0;
+  els.entityModalExpandSection.hidden = !(expandSuggestion > 1);
+  if (expandSuggestion > 1) {
+    els.entityModalExpandText.textContent = `This scene's narration is long enough to comfortably fill ${expandSuggestion} images instead of 1.`;
+    els.entityModalExpandBtn.textContent = `Expand into ${expandSuggestion} scenes`;
+    els.entityModalExpandBtn.disabled = busy;
+  }
+
   els.entityModalMedia.hidden = isText;
   if (!isText) renderEntityModalMedia(scene, type, config);
 
@@ -279,13 +452,20 @@ function renderEntityModal() {
   els.entityModalRegenTextBtn.classList.toggle('is-loading', promptFieldLoading);
   els.entityModalRegenTextBtn.textContent = promptFieldLoading ? 'Regenerating…' : 'Regenerate';
 
-  const stale = type === 'prompt' && Boolean(scene.beat) && Boolean(scene.promptGeneratedFromBeat) && scene.beat !== scene.promptGeneratedFromBeat;
+  const stale = type === 'prompt' && computeStaleness(scene).promptStale;
   els.entityModalStaleWarning.hidden = !stale;
 
   els.entityModalRegenBtn.hidden = isText;
   els.entityModalRegenBtn.disabled = busy;
   els.entityModalRegenBtn.classList.toggle('is-loading', isLoading);
   els.entityModalRegenBtn.textContent = isLoading ? 'Regenerating' : 'Regenerate';
+
+  const modalLibraryBtn = document.getElementById('entityModalLibraryBtn');
+  if (modalLibraryBtn) {
+    modalLibraryBtn.hidden = type !== 'image';
+    modalLibraryBtn.disabled = busy;
+  }
+
   els.entityModalStatus.textContent = isLoading ? 'Regeneration in progress…' : (busy ? 'Another operation is running…' : '');
 
   renderEntityModalHistory(scene, type, config, busy);
@@ -327,12 +507,51 @@ function setupEntityModal() {
     els.entityModalImage.removeAttribute('src');
   });
 
+  const libraryBtn = document.getElementById('entityModalLibraryBtn');
+  libraryBtn?.addEventListener('click', () => {
+    const index = currentEntityModalSceneIndex();
+    if (index === -1) return;
+    const scene = sceneStore.get().scenes[index];
+    els.entityModal.close();
+    import('./ui.js').then(({ openImageLibrary }) => {
+      openImageLibrary({
+        mode: 'scene-image',
+        sceneId: scene.id,
+        sceneNumber: index + 1,
+        sceneTitle: scene.title,
+        domEls: els,
+        setStatus: (msg) => {
+          const statusText = document.getElementById('statusText');
+          if (statusText) statusText.textContent = msg;
+        }
+      });
+    });
+  });
+
   els.entityModalRegenBtn.addEventListener('click', () => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
     const config = ENTITY_CONFIG[modalState.type];
+    // Scene expansion is a deliberate storyboard-edit operation (see the "Expand into scenes"
+    // action on the narration view), never an incidental side effect of regenerating an image —
+    // this button always just regenerates, regardless of how long the scene's narration has grown.
     confirmRegeneration(`Regenerate the ${config.title.toLowerCase()} for scene ${index + 1}? This creates a new version and makes it active.`).then((confirmed) => {
       if (confirmed) config.regen(index, els, (t) => els.statusText.textContent = t);
+    });
+  });
+
+  els.entityModalExpandBtn.addEventListener('click', () => {
+    const index = currentEntityModalSceneIndex();
+    if (index === -1) return;
+    const scene = sceneStore.get().scenes[index];
+    const suggested = suggestSceneCountFromNarration([scene]);
+    if (suggested <= 1) return;
+    confirmRegeneration(`Split scene ${index + 1} into ${suggested} scenes based on its narration? This changes the storyboard structure — existing image/audio/video for this scene apply only to the first of the new scenes.`).then((confirmed) => {
+      if (confirmed) {
+        splitSceneInPlace(index, suggested, els, (t) => els.statusText.textContent = t)
+          .then((didSplit) => { if (didSplit) els.entityModal.close(); })
+          .catch((error) => { els.statusText.textContent = `Scene split failed: ${error.message}`; });
+      }
     });
   });
 
@@ -404,6 +623,7 @@ export function initRendering(domEls) {
   els = domEls;
   setupConfirmModal();
   setupEntityModal();
+  setupSceneReferencesModal();
 
   els.storyboardGrid.addEventListener('click', (e) => {
     const card = e.target.closest('.scene-card');
@@ -413,11 +633,33 @@ export function initRendering(domEls) {
     const scene = sceneStore.get().scenes[index];
     if (!scene) return;
 
+    const libraryBtn = e.target.closest('.scene-library-btn');
+    if (libraryBtn) {
+      import('./ui.js').then(({ openImageLibrary }) => {
+        openImageLibrary({
+          mode: 'scene-image',
+          sceneId: scene.id,
+          sceneNumber: index + 1,
+          sceneTitle: scene.title,
+          domEls: els,
+          setStatus: (msg) => {
+            const statusText = document.getElementById('statusText');
+            if (statusText) statusText.textContent = msg;
+          }
+        });
+      });
+      return;
+    }
+
     const iconBtn = e.target.closest('.scene-status-icon');
-    if (iconBtn && !iconBtn.disabled) openEntityModal(index, iconBtn.dataset.status);
+    if (iconBtn && !iconBtn.disabled) {
+      if (iconBtn.dataset.status === 'reference') openSceneReferencesModal(index);
+      else openEntityModal(index, iconBtn.dataset.status);
+    }
   });
 
-  sceneStore.subscribe(() => { renderScenes(); renderEntityModal(); });
+  sceneStore.subscribe(() => { renderScenes(); renderEntityModal(); renderSceneReferencesModal(); });
+  generationStore.subscribe(() => renderSceneReferencesModal());
   uiStore.subscribe(() => { renderScenes(); renderEntityModal(); });
 }
 
@@ -529,10 +771,6 @@ function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio }) {
 }
 
 export function renderScenes() {
-  renderAbortController?.abort();
-  renderAbortController = new AbortController();
-  const signal = renderAbortController.signal;
-
   const scenes = sceneStore.get().scenes;
   const operation = uiStore.get().operation;
   
@@ -595,49 +833,51 @@ export function renderScenes() {
       statusIcon.title = label;
     }
 
+    const referenceIcon = node.querySelector('[data-status="reference"]');
+    const defaultReferenceCount = Object.values(generationStore.get().styleReferences || {}).flat().filter((item) => !(scene.disabledProjectReferenceImages || []).includes(item.url)).length;
+    const sceneReferenceCount = (scene.referenceImages || []).length;
+    const referenceCount = defaultReferenceCount + sceneReferenceCount;
+    referenceIcon.classList.add('is-present');
+    referenceIcon.classList.toggle('has-scene-references', sceneReferenceCount > 0 || (scene.disabledProjectReferenceImages || []).length > 0);
+    referenceIcon.disabled = busy;
+    referenceIcon.setAttribute('aria-label', `Scene references: ${referenceCount} active`);
+    referenceIcon.title = `${referenceCount} active reference image${referenceCount === 1 ? '' : 's'} · ${sceneReferenceCount} scene-only`;
+
     const activeVersion = scene.versions?.[scene.activeVersionIndex];
     const activeVideoVersion = scene.videoVersions?.[scene.activeVideoVersionIndex];
     const currentVideoPath = activeVideoVersion?.path || '';
     const currentPosterPath = activeVersion?.path || '';
 
     if (scene.activeVisualType === 'video' && currentVideoPath) {
-      if (videoEl.dataset.assetPath !== currentVideoPath) {
-        videoEl.dataset.assetPath = currentVideoPath;
-        loadProtectedAsset(currentVideoPath, { signal }).then(url => { if (url && videoEl.dataset.assetPath === currentVideoPath) videoEl.src = url; }).catch(handleAssetError);
-      }
-      if (currentPosterPath && videoEl.dataset.posterPath !== currentPosterPath) {
-        videoEl.dataset.posterPath = currentPosterPath;
-        loadProtectedAsset(currentPosterPath, { signal }).then(url => { if (url && videoEl.dataset.posterPath === currentPosterPath) videoEl.poster = url; }).catch(handleAssetError);
-      }
+      setElementProtectedAsset(videoEl, 'src', currentVideoPath, 'asset');
+      setElementProtectedAsset(videoEl, 'poster', currentPosterPath, 'poster');
       videoEl.style.display = 'block';
-      imageEl.removeAttribute('src');
-      imageEl.dataset.assetPath = '';
+      
+      setElementProtectedAsset(imageEl, 'src', '', 'asset');
       imageEl.style.display = 'none';
       placeholderEl.style.display = 'none';
     } else if (currentPosterPath) {
-      if (imageEl.dataset.assetPath !== currentPosterPath) {
-        imageEl.dataset.assetPath = currentPosterPath;
-        loadProtectedAsset(currentPosterPath, { signal }).then(url => { if (url && imageEl.dataset.assetPath === currentPosterPath) imageEl.src = url; }).catch(handleAssetError);
-      }
+      setElementProtectedAsset(imageEl, 'src', currentPosterPath, 'asset');
       imageEl.style.display = 'block';
-      if (videoEl.dataset.assetPath || videoEl.dataset.posterPath) {
-        videoEl.removeAttribute('src');
-        videoEl.removeAttribute('poster');
-        videoEl.dataset.assetPath = '';
-        videoEl.dataset.posterPath = '';
+      
+      const hadVideoAsset = videoEl.dataset.assetPath;
+      const hadVideoPoster = videoEl.dataset.posterPath;
+      setElementProtectedAsset(videoEl, 'src', '', 'asset');
+      setElementProtectedAsset(videoEl, 'poster', '', 'poster');
+      if (hadVideoAsset || hadVideoPoster) {
         videoEl.load();
       }
       videoEl.style.display = 'none';
       placeholderEl.style.display = 'none';
     } else {
-      imageEl.removeAttribute('src');
-      imageEl.dataset.assetPath = '';
+      setElementProtectedAsset(imageEl, 'src', '', 'asset');
       imageEl.style.display = 'none';
-      if (videoEl.dataset.assetPath || videoEl.dataset.posterPath) {
-        videoEl.removeAttribute('src');
-        videoEl.removeAttribute('poster');
-        videoEl.dataset.assetPath = '';
-        videoEl.dataset.posterPath = '';
+      
+      const hadVideoAsset = videoEl.dataset.assetPath;
+      const hadVideoPoster = videoEl.dataset.posterPath;
+      setElementProtectedAsset(videoEl, 'src', '', 'asset');
+      setElementProtectedAsset(videoEl, 'poster', '', 'poster');
+      if (hadVideoAsset || hadVideoPoster) {
         videoEl.load();
       }
       videoEl.style.display = 'none';
@@ -646,15 +886,10 @@ export function renderScenes() {
 
     const activeAudioVersion = scene.audioVersions?.[scene.activeAudioVersionIndex];
     const currentAudioPath = activeAudioVersion?.path || '';
-    if (currentAudioPath && playbackAudioEl.dataset.assetPath !== currentAudioPath) {
-      playbackAudioEl.dataset.assetPath = currentAudioPath;
-      loadProtectedAsset(currentAudioPath, { signal }).then(url => { if (url && playbackAudioEl.dataset.assetPath === currentAudioPath) playbackAudioEl.src = url; }).catch(handleAssetError);
-    } else if (!currentAudioPath) {
-      if (playbackAudioEl.dataset.assetPath) {
-        playbackAudioEl.removeAttribute('src');
-        playbackAudioEl.dataset.assetPath = '';
-        playbackAudioEl.load();
-      }
+    const prevAudioPath = playbackAudioEl.dataset.assetPath;
+    setElementProtectedAsset(playbackAudioEl, 'src', currentAudioPath, 'asset');
+    if (!currentAudioPath && prevAudioPath) {
+      playbackAudioEl.load();
     }
 
     const hasVideo = scene.activeVisualType === 'video' && Boolean(currentVideoPath);

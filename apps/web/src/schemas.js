@@ -22,6 +22,8 @@ const promptGeneration = z.object({
   commonPromptText: z.string().max(20_000).default(''),
   provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
   fallbackPolicy,
+  enrich: z.boolean().default(true),
+  existingScenes: z.array(z.record(z.any())).max(50).optional(),
 });
 
 const regeneratePrompt = z.object({
@@ -36,6 +38,28 @@ const regeneratePrompt = z.object({
   extraPromptText: z.string().max(20_000).default(''),
   fallbackPolicy,
   scriptText: z.string().max(200_000).default(''),
+  enrich: z.boolean().default(true),
+  // When true, skip the exact-input reuse cache lookup unconditionally (an explicit "generate a new
+  // variation" request) — the fresh result is still recorded afterward. See generation-cache.service.js.
+  bypassCache: z.boolean().default(false),
+});
+
+const createScenes = z.object({
+  projectId,
+  scriptText: z.string().trim().min(1).max(200_000),
+  sceneCount: z.coerce.number().int().min(1).max(50).default(6),
+});
+
+const splitScene = z.object({
+  projectId,
+  scriptFragment: z.string().trim().min(1).max(20_000),
+  // Keep this max in sync with MAX_SPLIT_COUNT in apps/web/public/modules/scene-count.js — the
+  // frontend clamps every split request to that same value before it ever reaches this schema.
+  count: z.coerce.number().int().min(2).max(8).default(2),
+  // Optional richer source: when the original scriptFragment is too short to support the requested
+  // split count, the service falls back to splitting this instead (only sent by the client when
+  // Enrich is on and the scene has narration).
+  narrationText: z.string().trim().max(6_000).default(''),
 });
 
 const regenerateAction = z.object({
@@ -47,6 +71,7 @@ const regenerateAction = z.object({
   provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
   fallbackPolicy,
   scriptText: z.string().max(200_000).default(''),
+  bypassCache: z.boolean().default(false),
 });
 
 const exportProject = z.object({
@@ -104,6 +129,7 @@ const generateDialogue = z.object({
   scenes: z.array(dialogueScene).min(1).max(50),
   provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
   fallbackPolicy,
+  enrich: z.boolean().default(true),
 });
 
 const regenerateDialogue = z.object({
@@ -113,6 +139,8 @@ const regenerateDialogue = z.object({
   instruction: z.string().max(500).default(''),
   provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
   fallbackPolicy,
+  enrich: z.boolean().default(true),
+  bypassCache: z.boolean().default(false),
 });
 
-module.exports = { audioGeneration, createProject, exportProject, fallbackPolicy, generateDialogue, imageGeneration, projectDocument, projectId, promptGeneration, regenerateAction, regenerateDialogue, regeneratePrompt, videoGeneration };
+module.exports = { audioGeneration, createProject, createScenes, exportProject, fallbackPolicy, generateDialogue, imageGeneration, projectDocument, projectId, promptGeneration, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, videoGeneration };

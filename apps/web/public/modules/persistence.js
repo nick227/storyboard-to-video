@@ -176,14 +176,19 @@ function restoreStoryboardFields(els) {
   if (!record) return;
 
   els.scriptText.value = record.scriptText || '';
-  els.sceneCount.value = record.sceneCount || 8;
-  els.sceneCount.dataset.mode = record.sceneCountMode === 'manual' ? 'manual' : 'auto';
   els.textProvider.value = optionValues(els.textProvider).includes(record.textProvider) ? record.textProvider : 'gemini';
   els.imageProvider.value = optionValues(els.imageProvider).includes(record.imageProvider) ? record.imageProvider : 'gemini';
   els.fallbackPolicy.value = record.fallbackPolicy === 'fail' ? 'fail' : 'local';
   els.videoMotionIntensity.value = optionValues(els.videoMotionIntensity).includes(record.videoMotionIntensity) ? record.videoMotionIntensity : 'medium';
+  els.enrichNarration.checked = record.enrich !== false;
   if (record.styleId) els.styleSelect.value = record.styleId;
   if (record.commonPromptText != null) els.commonPromptText.value = record.commonPromptText;
+  if (els.settingsSceneCountInput) {
+    els.settingsSceneCountInput.value = record.settingsSceneCountInput != null ? record.settingsSceneCountInput : '';
+  }
+  if (els.settingsSceneCountAutoCheckbox) {
+    els.settingsSceneCountAutoCheckbox.checked = record.settingsSceneCountAutoCheckbox === true;
+  }
 
   const audioProvider = optionValues(els.audioProvider).includes(record.audioProvider) ? record.audioProvider : 'stub';
   els.audioProvider.value = audioProvider;
@@ -231,11 +236,12 @@ export function createStoryboard(els) {
   sceneStore.set({ scenes: [], lastPromptInputs: null });
 
   els.scriptText.value = '';
-  els.sceneCount.value = 8;
-  els.sceneCount.dataset.mode = 'auto';
   els.commonPromptText.value = '';
   els.fallbackPolicy.value = 'local';
   els.videoMotionIntensity.value = 'medium';
+  els.enrichNarration.checked = true;
+  if (els.settingsSceneCountInput) els.settingsSceneCountInput.value = '';
+  if (els.settingsSceneCountAutoCheckbox) els.settingsSceneCountAutoCheckbox.checked = false;
 }
 
 export function saveStoryboard(els, immediate = false) {
@@ -245,14 +251,15 @@ export function saveStoryboard(els, immediate = false) {
   Object.assign(record, {
     title: String(els.storyboardTitle?.value || '').trim() || 'Untitled',
     scriptText: els.scriptText.value,
-    sceneCount: Number(els.sceneCount.value) || 8,
-    sceneCountMode: els.sceneCount.dataset.mode === 'manual' ? 'manual' : 'auto',
+    sceneCount: els.settingsSceneCountInput ? (Number(els.settingsSceneCountInput.value) || null) : null,
+    sceneCountMode: (els.settingsSceneCountAutoCheckbox && els.settingsSceneCountAutoCheckbox.checked) ? 'auto' : 'manual',
     styleId: els.styleSelect.value,
     commonPromptText: els.commonPromptText.value,
     textProvider: els.textProvider.value,
     imageProvider: els.imageProvider.value,
     fallbackPolicy: els.fallbackPolicy.value,
     videoMotionIntensity: els.videoMotionIntensity.value,
+    enrich: els.enrichNarration.checked,
     audioProvider: voiceStore.get().audioProvider,
     narratorVoice: voiceStore.get().narratorVoice,
     scenes: sceneStore.get().scenes,

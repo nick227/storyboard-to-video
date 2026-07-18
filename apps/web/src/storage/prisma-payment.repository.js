@@ -1,16 +1,8 @@
 const crypto = require('node:crypto');
 const { AppError } = require('../errors');
+const { json, serializable } = require('./prisma-shared');
 
-function json(value) { return value == null ? undefined : JSON.parse(JSON.stringify(value)); }
 function customerId(value) { return typeof value === 'string' ? value : value?.id || null; }
-async function serializable(prisma, work) {
-  for (let attempt = 1; ; attempt += 1) {
-    try { return await prisma.$transaction(work, { isolationLevel: 'Serializable' }); }
-    catch (error) {
-      if (attempt >= 4 || (error.code !== 'P2034' && !/write conflict|deadlock/i.test(error.message))) throw error;
-    }
-  }
-}
 
 class PrismaPaymentRepository {
   constructor(prisma) { this.prisma = prisma; }

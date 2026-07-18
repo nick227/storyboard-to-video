@@ -4,178 +4,107 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Storyframe helps independent creators turn a script into a consistent visual story with reference-guided images, narration, and video." />
-  <title>Storyframe — Make stories people can see and hear</title>
+  <meta name="description" content="Convert a script into editable scenes, generated images, narration, and video in one workspace." />
+  <title>Storyframe — Script to narrated video</title>
   <link rel="stylesheet" href="/landing.css" />
+  <link rel="stylesheet" href="/topbar.css" />
+  <script src="/modules/topbar.js"></script>
 </head>
 
 <body>
-  <header class="landing-header">
-    <a class="landing-brand" href="/" aria-label="Storyframe home">
-      <span class="landing-brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24">
-          <rect x="3" y="4" width="18" height="16" rx="3" />
-          <path d="M9 4v16M3 10h6M3 15h6" />
-        </svg>
-      </span>
-      <span>Storyframe</span>
-    </a>
-    <nav class="landing-nav" aria-label="Main navigation">
-      <a href="#how-it-works">How it works</a>
-      <a href="#community">Who it’s for</a>
-      <a class="nav-sign-in" href="/login.html?redirect=%2Fstudio.html">Sign in</a>
-      <a class="button button-small" href="/login.html?mode=register&redirect=%2Fstudio.html">Start creating</a>
-    </nav>
-  </header>
+  <storyframe-topbar></storyframe-topbar>
 
   <main>
-    <section class="hero" aria-labelledby="hero-title">
+    <section class="hero">
       <div class="hero-copy">
-        <p class="kicker"><span></span> A studio for independent storytellers</p>
-        <h1 id="hero-title">Your story.<br /><em>In your voice.</em></h1>
-        <p class="hero-lede">Turn a script into a visual story with recurring characters, a world that stays recognizable, and narration that sounds like you.</p>
-        <div class="hero-actions">
-          <a class="button" href="/login.html?mode=register&redirect=%2Fstudio.html">Create your first story</a>
-          <a class="text-link" href="#how-it-works">See how it works <span aria-hidden="true">↓</span></a>
+        <p class="eyebrow">Script-to-video workspace</p>
+        <h1>Turn a script into a narrated video sequence.</h1>
+        <p>Paste a story or screenplay. Generate scenes, images, narration, and motion. Preview the complete sequence, then export its media files.</p>
+        <div class="actions">
+          <a class="button" href="/login.html?mode=register&redirect=%2Fstudio">Create a project</a>
+          <a class="secondary-link" href="#workflow">View the workflow</a>
         </div>
-        <p class="hero-note">Built for small teams, solo creators, and stories worth finishing.</p>
       </div>
 
-      <div class="product-scene" aria-label="A stylized preview of the Storyframe creation studio">
-        <div class="scene-toolbar">
-          <span class="scene-brand">The Night Garden</span>
-          <span class="scene-status"><i></i> 6 scenes ready</span>
+      <div class="studio-preview" aria-label="Storyframe project preview">
+        <div class="preview-top"><strong>Sample project</strong><span><i></i> 6 scenes</span></div>
+        <div class="preview-image">
+          <span class="moon"></span><span class="hill back"></span><span class="hill front"></span>
+          <span class="person"><i></i><b></b></span>
         </div>
-        <div class="scene-frame">
-          <div class="moon"></div>
-          <div class="cloud cloud-one"></div>
-          <div class="cloud cloud-two"></div>
-          <div class="hills hill-back"></div>
-          <div class="hills hill-front"></div>
-          <div class="character">
-            <span class="character-head"></span>
-            <span class="character-body"></span>
-          </div>
-          <span class="spark spark-one">✦</span>
-          <span class="spark spark-two">✦</span>
+        <div class="preview-controls">
+          <span class="play">▶</span>
+          <div class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <small>Image + voice + video</small>
         </div>
-        <div class="scene-bottom">
-          <div class="scene-meta">
-            <span class="scene-number">04</span>
-            <span><strong>Through the garden gate</strong><small>Indie Youtuber · Gemini</small></span>
-          </div>
-          <div class="waveform" aria-hidden="true">
-            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-          </div>
-        </div>
-        <div class="floating-card reference-card">
-          <span class="floating-icon image-icon" aria-hidden="true">▧</span>
-          <span><small>Style reference</small><strong>Character locked</strong></span>
-          <span class="check" aria-hidden="true">✓</span>
-        </div>
-        <div class="floating-card voice-card">
-          <span class="floating-icon mic-icon" aria-hidden="true">●</span>
-          <span><small>Narrator</small><strong>Your voice</strong></span>
-        </div>
+        <div class="preview-tag reference"><small>Image input</small><strong>2 reference images</strong></div>
+        <div class="preview-tag narrator"><small>Audio input</small><strong>Recorded narrator voice</strong></div>
       </div>
     </section>
 
-    <section class="trust-line" aria-label="Storyframe capabilities">
-      <span>Script to scenes</span>
-      <i></i>
-      <span>Reference-guided art</span>
-      <i></i>
-      <span>Personal narration</span>
-      <i></i>
-      <span>Ready to export</span>
-    </section>
-
-    <section id="how-it-works" class="section workflow" aria-labelledby="workflow-title">
-      <div class="section-heading">
-        <p class="kicker"><span></span> From page to publish</p>
-        <h2 id="workflow-title">One story, one clear workflow.</h2>
-        <p>Storyframe keeps the pieces together, so you can spend less time moving between tools and more time shaping the story.</p>
-      </div>
+    <section id="workflow" class="section">
+      <header class="section-header">
+        <p class="eyebrow">Workflow</p>
+        <h2>One project from source text to exported media.</h2>
+      </header>
       <div class="steps">
-        <article class="step">
-          <span class="step-number">01</span>
-          <div class="step-visual script-visual" aria-hidden="true">
-            <div class="paper"><i></i><i></i><i></i><i></i><b></b><i></i></div>
-          </div>
-          <h3>Start with your words</h3>
-          <p>Paste a story or screenplay. Gemini helps break it into editable scenes, visual prompts, and spoken narration.</p>
+        <article>
+          <span>01</span>
+          <h3>Import the script</h3>
+          <p>Paste a story or screenplay. Gemini or OpenAI converts it into editable scene beats, image prompts, and narration text.</p>
         </article>
-        <article class="step">
-          <span class="step-number">02</span>
-          <div class="step-visual references-visual" aria-hidden="true">
-            <div class="ref-card ref-one"><span></span></div>
-            <div class="ref-card ref-two"><span></span></div>
-            <div class="ref-link">↔</div>
-          </div>
-          <h3>Make the world yours</h3>
-          <p>Choose a style and add reference images for characters and places. Gemini uses them to keep each new frame connected.</p>
+        <article>
+          <span>02</span>
+          <h3>Generate scene images</h3>
+          <p>Select a built-in style or upload character and environment references. Generate each frame with Gemini, OpenAI, or Dezgo.</p>
         </article>
-        <article class="step">
-          <span class="step-number">03</span>
-          <div class="step-visual audio-visual" aria-hidden="true">
-            <div class="audio-mic">●</div>
-            <div class="audio-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-          </div>
-          <h3>Tell it in your voice</h3>
-          <p>Record a short sample to create a reusable narrator voice, then bring every scene together with images, audio, and motion.</p>
+        <article>
+          <span>03</span>
+          <h3>Create narration</h3>
+          <p>Use Piper or ElevenLabs text-to-speech, or record a sample and clone your narrator voice with the Spark-TTS service.</p>
+        </article>
+        <article>
+          <span>04</span>
+          <h3>Add motion and export</h3>
+          <p>Convert scene images into clips with LTX-Video. Preview clips with narration, reorder scenes, and download the project assets.</p>
         </article>
       </div>
     </section>
 
-    <section class="section creative-control" aria-labelledby="control-title">
-      <div class="control-copy">
-        <p class="kicker"><span></span> Creative control stays with you</p>
-        <h2 id="control-title">AI helps with the making.<br />You make the decisions.</h2>
-        <p>Review the writing. Edit every prompt. Regenerate one frame without losing the last. Set the pace, choose the voice, and export when it feels right.</p>
-        <ul>
-          <li><span>✓</span> Edit scenes and prompts at any point</li>
-          <li><span>✓</span> Keep versions instead of starting over</li>
-          <li><span>✓</span> Use built-in styles or your own references</li>
-          <li><span>✓</span> Preview image, audio, and motion together</li>
-        </ul>
-      </div>
-      <div class="control-board" aria-label="A sequence of three editable storyboard scenes">
-        <div class="board-top"><span>Storyboard</span><small>3 of 6 scenes</small></div>
-        <div class="board-scenes">
-          <article><div class="mini-scene mini-one"><i></i></div><span><b>01</b> The invitation</span></article>
-          <article class="active"><div class="mini-scene mini-two"><i></i></div><span><b>02</b> Into the woods</span></article>
-          <article><div class="mini-scene mini-three"><i></i></div><span><b>03</b> A light ahead</span></article>
-        </div>
-        <div class="timeline"><button aria-label="Play preview">▶</button><div><i></i></div><span>0:18 / 0:42</span></div>
+    <section id="providers" class="section providers">
+      <header class="section-header">
+        <p class="eyebrow">Supported services</p>
+        <h2>Choose a provider for each generation step.</h2>
+      </header>
+      <div class="provider-grid">
+        <article><span class="provider-icon">T</span><div><h3>Text and scene planning</h3><p>Google Gemini · OpenAI · local stub</p></div></article>
+        <article><span class="provider-icon">I</span><div><h3>Image generation</h3><p>Google Gemini · OpenAI Images · Dezgo</p></div></article>
+        <article><span class="provider-icon">A</span><div><h3>Narration and voice</h3><p>Spark-TTS voice cloning · Piper · ElevenLabs</p></div></article>
+        <article><span class="provider-icon">V</span><div><h3>Image-to-video</h3><p>LTX-Video with subtle, medium, or high motion</p></div></article>
       </div>
     </section>
 
-    <section id="community" class="section community" aria-labelledby="community-title">
-      <p class="kicker light"><span></span> Made for the small and mighty</p>
-      <h2 id="community-title">A home for creators building something of their own.</h2>
-      <p>Storyframe is for video essayists, indie animators, educators, podcasters, and curious storytellers who care more about a distinct point of view than content at scale.</p>
-      <div class="community-types" aria-label="Creator community">
-        <span>Video essayists</span><span>Animators</span><span>Educators</span><span>Podcasters</span><span>Storytellers</span>
-      </div>
-    </section>
-
-    <section class="final-cta" aria-labelledby="cta-title">
+    <section class="section controls">
       <div>
-        <p class="kicker"><span></span> Your next story is waiting</p>
-        <h2 id="cta-title">Make the thing only you can make.</h2>
+        <p class="eyebrow">Per-scene control</p>
+        <h2>Review and replace individual outputs.</h2>
+        <p>Edit scene text and prompts, regenerate one image or audio clip, retain previous versions, reorder the timeline, and resume stopped batch jobs.</p>
       </div>
-      <a class="button" href="/login.html?mode=register&redirect=%2Fstudio.html">Start creating <span aria-hidden="true">→</span></a>
+      <ul>
+        <li><span>✓</span> Editable prompts and narration</li>
+        <li><span>✓</span> Character and environment references</li>
+        <li><span>✓</span> Image, audio, and video version history</li>
+        <li><span>✓</span> Combined timeline preview and ZIP export</li>
+      </ul>
+    </section>
+
+    <section class="cta">
+      <div><p class="eyebrow">Start a project</p><h2>Import a script and generate the first scene.</h2></div>
+      <a class="button" href="/login.html?mode=register&redirect=%2Fstudio">Open studio</a>
     </section>
   </main>
 
-  <footer>
-    <a class="landing-brand" href="/" aria-label="Storyframe home">
-      <span class="landing-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M9 4v16M3 10h6M3 15h6" /></svg></span>
-      <span>Storyframe</span>
-    </a>
-    <p>Independent stories, made visible.</p>
-    <div><a href="#how-it-works">How it works</a><a href="#community">Community</a><a href="/login.html?redirect=%2Fstudio.html">Sign in</a></div>
-  </footer>
+  <footer><a class="brand" href="/">Storyframe</a><p>Storyboard, image, narration, and video generation in one workspace.</p><a href="/login.html?redirect=%2Fstudio">Sign in</a></footer>
 </body>
 
 </html>

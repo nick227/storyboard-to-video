@@ -5,17 +5,6 @@ const archiver = require('archiver');
 const { slugify } = require('../shared/text');
 
 function createExportService({ config, projectStore }) {
-  async function resolve(publicPath, type, ownerId) {
-    const match = String(publicPath || '').match(new RegExp(`^/projects/([^/]+)/assets/${type}/([^/]+)$`));
-    if (!match) return null;
-    const id = decodeURIComponent(match[1]);
-    const file = decodeURIComponent(match[2]);
-    if (file !== path.basename(file)) return null;
-    if (projectStore.findAsset) return { file, sourcePath: (await projectStore.findAsset(id, type, file, { ownerId })).sourcePath };
-    await projectStore.read(id, { ownerId });
-    return { file, sourcePath: path.join(projectStore.assetDir(id, type), file) };
-  }
-
   return {
     async generate(projectId, { ownerId, userId } = {}) {
       const project = await projectStore.read(projectId, { ownerId });
@@ -42,8 +31,12 @@ function createExportService({ config, projectStore }) {
             ]) {
               const [versions, activeIndex, type, folder, defaultExtension] = item;
               const active = Array.isArray(versions) ? versions[Number.isInteger(activeIndex) ? activeIndex : 0] : null;
-              const asset = await resolve(active?.path, type, ownerId);
-              if (asset && fs.existsSync(asset.sourcePath)) archive.file(asset.sourcePath, { name: `${folder}/${number}-${name}${path.extname(asset.file) || defaultExtension}` });
+              if (active?.path) {
+                const asset = await projectStore.resolveAsset(projectId, active.path, { ownerId });
+                if (asset && fs.existsSync(asset.sourcePath)) {
+                  archive.file(asset.sourcePath, { name: `${folder}/${number}-${name}${path.extname(asset.fileName) || defaultExtension}` });
+                }
+              }
             }
           }
           archive.append(JSON.stringify({ ...project, exportedAt: new Date().toISOString() }, null, 2), { name: 'storyboard.json' });

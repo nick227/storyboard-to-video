@@ -17,7 +17,7 @@ function assert(condition, message) {
 
 async function runTests() {
   try {
-    // Establish a session first: /studio.html is auth-gated (server-side page guard), and
+    // Establish a session first: /studio is auth-gated (server-side page guard), and
     // several tests below fetch it for markup assertions. Without a session cookie those
     // fetches silently redirect to /login.html instead of erroring, so later tests fail
     // against login-page markup rather than the app shell.
@@ -114,10 +114,10 @@ async function runTests() {
     assert(!styleChangeHandler.includes('commonPromptText.value.trim()'), 'Prompt refresh should not depend on the previous prompt being empty');
     addResult('Style Change Refreshes Prompt And References', true);
 
-    // Test 11: Every scene exposes a live, accessible five-part status summary.
+    // Test 11: Every scene exposes live, accessible generation and reference controls.
     const sceneTemplate = document.getElementById('sceneCardTemplate');
     const statusTypes = [...sceneTemplate.content.querySelectorAll('.scene-status-icon')].map((icon) => icon.dataset.status);
-    assert(statusTypes.join(',') === 'prompt,image,dialogue,audio,video', 'Scene status should include all five generation stages');
+    assert(statusTypes.join(',') === 'prompt,reference,image,dialogue,audio,video', 'Scene status should include references and all five generation stages');
     assert(renderingSource.includes("statusIcon.classList.toggle('is-present', isPresent)"), 'Scene status icons should react to scene content');
     assert(renderingSource.includes("statusIcon.setAttribute('aria-label', label)"), 'Scene status icons should announce their state');
     addResult('Scene Header Status Indicators', true);
@@ -137,38 +137,84 @@ async function runTests() {
     addResult('Minimal Scene Media Overlay', true);
 
     // Test 14: Secondary settings use consistent modal launchers instead of disclosure menus.
-    const indexSource = await (await fetch('/studio.html')).text();
-    ['commonPromptSettingsBtn', 'styleReferencesSettingsBtn', 'audioSettingsBtn'].forEach((id) => {
-      assert(indexSource.includes(`id="${id}"`), `${id} should be present`);
-    });
-    ['commonPromptModal', 'styleReferencesModal', 'audioSettingsModal'].forEach((id) => {
-      assert(indexSource.includes(`<dialog id="${id}" class="settings-modal"`), `${id} should use the shared settings modal`);
-    });
+    const indexSource = await (await fetch('/studio')).text();
+    assert(indexSource.includes('id="sceneReferencesModal"'), 'Scene references should open in a dedicated modal');
+    assert(indexSource.includes('id="settingsBtn"'), 'settingsBtn should be present');
+    assert(indexSource.includes('<dialog id="settingsModal" class="settings-modal"'), 'settingsModal should use the shared settings modal');
+    assert(!indexSource.includes('id="audioSettingsModal"'), 'Audio settings should be inline, not a modal');
+    assert(indexSource.includes('id="audioProvider"') && indexSource.includes('id="voicesPanel"'), 'Audio provider and voice picker should be present at the top level');
+    assert(!indexSource.includes('id="styleReferencesModal"'), 'Style references should be inline, not a modal');
+    assert(indexSource.includes('id="characterRefs"') && indexSource.includes('id="worldRefs"'), 'Character and world references should be present at the top level');
     assert(!indexSource.includes('class="inline-settings"'), 'Legacy collapsible settings should be removed');
     addResult('Settings Modal Launchers', true);
 
-    // Test 15: Global generation actions stay stable, grouped, and explain prerequisites.
+    // Test 15: The old flat 5-button generation toolbar is gone, replaced by a compact
+    // Planning/Images/Audio/Video stage bar with a single Start/Pause toggle and a Cancel button —
+    // no preset dropdown, no auto-accept/custom-stage checkboxes, no separate Create Story button.
     const uiSource = await (await fetch('/modules/ui.js')).text();
-    assert(indexSource.includes('class="generation-toolbar'), 'Generation controls should use the slim grouped toolbar');
-    assert(indexSource.includes('generation-group-label">Scenes'), 'Toolbar should label the Scenes group');
-    assert(indexSource.includes('generation-group-label">Writing'), 'Toolbar should label the Writing group');
-    assert(indexSource.includes('generation-group-label">Media'), 'Toolbar should label the Media group');
-    assert(uiSource.includes("button.dataset.locked = String(!available)"), 'Unavailable stages should expose prerequisite locks');
-    assert(!uiSource.includes('Regenerate dialogue'), 'Dialogue should not switch to a regenerate label');
-    assert(!uiSource.includes('Regenerate ${noun}'), 'Media actions should not switch to regenerate labels');
+    const stagesSource = await (await fetch('/modules/stages.js')).text();
+    assert(!indexSource.includes('class="generation-toolbar'), 'Old flat generation toolbar markup should be gone');
+    assert(!indexSource.includes('id="generatePromptsBtn"'), 'Old Prompts button should be gone');
+    assert(!indexSource.includes('id="generateDialogueBtn"'), 'Old Spoken Narration button should be gone');
+    assert(!indexSource.includes('id="startSerialBtn"'), 'Old Images start button should be gone');
+    assert(!indexSource.includes('id="startAudioSerialBtn"'), 'Old Audio start button should be gone');
+    assert(!indexSource.includes('id="startVideoSerialBtn"'), 'Old Video start button should be gone');
+    assert(!indexSource.includes('id="stagePrimaryActionBtn"'), 'The old dynamic multi-label primary action button should be gone');
+    assert(!indexSource.includes('id="createStoryBtn"') && !indexSource.includes('id="createStoryPreset"'), 'The preset dropdown and Create Story button should be gone');
+    assert(!indexSource.includes('id="createStoryAutoAccept"') && !indexSource.includes('id="createStoryCustomStages"'), 'The auto-accept and custom-stage checkboxes should be gone');
+    assert(indexSource.includes('class="stage-bar'), 'New stage bar markup should be present');
+    assert(indexSource.includes('id="stagePlanningBtn"') && indexSource.includes('id="stageImagesBtn"') && indexSource.includes('id="stageAudioBtn"') && indexSource.includes('id="stageVideoBtn"'), 'Stage bar should expose Planning/Images/Audio/Video stage buttons');
+    assert(indexSource.includes('class="stage-button-spinner"'), 'Stage boxes should have room for a running spinner');
+    assert(indexSource.includes('id="startPauseBtn"'), 'Stage bar should expose a single Start/Pause toggle');
+    assert(indexSource.includes('id="cancelRunBtn"'), 'Stage bar should expose a Cancel control');
+    assert(/id="cancelRunBtn"[^>]*\bdisabled\b/.test(indexSource), 'Cancel should start disabled until something is running');
+    assert(stagesSource.includes('export function computeStageStatus'), 'stages.js should expose stage status derivation');
+    assert(stagesSource.includes('export async function generateMissingOrStale') && stagesSource.includes('export async function regenerateAllStage'), 'stages.js should expose missing/stale and regenerate-all orchestration');
+    assert(stagesSource.includes('export async function startPlanning'), 'stages.js should expose Planning orchestration');
+    assert(stagesSource.includes('export async function runCreateStoryFlow'), 'stages.js should expose the full-sequence run used by Start');
+    assert(stagesSource.includes('export function cancelActiveWork'), 'stages.js should expose a distinct Cancel action from Pause');
     assert(uiSource.includes('renderGenerationSummary'), 'The status bar should summarize generation completion');
-    addResult('Stable Grouped Generation Toolbar', true);
+    addResult('Stage Bar Replaces Flat Generation Toolbar', true);
 
-    // Test 16: Consequential global generation actions require an informative preflight.
+    // Test 16: The shared confirm modal now gates only the harder-to-reach "Regenerate all"
+    // media actions and the destructive Planning replan/shrink path — not every generation click.
+    // It's also deliberately minimal now: one plain-statement title (no eyebrow, no question mark),
+    // one paragraph, then bullets — not four labeled sections of boilerplate.
     assert(indexSource.includes('id="generationConfirmModal"'), 'Generation confirmation modal should be present');
-    assert(indexSource.includes('Existing work'), 'Preflight should summarize previous generation work');
-    assert(indexSource.includes('What happens next'), 'Preflight should explain the effect of continuing');
-    assert(appSource.includes("requestGenerationConfirmation('prompts')"), 'Prompt generation should require confirmation');
-    assert(appSource.includes("requestGenerationConfirmation('dialogue')"), 'Dialogue generation should require confirmation');
-    assert(appSource.includes("requestGenerationConfirmation('images')"), 'Image generation should require confirmation');
-    assert(appSource.includes("requestGenerationConfirmation('audio')"), 'Audio generation should require confirmation');
-    assert(appSource.includes("requestGenerationConfirmation('videos')"), 'Video generation should require confirmation');
-    addResult('Generation Preflight Confirmation', true);
+    assert(!indexSource.includes('Generation preflight'), 'The "Generation preflight" eyebrow label should be gone');
+    assert(!indexSource.includes('id="generationConfirmScope"') && !indexSource.includes('id="generationConfirmPrevious"') && !indexSource.includes('id="generationConfirmImpact"'), 'The old 3 labeled sections (About to run / Existing work / What happens next) should be gone');
+    assert(indexSource.includes('id="generationConfirmIntro"') && indexSource.includes('id="generationConfirmBullets"'), 'Preflight should be one paragraph plus a bullet list');
+    assert(!appSource.includes("requestGenerationConfirmation('prompts')"), 'Old prompts confirmation kind should be gone');
+    assert(!appSource.includes("requestGenerationConfirmation('dialogue')"), 'Old dialogue confirmation kind should be gone');
+    assert(!appSource.includes("requestGenerationConfirmation('images')"), 'Old images confirmation kind should be gone');
+    assert(!appSource.includes("requestGenerationConfirmation('audio')"), 'Old audio confirmation kind should be gone');
+    assert(!appSource.includes("requestGenerationConfirmation('videos')"), 'Old videos confirmation kind should be gone');
+    assert(appSource.includes("requestGenerationConfirmation(kindMap[stage])") || appSource.includes("'imagesAll'"), 'Regenerate-all should require confirmation per stage');
+    assert(appSource.includes("requestGenerationConfirmation('planningReplan'"), 'Replan/shrink should require an explicit, named-consequence confirmation');
+    addResult('Regenerate-All And Replan Require Confirmation', true);
+
+    // Test 20: The Planning modal and the shared Images/Audio/Video stage dialog are gone entirely —
+    // "must have run options" (visual planning mode, scene-count recommendation policy) live in the
+    // existing Settings modal instead, and destructive/spend-heavy actions (Replan, Regenerate all)
+    // moved to a Danger zone there rather than a per-stage dialog.
+    assert(!indexSource.includes('id="planningModal"'), 'The separate Planning modal should be gone');
+    assert(!indexSource.includes('id="stageDialog"'), 'The shared Images/Audio/Video stage dialog should be gone');
+    assert(!indexSource.includes('id="runPlanningBtn"') && !indexSource.includes('id="updateStalePlanningBtn"'), 'Manual Run Planning / Update stale only buttons should be gone — Start already does this automatically');
+    assert(!indexSource.includes('id="stageDialogGenerateBtn"') && !indexSource.includes('id="stageDialogRetryBtn"'), 'Per-stage Generate/Retry buttons should be gone — redundant with the box + Start');
+    assert(!indexSource.includes('ManageBtn"'), 'Stage boxes should have no separate manage control — there is no modal left to open');
+    assert(indexSource.includes('id="planningModeSelect"'), 'Visual planning mode should now live in Settings');
+    assert(indexSource.includes('id="settingsSceneCountInput"') && indexSource.includes('id="settingsSceneCountAutoCheckbox"') && indexSource.includes('id="settingsSceneCountAutoBtn"'), 'The scene-count recommendation policy should be a pre-configured Settings choice, not a mid-run popup');
+    assert(indexSource.includes('id="settingsReplanBtn"') && indexSource.includes('id="settingsRegenerateImagesBtn"') && indexSource.includes('id="settingsRegenerateAudioBtn"') && indexSource.includes('id="settingsRegenerateVideoBtn"'), 'Settings should expose a Danger zone with Replan and per-stage Regenerate-all actions');
+    assert(appSource.includes('will rebuild the storyboard structure and retire media'), 'Reducing scene count should still name the destructive consequence explicitly, not hide it behind "Replan"');
+    addResult('Planning Modal And Stage Dialog Removed In Favor Of Settings', true);
+
+    // Test 21: Stage boxes are color-coded status indicators AND the sole selectable target for
+    // Start — clicking a box only toggles selection now (there is no modal left for it to open),
+    // and Start still shows a confirmation screen summarizing exactly what will run.
+    assert(uiSource.includes("status-actionable") && uiSource.includes("status-failed"), 'Stage boxes should be color-coded by status');
+    assert(stagesSource.includes('export function getStageSelection') && stagesSource.includes('export function toggleStageSelection'), 'stages.js should expose the stage-box selection model Start reads from');
+    assert(appSource.includes("requestGenerationConfirmation('startRun'"), 'Start must still show a confirmation screen summarizing exactly what will run before it runs anything');
+    addResult('Selectable Color-Coded Stage Boxes With Confirmation', true);
 
     // Test 17: Storyboard density controls expose six layouts and wire them to the grid.
     assert((indexSource.match(/class="resize-scenes/g) || []).length === 6, 'Storyboard should expose six density choices');
@@ -177,15 +223,15 @@ async function runTests() {
     assert(appSource.includes("candidate.setAttribute('aria-pressed', String(isActive))"), 'Density controls should announce the selected layout');
     addResult('Storyboard Density Controls', true);
 
-    // Test 18: Every DOM id app.js binds into `els` must exist in studio.html, and vice
+    // Test 18: Every DOM id app.js binds into `els` must exist in the studio, and vice
     // versa for the ids rendering.js dereferences directly on `els`. This is a regression
     // guard for #storyboardSection: it existed in index.html but was never bound into
     // `els`, so renderScenes() threw on an undefined property and init() aborted before
     // it ever reached loadStyles() — leaving the style dropdown silently empty.
-    assert(indexSource.includes('id="storyboardSection"'), 'studio.html should define #storyboardSection');
+    assert(indexSource.includes('id="storyboardSection"'), 'studio should define #storyboardSection');
     assert(appSource.includes("storyboardSection: document.getElementById('storyboardSection')"), 'app.js should bind #storyboardSection into els');
-    assert(indexSource.includes('id="statusText"'), 'studio.html should define #statusText');
-    assert(indexSource.includes('id="generationSummaryText"'), 'studio.html should define #generationSummaryText');
+    assert(indexSource.includes('id="statusText"'), 'studio should define #statusText');
+    assert(indexSource.includes('id="generationSummaryText"'), 'studio should define #generationSummaryText');
     addResult('Storyboard Section Binding Present', true);
 
     // Test 19: The style dropdown must populate once loadStyles() runs, independent of

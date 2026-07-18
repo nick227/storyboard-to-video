@@ -33,7 +33,7 @@ function registerMiddleware(app, { config, auth, payments }) {
   app.use(express.json({ limit: config.limits.json }));
   app.use(requestId);
   app.use(pageGuard(auth));
-  app.use(express.static(config.paths.public));
+  app.use(express.static(config.paths.public, { extensions: ['html'] }));
 }
 
 // Server-rendered guard for the authenticated HTML entry points, so an unauthenticated
@@ -64,25 +64,29 @@ function pageGuard(auth) {
       if (!identity) return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || '/admin.html')}`);
       const adminRequest = { auth: { userId: identity.user.id, platformRole: identity.user.platformRole, legacyId: identity.legacyId }, user: identity.user };
       if (!isPlatformAdmin(adminRequest)) return res.status(403).send('Platform administration is not permitted.');
-      if (req.path === '/admin') return res.redirect('/admin.html');
+      if (req.path === '/admin.html') return res.redirect('/admin');
       return next();
     }
     if (isCustomerPage) {
       if (!identity) return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || '/credits.html')}`);
-      if (req.path === '/credits') return res.redirect('/credits.html');
+      if (req.path === '/credits.html') return res.redirect('/credits');
       return next();
     }
     if (identity) {
-      if (req.path === '/studio') return res.redirect('/studio.html');
+      if (req.path === '/studio.html') return res.redirect('/studio');
       return next();
     }
-    return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || '/studio.html')}`);
+    const target = req.path === '/studio.html' ? '/studio' : (req.originalUrl || '/studio');
+    return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(target)}`);
   };
 }
 
 function registerRoutes(app, d) {
   app.use(assetsRoutes(d.controllers.assets));
-  app.use('/api/projects', createProjectRouter({ store: d.projectStore, queue: d.queue }));
+  app.use('/api/projects', createProjectRouter({
+    store: d.projectStore, queue: d.queue, upload: d.upload, sceneReferences: d.sceneReferences,
+    styles: d.styles, prompts: d.prompts, imageProvider: d.imageProvider, prisma: d.prisma, config: d.config
+  }));
   app.use('/api/jobs', createJobRouter({ queue: d.queue, store: d.projectStore }));
   app.use('/api/admin/usage', usageRoutes(d.usageRepository));
   app.use('/api/admin/billing', billingRoutes(d.billingRepository, d.billing, d.adminRepository));

@@ -1,17 +1,34 @@
 import { api } from './api.js';
-import { projectStore, sceneStore, voiceStore, generationStore, uiStore } from './store.js';
+import { batchStore, projectStore, sceneStore, voiceStore, generationStore, uiStore } from './store.js';
 import { getCurrentStoryboardRecord, queueSync, ensureProjectSynced } from './persistence.js';
+import { clampSplitCount, suggestSceneCount, suggestSceneCountFromNarration } from './scene-count.js';
 
 export function getPayloadBase(els) {
+  const isAuto = els.settingsSceneCountAutoCheckbox && els.settingsSceneCountAutoCheckbox.checked;
+  const customVal = els.settingsSceneCountInput ? Number(els.settingsSceneCountInput.value) : null;
+  
+  let sceneCount = 8;
+  if (isAuto) {
+    const scenes = sceneStore.get().scenes;
+    if (scenes && scenes.length > 0) {
+      sceneCount = suggestSceneCountFromNarration(scenes) || scenes.length;
+    } else {
+      sceneCount = suggestSceneCount(els.scriptText.value) || 8;
+    }
+  } else {
+    sceneCount = customVal || 8;
+  }
+
   return {
     projectId: projectStore.get().currentId,
     scriptText: els.scriptText.value,
-    sceneCount: Number(els.sceneCount.value || 8),
+    sceneCount: sceneCount,
     styleId: els.styleSelect.value,
     commonPromptText: els.commonPromptText.value,
     textProvider: els.textProvider.value,
     imageProvider: els.imageProvider.value,
     fallbackPolicy: els.fallbackPolicy.value,
+    enrich: els.enrichNarration ? els.enrichNarration.checked : true,
   };
 }
 
@@ -48,7 +65,10 @@ export function normalizeScene(scene, index) {
     beat: String(scene?.beat || ''),
     prompt: String(scene?.prompt || ''),
     scriptFragment: typeof scene?.scriptFragment === 'string' ? scene.scriptFragment : '',
+    // Both stamped server-side (prompt-generation.service.js), from what generation actually used as
+    // source — never computed here from local state, so staleness survives reloads/concurrent tabs.
     promptGeneratedFromBeat: typeof scene?.promptGeneratedFromBeat === 'string' ? scene.promptGeneratedFromBeat : '',
+    promptGeneratedFromNarration: typeof scene?.promptGeneratedFromNarration === 'string' ? scene.promptGeneratedFromNarration : null,
     versions,
     activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
     narrationText,
@@ -61,37 +81,55 @@ export function normalizeScene(scene, index) {
   };
 }
 
-export async function generatePrompts(els, setStatus) {
+// `rebuildFromSource: true` is a separate, explicit operation from the default regenerate — it
+// re-derives scene boundaries from the raw script at the current sceneCount input, discarding the
+// old structure. The default (false) always keeps whatever scenes currently exist as authoritative,
+// regardless of what the sceneCount input happens to read — that field can drift from the real
+// scene count (e.g. after a scene split) and is never used to infer "did the user want a different
+// total scene count." Only an explicit rebuild request re-splits from scratch.
+export async function generatePrompts(els, setStatus, { rebuildFromSource = false } = {}) {
   if (uiStore.get().operation) return;
   uiStore.set({ operation: { type: 'prompts' } });
-  
+
   try {
     await ensureProjectSynced();
-    if (setStatus) setStatus('Generating scene prompts...');
+    if (setStatus) setStatus(rebuildFromSource ? 'Rebuilding storyboard from source...' : 'Generating scene prompts...');
     const base = getPayloadBase(els);
+    const previousScenes = sceneStore.get().scenes;
+    const reuseExistingScenes = !rebuildFromSource && previousScenes.length > 0;
     const data = await api('/api/storyboard/generate-prompts', {
       method: 'POST',
       body: JSON.stringify({
         scriptText: base.scriptText,
-        sceneCount: base.sceneCount,
+        sceneCount: reuseExistingScenes ? previousScenes.length : base.sceneCount,
         styleId: base.styleId,
         commonPromptText: base.commonPromptText,
         provider: base.textProvider,
         projectId: base.projectId,
         fallbackPolicy: base.fallbackPolicy,
+        enrich: base.enrich,
+        ...(reuseExistingScenes ? { existingScenes: previousScenes } : {}),
       }),
     });
 
-    const previousScenes = sceneStore.get().scenes;
+    // The backend's prompt response only ever carries {sceneNumber, title, scriptFragment, beat,
+    // prompt} — narration/audio have nothing to do with prompt generation, so when boundaries didn't
+    // change (reuseExistingScenes) they must be explicitly carried forward or they'd silently vanish.
+    // promptGeneratedFromBeat/promptGeneratedFromNarration arrive already stamped by the server
+    // (prompt-generation.service.js) — not recomputed here from local scene.beat, so provenance
+    // reflects what generation actually used even across reloads/concurrent tabs.
     const nextScenes = (data.scenes || []).map((nextScene, index) => normalizeScene({
       ...nextScene,
-      promptGeneratedFromBeat: nextScene.beat,
-      id: previousScenes[index]?.id || nextScene.id,
-      versions: previousScenes[index]?.versions || [],
-      activeVersionIndex: previousScenes[index]?.activeVersionIndex || 0,
-      videoVersions: previousScenes[index]?.videoVersions || [],
-      activeVideoVersionIndex: previousScenes[index]?.activeVideoVersionIndex || 0,
-      activeVisualType: previousScenes[index]?.activeVisualType,
+      id: reuseExistingScenes ? (previousScenes[index]?.id || nextScene.id) : nextScene.id,
+      versions: reuseExistingScenes ? (previousScenes[index]?.versions || []) : [],
+      activeVersionIndex: reuseExistingScenes ? (previousScenes[index]?.activeVersionIndex || 0) : 0,
+      videoVersions: reuseExistingScenes ? (previousScenes[index]?.videoVersions || []) : [],
+      activeVideoVersionIndex: reuseExistingScenes ? (previousScenes[index]?.activeVideoVersionIndex || 0) : 0,
+      activeVisualType: reuseExistingScenes ? previousScenes[index]?.activeVisualType : undefined,
+      narrationText: reuseExistingScenes ? (previousScenes[index]?.narrationText || '') : '',
+      narrationIsFallback: reuseExistingScenes ? Boolean(previousScenes[index]?.narrationIsFallback) : false,
+      audioVersions: reuseExistingScenes ? (previousScenes[index]?.audioVersions || []) : [],
+      activeAudioVersionIndex: reuseExistingScenes ? (previousScenes[index]?.activeAudioVersionIndex || 0) : 0,
     }, index));
     
     sceneStore.set({ 
@@ -114,12 +152,16 @@ export async function generatePrompts(els, setStatus) {
   }
 }
 
-export async function regeneratePrompt(index, els, setStatus) {
+// `withinSerial` mirrors the pattern already used by regenerateAudio/regenerateVideo: when true,
+// this is being called as one step of a larger operation that already holds uiStore.operation for
+// its own full duration (e.g. splitSceneInPlace) — skip acquiring/releasing the lock here so the
+// outer operation's lock isn't clobbered mid-flight.
+export async function regeneratePrompt(index, els, setStatus, withinSerial = false) {
   const scenes = sceneStore.get().scenes;
   const scene = scenes[index];
-  if (!scene || uiStore.get().operation) return;
-  
-  uiStore.set({ operation: { type: 'prompt', sceneId: scene.id } });
+  if (!scene || (!withinSerial && uiStore.get().operation)) return;
+
+  if (!withinSerial) uiStore.set({ operation: { type: 'prompt', sceneId: scene.id } });
   try {
     await ensureProjectSynced();
     if (setStatus) setStatus(`Regenerating prompt for scene ${index + 1}...`);
@@ -137,11 +179,18 @@ export async function regeneratePrompt(index, els, setStatus) {
         provider: base.textProvider,
         projectId: base.projectId,
         fallbackPolicy: base.fallbackPolicy,
+        enrich: base.enrich,
       }),
     });
 
     scene.prompt = data.prompt || scene.prompt;
-    if (!data.usedFallback) scene.promptGeneratedFromBeat = scene.beat;
+    // Provenance is server-authored (prompt-generation.service.js only includes these fields on a
+    // real, non-fallback regeneration) — copy whatever the server sent rather than computing it from
+    // local scene.beat; a fallback response omits them, so the scene keeps its prior provenance.
+    if (!data.usedFallback) {
+      scene.promptGeneratedFromBeat = data.promptGeneratedFromBeat ?? scene.beat;
+      scene.promptGeneratedFromNarration = data.promptGeneratedFromNarration ?? null;
+    }
     sceneStore.set({ scenes: [...scenes] }); // trigger reactivity
     const record = getCurrentStoryboardRecord();
     if (record) {
@@ -153,7 +202,7 @@ export async function regeneratePrompt(index, els, setStatus) {
   } catch (error) {
     if (setStatus) setStatus(`Prompt regeneration failed: ${error.message}`);
   } finally {
-    uiStore.set({ operation: null });
+    if (!withinSerial) uiStore.set({ operation: null });
   }
 }
 
@@ -198,17 +247,31 @@ export async function regenerateAction(index, els, setStatus) {
 }
 
 export async function generateDialogue(els, setStatus) {
-  const scenes = sceneStore.get().scenes;
-  if (uiStore.get().operation || !scenes.length) {
-    if (!scenes.length && setStatus) setStatus('Generate scene prompts first.');
+  if (uiStore.get().operation) return;
+  if (!els.scriptText.value.trim()) {
+    if (setStatus) setStatus('Add a story before generating narration.');
     return;
   }
 
   uiStore.set({ operation: { type: 'dialogueAll' } });
   try {
     await ensureProjectSynced();
-    if (setStatus) setStatus('Writing spoken narration...');
     const base = getPayloadBase(els);
+
+    // Narration no longer requires prompts to exist first — if this is a dialogue-first run, create
+    // the deterministic scene skeleton (script fragments, no LLM call) before narrating it.
+    let scenes = sceneStore.get().scenes;
+    if (!scenes.length) {
+      if (setStatus) setStatus('Creating scenes...');
+      const skeleton = await api('/api/storyboard/create-scenes', {
+        method: 'POST',
+        body: JSON.stringify({ projectId: base.projectId, scriptText: base.scriptText, sceneCount: base.sceneCount }),
+      });
+      scenes = (skeleton.scenes || []).map((scene, index) => normalizeScene(scene, index));
+      sceneStore.set({ scenes });
+    }
+
+    if (setStatus) setStatus('Writing spoken narration...');
     const data = await api('/api/storyboard/generate-dialogue', {
       method: 'POST',
       body: JSON.stringify({
@@ -216,13 +279,16 @@ export async function generateDialogue(els, setStatus) {
         provider: base.textProvider,
         projectId: base.projectId,
         fallbackPolicy: base.fallbackPolicy,
+        enrich: base.enrich,
       }),
     });
 
+    // Read the per-scene fallback flag, not the aggregate data.usedFallback — one scene falling
+    // back must not mark every other scene's real narration as fallback too.
     (data.scenesDialogue || []).forEach((sceneDialogue, index) => {
       if (scenes[index]) {
         scenes[index].narrationText = sceneDialogue.narrationText || '';
-        scenes[index].narrationIsFallback = Boolean(data.usedFallback);
+        scenes[index].narrationIsFallback = Boolean(sceneDialogue.usedFallback);
       }
     });
 
@@ -241,12 +307,12 @@ export async function generateDialogue(els, setStatus) {
   }
 }
 
-export async function regenerateDialogue(index, els, setStatus, instruction = '') {
+export async function regenerateDialogue(index, els, setStatus, instruction = '', withinSerial = false) {
   const scenes = sceneStore.get().scenes;
   const scene = scenes[index];
-  if (!scene || uiStore.get().operation) return;
+  if (!scene || (!withinSerial && uiStore.get().operation)) return;
 
-  uiStore.set({ operation: { type: 'dialogue', sceneId: scene.id } });
+  if (!withinSerial) uiStore.set({ operation: { type: 'dialogue', sceneId: scene.id } });
   try {
     await ensureProjectSynced();
     if (setStatus) setStatus(`Regenerating narration for scene ${index + 1}...`);
@@ -260,6 +326,7 @@ export async function regenerateDialogue(index, els, setStatus, instruction = ''
         provider: base.textProvider,
         projectId: base.projectId,
         fallbackPolicy: base.fallbackPolicy,
+        enrich: base.enrich,
       }),
     });
 
@@ -276,7 +343,7 @@ export async function regenerateDialogue(index, els, setStatus, instruction = ''
   } catch (error) {
     if (setStatus) setStatus(`Narration regeneration failed: ${error.message}`);
   } finally {
-    uiStore.set({ operation: null });
+    if (!withinSerial) uiStore.set({ operation: null });
   }
 }
 
@@ -320,7 +387,7 @@ export async function regenerateImage(index, scene, els, setStatus) {
       queueSync(record, setStatus);
     }
 
-    if (setStatus) setStatus(`Image ready for scene ${index + 1}. ${data.referenceCount || 0} style refs used.`);
+    if (setStatus) setStatus(`Image ready for scene ${index + 1}. ${data.referenceCount || 0} reference image${data.referenceCount === 1 ? '' : 's'} used (${data.sceneReferenceCount || 0} scene-only).`);
   } catch (error) {
     if (setStatus) setStatus(`Image generation failed for scene ${index + 1}: ${error.message}`);
     throw error;
@@ -336,7 +403,16 @@ export async function regenerateAudio(index, scene, els, setStatus, withinSerial
   const scenes = sceneStore.get().scenes;
   const activeScene = scene || scenes[index];
   if (!activeScene || (!scene && uiStore.get().operation)) return;
-  if (!activeScene.narrationText?.trim()) throw new Error('Scene has no spoken narration. Generate narration first.');
+  if (!activeScene.narrationText?.trim()) {
+    // Same class of problem as the narrationIsFallback check below (this scene isn't ready for
+    // audio yet) — treat it the same way: skip just this scene in a batch run instead of aborting
+    // the whole thing, matching regenerateVideo's equivalent missing-prerequisite guard.
+    if (withinSerial) {
+      if (setStatus) setStatus(`Skipped scene ${index + 1}: no spoken narration yet.`);
+      return true;
+    }
+    throw new Error('Scene has no spoken narration. Generate narration first.');
+  }
   // Fallback narration is degraded placeholder text (the scene's terse action beat), not a real
   // adaptation — synthesizing paid TTS from it would silently waste money on low-quality audio.
   // Batch runs skip these scenes (and say so); an explicit single-scene regenerate throws so the
@@ -488,4 +564,104 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
       uiStore.set({ operation: null });
     }
   }
+}
+
+// Removes `deleteCount` scenes starting at `start` and inserts `newSceneObjects` in their place,
+// then renumbers every scene's `sceneNumber` sequentially. This is the one primitive both mid-run
+// insertion paths (§5 of the plan) reduce to — a scene worth more than one slide gets replaced by
+// its split, everything after shifts, nothing else about the array changes.
+export function spliceScenesAndRenumber(scenes, start, deleteCount, newSceneObjects) {
+  const next = [...scenes];
+  next.splice(start, deleteCount, ...newSceneObjects);
+  return next.map((scene, i) => ({ ...scene, sceneNumber: i + 1 }));
+}
+
+function anyGenerationInFlight() {
+  if (uiStore.get().operation) return true;
+  return Object.values(batchStore.get()).some((entry) => entry?.generating);
+}
+
+// Splits one existing scene's fragment into `count` new scenes at that position, then populates
+// real content (narration, if the original scene had any, then prompts) for just the new scenes —
+// everything else in the array is untouched. Used both for the manual-edit-then-regenerate case and,
+// repeatedly, for accepting a slide-count recommendation (see addRecommendedScenes below).
+// Holds uiStore.operation for the ENTIRE split workflow — splice, fill-in regeneration, and
+// persistence — not just the initial splice call. Releasing the lock early (between the splice and
+// the fill-in loop, or between fill-in steps) would let another entry point that only checks
+// uiStore.operation start concurrently and race writes onto the same sceneStore.scenes array. The
+// inner regenerateDialogue/regeneratePrompt calls are told `withinSerial=true` so they don't
+// separately acquire/release the lock this function already holds.
+export async function splitSceneInPlace(index, rawCount, els, setStatus) {
+  const count = clampSplitCount(rawCount);
+  const scenes = sceneStore.get().scenes;
+  const scene = scenes[index];
+  if (!scene || anyGenerationInFlight()) return false;
+  if (!scene.scriptFragment) throw new Error('Scene has no source fragment to split.');
+
+  uiStore.set({ operation: { type: 'splitScene', sceneId: scene.id } });
+  try {
+    await ensureProjectSynced();
+    if (setStatus) setStatus(`Splitting scene ${index + 1} into ${count} scenes...`);
+    const base = getPayloadBase(els);
+    const data = await api('/api/storyboard/split-scene', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: base.projectId,
+        scriptFragment: scene.scriptFragment,
+        count,
+        narrationText: base.enrich ? (scene.narrationText || '') : '',
+      }),
+    });
+
+    // The backend titles each split fragment locally ("Scene 1", "Scene 2"...) since it has no idea
+    // where in the real storyboard this split is happening — rename here using the parent scene's
+    // own title so split scenes read as "Motel Arrival — 1" instead of colliding with whatever
+    // unrelated scene actually occupies storyboard position 1 or 2.
+    const parentTitle = scene.title || `Scene ${index + 1}`;
+    const newScenes = (data.scenes || []).map((newScene, offset) => normalizeScene({ ...newScene, title: `${parentTitle} — ${offset + 1}` }, 0));
+    const nextScenes = spliceScenesAndRenumber(scenes, index, 1, newScenes);
+    sceneStore.set({ scenes: nextScenes });
+    const record = getCurrentStoryboardRecord();
+    if (record) { record.scenes = nextScenes; queueSync(record, setStatus); }
+
+    // Fill in real content for the newly-inserted scenes one at a time — each call reads the
+    // current sceneStore fresh, so this is safe even though the array shape already changed above.
+    // Use newScenes.length (what was actually spliced in), not the originally requested `count` —
+    // the backend may have returned fewer scenes than asked for when the source couldn't support it.
+    const hadNarration = Boolean(scene.narrationText?.trim());
+    for (let offset = 0; offset < newScenes.length; offset += 1) {
+      const newIndex = index + offset;
+      if (hadNarration) await regenerateDialogue(newIndex, els, setStatus, '', true);
+      await regeneratePrompt(newIndex, els, setStatus, true);
+    }
+    if (setStatus) setStatus(`Scene ${index + 1} split into ${newScenes.length} scene${newScenes.length === 1 ? '' : 's'}.`);
+    return true;
+  } catch (error) {
+    if (setStatus) setStatus(`Scene split failed: ${error.message}`);
+    throw error;
+  } finally {
+    uiStore.set({ operation: null });
+  }
+}
+
+// Repeatedly splits whichever existing scene carries the most narration (the best split candidate)
+// until the project reaches targetCount scenes — backs the Dialogue modal's "Add N scenes" action.
+// Never runs while another generation/batch is in flight; stops early if nothing is left to split.
+export async function addRecommendedScenes(targetCount, els, setStatus) {
+  if (anyGenerationInFlight()) return false;
+  while (sceneStore.get().scenes.length < targetCount) {
+    const scenes = sceneStore.get().scenes;
+    const remaining = targetCount - scenes.length;
+    let worstIndex = -1;
+    let worstWords = -1;
+    scenes.forEach((candidate, i) => {
+      if (!candidate.scriptFragment) return;
+      const words = String(candidate.narrationText || '').match(/\S+/g)?.length || 0;
+      if (words > worstWords) { worstWords = words; worstIndex = i; }
+    });
+    if (worstIndex === -1) break;
+    const splitCount = clampSplitCount(1 + remaining);
+    await splitSceneInPlace(worstIndex, splitCount, els, setStatus);
+  }
+  return true;
 }

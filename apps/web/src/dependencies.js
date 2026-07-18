@@ -10,6 +10,9 @@ const { PrismaPaymentRepository } = require('./storage/prisma-payment.repository
 const { ProjectStore } = require('./storage/project-store');
 const { JobStore } = require('./storage/job-store');
 const { IdempotencyStore } = require('./storage/idempotency-store');
+const { GenerationCacheStore } = require('./storage/generation-cache-store');
+const { PrismaGenerationCacheRepository } = require('./storage/prisma-generation-cache.repository');
+const { createGenerationCacheService } = require('./services/generation-cache.service');
 const { GenerationQueue } = require('./services/generation-queue');
 const { createProviderUsageService } = require('./services/provider-usage.service');
 const { createBillingService } = require('./services/billing.service');
@@ -25,6 +28,7 @@ const { createDialogueService } = require('./services/dialogue.service');
 const { createImageGenerationService } = require('./services/image-generation.service');
 const { createAudioGenerationService } = require('./services/audio-generation.service');
 const { createVideoGenerationService } = require('./services/video-generation.service');
+const { createSceneReferenceService } = require('./services/scene-reference.service');
 const { createExportService } = require('./services/export.service');
 const { createVoiceService } = require('./services/voice.service');
 const { requireIdempotency } = require('./middleware/idempotency');
@@ -47,6 +51,8 @@ function createDependencies(config, overrides = {}) {
     store: overrides.jobStore || (useTestAdapters ? new JobStore(config.paths.jobs) : new PrismaJobRepository(prisma)),
   });
   const idempotencyStore = overrides.idempotencyStore || (useTestAdapters ? new IdempotencyStore(config.paths.idempotency) : new PrismaIdempotencyRepository(prisma));
+  const generationCacheStore = overrides.generationCacheStore || (useTestAdapters ? new GenerationCacheStore(config.paths.generationCache) : new PrismaGenerationCacheRepository(prisma));
+  const generationCache = createGenerationCacheService({ store: generationCacheStore });
   const generationContext = new AsyncLocalStorage();
   const cancellation = () => generationContext.getStore()?.signal || generationContext.getStore();
   const usageRepository = overrides.usageRepository || (prisma ? new PrismaUsageRepository(prisma) : null);
@@ -67,11 +73,12 @@ function createDependencies(config, overrides = {}) {
   const imageProvider = createImageProviders(config, textProviders, cancellation, usageTracker);
   const audioProvider = createAudioProviders(config, cancellation, usageTracker);
   const videoProvider = createVideoProvider(config, cancellation, usageTracker);
-  const prompts = createPromptGenerationService({ textProviders, styles, limits: config.limits });
-  const dialogue = createDialogueService({ textProviders });
+  const prompts = createPromptGenerationService({ textProviders, styles, limits: config.limits, generationCache });
+  const dialogue = createDialogueService({ textProviders, generationCache });
   const images = createImageGenerationService({ config, styles, provider: imageProvider, projectStore });
   const audio = createAudioGenerationService({ config, provider: audioProvider, projectStore });
   const videos = createVideoGenerationService({ config, provider: videoProvider, projectStore, styles });
+  const sceneReferences = createSceneReferenceService({ config, projectStore });
   const exports = createExportService({ config, projectStore });
   const voices = createVoiceService(config, cancellation, audioProvider);
   const media = createMediaController({ images, audio, videos, exports });
@@ -80,8 +87,8 @@ function createDependencies(config, overrides = {}) {
   const auth = new AuthService({ identityStore });
 
   return {
-    config, prisma, projectStore, queue, idempotencyStore, usageRepository, usageTracker, billingRepository, billing, adminRepository, paymentRepository, payments, generationContext,
-    styles, prompts, dialogue, images, audio, videos, exports, voices,
+    config, prisma, projectStore, queue, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, billingRepository, billing, adminRepository, paymentRepository, payments, generationContext,
+    styles, prompts, dialogue, images, audio, videos, sceneReferences, exports, voices, imageProvider,
     upload: createUpload(config),
     auth,
     authenticate: auth.middleware(),

@@ -91,10 +91,39 @@ Root-level scripts (`npm run <script>` from the repo root) drive both apps: `dev
 - Cloned voices are stored under `apps/voice-service/voices/<voiceId>/` and are reusable across every speaker/scene/storyboard, the same way ElevenLabs voices are.
 
 ## Reference image behavior
-- Style references live under `style-references/<style-id>/characters` and `style-references/<style-id>/world`
-- The app automatically loads the active style's references
+- Style references live under `apps/web/style-references/<style-id>/characters` and `apps/web/style-references/<style-id>/world`.
+- The app automatically loads the active style's references.
 - Gemini image generation receives the active style's character and world references. Scene prompts stay focused on the visible action.
-- OpenAI and Dezgo remain available as optional alternates
+- OpenAI and Dezgo remain available as optional alternates.
+
+### How to Set and Change Site Default Reference Images by Style
+
+Site-wide default reference images are discovered dynamically from the filesystem. To configure them:
+
+1. **Identify the Style ID**: 
+   The style ID is the filename of the style's markdown file under `apps/web/styles/` without the `.md` extension (e.g., `basic-cartoon.md` has the ID `basic-cartoon`).
+   *Note: Style IDs are sanitized/slugified when resolving directories.*
+
+2. **Locate or Create the Directories**:
+   Navigate to the style-references directory at `apps/web/style-references/`. Within it, find or create the subdirectories matching the style ID and the reference type:
+   - For character references: `apps/web/style-references/<style-id>/characters/`
+   - For world/environment references: `apps/web/style-references/<style-id>/world/`
+
+3. **Add or Modify Image Files**:
+   Place default image files directly in the respective directory.
+   - **Supported Formats**: PNG, JPEG/JPG, WebP, and GIF.
+   - **Ordering**: Images are loaded and sorted alphabetically by filename. If you want to enforce a specific order in the UI/payload, prefix the filenames with numbers (e.g., `01-character.png`, `02-expression.jpg`).
+   - **Limit**: The system supports up to 8 reference images per category.
+
+4. **Dynamic Reloading (No Restart Required)**:
+   The application reads these directories dynamically at runtime (on request). Any files added, modified, or removed will instantly reflect in the UI and subsequent image generation runs without needing to restart the backend server or rebuild the application.
+
+5. **Defining a New Style**:
+   To create an entirely new style with default reference images:
+   - Create a new markdown file under `apps/web/styles/<new-style-id>.md`. The first line should be the name of the style (e.g., `# Retro Future`), and subsequent lines define the prompt text.
+   - Create directories `apps/web/style-references/<new-style-id>/characters/` and `apps/web/style-references/<new-style-id>/world/`.
+   - Place your default reference images inside them. The application will auto-discover both the style and its default images.
+
 
 ## Storage
 - Storyboards are cached in localStorage for responsive editing and synchronized to `apps/web/data/projects/<project-id>/project.json`

@@ -52,6 +52,7 @@ model Workspace {
   jobs               GenerationJob[]
   assets             Asset[]
   idempotency        IdempotencyRecord[]
+  generationCacheEntries GenerationCacheEntry[]
   tombstones         ProjectTombstone[]
   generationRequests GenerationRequest[]
   usageEvents        UsageEvent[]
@@ -182,6 +183,33 @@ model IdempotencyRecord {
   @@unique([projectId, key])
   @@index([tenantId, status])
   @@map("idempotency_records")
+}
+
+// Exact-input reuse cache for LLM-backed narration/prompt generation only — distinct from
+// IdempotencyRecord above, which exists purely for safe request retries. Append-only per
+// (tenantId, fingerprintHash): a lookup takes the newest row, and an explicit "generate a new
+// variation" (bypassed=true) writes a NEW row rather than overwriting the one it bypassed, so a
+// prior reusable result is never destroyed by requesting a fresh one.
+model GenerationCacheEntry {
+  id                    String    @id @db.Uuid
+  tenantId              String    @map("tenant_id") @db.Uuid
+  operation             String
+  fingerprintHash       String    @map("fingerprint_hash") @db.Char(64)
+  provider              String
+  model                 String?
+  promptTemplateVersion Int       @map("prompt_template_version")
+  sourceDigest          String    @map("source_digest") @db.Char(64)
+  result                Json
+  bypassed              Boolean   @default(false)
+  // Set only on a cache-hit row: which prior entry this request reused. A hit still writes its own
+  // row (this one) so every served request is auditable — who reused what, when — without that
+  // audit trail requiring a new provider call or duplicating provider-cost bookkeeping.
+  servedFromEntryId     String?   @map("served_from_entry_id") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  tenant                Workspace @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, fingerprintHash, createdAt])
+  @@map("generation_cache_entries")
 }
 
 model ProjectTombstone {

@@ -6,34 +6,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Studio — Storyframe</title>
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/topbar.css" />
+  <script src="/modules/topbar.js"></script>
 </head>
 
 <body>
-  <header class="site-topbar">
-    <div class="site-topbar-inner">
-      <a class="site-brand" href="/" aria-label="Storyframe home">
-        <span class="site-brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24">
-            <rect x="3" y="4" width="18" height="16" rx="3" />
-            <path d="M9 4v16M3 10h6M3 15h6" />
-          </svg>
-        </span>
-        <span class="site-brand-word">Storyframe</span>
-      </a>
-      <div id="authLoggedIn" class="user-chip" hidden>
-        <a id="adminConsoleLink" class="user-chip-admin" href="/admin.html" hidden>Admin</a>
-        <a class="user-chip-admin" href="/credits.html">Credits</a>
-        <span id="authUserAvatar" class="user-chip-avatar" aria-hidden="true"></span>
-        <span id="authUserLabel" class="user-chip-label"></span>
-        <button id="logoutBtn" class="user-chip-logout" type="button" aria-label="Log out">Log out</button>
-      </div>
-    </div>
-  </header>
+  <storyframe-topbar auth-mode="external"></storyframe-topbar>
 
   <div class="app-shell">
     <header class="storyboard-topbar">
       <div class="brand-block">
-        <div class="eyebrow">Storyboard</div>
         <div class="storyboard-title-row">
           <div class="storyboard-combo">
             <input id="storyboardTitle" class="storyboard-title" type="text" maxlength="200"
@@ -73,82 +55,88 @@
 
         <!-- o -->
 
-        <div class="compact-fields">
+        <input type="hidden" id="fallbackPolicy" value="local" />
+
+        <div class="full-fields">
           <label>
-            <span>Text provider</span>
-            <select id="textProvider">
-              <option value="gemini">Gemini</option>
-              <option value="openai">OpenAI</option>
-              <option value="stub">Local stub</option>
-            </select>
-          </label>
-          <input type="hidden" id="fallbackPolicy" value="local" />
-          <label>
-            <span>Motion</span>
-            <select id="videoMotionIntensity">
-              <option value="subtle">Subtle</option>
-              <option value="medium" selected>Medium</option>
-              <option value="high">High</option>
-            </select>
+            <span>Style</span>
+            <select id="styleSelect"></select>
           </label>
         </div>
 
         <!-- o -->
 
-        <div class="compact-fields">
-          <label>
-            <span>Style</span>
-            <select id="styleSelect"></select>
-          </label>
-
-          <label>
-            <span>Image provider</span>
-            <select id="imageProvider">
-              <option value="gemini">Gemini</option>
-              <option value="openai">OpenAI</option>
-              <option value="dezgo">Dezgo</option>
-              <option value="stub">Stub Preview (no API)</option>
+        <div class="audio-settings-compact">
+          <label class="audio-settings-field">
+            <span>Audio provider</span>
+            <select id="audioProvider">
+              <option value="stub">Local voice (TTS)</option>
+              <option value="piper">Piper</option>
+              <option value="spark">Voice cloning</option>
+              <option value="elevenlabs">ElevenLabs</option>
             </select>
           </label>
+          <div class="audio-settings-field">
+            <span>Narrator voice</span>
+            <div id="voicesPanel" class="audio-settings-voice"></div>
+          </div>
+        </div>
+
+        <!-- o -->
+
+        <div class="settings-modal-section-heading">
+          <h3>Style References</h3>
+        </div>
+        <div id="styleReferencesPanel" class="reference-groups">
+          <section class="style-ref-col">
+            <div class="style-ref-col-header">
+              <div><strong>Character references</strong><small>People, creatures, and wardrobe</small></div>
+              <div class="ref-actions">
+                <label class="upload-chip">
+                  <input id="characterRefInput" type="file" accept="image/*" multiple hidden />
+                  <span>Upload</span>
+                </label>
+                <button type="button" id="characterRefLibraryBtn" class="secondary icon-button" title="Open Image Library">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0-2-.9-2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div id="characterRefs" class="style-ref-list"></div>
+          </section>
+          <section class="style-ref-col">
+            <div class="style-ref-col-header">
+              <div><strong>World references</strong><small>Locations, sets, and atmosphere</small></div>
+              <div class="ref-actions">
+                <label class="upload-chip">
+                  <input id="worldRefInput" type="file" accept="image/*" multiple hidden />
+                  <span>Upload</span>
+                </label>
+                <button type="button" id="worldRefLibraryBtn" class="secondary icon-button" title="Open Image Library">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0-2-.9-2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div id="worldRefs" class="style-ref-list"></div>
+          </section>
         </div>
 
         <!-- o -->
 
         <div class="settings-launchers" aria-label="Additional settings">
-          <button type="button" id="commonPromptSettingsBtn" class="settings-launch-button" aria-haspopup="dialog"
-            aria-controls="commonPromptModal">
+          <button type="button" id="settingsBtn" class="settings-launch-button" aria-haspopup="dialog"
+            aria-controls="settingsModal">
             <span class="settings-launch-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24">
-                <path d="M4 6h16M4 12h16M4 18h10" />
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
               </svg>
             </span>
-            <span class="settings-launch-copy"><strong>Common Prompt</strong><small>Shared visual
-                direction</small></span>
-            <span class="settings-launch-arrow" aria-hidden="true">›</span>
-          </button>
-          <button type="button" id="styleReferencesSettingsBtn" class="settings-launch-button" aria-haspopup="dialog"
-            aria-controls="styleReferencesModal">
-            <span class="settings-launch-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <rect x="3" y="4" width="18" height="16" rx="2" />
-                <path d="m3 16 5-5 4 4 3-3 6 6" />
-                <circle cx="16.5" cy="8.5" r="1.5" />
-              </svg>
-            </span>
-            <span class="settings-launch-copy"><strong>Style References</strong><small>Characters and
-                environments</small></span>
-            <span class="settings-launch-arrow" aria-hidden="true">›</span>
-          </button>
-          <button type="button" id="audioSettingsBtn" class="settings-launch-button" aria-haspopup="dialog"
-            aria-controls="audioSettingsModal">
-            <span class="settings-launch-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <path d="M11 5 6 9H3v6h3l5 4Z" />
-                <path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12" />
-              </svg>
-            </span>
-            <span class="settings-launch-copy"><strong>Audio Settings</strong><small>Provider and narrator
-                voice</small></span>
+            <span class="settings-launch-copy"><strong>Settings</strong><small>Text provider, motion, scene
+                count &amp; common prompt</small></span>
             <span class="settings-launch-arrow" aria-hidden="true">›</span>
           </button>
         </div>
@@ -161,84 +149,43 @@
 
     </section>
 
-    <section class="generation-toolbar mb-20" aria-label="Storyboard generation actions">
-      <div class="generation-group generation-scenes">
-        <div class="generation-group-label">Scenes</div>
-        <div class="generation-group-actions">
-          <input id="sceneCount" class="generation-scene-count" type="number" min="1" max="50" value="8"
-            aria-label="Number of scenes" />
-          <button id="autoSceneCountBtn" class="generation-action secondary" type="button"
-            title="Automatically choose the recommended scene count">
-            <svg class="generation-action-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m12 3 .8 2.7L15.5 7l-2.7.8L12 10.5l-.8-2.7L8.5 7l2.7-1.3Z" />
-              <path d="m18 13 .6 2 1.9.6-1.9.6-.6 2-.6-2-1.9-.6 1.9-.6Z" />
-              <path d="M5 12v7M2 15.5h6" />
-            </svg>
-            <span class="action-label">Auto</span>
-          </button>
-        </div>
+    <input type="checkbox" id="enrichNarration" checked hidden aria-hidden="true" />
+
+    <section class="stage-bar mb-20" aria-label="Production stages">
+      <div class="stage-bar-stages">
+        <button type="button" id="stagePlanningBtn" class="stage-button" aria-pressed="true">
+          <span class="stage-button-top">
+            <span class="stage-button-label">Planning</span>
+            <span class="stage-button-spinner" aria-hidden="true"></span>
+          </span>
+          <span class="stage-button-status" id="stagePlanningStatus">Not started</span>
+        </button>
+        <button type="button" id="stageImagesBtn" class="stage-button" aria-pressed="true">
+          <span class="stage-button-top">
+            <span class="stage-button-label">Images</span>
+            <span class="stage-button-spinner" aria-hidden="true"></span>
+          </span>
+          <span class="stage-button-status" id="stageImagesStatus">Not started</span>
+        </button>
+        <button type="button" id="stageAudioBtn" class="stage-button" aria-pressed="true">
+          <span class="stage-button-top">
+            <span class="stage-button-label">Audio</span>
+            <span class="stage-button-spinner" aria-hidden="true"></span>
+          </span>
+          <span class="stage-button-status" id="stageAudioStatus">Not started</span>
+        </button>
+        <button type="button" id="stageVideoBtn" class="stage-button" aria-pressed="true">
+          <span class="stage-button-top">
+            <span class="stage-button-label">Video</span>
+            <span class="stage-button-spinner" aria-hidden="true"></span>
+          </span>
+          <span class="stage-button-status" id="stageVideoStatus">Not started</span>
+        </button>
       </div>
 
-      <div class="generation-group generation-writing">
-        <div class="generation-group-label">Generate</div>
-        <div class="generation-group-actions">
-          <button id="generatePromptsBtn" class="generation-action" type="button">
-            <svg class="generation-action-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m12 3 1.1 3.9L17 8l-3.9 1.1L12 13l-1.1-3.9L7 8l3.9-1.1Z" />
-              <path d="m18.5 14 .7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7Z" />
-            </svg>
-            <span class="action-label">Prompts</span>
-            <svg class="generation-action-lock" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="5" y="10" width="14" height="10" rx="2" />
-              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-            </svg>
-          </button>
-          <button id="generateDialogueBtn" class="generation-action" type="button">
-            <svg class="generation-action-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M20 15a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-2-3V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3Z" />
-              <path d="M7 9h10M7 13h6" />
-            </svg>
-            <span class="action-label">Spoken Narration</span>
-            <svg class="generation-action-lock" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="5" y="10" width="14" height="10" rx="2" />
-              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-            </svg>
-          </button>
-
-          <button id="startSerialBtn" class="generation-action" type="button">
-            <svg class="generation-action-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3" y="5" width="14" height="14" rx="2" />
-              <path d="m3 15 4-4 3 3 2-2 5 5M8 9h.01" />
-              <path d="M17 8h4v12H8v-1" />
-            </svg>
-            <span class="action-label">Images</span>
-            <svg class="generation-action-lock" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="5" y="10" width="14" height="10" rx="2" />
-              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-            </svg>
-          </button>
-          <button id="startAudioSerialBtn" class="generation-action" type="button">
-            <svg class="generation-action-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />
-            </svg>
-            <span class="action-label">Audio</span>
-            <svg class="generation-action-lock" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="5" y="10" width="14" height="10" rx="2" />
-              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-            </svg>
-          </button>
-          <button id="startVideoSerialBtn" class="generation-action" type="button">
-            <svg class="generation-action-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3" y="5" width="14" height="14" rx="2" />
-              <path d="m17 10 4-2v8l-4-2Z" />
-            </svg>
-            <span class="action-label">Video</span>
-            <svg class="generation-action-lock" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="5" y="10" width="14" height="10" rx="2" />
-              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-            </svg>
-          </button>
-        </div>
+      <div class="stage-bar-actions">
+        <button type="button" id="startPauseBtn" class="primary">Start</button>
+        <button type="button" id="cancelRunBtn" class="danger" disabled>Cancel</button>
       </div>
     </section>
 
@@ -272,7 +219,6 @@
         <div>
           <h2>Timeline</h2>
         </div>
-        <span class="timeline-hint">Plays each scene's active video/image and audio back to back</span>
       </div>
 
       <div class="timeline-stage">
@@ -281,13 +227,24 @@
           style="display:none;"></video>
         <img class="timeline-stage-image" id="timelineImage" alt="Timeline preview" />
         <div class="timeline-stage-empty" id="timelineStageEmpty">No preview yet</div>
+        <button type="button" class="timeline-toggle" id="timelineToggle" aria-label="Play combined timeline" disabled>
+          <span class="timeline-toggle-icon" aria-hidden="true">
+            <svg class="timeline-icon timeline-icon-play" viewBox="0 0 24 24">
+              <path d="m9 7 8 5-8 5Z" />
+            </svg>
+            <svg class="timeline-icon timeline-icon-pause" viewBox="0 0 24 24">
+              <path d="M9 7v10M15 7v10" />
+            </svg>
+            <svg class="timeline-icon timeline-icon-replay" viewBox="0 0 24 24">
+              <path d="M7.5 8H4V4.5" />
+              <path d="M4.5 8A8 8 0 1 1 4 15" />
+            </svg>
+          </span>
+        </button>
       </div>
       <audio id="timelineAudio" preload="auto"></audio>
       <audio id="timelineAudioB" preload="auto"></audio>
-
-      <div class="timeline-controls">
-        <button type="button" class="timeline-toggle" id="timelineToggle" aria-label="Play combined timeline"
-          disabled>Play</button>
+      
         <div class="timeline-track-wrap" id="timelineTrackWrap">
           <div class="timeline-track-inner" id="timelineTrackInner">
             <div class="timeline-thumbs" id="timelineThumbs"></div>
@@ -295,14 +252,7 @@
             <div class="timeline-playhead" id="timelinePlayhead"></div>
           </div>
         </div>
-        <span class="timeline-time" id="timelineTime">0:00 / 0:00</span>
-        <div class="timeline-volume">
-          <button type="button" class="timeline-mute" id="timelineMute" aria-label="Mute combined timeline"
-            aria-pressed="false" disabled>Mute</button>
-          <input class="timeline-volume-slider" id="timelineVolumeSlider" type="range" min="0" max="1" step="0.01"
-            value="1" aria-label="Timeline volume" disabled />
-        </div>
-      </div>
+
     </section>
   </div>
 
@@ -322,6 +272,14 @@
             </svg>
             <span class="status-icon-spinner" aria-hidden="true"></span>
           </button>
+          <button type="button" class="scene-status-icon is-present" data-status="reference" aria-label="Scene references"
+            title="Scene references">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect width="14" height="14" x="3" y="3" rx="2" />
+              <path d="m17 7 4 4v8a2 2 0 0 1-2 2h-8l-4-4M7 12l2-2 4 4 2-2 2 2" />
+              <circle cx="8" cy="8" r="1" />
+            </svg>
+          </button>
           <button type="button" class="scene-status-icon" data-status="image" disabled aria-label="Image missing"
             title="Image missing">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -330,6 +288,11 @@
               <path d="m21 15-5-5L5 21" />
             </svg>
             <span class="status-icon-spinner" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="scene-library-btn scene-status-icon" title="Open Image Library">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0-2-.9-2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+            </svg>
           </button>
           <button type="button" class="scene-status-icon" data-status="dialogue" disabled aria-label="Narration missing"
             title="Narration missing">
@@ -425,6 +388,11 @@
       This is fallback placeholder text (the scene's action beat), not AI-generated narration — regenerate once a provider is available.
     </div>
 
+    <div id="entityModalExpandSection" class="entity-modal-expand" hidden>
+      <p id="entityModalExpandText"></p>
+      <button type="button" id="entityModalExpandBtn" class="secondary text-button"></button>
+    </div>
+
     <div id="entityModalMedia" class="entity-modal-media" hidden>
       <img id="entityModalImage" alt="Scene image" hidden />
       <video id="entityModalVideo" controls playsinline hidden></video>
@@ -434,7 +402,15 @@
 
     <div class="entity-modal-actions">
       <span id="entityModalStatus" class="field-note"></span>
-      <button type="button" id="entityModalRegenBtn" class="primary">Regenerate</button>
+      <div class="entity-modal-action-buttons" style="display: flex; gap: 8px; align-items: center;">
+        <button type="button" id="entityModalLibraryBtn" class="secondary flex-btn" style="display: flex; align-items: center; gap: 6px;" hidden>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0-2-.9-2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+          </svg>
+          <span>Library</span>
+        </button>
+        <button type="button" id="entityModalRegenBtn" class="primary">Regenerate</button>
+      </div>
     </div>
 
     <div id="entityModalHistory" class="entity-modal-history" hidden>
@@ -443,131 +419,135 @@
     </div>
   </dialog>
 
-  <dialog id="commonPromptModal" class="settings-modal" aria-labelledby="commonPromptModalTitle">
+  <dialog id="settingsModal" class="settings-modal" aria-labelledby="settingsModalTitle">
     <div class="settings-modal-header">
       <div>
-        <div class="eyebrow">Generation settings</div>
-        <h2 id="commonPromptModalTitle">Common Prompt</h2>
+        <h2 id="settingsModalTitle">Settings</h2>
       </div>
       <button type="button" class="secondary text-button settings-modal-close" data-close-settings
-        aria-label="Close common prompt settings">✕</button>
+        aria-label="Close settings">✕</button>
     </div>
     <div class="settings-modal-body">
-      <p class="settings-modal-description">Set the visual direction shared by every scene prompt and generated image.
-      </p>
+      <div class="compact-fields">
+        <label>
+          <span>Text provider</span>
+          <select id="textProvider">
+            <option value="gemini">Gemini</option>
+            <option value="openai">OpenAI</option>
+            <option value="stub">Local stub</option>
+          </select>
+        </label>
+        <label>
+          <span>Image provider</span>
+          <select id="imageProvider">
+            <option value="gemini">Gemini</option>
+            <option value="openai">OpenAI</option>
+            <option value="dezgo">Dezgo</option>
+            <option value="stub">Stub Preview (no API)</option>
+          </select>
+        </label>
+        <label>
+          <span>Motion</span>
+          <select id="videoMotionIntensity">
+            <option value="subtle">Subtle</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+        <label>
+          <span>Visual planning</span>
+          <select id="planningModeSelect">
+            <option value="script">Script-driven</option>
+            <option value="auto">Narration-driven</option>
+          </select>
+        </label>
+      </div>
+
+
+
+      <div class="settings-modal-section-heading">
+        <h3>Common Prompt</h3>
+      </div>
       <label>
-        <span>Prompt instructions</span>
         <textarea id="commonPromptText" rows="8"
           placeholder="Style direction applied to prompts and images."></textarea>
       </label>
-    </div>
-    <div class="settings-modal-footer">
-      <span class="settings-modal-save-note">Saved</span>
-      <button type="button" class="primary" data-close-settings>Done</button>
-    </div>
-  </dialog>
 
-  <dialog id="styleReferencesModal" class="settings-modal" aria-labelledby="styleReferencesModalTitle">
-    <div class="settings-modal-header">
-      <div>
-        <div class="eyebrow">Generation settings</div>
-        <h2 id="styleReferencesModalTitle">Style References</h2>
-      </div>
-      <button type="button" class="secondary text-button settings-modal-close" data-close-settings
-        aria-label="Close style reference settings">✕</button>
-    </div>
-    <div class="settings-modal-body">
-      <p class="settings-modal-description">Guide visual consistency with reference images for the selected style.</p>
-      <div class="reference-groups">
-        <section class="style-ref-col">
-          <div class="style-ref-col-header">
-            <div><strong>Character references</strong><small>People, creatures, and wardrobe</small></div>
-            <label class="upload-chip">
-              <input id="characterRefInput" type="file" accept="image/*" multiple hidden />
-              <span>Upload</span>
-            </label>
-          </div>
-          <div id="characterRefs" class="style-ref-list"></div>
-        </section>
-        <section class="style-ref-col">
-          <div class="style-ref-col-header">
-            <div><strong>World references</strong><small>Locations, sets, and atmosphere</small></div>
-            <label class="upload-chip">
-              <input id="worldRefInput" type="file" accept="image/*" multiple hidden />
-              <span>Upload</span>
-            </label>
-          </div>
-          <div id="worldRefs" class="style-ref-list"></div>
-        </section>
-      </div>
-    </div>
-    <div class="settings-modal-footer">
-      <span class="settings-modal-save-note">References apply to the selected style</span>
-      <button type="button" class="primary" data-close-settings>Done</button>
-    </div>
-  </dialog>
-
-  <dialog id="audioSettingsModal" class="settings-modal" aria-labelledby="audioSettingsModalTitle">
-    <div class="settings-modal-header">
-      <div>
-        <div class="eyebrow">Generation settings</div>
-        <h2 id="audioSettingsModalTitle">Audio Settings</h2>
-      </div>
-      <button type="button" class="secondary text-button settings-modal-close" data-close-settings
-        aria-label="Close audio settings">✕</button>
-    </div>
-    <div class="settings-modal-body">
-      <p class="settings-modal-description">Choose the audio engine and assign voices to speakers in this storyboard.
-      </p>
-      <div class="audio-settings-provider">
-        <label>
-          <span>Audio provider</span>
-          <select id="audioProvider">
-            <option value="stub">Local rudimentary voice (no API)</option>
-            <option value="piper">Piper (local, natural)</option>
-            <option value="spark">Voice cloning (local, custom)</option>
-            <option value="elevenlabs">ElevenLabs</option>
-          </select>
-        </label>
-        <button type="button" id="voiceCloningBtn" class="secondary" hidden>Voice Cloning</button>
-      </div>
       <div class="settings-modal-section-heading">
-        <h3>Narrator voice</h3>
-        <span>One voice reads all spoken narration for this project</span>
+        <h3>Scene count</h3>
       </div>
-      <div id="voicesPanel" class="voices-panel"></div>
+      <div class="scene-count-policy-field" style="display: flex; flex-direction: column; gap: 8px; margin: 12px 0;">
+        <div class="row" style="display: flex; align-items: center; gap: 8px;">
+          <span>Target count</span>
+          <input type="number" id="settingsSceneCountInput" class="generation-scene-count" min="1" max="50" style="width: 72px;" aria-label="Target scene count" />
+          <button type="button" id="settingsSceneCountAutoBtn" class="secondary" style="padding: 4px 10px; height: 30px; font-size: 12px; border-radius: 6px;">Auto</button>
+        </div>
+        <label class="checkbox-field row">
+          <input type="checkbox" id="settingsSceneCountAutoCheckbox" />
+          <span>Infinite scenes (auto-determine)</span>
+        </label>
+      </div>
+
+
+      <div class="settings-modal-section-heading hidden">
+        <h3>Regenerate media</h3>
+      </div>
+      <div class="settings-danger-zone hidden">
+        <button type="button" id="settingsReplanBtn" class="primary">Regenerate Plan</button>
+        <button type="button" id="settingsRegenerateImagesBtn" class="primary">Regenerate Images</button>
+        <button type="button" id="settingsRegenerateAudioBtn" class="primary">Regenerate Audio</button>
+        <button type="button" id="settingsRegenerateVideoBtn" class="primary">Regenerate Video</button>
+      </div>
     </div>
     <div class="settings-modal-footer">
       <span class="settings-modal-save-note">Saved</span>
       <button type="button" class="primary" data-close-settings>Done</button>
+    </div>
+  </dialog>
+
+  <dialog id="sceneReferencesModal" class="settings-modal" aria-labelledby="sceneReferencesModalTitle">
+    <div class="settings-modal-header">
+      <div>
+        <div class="eyebrow" id="sceneReferencesModalSceneLabel">Scene references</div>
+        <h2 id="sceneReferencesModalTitle">Reference Images</h2>
+      </div>
+      <button type="button" class="secondary text-button settings-modal-close" data-close-scene-references
+        aria-label="Close scene reference settings">✕</button>
+    </div>
+    <div class="settings-modal-body">
+      <p class="settings-modal-description">Choose which project defaults apply, then add images used only when generating this scene.</p>
+      <section class="scene-reference-section">
+        <div class="style-ref-col-header">
+          <div><strong>Project default references</strong><small>Toggle selected-style references for this scene</small></div>
+        </div>
+        <div id="sceneDefaultReferences" class="scene-reference-list"></div>
+      </section>
+      <section class="scene-reference-section">
+        <div class="style-ref-col-header">
+          <div><strong>Scene-only references</strong><small>Included in future image generations for this scene</small></div>
+          <label class="upload-chip">
+            <input id="sceneReferenceInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+            <span>Upload</span>
+          </label>
+        </div>
+        <div id="sceneUploadedReferences" class="scene-reference-list"></div>
+      </section>
+    </div>
+    <div class="settings-modal-footer">
+      <span id="sceneReferencesSaveNote" class="settings-modal-save-note">Changes apply to this scene</span>
+      <button type="button" class="primary" data-close-scene-references>Done</button>
     </div>
   </dialog>
 
   <dialog id="generationConfirmModal" class="generation-confirm-modal" aria-labelledby="generationConfirmTitle">
     <div class="generation-confirm-header">
-      <div>
-        <div class="eyebrow">Generation preflight</div>
-        <h2 id="generationConfirmTitle">Confirm generation</h2>
-      </div>
+      <h2 id="generationConfirmTitle">Confirm generation</h2>
       <button type="button" id="generationConfirmCloseBtn" class="secondary text-button"
         aria-label="Close generation confirmation">✕</button>
     </div>
     <div class="generation-confirm-body">
       <p id="generationConfirmIntro" class="generation-confirm-intro"></p>
-      <div class="generation-confirm-details">
-        <section>
-          <div class="generation-confirm-label">About to run</div>
-          <p id="generationConfirmScope"></p>
-        </section>
-        <section>
-          <div class="generation-confirm-label">Existing work</div>
-          <p id="generationConfirmPrevious"></p>
-        </section>
-        <section class="generation-confirm-impact">
-          <div class="generation-confirm-label">What happens next</div>
-          <p id="generationConfirmImpact"></p>
-        </section>
-      </div>
+      <ul id="generationConfirmBullets" class="generation-confirm-bullets"></ul>
     </div>
     <div class="generation-confirm-actions">
       <button type="button" id="generationConfirmCancelBtn" class="secondary">Cancel</button>
@@ -620,6 +600,78 @@
     <div class="confirm-modal-actions">
       <button type="button" id="confirmRegenCancelBtn" class="secondary">Cancel</button>
       <button type="button" id="confirmRegenConfirmBtn" class="primary">Regenerate</button>
+    </div>
+  </dialog>
+
+  <dialog id="imageLibraryModal" class="settings-modal image-library-modal" aria-labelledby="imageLibraryModalTitle" style="max-width: 800px; width: 90vw;">
+    <div class="settings-modal-header">
+      <div>
+        <div class="eyebrow" id="imageLibraryModalContextLabel">Image Library</div>
+        <h2 id="imageLibraryModalTitle">Select or Generate Image</h2>
+      </div>
+      <button type="button" class="secondary text-button settings-modal-close" id="closeImageLibraryBtn"
+        aria-label="Close image library">✕</button>
+    </div>
+    <div class="settings-modal-body">
+      <!-- Section 1: AI Image Generator (Top Feature) -->
+      <section class="library-section ai-generator-section">
+        <h3>AI Image Generator</h3>
+        <div class="ai-generator-controls">
+          <textarea id="libraryAiPrompt" class="library-prompt-textarea" placeholder="Describe the image you want to generate..."></textarea>
+          <div class="ai-generator-options">
+            <label class="checkbox-field">
+              <input type="checkbox" id="libraryUseStory" />
+              <span>Use story (appends user prompt to script summary)</span>
+            </label>
+            <div class="provider-select-wrapper">
+              <label for="libraryProviderSelect">Provider:</label>
+              <select id="libraryProviderSelect" class="provider-select">
+                <option value="gemini">Gemini</option>
+                <option value="openai">OpenAI</option>
+                <option value="dezgo">Dezgo</option>
+                <option value="stub">Stub</option>
+              </select>
+            </div>
+            <button type="button" id="libraryGenerateBtn" class="primary">Generate Image</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: Active / Current Selection Section -->
+      <section class="library-section active-selection-section">
+        <div class="style-ref-col-header">
+          <div><strong>Active Selection</strong><small id="libraryActiveSectionLabel">Images currently in use</small></div>
+          <label class="upload-chip">
+            <input id="libraryUploadInput" type="file" accept="image/*" multiple hidden />
+            <span>Upload New</span>
+          </label>
+        </div>
+        <div id="libraryActiveList" class="library-image-list"></div>
+      </section>
+
+      <!-- Section 3: Library of Images -->
+      <section class="library-section library-tabs-section">
+        <h3>Library Content</h3>
+        <div class="library-tabs">
+          <button type="button" class="tab-btn active" data-tab="uploads">User Uploads</button>
+          <button type="button" class="tab-btn" data-tab="generations">AI Generations</button>
+          <button type="button" class="tab-btn" data-tab="past">Past Storyboards</button>
+        </div>
+        <div class="library-tab-content">
+          <div id="libraryTabUploads" class="library-image-list tab-pane active"></div>
+          <div id="libraryTabGenerations" class="library-image-list tab-pane" style="display: none;"></div>
+          <div id="libraryTabPast" class="library-image-list tab-pane" style="display: none;">
+            <div class="past-storyboards-placeholder" style="padding: 20px; text-align: center;">
+              <button type="button" id="libraryRetrievePastBtn" class="secondary">Retrieve Past Storyboard Images</button>
+            </div>
+            <div id="libraryPastList" class="library-image-list" style="display: none;"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="settings-modal-footer">
+      <span id="libraryModalSaveNote" class="settings-modal-save-note">Changes apply automatically</span>
+      <button type="button" class="primary" id="closeImageLibraryDoneBtn">Done</button>
     </div>
   </dialog>
 

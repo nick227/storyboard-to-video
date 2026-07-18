@@ -1,8 +1,7 @@
 .admin-shell { max-width: 1500px; margin: 0 auto; padding: 24px; }
-.admin-heading, .admin-identity, .admin-tabs, .admin-filter-row { display: flex; align-items: center; gap: 12px; }
+.admin-heading, .admin-tabs, .admin-filter-row { display: flex; align-items: center; gap: 12px; }
 .admin-heading { justify-content: space-between; margin-bottom: 18px; }
 .admin-heading h1 { margin: 0; font-size: 30px; }
-.admin-identity a { color: var(--muted); }
 .admin-tabs { overflow-x: auto; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
 .admin-tabs button { border: 0; border-radius: 0; background: transparent; border-bottom: 2px solid transparent; }
 .admin-tabs button.active { color: white; border-bottom-color: var(--accent); }

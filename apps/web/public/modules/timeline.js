@@ -1,4 +1,4 @@
-import { sceneStore, uiStore, debounce } from './store.js';
+import { sceneStore } from './store.js';
 
 const TIMELINE_PX_PER_SECOND = 60;
 const TIMELINE_DEFAULT_STILL_SECONDS = 3;
@@ -16,13 +16,27 @@ let timelineVolume = 1;
 let timelineMuted = false;
 
 let els = {};
+let unsubscribeStore = null;
+let resizeTimeout = null;
+
+const onWindowResize = () => {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(() => {
+    lastTimelineSignature = null;
+    renderTimeline().catch((error) => console.error('Timeline resize render failed:', error));
+  }, 150);
+};
 
 export function initTimeline(domEls) {
   els = domEls;
-  // Listen to store updates
-  sceneStore.subscribe(() => {
-    renderTimeline().catch(() => {});
+  if (unsubscribeStore) unsubscribeStore();
+  unsubscribeStore = sceneStore.subscribe(() => {
+    renderTimeline().catch((error) => {
+      console.error('Timeline render failed:', error);
+    });
   });
+  window.removeEventListener('resize', onWindowResize);
+  window.addEventListener('resize', onWindowResize);
 }
 
 export function formatPlaybackTime(value) {
@@ -32,19 +46,41 @@ export function formatPlaybackTime(value) {
 
 function probeMediaDuration(path, kind) {
   if (!path) return Promise.resolve(0);
+
   const cacheKey = `${kind}:${path}`;
-  if (mediaDurationCache.has(cacheKey)) return Promise.resolve(mediaDurationCache.get(cacheKey));
+  if (mediaDurationCache.has(cacheKey)) {
+    return Promise.resolve(mediaDurationCache.get(cacheKey));
+  }
+
   return new Promise((resolve) => {
     const element = document.createElement(kind);
+    let settled = false;
+
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+
+      clearTimeout(timeout);
+      element.removeAttribute('src');
+      element.load();
+
+      const duration = Number.isFinite(value) ? value : 0;
+      if (duration > 0) {
+        mediaDurationCache.set(cacheKey, duration);
+      }
+      resolve(duration);
+    };
+
+    const timeout = setTimeout(() => finish(0), 10000);
+
     element.preload = 'metadata';
     element.muted = true;
-    const finish = (value) => {
-      element.removeAttribute('src');
-      mediaDurationCache.set(cacheKey, value);
-      resolve(value);
-    };
-    element.addEventListener('loadedmetadata', () => finish(Number.isFinite(element.duration) ? element.duration : 0));
-    element.addEventListener('error', () => finish(0));
+    element.addEventListener(
+      'loadedmetadata',
+      () => finish(element.duration),
+      { once: true },
+    );
+    element.addEventListener('error', () => finish(0), { once: true });
     element.src = path;
   });
 }
@@ -56,9 +92,11 @@ function getSharedAudioContext() {
 
 async function getWaveformPeaks(audioPath, sampleCount) {
   if (!audioPath) return null;
-  if (waveformPeaksCache.has(audioPath)) return waveformPeaksCache.get(audioPath);
+  const cacheKey = `${audioPath}:${sampleCount}`;
+  if (waveformPeaksCache.has(cacheKey)) return waveformPeaksCache.get(cacheKey);
   try {
     const response = await fetch(audioPath);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const arrayBuffer = await response.arrayBuffer();
     const audioBuffer = await getSharedAudioContext().decodeAudioData(arrayBuffer);
     const channelData = audioBuffer.getChannelData(0);
@@ -72,9 +110,14 @@ async function getWaveformPeaks(audioPath, sampleCount) {
       }
       peaks[i] = max;
     }
-    waveformPeaksCache.set(audioPath, peaks);
+    if (waveformPeaksCache.size >= 100) {
+      const firstKey = waveformPeaksCache.keys().next().value;
+      waveformPeaksCache.delete(firstKey);
+    }
+    waveformPeaksCache.set(cacheKey, peaks);
     return peaks;
-  } catch (_) {
+  } catch (error) {
+    console.error('Failed to get waveform peaks:', error);
     return null;
   }
 }
@@ -84,7 +127,7 @@ function timelineSceneSignature(scene) {
   const activeVideoVersion = scene.videoVersions[scene.activeVideoVersionIndex];
   const activeAudioVersion = scene.audioVersions[scene.activeAudioVersionIndex];
   const hasVideo = scene.activeVisualType === 'video' && Boolean(activeVideoVersion?.path);
-  return `${scene.id}:${activeVersion?.path || ''}:${hasVideo ? activeVideoVersion.path : ''}:${activeAudioVersion?.path || ''}`;
+  return `${scene.id}:${scene.title || ''}:${activeVersion?.path || ''}:${hasVideo ? activeVideoVersion.path : ''}:${activeAudioVersion?.path || ''}`;
 }
 
 async function buildTimelineSegments() {
@@ -122,9 +165,8 @@ async function buildTimelineSegments() {
 
 function setupTimelinePlayback(segments, totalDuration, trackWidth) {
   const { timelineVideo, timelineVideoB, timelineAudio, timelineAudioB, timelineImage: image, timelineStageEmpty: emptyEl,
-    timelineToggle: toggle, timelineTime: timeLabel, timelinePlayhead: playhead,
-    timelineTrackWrap: trackWrap, timelineTrackInner: trackInner,
-    timelineMute: muteBtn, timelineVolumeSlider: volumeSlider } = els;
+    timelineToggle: toggle, timelinePlayhead: playhead,
+    timelineTrackWrap: trackWrap, timelineTrackInner: trackInner } = els;
 
   // Two video/audio elements, ping-ponged: while segment N plays on the "active" slot, the next
   // segment's media is silently preloaded into the "standby" slot ahead of time. Transitioning
@@ -141,13 +183,12 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
 
   // Video never carries the composite's sound (it's always element-muted; the audio elements are
   // the sole audio source), so volume/mute only ever needs to apply to the two audio elements.
+  videoEls.forEach((el) => {
+    el.muted = true;
+    el.volume = 0;
+    el.playsInline = true;
+  });
   audioEls.forEach((el) => { el.volume = timelineVolume; el.muted = timelineMuted; });
-  volumeSlider.value = String(timelineVolume);
-  const updateMuteButton = () => {
-    muteBtn.textContent = timelineMuted || timelineVolume === 0 ? 'Unmute' : 'Mute';
-    muteBtn.setAttribute('aria-pressed', String(timelineMuted));
-  };
-  updateMuteButton();
 
   // Playback position is tracked from the real audio/video element's currentTime rather than
   // wall-clock elapsed time. Driving the clock off performance.now() let it outrun the actual
@@ -160,17 +201,27 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
   let stillClockAt = 0;
   let stillClockOffset = 0;
   let segmentEnteredAt = 0;
+  let segmentStartLocalTime = 0;
   let dragging = false;
   let preloadedIndex = -1; // which segment index is currently warmed up in the standby slot
+  let seekToken = 0;
 
   const localTimeForSegment = (segment) => {
-    if (segment.audioPath) return activeAudio().currentTime;
-    if (segment.videoPath) return activeVideo().currentTime;
+    if (
+      segment.videoPath &&
+      (!segment.audioPath || segment.videoDuration >= segment.audioDuration)
+    ) {
+      return activeVideo().currentTime;
+    }
+
+    if (segment.audioPath) {
+      return activeAudio().currentTime;
+    }
+
     return stillClockOffset + (performance.now() - stillClockAt) / 1000;
   };
 
   const updateDisplay = () => {
-    timeLabel.textContent = `${formatPlaybackTime(globalCurrentTime)} / ${formatPlaybackTime(totalDuration)}`;
     playhead.style.transform = `translateX(${(globalCurrentTime / totalDuration) * trackWidth}px)`;
   };
 
@@ -181,10 +232,15 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
 
   // Loads a segment's media into a specific video/audio element pair without touching visibility
   // — used both to prep the active slot and to silently warm the standby slot ahead of time.
-  const applySourceToSlot = (segment, slotVideo, slotAudio) => {
+  const applySourceToSlot = (segment, slotVideo, slotAudio, { resetTime = false } = {}) => {
     if (segment.videoPath) {
       slotVideo.loop = Boolean(segment.audioPath && segment.audioDuration > segment.videoDuration);
-      if (slotVideo.getAttribute('src') !== segment.videoPath) slotVideo.src = segment.videoPath;
+      if (slotVideo.getAttribute('src') !== segment.videoPath) {
+        slotVideo.src = segment.videoPath;
+      }
+      if (resetTime && slotVideo.readyState >= 1) {
+        slotVideo.currentTime = 0;
+      }
     } else {
       // A hidden video must be fully stopped, not just detached — otherwise a video that was
       // looping (see video.loop above) keeps decoding and looping its old resource in the
@@ -193,12 +249,19 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
       slotVideo.pause();
       slotVideo.loop = false;
       slotVideo.removeAttribute('src');
+      slotVideo.load();
     }
     if (segment.audioPath) {
-      if (slotAudio.getAttribute('src') !== segment.audioPath) slotAudio.src = segment.audioPath;
+      if (slotAudio.getAttribute('src') !== segment.audioPath) {
+        slotAudio.src = segment.audioPath;
+      }
+      if (resetTime && slotAudio.readyState >= 1) {
+        slotAudio.currentTime = 0;
+      }
     } else {
       slotAudio.pause();
       slotAudio.removeAttribute('src');
+      slotAudio.load();
     }
   };
 
@@ -226,7 +289,7 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     const nextIndex = afterIndex + 1;
     if (nextIndex >= segments.length || preloadedIndex === nextIndex) return;
     preloadedIndex = nextIndex;
-    applySourceToSlot(segments[nextIndex], standbyVideo(), standbyAudio());
+    applySourceToSlot(segments[nextIndex], standbyVideo(), standbyAudio(), { resetTime: true });
   };
 
   // Fast path for normal forward playback: if the next segment was already preloaded into the
@@ -249,9 +312,10 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     stillClockOffset = 0;
     stillClockAt = performance.now();
     segmentEnteredAt = performance.now();
+    segmentStartLocalTime = 0;
     if (shouldPlay) {
-      if (segment.videoPath) activeVideo().play().catch(() => {});
-      if (segment.audioPath) activeAudio().play().catch(() => {});
+      if (segment.videoPath) activeVideo().play().catch((error) => console.warn('Video playback failed:', error));
+      if (segment.audioPath) activeAudio().play().catch((error) => console.warn('Audio playback failed:', error));
     }
     preloadNext(index);
   };
@@ -266,27 +330,32 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
   // can land anywhere, so any standby preload is irrelevant) and waits for real readiness before
   // seeking, since we need an exact currentTime, not just "start from the top".
   const seekWithinSegment = async (index, localTime, shouldPlay) => {
+    const token = ++seekToken;
     currentSegmentIndex = index;
     const segment = segments[index];
     applySourceToSlot(segment, activeVideo(), activeAudio());
     applyActiveVisibility(segment);
     segmentEnteredAt = performance.now();
+    segmentStartLocalTime = localTime;
     preloadedIndex = -1; // standby preload state is now stale relative to this jump
 
     const positionEl = async (el, path, duration) => {
       if (!path) { el.pause(); return; }
       await waitUntilReady(el);
-      if (currentSegmentIndex !== index) return; // superseded by a newer seek/segment change
+      if (token !== seekToken) return; // superseded by a newer seek/segment change
       el.currentTime = Math.min(Math.max(localTime, 0), duration || localTime);
-      if (shouldPlay) el.play().catch(() => {});
-      else el.pause();
+      if (shouldPlay) {
+        await el.play().catch((error) => console.warn('Play failed after seek:', error));
+      } else {
+        el.pause();
+      }
     };
 
     await Promise.all([
       positionEl(activeVideo(), segment.videoPath, segment.videoDuration),
       positionEl(activeAudio(), segment.audioPath, segment.audioDuration),
     ]);
-    if (currentSegmentIndex !== index) return;
+    if (token !== seekToken) return;
     if (!segment.audioPath && !segment.videoPath) {
       stillClockOffset = localTime;
       stillClockAt = performance.now();
@@ -298,7 +367,9 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     globalCurrentTime = Math.min(Math.max(target, 0), totalDuration);
     const index = segmentForTime(globalCurrentTime);
     const segment = segments[index];
-    seekWithinSegment(index, globalCurrentTime - segment.start, shouldPlay).catch(() => {});
+    seekWithinSegment(index, globalCurrentTime - segment.start, shouldPlay).catch((error) => {
+      console.error('Seek to failed:', error);
+    });
     updateDisplay();
   };
 
@@ -308,8 +379,9 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     playing = false;
     videoEls.forEach((el) => el.pause());
     audioEls.forEach((el) => el.pause());
-    toggle.textContent = globalCurrentTime >= totalDuration ? 'Replay' : 'Play';
-    toggle.setAttribute('aria-label', toggle.textContent === 'Replay' ? 'Replay combined timeline' : 'Play combined timeline');
+    const isEnded = globalCurrentTime >= totalDuration;
+    toggle.setAttribute('data-state', isEnded ? 'ended' : 'paused');
+    toggle.setAttribute('aria-label', isEnded ? 'Replay combined timeline' : 'Play combined timeline');
     document.querySelectorAll('.scene-audio, .audio-version-thumb audio').forEach((el) => {
       if (!el.paused) el.pause();
     });
@@ -321,7 +393,8 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     const isLast = currentSegmentIndex === segments.length - 1;
     // Real media time drives advancement; a generous wall-clock overrun is only a safety valve
     // for a stalled/broken media element so the timeline can't hang forever on one segment.
-    const wallOverrun = (performance.now() - segmentEnteredAt) / 1000 > segment.duration + 1.5;
+    const expectedRemaining = Math.max(0, segment.duration - segmentStartLocalTime);
+    const wallOverrun = (performance.now() - segmentEnteredAt) / 1000 > expectedRemaining + 1.5;
     if (localTime >= segment.duration - 0.03 || wallOverrun) {
       if (isLast) {
         seekTo(totalDuration, false);
@@ -337,8 +410,8 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     animationFrame = requestAnimationFrame(tick);
   };
 
-  const play = () => {
-    if (!totalDuration || dragging) return;
+  const play = async () => {
+    if (!totalDuration || dragging || playing) return;
 
     document.querySelectorAll('.scene-audio, .audio-version-thumb audio, .scene-video').forEach((el) => {
       if (!el.paused && typeof el.pause === 'function') el.pause();
@@ -347,30 +420,23 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     if (globalCurrentTime >= totalDuration) globalCurrentTime = 0;
 
     playing = true;
-    toggle.textContent = 'Pause';
+    toggle.setAttribute('data-state', 'playing');
     toggle.setAttribute('aria-label', 'Pause combined timeline');
     const index = segmentForTime(globalCurrentTime);
-    seekWithinSegment(index, globalCurrentTime - segments[index].start, true).catch(() => {});
+    
+    await seekWithinSegment(index, globalCurrentTime - segments[index].start, true).catch((error) => {
+      console.error('Play seek failed:', error);
+    });
+
+    if (!playing) return;
+
     if (animationFrame) cancelAnimationFrame(animationFrame);
     animationFrame = requestAnimationFrame(tick);
   };
 
-  const onToggleClick = () => { if (playing) pause(); else play(); };
+  const onToggleClick = () => { if (playing) pause(); else play().catch((error) => console.error('Play toggling failed:', error)); };
 
-  const onMuteClick = () => {
-    timelineMuted = !timelineMuted;
-    audioEls.forEach((el) => { el.muted = timelineMuted; });
-    updateMuteButton();
-  };
-  const onVolumeInput = () => {
-    timelineVolume = Number(volumeSlider.value) || 0;
-    audioEls.forEach((el) => { el.volume = timelineVolume; });
-    if (timelineMuted && timelineVolume > 0) {
-      timelineMuted = false;
-      audioEls.forEach((el) => { el.muted = false; });
-    }
-    updateMuteButton();
-  };
+  // Volume and mute controls removed
 
   const timeForClientX = (clientX) => {
     const rect = trackInner.getBoundingClientRect();
@@ -394,36 +460,37 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     if (!dragging) return;
     dragging = false;
     if (trackWrap.hasPointerCapture(event.pointerId)) trackWrap.releasePointerCapture(event.pointerId);
-    if (resumeAfterDrag) play();
+    if (resumeAfterDrag) play().catch((error) => console.error('Play resume after drag failed:', error));
   };
 
   const controller = {
     pause,
     cleanup() {
       pause();
-      videoEls.forEach((el) => el.removeAttribute('src'));
-      audioEls.forEach((el) => el.removeAttribute('src'));
+      videoEls.forEach((el) => {
+        el.removeAttribute('src');
+        el.load();
+      });
+      audioEls.forEach((el) => {
+        el.removeAttribute('src');
+        el.load();
+      });
       image.removeAttribute('src');
       toggle.removeEventListener('click', onToggleClick);
       trackWrap.removeEventListener('pointerdown', onTrackPointerDown);
       trackWrap.removeEventListener('pointermove', onTrackPointerMove);
       trackWrap.removeEventListener('pointerup', endDrag);
       trackWrap.removeEventListener('pointercancel', endDrag);
-      muteBtn.removeEventListener('click', onMuteClick);
-      volumeSlider.removeEventListener('input', onVolumeInput);
     },
   };
 
   toggle.disabled = false;
-  muteBtn.disabled = false;
-  volumeSlider.disabled = false;
+  toggle.setAttribute('data-state', 'paused');
   toggle.addEventListener('click', onToggleClick);
   trackWrap.addEventListener('pointerdown', onTrackPointerDown);
   trackWrap.addEventListener('pointermove', onTrackPointerMove);
   trackWrap.addEventListener('pointerup', endDrag);
   trackWrap.addEventListener('pointercancel', endDrag);
-  muteBtn.addEventListener('click', onMuteClick);
-  volumeSlider.addEventListener('input', onVolumeInput);
 
   enterSegment(0, false);
   updateDisplay();
@@ -433,11 +500,18 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
 export async function renderTimeline() {
   const signature = sceneStore.get().scenes.map(timelineSceneSignature).join('|');
   if (signature === lastTimelineSignature) return;
-  lastTimelineSignature = signature;
 
   const buildToken = ++timelineBuildToken;
-  const segments = await buildTimelineSegments();
+  let segments;
+  try {
+    segments = await buildTimelineSegments();
+  } catch (error) {
+    console.error('Failed to build timeline segments:', error);
+    return;
+  }
   if (buildToken !== timelineBuildToken) return;
+
+  lastTimelineSignature = signature;
 
   const hasContent = segments.length > 0;
   els.timelineSection.hidden = !hasContent;
@@ -480,11 +554,13 @@ export async function renderTimeline() {
 
   const canvas = els.timelineWaveformCanvas;
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = trackWidth * dpr;
+  const MAX_CANVAS_WIDTH = 16384;
+  const physicalWidth = Math.min(trackWidth * dpr, MAX_CANVAS_WIDTH);
+  canvas.width = physicalWidth;
   canvas.height = 48 * dpr;
   canvas.style.width = `${trackWidth}px`;
   const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.setTransform(physicalWidth / trackWidth, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, trackWidth, 48);
   ctx.fillStyle = 'rgba(255,255,255,0.03)';
   ctx.fillRect(0, 0, trackWidth, 48);

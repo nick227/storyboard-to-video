@@ -192,6 +192,33 @@ class PrismaProjectRepository extends ProjectStore {
       throw error;
     }
   }
+
+  async resolveAsset(id, publicPath, { ownerId } = {}) {
+    await this.read(id, { ownerId });
+    const match = String(publicPath || '').match(/^\/projects\/([^/]+)\/assets\/([^/]+)\/([^/]+)$/);
+    if (!match) return null;
+    const pathProjectId = decodeURIComponent(match[1]);
+    if (pathProjectId !== id) return null;
+    const type = match[2];
+    const fileName = decodeURIComponent(match[3]);
+    if (fileName !== path.basename(fileName)) return null;
+
+    const record = await this.prisma.asset.findUnique({ where: { projectId_type_fileName: { projectId: id, type, fileName } } });
+    if (!record || record.status !== 'committed') return null;
+
+    const sourcePath = path.join(this.assetDir(id, type, { create: false }), fileName);
+    if (!fs.existsSync(sourcePath)) return null;
+
+    return {
+      projectId: id,
+      type,
+      fileName,
+      sourcePath,
+      path: publicPath,
+      mimeType: record.mimeType,
+      byteSize: Number(record.byteSize)
+    };
+  }
 }
 
 module.exports = { PrismaProjectRepository };

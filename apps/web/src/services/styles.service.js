@@ -29,7 +29,8 @@ function createStylesService(config) {
     });
   }
   const find = (id, userId) => list(userId).find((style) => style.id === id) || null;
-  const referencePaths = (id, userId) => [...referenceFiles(id, 'characters', userId).slice(0, 4), ...referenceFiles(id, 'world', userId).slice(0, 4)].slice(0, 8).map((item) => item.path);
+  const referenceSources = (id, userId) => [...referenceFiles(id, 'characters', userId).slice(0, 4), ...referenceFiles(id, 'world', userId).slice(0, 4)].slice(0, 8);
+  const referencePaths = (id, userId) => referenceSources(id, userId).map((item) => item.path);
   function upload(id, type, files, userId) {
     if (!userId) throw new AppError('UNAUTHENTICATED', 'Not authenticated', { status: 401 });
     if (!find(id, userId)) throw new AppError('STYLE_NOT_FOUND', 'Unknown style', { status: 404 });
@@ -53,7 +54,7 @@ function createStylesService(config) {
     fs.rmSync(targetPath, { force: true });
     return references(id, userId);
   }
-  return { find, list, normalizeType, referenceDir, userReferenceDir, referenceFiles, referencePaths, references, remove, sanitize, upload };
+  return { find, list, normalizeType, referenceDir, userReferenceDir, referenceFiles, referencePaths, referenceSources, references, remove, sanitize, upload };
 }
 
 module.exports = { createStylesService };

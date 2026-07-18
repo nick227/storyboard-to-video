@@ -23,22 +23,24 @@ async function cleanupProject(projectId) {
 }
 
 test('public home introduces the product while the studio remains authenticated', async () => {
-  await request(app).get('/').expect(200).expect(/Your story/).expect(/In your voice/);
-  await request(app).get('/studio.html').expect(302).expect('Location', /login\.html\?redirect=%2Fstudio\.html/);
-  await request(app).get('/studio').set(auth('bob-token')).expect(302).expect('Location', '/studio.html');
-  await request(app).get('/studio.html').set(auth('bob-token')).expect(200).expect(/id="storyboardTitle"/);
+  await request(app).get('/').expect(200).expect(/Turn a script into a narrated video sequence/).expect(/<storyframe-topbar>/);
+  await request(app).get('/studio').expect(302).expect('Location', /login\.html\?redirect=%2Fstudio/);
+  await request(app).get('/studio.html').set(auth('bob-token')).expect(302).expect('Location', '/studio');
+  await request(app).get('/studio').set(auth('bob-token')).expect(200).expect(/id="storyboardTitle"/).expect(/<storyframe-topbar auth-mode="external">/);
 });
 
 test('admin console and API require a platform administrator', async () => {
-  await request(app).get('/admin.html').set(auth('alice-token')).expect(200).expect(/Admin console/);
-  await request(app).get('/admin.html').set(auth('bob-token')).expect(403);
+  await request(app).get('/admin').set(auth('alice-token')).expect(200).expect(/Admin console/).expect(/<storyframe-topbar>/);
+  await request(app).get('/admin.html').set(auth('alice-token')).expect(302).expect('Location', '/admin');
+  await request(app).get('/admin').set(auth('bob-token')).expect(403);
   await request(app).get('/api/admin/overview').set(auth('alice-token')).expect(200).expect((response) => assert.equal(response.body.ok, true));
   await request(app).get('/api/admin/overview').set(auth('bob-token')).expect(403).expect((response) => assert.equal(response.body.error.code, 'FORBIDDEN'));
 });
 
 test('credit purchase pages require login and Stripe webhooks bypass user auth', async () => {
-  await request(app).get('/credits.html').expect(302).expect('Location', /login\.html/);
-  await request(app).get('/credits.html').set(auth('bob-token')).expect(200).expect(/Site credits/);
+  await request(app).get('/credits').expect(302).expect('Location', /login\.html/);
+  await request(app).get('/credits.html').set(auth('bob-token')).expect(302).expect('Location', '/credits');
+  await request(app).get('/credits').set(auth('bob-token')).expect(200).expect(/Site credits/).expect(/<storyframe-topbar>/);
   await request(app).get('/api/billing/credit-packs').set(auth('bob-token')).expect(200).expect((response) => assert.ok(Array.isArray(response.body.packs)));
   await request(app).post('/api/webhooks/stripe').set('Content-Type', 'application/json').send('{"id":"evt_test"}').expect(503).expect((response) => assert.equal(response.body.error.code, 'PAYMENTS_UNAVAILABLE'));
 });
@@ -204,4 +206,32 @@ test('regenerate-action succeeds via stub and never returns a prompt field', asy
   const body = { projectId, scene, sceneIndex: 0, provider: 'stub' };
   const response = await request(app).post('/api/storyboard/regenerate-action').set(auth()).set('Idempotency-Key', 'regen-action-ok-001').send(body).expect(200);
   assert.deepEqual(Object.keys(response.body).sort(), ['beat', 'usedFallback', 'warning']);
+});
+
+test('create-scenes builds a deterministic scene skeleton with no LLM call, enabling a dialogue-first run', async (t) => {
+  const projectId = id('skeleton'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Skeleton' }).expect(201);
+  const body = { projectId, scriptText: 'A hero opens a door. A shadow crosses the hallway. The house creaks in the wind.', sceneCount: 3 };
+  const response = await request(app).post('/api/storyboard/create-scenes').set(auth()).set('Idempotency-Key', 'create-scenes-001').send(body).expect(200);
+  assert.equal(response.body.scenes.length, 3);
+  response.body.scenes.forEach((scene) => assert.ok(typeof scene.scriptFragment === 'string' && scene.scriptFragment.length > 0));
+});
+
+test('split-scene splits one fragment into the requested number of sub-scenes', async (t) => {
+  const projectId = id('split'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Split' }).expect(201);
+  const body = { projectId, scriptFragment: 'A hero opens a door. A shadow crosses the hallway. The house creaks in the wind. A voice calls out from upstairs.', count: 2 };
+  const response = await request(app).post('/api/storyboard/split-scene').set(auth()).set('Idempotency-Key', 'split-scene-001').send(body).expect(200);
+  assert.equal(response.body.scenes.length, 2);
+  response.body.scenes.forEach((scene) => assert.ok(typeof scene.scriptFragment === 'string' && scene.scriptFragment.length > 0));
+});
+
+test('generate-prompts reuses existing scene fragments instead of re-splitting when existingScenes is provided', async (t) => {
+  const projectId = id('existing'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Existing' }).expect(201);
+  const skeleton = await request(app).post('/api/storyboard/create-scenes').set(auth()).set('Idempotency-Key', 'existing-skeleton-001').send({ projectId, scriptText: 'A hero opens a door. A shadow crosses the hallway.', sceneCount: 2 }).expect(200);
+  const body = { projectId, scriptText: 'A hero opens a door. A shadow crosses the hallway.', sceneCount: 2, styleId: 'basic-cartoon', provider: 'stub', existingScenes: skeleton.body.scenes };
+  const response = await request(app).post('/api/storyboard/generate-prompts').set(auth()).set('Idempotency-Key', 'existing-scenes-prompts-001').send(body).expect(200);
+  assert.equal(response.body.scenes.length, 2);
+  response.body.scenes.forEach((scene, index) => assert.equal(scene.scriptFragment, skeleton.body.scenes[index].scriptFragment));
 });
