@@ -72,14 +72,15 @@ function createProjectRouter({ store, queue, upload, sceneReferences, styles, pr
     }
 
     if (styleId && styles) {
-      const refs = styles.references(styleId, req.auth?.userId);
+      const refs = styles.references(styleId, req.auth?.userId, { all: true });
       const allRefs = [...(refs.characters || []), ...(refs.world || [])];
       for (const ref of allRefs) {
         uploads.push({
           fileName: ref.fileName,
           path: ref.url,
           type: ref.type,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          isSystemDefault: !ref.isUserUploaded
         });
       }
     }

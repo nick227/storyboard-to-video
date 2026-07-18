@@ -1,7 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const fs = require('node:fs');
 
 const {
   buildScenePrompts,
@@ -14,7 +13,6 @@ const {
   regenerateSinglePrompt,
   resolveAudioAsset,
   resolveGeneratedAsset,
-  splitIntoScenes,
 } = require('../server');
 
 test('scene count is clamped to the supported range', () => {
@@ -23,31 +21,7 @@ test('scene count is clamped to the supported range', () => {
   assert.equal(clampSceneCount('not-a-number'), 6);
 });
 
-test('scene count suggestion scales with story length and screenplay structure', async () => {
-  const source = fs.readFileSync(path.join(__dirname, '../public/modules/scene-count.js'), 'utf8');
-  const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
-  const { suggestSceneCount } = await import(moduleUrl);
-
-  assert.equal(suggestSceneCount(''), 1);
-  assert.equal(suggestSceneCount('A hero opens the door.'), 1);
-  assert.ok(suggestSceneCount(Array.from({ length: 400 }, () => 'word').join(' ')) >= 10);
-  assert.equal(suggestSceneCount('INT. KITCHEN - DAY\nA door opens.\n\nEXT. STREET - NIGHT\nA car stops.'), 2);
-  assert.equal(suggestSceneCount(Array.from({ length: 3000 }, () => 'word').join(' ')), 50);
-});
-
-test('fallback scene splitting covers the entire story', () => {
-  const sentences = Array.from({ length: 12 }, (_, index) => `Beat ${index + 1}.`);
-  const scenes = splitIntoScenes(sentences.join(' '), 3);
-  assert.equal(scenes.length, 3);
-  assert.match(scenes[0].beat, /Beat 1/);
-  assert.match(scenes[2].beat, /Beat 12/);
-});
-
-test('fallback scene splitting returns the requested count for short text', () => {
-  const scenes = splitIntoScenes('One concise story beat with enough words to divide across scenes.', 4);
-  assert.equal(scenes.length, 4);
-  assert.ok(scenes.every((scene) => scene.beat.length > 0));
-});
+// splitIntoScenes and suggestSceneCount tests removed since they have been retired/moved to frontend.
 
 test('generated asset resolution rejects path traversal and unrelated paths', () => {
   assert.equal(resolveGeneratedAsset('../../.env'), null);
@@ -78,9 +52,10 @@ test('a style-prefilled common prompt is not duplicated in provider prompts', ()
 
 test('stub text mode uses local fallback prompts without calling remote providers', async () => {
   const style = { id: 'basic-cartoon', promptText: 'A playful comic style' };
+  const { splitIntoFragments, fallbackSceneFromFragment } = require('../src/shared/segmentation');
+  const scenes = splitIntoFragments('A hero enters a strange town. A shadow crosses the street.', 2).map(fallbackSceneFromFragment);
   const result = await buildScenePrompts({
-    scriptText: 'A hero enters a strange town.',
-    sceneCount: 2,
+    scenes,
     style,
     commonPromptText: '',
     provider: 'stub',
@@ -146,8 +121,7 @@ test('stub dialogue mode produces fallback narration without calling a remote pr
 test('stub prompt regeneration keeps a usable prompt without a remote provider', async () => {
   const style = { id: 'basic-cartoon', promptText: 'A playful comic style' };
   const result = await regenerateSinglePrompt({
-    scriptText: 'A hero enters a strange town.',
-    scene: { title: 'Scene 1', beat: 'A hero enters a town.', prompt: 'A hero stands in a town.' },
+    scene: { title: 'Scene 1', beat: 'A hero enters a town.', prompt: 'A hero stands in a town.', scriptFragment: 'A hero enters a strange town.' },
     sceneIndex: 0,
     style,
     commonPromptText: '',

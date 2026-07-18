@@ -20,6 +20,7 @@ const STYLE_MOTION_PROMPTS = Object.freeze({
   'cinematic-reality': 'Grounded weight, natural momentum, realistic follow-through.',
   'dark-gothic': 'Restrained movement, heavy drift, ominous atmosphere.',
   'indie-youtuber': 'Lively gestures, casual energy, clean motion.',
+  'money-wolf': 'Pop Art modern graphical realism, popular references.', 
   'vox-style': 'Crisp cutout slides, simple layers, light parallax.',
 });
 

@@ -4,7 +4,7 @@ import { ensureProjectSynced, getCurrentStoryboardRecord, persistStoryboardLibra
 import { loadProtectedAsset } from './assets.js';
 import { api } from './api.js';
 import { suggestSceneCountFromNarration } from './scene-count.js';
-import { computeStaleness } from './stages.js';
+import { computeStaleness, resolveSelectedSceneIndex } from './stages.js';
 
 let els = {};
 let activeScenePlayback = null;
@@ -60,7 +60,7 @@ function setElementProtectedAsset(element, propertyName, path, cacheKeyName = pr
 
 const ENTITY_CONFIG = {
   prompt: {
-    title: 'Visual Prompt',
+    title: 'Image Prompt',
     kind: 'text',
     fieldLabel: 'Visual prompt',
     getValue: (scene) => scene.prompt || '',
@@ -82,7 +82,10 @@ const ENTITY_CONFIG = {
     versions: (scene) => scene.versions || [],
     activeIndex: (scene) => scene.activeVersionIndex,
     selectVersion: (scene, vIndex) => { scene.activeVersionIndex = vIndex; scene.activeVisualType = 'image'; },
-    regen: (index, els, cb) => regenerateImage(index, null, els, cb).catch(() => {}),
+    // regenerate* throws deliberately on unmet prerequisites so the caller "has to consciously deal
+    // with it" rather than silently no-op-ing — surface that via the same setStatus callback used
+    // for progress messages, instead of discarding it.
+    regen: (index, els, cb) => regenerateImage(index, null, els, cb).catch((error) => cb(error.message)),
   },
   audio: {
     title: 'Audio',
@@ -90,7 +93,7 @@ const ENTITY_CONFIG = {
     versions: (scene) => scene.audioVersions || [],
     activeIndex: (scene) => scene.activeAudioVersionIndex,
     selectVersion: (scene, vIndex) => { scene.activeAudioVersionIndex = vIndex; },
-    regen: (index, els, cb) => regenerateAudio(index, null, els, cb).catch(() => {}),
+    regen: (index, els, cb) => regenerateAudio(index, null, els, cb).catch((error) => cb(error.message)),
   },
   video: {
     title: 'Video',
@@ -98,7 +101,7 @@ const ENTITY_CONFIG = {
     versions: (scene) => scene.videoVersions || [],
     activeIndex: (scene) => scene.activeVideoVersionIndex,
     selectVersion: (scene, vIndex) => { scene.activeVideoVersionIndex = vIndex; scene.activeVisualType = 'video'; },
-    regen: (index, els, cb) => regenerateVideo(index, null, els, cb).catch(() => {}),
+    regen: (index, els, cb) => regenerateVideo(index, null, els, cb).catch((error) => cb(error.message)),
   },
 };
 
@@ -462,7 +465,12 @@ function renderEntityModal() {
 
   const modalLibraryBtn = document.getElementById('entityModalLibraryBtn');
   if (modalLibraryBtn) {
-    modalLibraryBtn.hidden = type !== 'image';
+    const showLibrary = type === 'image';
+    modalLibraryBtn.hidden = !showLibrary;
+    // The button's own inline `style="display: flex"` (needed to lay out its icon + label) has
+    // higher cascade priority than the `[hidden]{display:none}` UA rule, so `.hidden` alone doesn't
+    // actually hide it — toggle the inline display directly instead.
+    modalLibraryBtn.style.display = showLibrary ? 'flex' : 'none';
     modalLibraryBtn.disabled = busy;
   }
 
@@ -536,7 +544,12 @@ function setupEntityModal() {
     // action on the narration view), never an incidental side effect of regenerating an image —
     // this button always just regenerates, regardless of how long the scene's narration has grown.
     confirmRegeneration(`Regenerate the ${config.title.toLowerCase()} for scene ${index + 1}? This creates a new version and makes it active.`).then((confirmed) => {
-      if (confirmed) config.regen(index, els, (t) => els.statusText.textContent = t);
+      if (!confirmed) return;
+      // Close immediately so the scene card's own spinner (driven by uiStore.operation, set
+      // synchronously inside regenerate* before its first await) is visible right away, instead of
+      // running invisibly behind a modal that never closes itself.
+      els.entityModal.close();
+      config.regen(index, els, (t) => els.statusText.textContent = t);
     });
   });
 
@@ -633,23 +646,14 @@ export function initRendering(domEls) {
     const scene = sceneStore.get().scenes[index];
     if (!scene) return;
 
-    const libraryBtn = e.target.closest('.scene-library-btn');
-    if (libraryBtn) {
-      import('./ui.js').then(({ openImageLibrary }) => {
-        openImageLibrary({
-          mode: 'scene-image',
-          sceneId: scene.id,
-          sceneNumber: index + 1,
-          sceneTitle: scene.title,
-          domEls: els,
-          setStatus: (msg) => {
-            const statusText = document.getElementById('statusText');
-            if (statusText) statusText.textContent = msg;
-          }
-        });
-      });
-      return;
-    }
+    // Any interaction with a card — the card itself, its status icons, the library button —
+    // selects it as the Start run's anchor, on top of whatever else the click does below. Locked
+    // while a run is active (uiStore.operation set) so a stray click mid-run can't be mistaken for
+    // changing the run's target — the run's range was already frozen at confirm time regardless, but
+    // letting the visible "selected" card drift during a run reads as if the target changed. Once the
+    // run stops, buildBatchFns's own progress tracking (stages.js) lands selection on wherever it
+    // actually stopped, and manual selection is free again from there.
+    if (uiStore.get().operation == null && uiStore.get().selectedSceneId !== scene.id) uiStore.set({ selectedSceneId: scene.id });
 
     const iconBtn = e.target.closest('.scene-status-icon');
     if (iconBtn && !iconBtn.disabled) {
@@ -773,7 +777,8 @@ function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio }) {
 export function renderScenes() {
   const scenes = sceneStore.get().scenes;
   const operation = uiStore.get().operation;
-  
+  const selectedIndex = resolveSelectedSceneIndex(scenes, uiStore.get().selectedSceneId);
+
   els.storyboardSection.hidden = scenes.length === 0 && operation?.type !== 'prompts';
 
   if (!scenes.length && operation?.type === 'prompts') {
@@ -822,13 +827,11 @@ export function renderScenes() {
       const isLoading = loadingByType[type];
       const displayName = STATUS_LABELS[type] || `${type[0].toUpperCase()}${type.slice(1)}`;
       const label = isLoading
-        ? `Regenerating ${displayName.toLowerCase()}...`
-        : isPresent
-          ? `Regenerate ${displayName.toLowerCase()}`
-          : `${displayName} missing`;
+        ? `Generating ${displayName.toLowerCase()}...`
+        : `Configure ${displayName.toLowerCase()}`;
       statusIcon.classList.toggle('is-present', isPresent);
       statusIcon.classList.toggle('is-loading', isLoading);
-      statusIcon.disabled = !isPresent || busy;
+      statusIcon.disabled = busy;
       statusIcon.setAttribute('aria-label', label);
       statusIcon.title = label;
     }
@@ -915,6 +918,7 @@ export function renderScenes() {
     }
 
     node.classList.toggle('is-busy', Object.values(loadingByType).some(Boolean));
+    node.classList.toggle('is-selected', index === selectedIndex);
     node.querySelector('.image-loading').classList.toggle('visible', loadingByType.image);
     node.querySelector('.video-loading').classList.toggle('visible', loadingByType.video);
 

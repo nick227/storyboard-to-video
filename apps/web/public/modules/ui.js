@@ -3,7 +3,7 @@ import { getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from 
 import { loadProtectedAsset } from './assets.js';
 import { api } from './api.js';
 import { previewVoice, openVoiceLibraryModal } from './voices.js';
-import { computeStageStatus, getCachedJobs, getStageSelection } from './stages.js';
+import { computeStageStatus, getCachedJobs } from './stages.js';
 import { suggestSceneCount, suggestSceneCountFromNarration } from './scene-count.js';
 
 const NO_MAPPING_AUDIO_PROVIDERS = ['stub'];
@@ -15,6 +15,7 @@ const LEGACY_STYLE_PROMPTS = {
   'dark-gothic': 'Dark gothic illustration with moody shadows, worn architecture, ominous atmosphere, muted deep palette, dramatic contrast, melancholic tone, haunting but readable composition.',
   'indie-youtuber': 'Clean modern creator aesthetic, expressive thumbnail-friendly composition, bright contrast, approachable personality, casual environments, trendy editorial feel, punchy simplified storytelling.',
   'vox-style': 'Editorial explainer visual language, clean infographic-like composition, simplified shapes, bold framing, smart modern color blocking, crisp design-led illustration, readable information-first storytelling.',
+  'money-wolf': 'Pop Art modern illustration, bold shapes, high contrast, playful composition, dynamic layout, saturated colors, commercial editorial feel, expressive dynamic composition.',
 };
 
 function migrateLegacyStylePrompt(saved, style, els) {
@@ -109,7 +110,12 @@ function renderStyleReferenceList(container, items, type, els, setStatus) {
     button.title = `Remove ${item.fileName}`;
     button.addEventListener('click', () => deleteStyleReference(type, item.fileName, els, setStatus));
     meta.append(name);
-    card.append(image, meta, button);
+    
+    const badge = document.createElement('span');
+    badge.className = `style-ref-badge ${item.isUserUploaded ? 'user' : 'system'}`;
+    badge.textContent = item.isUserUploaded ? 'User' : 'System';
+    
+    card.append(image, meta, button, badge);
     container.appendChild(card);
   });
 }
@@ -281,7 +287,8 @@ export function renderStageBar(els) {
   if (els.stageAudioStatus) els.stageAudioStatus.textContent = stageStatusLabel(status.audio);
   if (els.stageVideoStatus) els.stageVideoStatus.textContent = stageStatusLabel(status.video);
 
-  const selection = getStageSelection(status);
+  // Read-only status strip — selection now happens only in the Start modal (see openStartRunModal
+  // in app.js), so these boxes no longer toggle anything and are always disabled/non-interactive.
   for (const [key, button] of [['planning', els.stagePlanningBtn], ['images', els.stageImagesBtn], ['audio', els.stageAudioBtn], ['video', els.stageVideoBtn]]) {
     if (!button) continue;
     const stage = status[key];
@@ -292,29 +299,20 @@ export function renderStageBar(els) {
     // it to one color per box so it reads at a glance.
     button.classList.toggle('status-failed', Boolean(stage.failed));
     button.classList.toggle('status-actionable', hasWork && !stage.failed);
-    button.classList.toggle('is-selected', Boolean(selection[key]));
-    button.setAttribute('aria-pressed', String(Boolean(selection[key])));
-    // Never permanently disabled for "nothing detected to do" — our staleness tracking is a
-    // heuristic, not a complete picture (it can't see e.g. a server-side prompt-logic change), so
-    // the user must always be able to select a box and force a run. Only disabled while busy.
-    button.disabled = busy;
+    button.disabled = true;
   }
 
-  // One Start/Pause toggle runs the full Planning -> Images -> Audio -> Video sequence by default
-  // (the 99% case) and doubles as Pause while anything is running; Cancel is a separate, harder
-  // stop, disabled until something is actually running. Targeting a single stage instead is done by
-  // clicking directly on that stage's box, not through this control.
+  // One Start/Stop toggle runs the checked stages from the Start modal (the 99% case is all 4) and
+  // doubles as Stop while anything is running — Stop is always resumable, so there's no separate
+  // harder-stop control anymore. Targeting a subset of stages/scenes is done inside the modal.
   const activeMediaStage = ['images', 'audio', 'video'].find((stage) => status[stage].running);
   const planningActive = Boolean(uiState.operation && PLANNING_OPERATION_TYPES.includes(uiState.operation.type));
   const running = Boolean(activeMediaStage) || planningActive;
 
   if (els.startPauseBtn) {
-    els.startPauseBtn.textContent = running ? 'Pause' : 'Start';
+    els.startPauseBtn.textContent = running ? 'Stop' : 'Start';
     els.startPauseBtn.dataset.running = String(running);
     els.startPauseBtn.disabled = busy && !running;
-  }
-  if (els.cancelRunBtn) {
-    els.cancelRunBtn.disabled = !running;
   }
 
   if (els.settingsSceneCountInput) {
@@ -536,6 +534,15 @@ export async function openImageLibrary({ mode, styleId, sceneId, sceneNumber, sc
     hasRetrievedPast: false
   };
 
+  const uploadsTabBtn = modal.querySelector('.library-tabs .tab-btn[data-tab="uploads"]');
+  if (uploadsTabBtn) {
+    if (mode === 'character-reference' || mode === 'world-reference') {
+      uploadsTabBtn.textContent = 'Style References';
+    } else {
+      uploadsTabBtn.textContent = 'User Uploads';
+    }
+  }
+
   modal.querySelectorAll('.library-tabs .tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === 'uploads');
   });
@@ -700,7 +707,7 @@ function renderLibraryGrid(container, items, type) {
             const refType = item.type || (libraryState.mode === 'character-reference' ? 'characters' : 'world');
             await api(`/api/styles/${encodeURIComponent(styleId)}/references`, {
               method: 'DELETE',
-              body: JSON.stringify({ type: refType, fileName: item.fileName }),
+              body: JSON.stringify({ type: refType, fileName: item.fileName, deleteFile: true }),
             });
           } else {
             const assetType = item.type || 'ai-references';
@@ -721,6 +728,21 @@ function renderLibraryGrid(container, items, type) {
     }
     card.appendChild(img);
     card.appendChild(actions);
+
+    const badge = document.createElement('span');
+    badge.className = 'library-image-badge';
+    if (item.isSystemDefault) {
+      badge.textContent = 'System Default';
+      badge.classList.add('system');
+    } else if (item.path.includes('/user-style-references/')) {
+      badge.textContent = 'User Style Reference';
+      badge.classList.add('user-style');
+    } else {
+      badge.textContent = 'User Upload';
+      badge.classList.add('user');
+    }
+    card.appendChild(badge);
+
     container.appendChild(card);
   });
 }
@@ -809,11 +831,28 @@ async function removeImageFromActive(path, fileName) {
 }
 
 async function selectLibraryImage(path, fileName) {
-  const { mode, sceneId, domEls, setStatus } = libraryState;
+  const { mode, sceneId, domEls, setStatus, styleId } = libraryState;
   const projectId = projectStore.get().currentId;
 
   if (mode === 'character-reference' || mode === 'world-reference') {
-    await addImageToActive(path, fileName);
+    if (path.startsWith('/style-references/') || path.startsWith('/user-style-references/')) {
+      const type = mode === 'character-reference' ? 'characters' : 'world';
+      try {
+        if (setStatus) setStatus(`Activating ${type} reference...`);
+        const data = await api(`/api/styles/${encodeURIComponent(styleId)}/references/activate`, {
+          method: 'POST',
+          body: JSON.stringify({ type, fileName }),
+        });
+        generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
+        renderStyleReferences(domEls, setStatus);
+        renderActiveList();
+        if (setStatus) setStatus(`Activated ${type} reference.`);
+      } catch (err) {
+        if (setStatus) setStatus(`Failed to activate: ${err.message}`);
+      }
+    } else {
+      await addImageToActive(path, fileName);
+    }
   } else if (mode === 'scene-image') {
     try {
       if (setStatus) setStatus('Attaching image version to scene...');

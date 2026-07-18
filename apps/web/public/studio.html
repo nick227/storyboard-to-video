@@ -37,9 +37,6 @@
 
     <section class="concept-grid">
       <article class="panel concept-column story-concept">
-        <div class="concept-heading">
-          <h2>Screenplay</h2>
-        </div>
         <textarea id="scriptText" class="script-textarea" rows="7"
           placeholder="Paste story or script here..."></textarea>
       </article>
@@ -49,13 +46,29 @@
       <!-- ooo -->
 
       <article class="panel concept-column video-concept">
-        <div class="concept-heading">
-          <h2>Settings</h2>
-        </div>
 
         <!-- o -->
 
         <input type="hidden" id="fallbackPolicy" value="local" />
+
+        <!-- o -->
+
+        <div class="settings-launchers" aria-label="Additional settings">
+          <button type="button" id="settingsBtn" class="settings-launch-button" aria-haspopup="dialog"
+            aria-controls="settingsModal">
+            <span class="settings-launch-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </span>
+            <span class="settings-launch-copy"><strong>Settings</strong><small>Text provider, motion, scene
+                count &amp; common prompt</small></span>
+            <span class="settings-launch-arrow" aria-hidden="true">›</span>
+          </button>
+        </div>
+
+        <!-- o -->
 
         <div class="full-fields">
           <label>
@@ -83,14 +96,11 @@
         </div>
 
         <!-- o -->
-
-        <div class="settings-modal-section-heading">
-          <h3>Style References</h3>
-        </div>
+         
         <div id="styleReferencesPanel" class="reference-groups">
           <section class="style-ref-col">
             <div class="style-ref-col-header">
-              <div><strong>Character references</strong><small>People, creatures, and wardrobe</small></div>
+              <div><strong>Character references</strong></div>
               <div class="ref-actions">
                 <label class="upload-chip hidden">
                   <input id="characterRefInput" type="file" accept="image/*" multiple hidden />
@@ -105,9 +115,10 @@
             </div>
             <div id="characterRefs" class="style-ref-list"></div>
           </section>
+          
           <section class="style-ref-col">
             <div class="style-ref-col-header">
-              <div><strong>World references</strong><small>Locations, sets, and atmosphere</small></div>
+              <div><strong>World references</strong></div>
               <div class="ref-actions">
                 <label class="upload-chip hidden">
                   <input id="worldRefInput" type="file" accept="image/*" multiple hidden />
@@ -126,55 +137,38 @@
 
         <!-- o -->
 
-        <div class="settings-launchers" aria-label="Additional settings">
-          <button type="button" id="settingsBtn" class="settings-launch-button" aria-haspopup="dialog"
-            aria-controls="settingsModal">
-            <span class="settings-launch-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-            </span>
-            <span class="settings-launch-copy"><strong>Settings</strong><small>Text provider, motion, scene
-                count &amp; common prompt</small></span>
-            <span class="settings-launch-arrow" aria-hidden="true">›</span>
-          </button>
-        </div>
-
-        <!-- o -->
-
       </article>
 
       <!-- End entity generation panels -->
 
     </section>
 
-    <input type="checkbox" id="enrichNarration" checked hidden aria-hidden="true" />
+    <input type="checkbox" id="enrichNarration" hidden aria-hidden="true" />
 
     <section class="stage-bar mb-20" aria-label="Production stages">
       <div class="stage-bar-stages">
-        <button type="button" id="stagePlanningBtn" class="stage-button" aria-pressed="true">
+        <button type="button" id="stagePlanningBtn" class="stage-button" disabled>
           <span class="stage-button-top">
             <span class="stage-button-label">Planning</span>
             <span class="stage-button-spinner" aria-hidden="true"></span>
           </span>
           <span class="stage-button-status" id="stagePlanningStatus">Not started</span>
         </button>
-        <button type="button" id="stageImagesBtn" class="stage-button" aria-pressed="true">
+        <button type="button" id="stageImagesBtn" class="stage-button" disabled>
           <span class="stage-button-top">
             <span class="stage-button-label">Images</span>
             <span class="stage-button-spinner" aria-hidden="true"></span>
           </span>
           <span class="stage-button-status" id="stageImagesStatus">Not started</span>
         </button>
-        <button type="button" id="stageAudioBtn" class="stage-button" aria-pressed="true">
+        <button type="button" id="stageAudioBtn" class="stage-button" disabled>
           <span class="stage-button-top">
             <span class="stage-button-label">Audio</span>
             <span class="stage-button-spinner" aria-hidden="true"></span>
           </span>
           <span class="stage-button-status" id="stageAudioStatus">Not started</span>
         </button>
-        <button type="button" id="stageVideoBtn" class="stage-button" aria-pressed="true">
+        <button type="button" id="stageVideoBtn" class="stage-button" disabled>
           <span class="stage-button-top">
             <span class="stage-button-label">Video</span>
             <span class="stage-button-spinner" aria-hidden="true"></span>
@@ -185,7 +179,6 @@
 
       <div class="stage-bar-actions">
         <button type="button" id="startPauseBtn" class="primary">Start</button>
-        <button type="button" id="cancelRunBtn" class="danger" disabled>Cancel</button>
       </div>
     </section>
 
@@ -264,8 +257,8 @@
           <h3 class="scene-title"></h3>
         </div>
         <div class="scene-status" aria-label="Scene status — also regenerate buttons">
-          <button type="button" class="scene-status-icon" data-status="prompt" disabled aria-label="Prompt missing"
-            title="Prompt missing">
+          <button type="button" class="scene-status-icon" data-status="prompt" aria-label="Configure prompt"
+            title="Configure prompt">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
               <path d="M14 2v6h6M8 13h8M8 17h5" />
@@ -280,8 +273,8 @@
               <circle cx="8" cy="8" r="1" />
             </svg>
           </button>
-          <button type="button" class="scene-status-icon" data-status="image" disabled aria-label="Image missing"
-            title="Image missing">
+          <button type="button" class="scene-image-btn scene-status-icon" data-status="image" aria-label="Configure image"
+            title="Configure image">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <rect width="18" height="18" x="3" y="3" rx="2" />
               <circle cx="9" cy="9" r="2" />
@@ -289,29 +282,24 @@
             </svg>
             <span class="status-icon-spinner" aria-hidden="true"></span>
           </button>
-          <button type="button" class="scene-library-btn scene-status-icon" title="Open Image Library">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0-2-.9-2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-            </svg>
-          </button>
-          <button type="button" class="scene-status-icon" data-status="dialogue" disabled aria-label="Narration missing"
-            title="Narration missing">
+          <button type="button" class="scene-status-icon" data-status="dialogue" aria-label="Configure narration"
+            title="Configure narration">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
               <path d="M8 9h8M8 13h5" />
             </svg>
             <span class="status-icon-spinner" aria-hidden="true"></span>
           </button>
-          <button type="button" class="scene-status-icon" data-status="audio" disabled aria-label="Audio missing"
-            title="Audio missing">
+          <button type="button" class="scene-status-icon" data-status="audio" aria-label="Configure audio"
+            title="Configure audio">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M11 5 6 9H2v6h4l5 4Z" />
               <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
             </svg>
             <span class="status-icon-spinner" aria-hidden="true"></span>
           </button>
-          <button type="button" class="scene-status-icon" data-status="video" disabled aria-label="Video missing"
-            title="Video missing">
+          <button type="button" class="scene-status-icon" data-status="video" aria-label="Configure video"
+            title="Configure video">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <rect width="15" height="14" x="2" y="5" rx="2" />
               <path d="m17 10 5-3v10l-5-3Z" />
@@ -484,7 +472,7 @@
         </div>
         <label class="checkbox-field row">
           <input type="checkbox" id="settingsSceneCountAutoCheckbox" />
-          <span>Infinite scenes (auto-determine)</span>
+          <span>Auto</span>
         </label>
       </div>
 
@@ -552,6 +540,66 @@
     <div class="generation-confirm-actions">
       <button type="button" id="generationConfirmCancelBtn" class="secondary">Cancel</button>
       <button type="button" id="generationConfirmRunBtn" class="primary">Continue</button>
+    </div>
+  </dialog>
+
+  <dialog id="startRunModal" class="generation-confirm-modal" aria-labelledby="startRunTitle">
+    <div class="generation-confirm-header">
+      <h2 id="startRunTitle">Start production</h2>
+      <button type="button" id="startRunCloseBtn" class="secondary text-button" aria-label="Close Start dialog">✕</button>
+    </div>
+    <div class="generation-confirm-body">
+
+      <div class="start-run-rows" id="startRunRows">
+        <label class="start-run-row">
+          <input type="checkbox" id="startRunPlanningCheck" data-stage="planning" />
+          <span class="start-run-row-main">
+            <span class="start-run-row-label">Planning</span>
+            <span class="start-run-row-status" id="startRunPlanningStatus"></span>
+          </span>
+        </label>
+        <label class="start-run-row">
+          <input type="checkbox" id="startRunImagesCheck" data-stage="images" />
+          <span class="start-run-row-main">
+            <span class="start-run-row-label">Images</span>
+            <span class="start-run-row-status" id="startRunImagesStatus"></span>
+          </span>
+        </label>
+        <label class="start-run-row">
+          <input type="checkbox" id="startRunAudioCheck" data-stage="audio" />
+          <span class="start-run-row-main">
+            <span class="start-run-row-label">Audio</span>
+            <span class="start-run-row-status" id="startRunAudioStatus"></span>
+          </span>
+        </label>
+        <label class="start-run-row">
+          <input type="checkbox" id="startRunVideoCheck" data-stage="video" />
+          <span class="start-run-row-main">
+            <span class="start-run-row-label">Video</span>
+            <span class="start-run-row-status" id="startRunVideoStatus"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="start-run-range" role="radiogroup" aria-label="How many scenes">
+        <label class="start-run-range-option row">
+          <input type="radio" name="startRunRange" id="startRunRangeAll" value="all" />
+          <span>All</span>
+        </label>
+        <label class="start-run-range-option row">
+          <input type="radio" name="startRunRange" id="startRunRangeNext" value="next" checked />
+          <span>Next</span>
+          <input type="number" id="startRunNextCount" min="1" value="1" max="10" aria-label="Number of scenes" />
+        </label>
+      </div>
+      
+      <p class="start-run-anchor">Start from Scene <span id="startRunSceneLabel">1</span> / <span id="startRunSceneTotal">0</span></p>
+
+      <p id="startRunWarning" class="generation-confirm-intro" hidden></p>
+    </div>
+    <div class="generation-confirm-actions">
+      <button type="button" id="startRunCancelBtn" class="secondary">Cancel</button>
+      <button type="button" id="startRunConfirmBtn" class="primary">Start</button>
     </div>
   </dialog>
 

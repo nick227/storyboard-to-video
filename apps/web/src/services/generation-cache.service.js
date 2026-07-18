@@ -55,7 +55,24 @@ function createGenerationCacheService({ store }) {
     });
   }
 
-  return { lookup, record };
+  async function runCached({ tenantId, operation, provider, promptTemplateVersion, source, settings, bypassCache, generateFn }) {
+    const fingerprintInput = tenantId ? {
+      tenantId, operation, provider, promptTemplateVersion,
+      source: typeof source === 'string' ? source : JSON.stringify(source),
+      settings,
+    } : null;
+    if (fingerprintInput && !bypassCache) {
+      const cached = await lookup(fingerprintInput);
+      if (cached) return { ...cached.result, cacheHit: true };
+    }
+    const result = await generateFn();
+    if (fingerprintInput) {
+      await record(fingerprintInput, result, { bypassed: bypassCache });
+    }
+    return result;
+  }
+
+  return { lookup, record, runCached };
 }
 
 module.exports = { createGenerationCacheService };

@@ -64,7 +64,7 @@ button.is-loading::before {
   border-top-color: currentColor;
   border-radius: 50%;
   vertical-align: -2px;
-  animation: spin 0.75s linear infinite;
+  animation: pulse 0.75s linear infinite;
 }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, .upload-chip:focus-within {
   outline: 3px solid rgba(79, 140, 255, 0.7);
@@ -194,10 +194,10 @@ label > span {
   min-width: 0;
   flex-direction: column;
   gap: 12px;
-  min-height: 380px;
+  min-height: 80px;
 }
 .panel.concept-column {
-  min-height: 755px;
+  min-height: 55px;
 }
 .concept-heading h2 {
   margin: 0;
@@ -336,15 +336,13 @@ label > span {
   border-radius: 50%;
   animation: spin 0.75s linear infinite;
 }
-/* Status color (what kind of work is outstanding) — kept to 3 states so it reads at a glance. */
-.stage-button.status-actionable { border-color: rgba(79,140,255,.5); color: var(--accent); }
+/* Status color (what kind of work is outstanding) — kept to 3 states so it reads at a glance.
+   Read-only strip: selection lives only in the Start modal now, so these are status indicators,
+   not toggles — opacity tracks "is there something noteworthy here", not selection. */
+.stage-button.status-actionable { border-color: rgba(79,140,255,.5); color: var(--accent); opacity: 1; }
 .stage-button.status-actionable .stage-button-label { color: var(--text); }
-.stage-button.status-failed { border-color: var(--danger); color: var(--danger); }
+.stage-button.status-failed { border-color: var(--danger); color: var(--danger); opacity: 1; }
 .stage-button.status-failed .stage-button-label { color: var(--text); }
-/* Selection (what Start will act on next) — full opacity + a filled label prefix means selected;
-   a box with nothing to do is never selectable, so it stays dimmed regardless of status. */
-.stage-button.is-selected { opacity: 1; }
-.stage-button.is-selected .stage-button-label::before { content: '✓ '; color: var(--accent); }
 .stage-button:disabled { cursor: default; }
 .stage-button.is-running { border-color: rgba(79,140,255,.65); background: var(--accent-soft); opacity: 1; }
 .stage-button.is-running .stage-button-spinner { display: block; }
@@ -362,7 +360,7 @@ label > span {
 .settings-danger-zone { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .script-field textarea,
-.script-textarea { min-height: 640px; resize: vertical; }
+.script-textarea { min-height: 465px; resize: vertical; }
 .settings-launchers {
   display: grid;
   gap: 8px;
@@ -508,9 +506,11 @@ details > summary::marker { color: var(--muted); }
   gap: 12px;
 }
 .reference-groups {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  height: 240px;
+  overflow-y: scroll;
 }
 .voices-heading {
   display: flex;
@@ -591,7 +591,7 @@ details > summary::marker { color: var(--muted); }
 .upload-chip input:disabled + span { opacity: 0.55; cursor: not-allowed; }
 .style-ref-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
   min-height: 92px;
 }
@@ -676,6 +676,10 @@ details > summary::marker { color: var(--muted); }
   margin: 0 auto !important;
 }
 .scene-card.is-busy { border-color: rgba(79, 140, 255, 0.7); }
+/* The run anchor ("Start from Scene N") — deliberately distinct from is-busy's blue so a scene can
+   read as both "selected" and "currently processing" at once without the signals blending. */
+.scene-card.is-selected { border-color: #f2b544; border-width: 2px; padding: 13px; }
+.scene-card.is-selected.is-busy { border-color: #f2b544; box-shadow: inset 0 0 0 1px rgba(79, 140, 255, 0.7); }
 .scene-header {
   display: flex;
   flex-direction: column;
@@ -720,8 +724,8 @@ details > summary::marker { color: var(--muted); }
   background: rgba(255, 255, 255, 0.025);
   color: #59636f;
   transition: color 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
-  opacity: 0;
-  cursor: not-allowed;
+  opacity: 0.45;
+  cursor: pointer;
 }
 .scene-status-icon svg {
   width: 15px;
@@ -741,17 +745,24 @@ details > summary::marker { color: var(--muted); }
 .scene-status-icon.is-present svg {
   stroke: #ffffff;
 }
+.scene-status-icon:hover:not(:disabled) {
+  border-color: #59636f;
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 0.85;
+}
 .scene-status-icon.is-present:hover:not(:disabled) {
   border-color: #8fb5ff;
   background: rgba(79, 140, 255, 0.14);
   box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.18);
+  opacity: 1;
 }
 .scene-status-icon:disabled {
-  opacity: 0;
+  opacity: 0.2;
   cursor: not-allowed;
 }
 .scene-status-icon.is-present:disabled {
   opacity: 0.55;
+  cursor: not-allowed;
 }
 .scene-status-icon[data-status="reference"].has-scene-references {
   color: #73ddb1;
@@ -762,6 +773,7 @@ details > summary::marker { color: var(--muted); }
   display: none;
   width: 13px;
   height: 13px;
+  flex: 0 0 auto;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: currentColor;
   border-radius: 50%;
@@ -1184,6 +1196,47 @@ button.text-button {
   background: rgba(5, 8, 12, .22);
 }
 
+.start-run-anchor { margin: 0 0 16px; font-size: 14px; font-weight: 700; color: var(--text); }
+.start-run-anchor span { color: #a9c5ff; }
+.start-run-range {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(255,255,255,.02);
+}
+.start-run-range-option { display: flex; gap: 8px; font-size: 13px; }
+.start-run-range-option input[type="number"] {
+  width: 56px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  margin-top: -6px;
+}
+.start-run-range-option label > span {
+  margin-top: 0 !important;
+  margin-top: 2px;
+}
+.start-run-rows { display: grid; gap: 8px; }
+.start-run-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(255,255,255,.02);
+  cursor: pointer;
+}
+.start-run-row input[type="checkbox"] { margin-top: 3px; }
+.start-run-row-main { display: flex; flex-direction: column; gap: 2px; }
+.start-run-row-label { font-size: 13px; font-weight: 700; }
+.start-run-row-status { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
 .voice-library-modal {
   width: min(560px, 92vw);
   max-height: 85vh;
@@ -1589,6 +1642,10 @@ button.text-button {
   will-change: transform;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
 @keyframes shimmer { to { background-position-x: -220%; } }
 @media (prefers-reduced-motion: reduce) {
   .spinner, button.is-loading::before, .empty-image-target { animation-duration: 1.8s; }
@@ -1871,5 +1928,55 @@ button.text-button {
   font-weight: 500;
   border-radius: 12px;
   backdrop-filter: blur(2px);
+}
+
+/* Style reference & library image badges */
+.library-image-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+  color: #fff;
+  font-size: 8px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-weight: 500;
+  pointer-events: none;
+  z-index: 2;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.library-image-badge.system {
+  background: rgba(30, 64, 175, 0.85);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+}
+.library-image-badge.user-style {
+  background: rgba(6, 95, 70, 0.85);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+.library-image-badge.user {
+  background: rgba(146, 64, 14, 0.85);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.style-ref-badge {
+  position: absolute;
+  bottom: 3px;
+  left: 3px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  font-size: 8px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  pointer-events: none;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+.style-ref-badge.system {
+  background: rgba(30, 64, 175, 0.9);
+}
+.style-ref-badge.user {
+  background: rgba(6, 95, 70, 0.9);
 }
 

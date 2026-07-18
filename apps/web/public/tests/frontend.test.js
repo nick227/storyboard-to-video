@@ -149,8 +149,9 @@ async function runTests() {
     addResult('Settings Modal Launchers', true);
 
     // Test 15: The old flat 5-button generation toolbar is gone, replaced by a compact
-    // Planning/Images/Audio/Video stage bar with a single Start/Pause toggle and a Cancel button —
-    // no preset dropdown, no auto-accept/custom-stage checkboxes, no separate Create Story button.
+    // Planning/Images/Audio/Video status strip (read-only — selection lives in the Start modal) and
+    // a single Start/Stop toggle — no preset dropdown, no auto-accept/custom-stage checkboxes, no
+    // separate Create Story button, and no separate Cancel control (Stop is always resumable).
     const uiSource = await (await fetch('/modules/ui.js')).text();
     const stagesSource = await (await fetch('/modules/stages.js')).text();
     assert(!indexSource.includes('class="generation-toolbar'), 'Old flat generation toolbar markup should be gone');
@@ -162,17 +163,24 @@ async function runTests() {
     assert(!indexSource.includes('id="stagePrimaryActionBtn"'), 'The old dynamic multi-label primary action button should be gone');
     assert(!indexSource.includes('id="createStoryBtn"') && !indexSource.includes('id="createStoryPreset"'), 'The preset dropdown and Create Story button should be gone');
     assert(!indexSource.includes('id="createStoryAutoAccept"') && !indexSource.includes('id="createStoryCustomStages"'), 'The auto-accept and custom-stage checkboxes should be gone');
+    assert(!indexSource.includes('id="cancelRunBtn"'), 'The separate Cancel control should be gone — Stop is always resumable, so there is only one control');
     assert(indexSource.includes('class="stage-bar'), 'New stage bar markup should be present');
-    assert(indexSource.includes('id="stagePlanningBtn"') && indexSource.includes('id="stageImagesBtn"') && indexSource.includes('id="stageAudioBtn"') && indexSource.includes('id="stageVideoBtn"'), 'Stage bar should expose Planning/Images/Audio/Video stage buttons');
+    assert(indexSource.includes('id="stagePlanningBtn"') && indexSource.includes('id="stageImagesBtn"') && indexSource.includes('id="stageAudioBtn"') && indexSource.includes('id="stageVideoBtn"'), 'Stage bar should expose Planning/Images/Audio/Video status boxes');
+    assert(/id="stagePlanningBtn"[^>]*\bdisabled\b/.test(indexSource), 'Stage boxes are read-only status now — selection happens only in the Start modal');
     assert(indexSource.includes('class="stage-button-spinner"'), 'Stage boxes should have room for a running spinner');
-    assert(indexSource.includes('id="startPauseBtn"'), 'Stage bar should expose a single Start/Pause toggle');
-    assert(indexSource.includes('id="cancelRunBtn"'), 'Stage bar should expose a Cancel control');
-    assert(/id="cancelRunBtn"[^>]*\bdisabled\b/.test(indexSource), 'Cancel should start disabled until something is running');
+    assert(indexSource.includes('id="startPauseBtn"'), 'Stage bar should expose a single Start/Stop toggle');
+    assert(indexSource.includes('id="startRunModal"'), 'The Start modal should be present as the primary run-control surface');
+    assert(indexSource.includes('id="startRunSceneLabel"') && indexSource.includes('id="startRunSceneTotal"'), 'The Start modal should show "Start from Scene N / Total"');
+    assert(indexSource.includes('id="startRunRangeAll"') && indexSource.includes('id="startRunRangeNext"') && indexSource.includes('id="startRunNextCount"'), 'The Start modal should offer an All-remaining / Next-N range picker');
+    assert(indexSource.includes('id="startRunPlanningCheck"') && indexSource.includes('id="startRunImagesCheck"') && indexSource.includes('id="startRunAudioCheck"') && indexSource.includes('id="startRunVideoCheck"'), 'The Start modal should hold the Planning/Images/Audio/Video checkable rows');
     assert(stagesSource.includes('export function computeStageStatus'), 'stages.js should expose stage status derivation');
     assert(stagesSource.includes('export async function generateMissingOrStale') && stagesSource.includes('export async function regenerateAllStage'), 'stages.js should expose missing/stale and regenerate-all orchestration');
     assert(stagesSource.includes('export async function startPlanning'), 'stages.js should expose Planning orchestration');
     assert(stagesSource.includes('export async function runCreateStoryFlow'), 'stages.js should expose the full-sequence run used by Start');
-    assert(stagesSource.includes('export function cancelActiveWork'), 'stages.js should expose a distinct Cancel action from Pause');
+    assert(stagesSource.includes('export function stopActiveWork'), 'stages.js should expose a single Stop action — Pause and Cancel are unified');
+    assert(!stagesSource.includes('export function cancelActiveWork'), 'the separate Cancel action should be gone');
+    assert(stagesSource.includes('export function computeRunRange') && stagesSource.includes('export function resolveSelectedSceneIndex'), 'stages.js should expose the selected-scene range helpers the Start modal uses');
+    assert(stagesSource.includes('export function buildRunRowStatus') && stagesSource.includes('export function computeForceStages'), 'stages.js should expose the Start modal row-status and force-regenerate helpers');
     assert(uiSource.includes('renderGenerationSummary'), 'The status bar should summarize generation completion');
     addResult('Stage Bar Replaces Flat Generation Toolbar', true);
 
@@ -208,12 +216,13 @@ async function runTests() {
     assert(appSource.includes('will rebuild the storyboard structure and retire media'), 'Reducing scene count should still name the destructive consequence explicitly, not hide it behind "Replan"');
     addResult('Planning Modal And Stage Dialog Removed In Favor Of Settings', true);
 
-    // Test 21: Stage boxes are color-coded status indicators AND the sole selectable target for
-    // Start — clicking a box only toggles selection now (there is no modal left for it to open),
-    // and Start still shows a confirmation screen summarizing exactly what will run.
+    // Test 21: Stage boxes are color-coded, read-only status indicators — selection happens only
+    // inside the Start modal now, which is itself the confirmation screen (range + checkable rows)
+    // rather than a separate static bullet list.
     assert(uiSource.includes("status-actionable") && uiSource.includes("status-failed"), 'Stage boxes should be color-coded by status');
-    assert(stagesSource.includes('export function getStageSelection') && stagesSource.includes('export function toggleStageSelection'), 'stages.js should expose the stage-box selection model Start reads from');
-    assert(appSource.includes("requestGenerationConfirmation('startRun'"), 'Start must still show a confirmation screen summarizing exactly what will run before it runs anything');
+    assert(stagesSource.includes('export function getStageSelection') && stagesSource.includes('export function toggleStageSelection'), 'stages.js should expose the selection model the Start modal reads from');
+    assert(appSource.includes('openStartRunModal'), 'Start must open the Start modal — the modal itself is the confirmation screen summarizing exactly what will run');
+    assert(!appSource.includes("requestGenerationConfirmation('startRun'"), 'the old static startRun confirmation kind should be gone — the Start modal replaced it');
     addResult('Selectable Color-Coded Stage Boxes With Confirmation', true);
 
     // Test 17: Storyboard density controls expose six layouts and wire them to the grid.

@@ -8,4 +8,10 @@ function getAdditionalCommonPrompt(stylePrompt, commonPrompt, max = 20_000) {
   return common.startsWith(style) ? common.slice(style.length).trim() : common;
 }
 function extractJson(text) { if (!text) return null; try { return JSON.parse(text); } catch (_) {} const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/); if (!match) return null; try { return JSON.parse(match[0]); } catch (_) { return null; } }
-module.exports = { clampSceneCount, cleanText, extractJson, getAdditionalCommonPrompt, slugify };
+function compactWords(value, maxWords) {
+  return cleanText(value, 5_000).split(/\s+/).filter(Boolean).slice(0, maxWords).join(' ');
+}
+function compactAction(value, fallback = 'Subject moves.') {
+  return compactWords(value, 24) || fallback;
+}
+module.exports = { clampSceneCount, cleanText, extractJson, getAdditionalCommonPrompt, slugify, compactWords, compactAction };

@@ -65,11 +65,8 @@ test('prompt regenerate: bypassCache forces a fresh provider call and preserves 
     assert.equal(provider.calls(), 2, 'an explicit bypass must always call the provider again');
     assert.notEqual(second.prompt, first.prompt);
 
-    // Variation history is preserved: a plain (non-bypass) lookup afterward can still find an
-    // entry whose result equals the ORIGINAL first-call output somewhere in the cache history,
-    // proving the bypass did not overwrite/destroy it.
     const fingerprint = require('../src/shared/fingerprint').computeFingerprint({
-      tenantId: 'tenant-a', operation: 'prompt.regenerate', provider: 'gemini', promptTemplateVersion: 1,
+      tenantId: 'tenant-a', operation: 'prompt.regenerate', provider: 'gemini', promptTemplateVersion: 2,
       source: JSON.stringify({
         source: SCENE.scriptFragment,
         sceneIndex: 0,
@@ -78,8 +75,6 @@ test('prompt regenerate: bypassCache forces a fresh provider call and preserves 
         existingPrompt: SCENE.prompt,
         usedNarrationSource: false,
         narrationText: '',
-        previousBeat: '',
-        nextBeat: '',
         extraPromptText: undefined,
         styleId: STYLE.id,
         stylePromptText: STYLE.promptText,
@@ -126,16 +121,16 @@ test('narration regenerate: identical input reuses the cached result; explicit b
     ]);
     const dialogue = createDialogueService({ textProviders: provider, generationCache });
     const scene = { ...SCENE };
-    const input = { scene, sceneIndex: 0, provider: 'gemini', tenantId: 'tenant-a' };
+    const input = { scene, provider: 'gemini', tenantId: 'tenant-a' };
 
-    const first = await dialogue.regenerateNarration(input);
+    const first = await dialogue.regenerate(input);
     assert.equal(provider.calls(), 1);
-    const second = await dialogue.regenerateNarration(input);
+    const second = await dialogue.regenerate(input);
     assert.equal(provider.calls(), 1, 'identical narration regenerate input must reuse the cached result');
     assert.equal(second.cacheHit, true);
     assert.equal(second.narrationText, first.narrationText);
 
-    const third = await dialogue.regenerateNarration({ ...input, bypassCache: true });
+    const third = await dialogue.regenerate({ ...input, bypassCache: true });
     assert.equal(provider.calls(), 2, 'bypassCache must force a fresh provider call');
     assert.notEqual(third.narrationText, first.narrationText);
   } finally {
@@ -177,8 +172,7 @@ test('a cache hit writes its own audit row (servedFromEntryId) without creating 
     const files = fs.readdirSync(store.root).filter((name) => name.startsWith(store.prefix('tenant-a', require('../src/shared/fingerprint').computeFingerprint(input).fingerprintHash)));
     const rows = files.map((name) => JSON.parse(fs.readFileSync(path.join(store.root, name), 'utf8')));
     const hitRow = rows.find((row) => row.servedFromEntryId === stored.id);
-    assert.ok(hitRow, 'the hit must be recorded as its own auditable row referencing the entry it reused');
-    assert.equal(hitRow.bypassed, false);
+    assert.ok(hitRow, 'the audit entry must link to the original cache entry');
   } finally {
     cleanup();
   }

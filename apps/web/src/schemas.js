@@ -56,10 +56,12 @@ const splitScene = z.object({
   // Keep this max in sync with MAX_SPLIT_COUNT in apps/web/public/modules/scene-count.js — the
   // frontend clamps every split request to that same value before it ever reaches this schema.
   count: z.coerce.number().int().min(2).max(8).default(2),
-  // Optional richer source: when the original scriptFragment is too short to support the requested
-  // split count, the service falls back to splitting this instead (only sent by the client when
-  // Enrich is on and the scene has narration).
+  // The scene's real (non-fallback) narration, if it has any — only sent when Enrich is on and the
+  // scene has real narration. The split service preserves this verbatim across the children rather
+  // than regenerating it; see scene-split.service.js.
   narrationText: z.string().trim().max(6_000).default(''),
+  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
+  fallbackPolicy,
 });
 
 const regenerateAction = z.object({

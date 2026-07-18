@@ -10,9 +10,10 @@ import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
 // Provenance fields (promptGeneratedFromBeat / promptGeneratedFromNarration / audio version
 // narrationText) are server-authored (see prompt-generation.service.js / audio-generation.service.js)
 // so staleness survives reloads and concurrent tabs instead of depending on client-held state. The
-// audio provider check is the one exception: it compares against the currently selected
-// voiceStore.audioProvider so switching providers immediately marks existing audio stale, even
-// though that selection isn't itself part of the persisted version's provenance snapshot.
+// audio/image provider checks are the one exception: they compare against the currently selected
+// voiceStore.audioProvider / record.imageProvider so switching providers immediately marks existing
+// media stale, even though that selection isn't itself part of the persisted version's provenance
+// snapshot.
 export function computeStaleness(scene) {
   const activeImage = (scene.versions || [])[scene.activeVersionIndex] || null;
   const activeAudio = (scene.audioVersions || [])[scene.activeAudioVersionIndex] || null;
@@ -26,8 +27,13 @@ export function computeStaleness(scene) {
 
   // Compare against `scenePrompt` (the raw scene-level prompt), not `prompt` — the version's
   // `prompt` field is the full composed provider prompt (style + common + scene + extra) and can
-  // never equal `scene.prompt` alone, which would make every image read as permanently stale.
-  const imageStale = Boolean(activeImage?.path) && String(activeImage.scenePrompt || '') !== String(scene.prompt || '');
+  // never equal `scene.prompt` alone, which would make every image read as permanently stale. The
+  // provider check only applies when the version actually recorded one — versions created before
+  // this field existed have `provider: undefined` and must not all be mass-marked stale on upgrade.
+  const imageStale = Boolean(activeImage?.path) && (
+    String(activeImage.scenePrompt || '') !== String(scene.prompt || '') ||
+    (Boolean(activeImage.provider) && String(activeImage.provider) !== String(getCurrentStoryboardRecord()?.imageProvider || ''))
+  );
   const audioStale = Boolean(activeAudio?.path) && (
     String(activeAudio.narrationText || '') !== String(scene.narrationText || '') ||
     String(activeAudio.provider || '') !== String(voiceStore.get().audioProvider || '')
@@ -163,26 +169,6 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
   return { planning, images, audio, video };
 }
 
-// --- Primary action ----------------------------------------------------------
-
-// Always the next useful step: Plan Story -> Generate Images -> Generate Audio -> Generate Video
-// -> Resume (if anything is paused/failed) -> idle. Pure function so it's trivially testable.
-export function getPrimaryAction(stageStatus) {
-  const { planning, images, audio, video } = stageStatus;
-
-  const paused = ['images', 'audio', 'video'].find((key) => stageStatus[key].paused);
-  if (paused) return { stage: paused, label: 'Resume', kind: 'resume' };
-
-  if (!planning.total || planning.missing > 0) {
-    return { stage: 'planning', label: planning.total ? 'Continue Planning' : 'Plan Story', kind: 'plan' };
-  }
-  if (images.missing > 0 || images.stale > 0) return { stage: 'images', label: 'Generate Images', kind: 'generateMissingOrStale' };
-  if (audio.missing > 0 || audio.stale > 0) return { stage: 'audio', label: 'Generate Audio', kind: 'generateMissingOrStale' };
-  if (video.missing > 0 || video.stale > 0) return { stage: 'video', label: 'Generate Video', kind: 'generateMissingOrStale' };
-
-  return { stage: null, label: 'All stages complete', kind: 'idle' };
-}
-
 // --- Durable job snapshot -----------------------------------------------------
 
 // Small, explicitly-refreshed cache (not re-fetched on every render) — callers refresh it at load
@@ -264,12 +250,13 @@ export async function runPlanning(els, setStatus, { onSceneCountDecision } = {})
 // "Update stale only": regenerates prompts for scenes whose prompt provenance is stale, and NEVER
 // touches narration — narration and prompts are separate upstream/downstream artifacts, and a stale
 // prompt does not imply the narration itself is wrong.
-export async function updateStalePlanning(els, setStatus) {
+export async function updateStalePlanning(els, setStatus, range) {
   if (uiStore.get().operation) return;
   const scenes = sceneStore.get().scenes;
-  const staleIndexes = scenes
+  let staleIndexes = scenes
     .map((scene, index) => (computeStaleness(scene).promptStale ? index : -1))
     .filter((index) => index !== -1);
+  if (range) staleIndexes = staleIndexes.filter((index) => index >= range.startIndex && index < range.endIndex);
 
   if (!staleIndexes.length) {
     if (setStatus) setStatus('Nothing to update — no stale prompts.');
@@ -334,17 +321,29 @@ function resolveLiveScene(id) {
   return sceneStore.get().scenes.find((scene) => scene.id === id) || null;
 }
 
-function buildBatchFns(stage, els, setStatus, onlyMissingOrStale) {
+function buildBatchFns(stage, els, setStatus, onlyMissingOrStale, range) {
   const config = MEDIA_STAGE_CONFIG[stage];
+  const allScenes = sceneStore.get().scenes;
+  const { startIndex = 0, endIndex = allScenes.length } = range || {};
   // `{ id }` objects, not raw id strings — batch.js's own loop reads `scene.id` directly (to stamp
   // `uiStore.operation.sceneId`, which drives the per-scene-card loading spinner), so the frozen
-  // snapshot must expose `.id`, not just be indexable by position.
-  const frozenScenes = sceneStore.get().scenes.map((scene) => ({ id: scene.id }));
+  // snapshot must expose `.id`, not just be indexable by position. Slicing to the requested range
+  // (default: the whole project) is the entire mechanism for scoping a run to a scene range —
+  // batchController itself is plain index-based and needs no knowledge of ranges at all.
+  const frozenScenes = allScenes.slice(startIndex, endIndex).map((scene) => ({ id: scene.id }));
   const generateFn = async (index) => {
     const scene = resolveLiveScene(frozenScenes[index]?.id);
     if (!scene) return true; // removed mid-batch: skip, don't fail the whole batch
     if (onlyMissingOrStale && config.hasVersion(scene) && !config.isStale(scene)) return true; // already fresh: skip
-    return config.regenerate(index, scene, els, setStatus, true);
+    // `index` here is relative to the frozen/sliced range (0 at the range's start), not the scene's
+    // real position in the storyboard — regenerate* uses this index for user-facing scene numbers
+    // (status text, "scene N" labels, the generated file's numeric prefix), and every other caller
+    // of regenerate* passes the real storyboard index, never a range-relative one. Passing the raw
+    // frozen index here made a range-scoped restart (e.g. "start from scene 7") correctly touch the
+    // right scene's data (attachment is keyed by sceneId, not this index) but incorrectly label it
+    // "scene 1" everywhere the label is shown — looking exactly like the run had restarted from the
+    // beginning even though it hadn't. `startIndex + index` restores the real position.
+    return config.regenerate(startIndex + index, scene, els, setStatus, true);
   };
   // batch.js reads `.length`, `scenes[i].id` (for the operation/spinner), and passes `scenes[i]`
   // positionally into generateFn — which ignores that value and re-resolves the live scene by id
@@ -353,26 +352,19 @@ function buildBatchFns(stage, els, setStatus, onlyMissingOrStale) {
   return { generateFn, getScenes };
 }
 
-// Clears the persisted pause flag once a stage's run reaches a non-paused terminal state, so a
-// completed/failed run doesn't keep reading as "paused" after the fact. Only ever writes
+// Clears the persisted "stopped" flag once a stage's run reaches a non-stopped terminal state, so a
+// completed/failed run doesn't keep reading as stopped after the fact. Only ever writes
 // `record.stageRuns` — actual done/stale/missing/failed counts are never persisted (phase 1/5).
-// Set synchronously by cancelActiveWork BEFORE the batch's stop() call returns, so by the time the
-// batch's own start()/resume() promise resolves (asynchronously, later) and syncPauseIntent runs,
-// this flag already reflects whether the stop was a Pause (resumable) or a Cancel (not) — resolving
-// what would otherwise be a race between "batch resolves as paused" and "user asked to cancel."
-const cancelRequestedForStage = {};
-
+// The persisted value stays the internal string 'paused' (not user-facing copy — the Start/Stop UI
+// never says "paused") so existing persisted `record.stageRuns` data needs no migration.
 function syncPauseIntent(stage, finalState, setStatus) {
-  // `finalState` is `undefined` when batchController.start/resume declined to run at all (e.g.
-  // `resume` called on a stage that wasn't actually paused/failed) — that's a no-op, not a status
-  // change, so leave whatever pause intent was already persisted alone.
+  // `finalState` is `undefined` when batchController.start declined to run at all — that's a
+  // no-op, not a status change, so leave whatever was already persisted alone.
   if (finalState === undefined) return;
   const record = getCurrentStoryboardRecord();
   if (!record) return;
   record.stageRuns = record.stageRuns || {};
-  const cancelled = cancelRequestedForStage[stage];
-  cancelRequestedForStage[stage] = false;
-  const next = finalState === 'paused' && !cancelled ? 'paused' : null;
+  const next = finalState === 'paused' ? 'paused' : null;
   if (record.stageRuns[stage] === next) return;
   record.stageRuns[stage] = next;
   queueSync(record, setStatus);
@@ -385,11 +377,23 @@ function syncPauseIntent(stage, finalState, setStatus) {
 // longer exists (removed by a Replan/expansion mid-batch), the step is skipped, not fatal — same
 // "skip this one, keep going" shape regenerateAudio/regenerateVideo already use for missing
 // prerequisites (workflows.js).
-async function runStageBatch(stage, els, setStatus, { onlyMissingOrStale }) {
-  const { generateFn, getScenes } = buildBatchFns(stage, els, setStatus, onlyMissingOrStale);
+async function runStageBatch(stage, els, setStatus, { onlyMissingOrStale, range }) {
+  const { generateFn, getScenes } = buildBatchFns(stage, els, setStatus, onlyMissingOrStale, range);
   if (!getScenes().length) return;
   const finalState = await batchController.start(BATCH_STORE_KEY[stage], generateFn, getScenes);
   syncPauseIntent(stage, finalState, setStatus);
+  // Land the selected-scene anchor on wherever this run actually stopped, so the next Start
+  // continues from there. `currentIndex` is only advanced past a scene once its generateFn call
+  // resolves without throwing (batch.js), so this single read already distinguishes "stopped after
+  // the in-flight scene committed" (currentIndex points at the NEXT scene) from "stopped before it
+  // committed" (currentIndex still points at that same scene) from "ran to completion" (clamped to
+  // the last scene) — no separate stop/complete branching needed here.
+  if (finalState) {
+    const frozen = getScenes();
+    const cursor = batchStore.get()[BATCH_STORE_KEY[stage]].currentIndex;
+    const landingScene = frozen[Math.min(cursor, frozen.length - 1)];
+    if (landingScene) uiStore.set({ selectedSceneId: landingScene.id });
+  }
   return finalState;
 }
 
@@ -397,8 +401,8 @@ async function runStageBatch(stage, els, setStatus, { onlyMissingOrStale }) {
 // and fresh. This is what a checked stage box runs when Start is clicked — resuming a paused stage
 // is the same call: already-fresh scenes are skipped cheaply, so re-running never wastes a provider
 // call on completed work.
-export async function generateMissingOrStale(stage, els, setStatus) {
-  return runStageBatch(stage, els, setStatus, { onlyMissingOrStale: true });
+export async function generateMissingOrStale(stage, els, setStatus, range) {
+  return runStageBatch(stage, els, setStatus, { onlyMissingOrStale: true, range });
 }
 
 // Explicit, unconditional regenerate-everything (Settings > Danger zone only). Callers must route
@@ -409,15 +413,19 @@ export async function regenerateAllStage(stage, els, setStatus) {
   return runStageBatch(stage, els, setStatus, { onlyMissingOrStale: false });
 }
 
-// --- Pause / Cancel ----------------------------------------------------------
+// --- Stop ---------------------------------------------------------------------
 //
-// Images/Audio/Video have a genuine client-side per-scene loop, so pausing them and resuming from
-// progress both really work. Planning does not: `generate-dialogue`/`generate-prompts` are each a
-// single batched server request with no per-scene client loop to pause mid-flight. Stopping Planning
-// therefore CANCELS the in-flight request (existing job/lease-abort path) rather than pausing it —
-// callers must label the control "Cancel Planning" (not "Pause") while `kind === 'cancelled'`, so
-// users don't expect restart-from-progress behavior that doesn't exist for this stage.
-export function pauseActiveWork(projectId) {
+// Single Start/Stop model — no separate Pause vs Cancel. Stop is always resumable: the next Start
+// continues from wherever it left off (see the landing-scene logic in runStageBatch above), so
+// there's no second "harder stop that discards progress" concept left to distinguish.
+//
+// Images/Audio/Video have a genuine client-side per-scene loop, so stopping them and continuing
+// from progress both really work. Planning does not: `generate-dialogue`/`generate-prompts` are
+// each a single batched server request with no per-scene client loop to stop mid-flight. Stopping
+// Planning therefore cancels the in-flight request (existing job/lease-abort path) — callers should
+// expect `kind === 'cancelled'` there, not restart-from-progress behavior, since none exists for
+// this stage.
+export function stopActiveWork(projectId) {
   const activeMediaStage = ['images', 'audio', 'video'].find((stage) => batchStore.get()[BATCH_STORE_KEY[stage]]?.generating);
   if (activeMediaStage) {
     batchController.stop(BATCH_STORE_KEY[activeMediaStage], projectId);
@@ -428,17 +436,6 @@ export function pauseActiveWork(projectId) {
     return { kind: 'cancelled', stage: 'planning' };
   }
   return { kind: 'idle', stage: null };
-}
-
-// Harder stop than Pause: same underlying stop mechanism, but the stage is left in a plain
-// not-running state rather than a resumable "paused" one — for a user who wants to abandon the
-// current run rather than continue it later. Marking the cancel intent before calling the same
-// stop() the Pause path uses avoids a race with the batch's own async resolution (see
-// cancelRequestedForStage above).
-export function cancelActiveWork(projectId) {
-  const activeMediaStage = ['images', 'audio', 'video'].find((stage) => batchStore.get()[BATCH_STORE_KEY[stage]]?.generating);
-  if (activeMediaStage) cancelRequestedForStage[activeMediaStage] = true;
-  return pauseActiveWork(projectId);
 }
 
 // --- One-shot presets --------------------------------------------------------
@@ -467,7 +464,14 @@ export function stopCreateStoryFlow() {
 // default) or the caller supplies its own `onSceneCountDecision` (e.g. to drive a real modal
 // instead of auto-accepting) — either way, no image/audio/video work starts until that decision is
 // resolved one way or another.
-export async function runCreateStoryFlow(preset, els, setStatus, { autoAcceptRecommendations = false, stages: customStages, onSceneCountDecision } = {}) {
+// `range` scopes Images/Audio/Video to a slice of the project (default: everything — see
+// buildBatchFns) and scopes Planning's stale-only path the same way; Planning's full-sequence path
+// never accepts a range (see updateStalePlanning above). `forceStages` names stages that must
+// process their whole range unconditionally rather than skipping already-fresh scenes — this is
+// what makes checking a box that has nothing missing/stale in range (e.g. a fully-complete project)
+// actually regenerate something; see buildRunRowStatus for how the caller decides which stages
+// qualify.
+export async function runCreateStoryFlow(preset, els, setStatus, { autoAcceptRecommendations = false, stages: customStages, onSceneCountDecision, range, forceStages = [] } = {}) {
   flowStopRequested = false;
   const stages = preset === 'custom' ? (customStages || []) : PRESET_STAGES[preset];
   if (!stages || !stages.length) return { stoppedAt: 'noStages' };
@@ -479,14 +483,16 @@ export async function runCreateStoryFlow(preset, els, setStatus, { autoAcceptRec
     // NOT the same as "already planned."
     if (planningStatus.missing > 0 || planningStatus.total === 0 || planningStatus.hasChanges) {
       // No plan yet, or an incomplete one, or script/settings changed: run the full sequence
-      // (segment -> narrate -> scene count -> prompts), same as a standalone Planning run.
+      // (segment -> narrate -> scene count -> prompts), same as a standalone Planning run. Never
+      // scoped by range — planning has no safe partial-segmentation mode.
       const decision = onSceneCountDecision || (autoAcceptRecommendations ? async ({ recommended }) => recommended : undefined);
       const planningResult = await runPlanning(els, setStatus, { onSceneCountDecision: decision });
       if (planningResult.stoppedAt) return planningResult;
     } else if (planningStatus.stale > 0) {
-      // A complete plan already exists — only its stale prompts need fixing. Never regenerate
-      // narration or re-run the whole sequence just because a downstream box was checked.
-      await updateStalePlanning(els, setStatus);
+      // A complete plan already exists — only its stale prompts need fixing, optionally scoped to
+      // range. Never regenerate narration or re-run the whole sequence just because a downstream
+      // box was checked.
+      await updateStalePlanning(els, setStatus, range);
     }
     // Both missing and stale are 0: planning is already up to date, nothing to do.
   }
@@ -495,7 +501,7 @@ export async function runCreateStoryFlow(preset, els, setStatus, { autoAcceptRec
   for (const stage of ['images', 'audio', 'video']) {
     if (!stages.includes(stage)) continue;
     if (flowStopRequested) return { stoppedAt: 'paused', atStage: stage };
-    const finalState = await generateMissingOrStale(stage, els, setStatus);
+    const finalState = await runStageBatch(stage, els, setStatus, { onlyMissingOrStale: !forceStages.includes(stage), range });
     if (finalState === 'paused' || finalState === 'failed') return { stoppedAt: finalState, atStage: stage };
   }
   return { stoppedAt: null };
@@ -514,6 +520,28 @@ export async function runCreateStoryFlow(preset, els, setStatus, { autoAcceptRec
 // transient UI state) and always re-derives its default from live status, not a stored preference.
 const ALL_STAGES = ['planning', 'images', 'audio', 'video'];
 const manualSelectionOverride = {};
+
+// --- Selected scene (run anchor) ---------------------------------------------
+//
+// `selectedSceneId` (uiStore) is the scene the user last interacted with — clicked, previewed, or
+// used an inline entity-modal control on — and is where a Start run begins. It's resolved
+// defensively everywhere it's read (never-selected-yet and selected-scene-was-removed both fall
+// back to index 0) so callers never need their own null-checking.
+export function resolveSelectedSceneIndex(scenes, selectedSceneId) {
+  if (!scenes.length) return 0;
+  const index = scenes.findIndex((scene) => scene.id === selectedSceneId);
+  return index === -1 ? 0 : index;
+}
+
+// rangeMode: 'all' | 'next'. 'all' always means selected scene -> end of project, enforced
+// uniformly for every stage a run touches — there is no per-stage deviation from this.
+export function computeRunRange(scenes, selectedSceneId, rangeMode, count) {
+  const startIndex = resolveSelectedSceneIndex(scenes, selectedSceneId);
+  const endIndex = rangeMode === 'next'
+    ? Math.min(scenes.length, startIndex + Math.max(1, Number(count) || 1))
+    : scenes.length;
+  return { startIndex, endIndex };
+}
 
 export function stageHasActionableWork(stage, stageStatus) {
   // A brand-new project has no scenes yet, so every stage's tally reads 0/0/0 — but Planning is
@@ -541,4 +569,30 @@ export function getStageSelection(status) {
 export function toggleStageSelection(stage, status) {
   const current = getStageSelection(status)[stage];
   manualSelectionOverride[stage] = !current;
+}
+
+// Drives both the Start modal's row text and its checkbox defaults from one source, so they can
+// never disagree. Each stage gets `{ full, ranged }`: `full` is the whole-project tally (what the
+// read-only outer strip already shows, e.g. "48/48 complete"), `ranged` is the same tally computed
+// over just the selected range (what decides whether the box defaults to checked). Planning has no
+// range-scoped mode (see runCreateStoryFlow), so its `ranged` is just its `full` again.
+export function buildRunRowStatus(scenes, range, batchState, uiOperation, recentJobs, stageRuns) {
+  const full = computeStageStatus(scenes, batchState, uiOperation, recentJobs, stageRuns);
+  const rangeScenes = scenes.slice(range.startIndex, range.endIndex);
+  const ranged = computeStageStatus(rangeScenes, batchState, uiOperation, recentJobs, stageRuns);
+  return ALL_STAGES.reduce((acc, stage) => {
+    acc[stage] = { full: full[stage], ranged: stage === 'planning' ? full[stage] : ranged[stage] };
+    return acc;
+  }, {});
+}
+
+// Stages whose box is checked despite having no actionable work in the selected range — i.e. the
+// user explicitly overrode a default of "nothing to do here". There's nothing for the normal
+// skip-fresh run to skip *to* in that case, so these stages must process their entire range
+// unconditionally instead (see runCreateStoryFlow's `forceStages`). Planning is never included:
+// it has its own full-vs-stale-only branching and no "force a complete plan" mode.
+export function computeForceStages(rowStatus, selection) {
+  return ALL_STAGES.filter((stage) => (
+    stage !== 'planning' && selection[stage] && !stageHasActionableWork(stage, rowStatus[stage].ranged)
+  ));
 }

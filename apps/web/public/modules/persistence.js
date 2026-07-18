@@ -180,7 +180,7 @@ function restoreStoryboardFields(els) {
   els.imageProvider.value = optionValues(els.imageProvider).includes(record.imageProvider) ? record.imageProvider : 'gemini';
   els.fallbackPolicy.value = record.fallbackPolicy === 'fail' ? 'fail' : 'local';
   els.videoMotionIntensity.value = optionValues(els.videoMotionIntensity).includes(record.videoMotionIntensity) ? record.videoMotionIntensity : 'medium';
-  els.enrichNarration.checked = record.enrich !== false;
+  els.enrichNarration.checked = record.enrich === true;
   if (record.styleId) els.styleSelect.value = record.styleId;
   if (record.commonPromptText != null) els.commonPromptText.value = record.commonPromptText;
   if (els.settingsSceneCountInput) {
@@ -239,7 +239,7 @@ export function createStoryboard(els) {
   els.commonPromptText.value = '';
   els.fallbackPolicy.value = 'local';
   els.videoMotionIntensity.value = 'medium';
-  els.enrichNarration.checked = true;
+  els.enrichNarration.checked = false;
   if (els.settingsSceneCountInput) els.settingsSceneCountInput.value = '';
   if (els.settingsSceneCountAutoCheckbox) els.settingsSceneCountAutoCheckbox.checked = false;
 }

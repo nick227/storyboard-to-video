@@ -7,8 +7,9 @@ import { downloadZip } from './modules/workflows.js';
 import { suggestSceneCount, suggestSceneCountFromNarration } from './modules/scene-count.js';
 import { initializeAuth } from './modules/auth.js';
 import {
-  computeStageStatus, refreshRecentJobs, getCachedJobs, getStageSelection, toggleStageSelection,
-  replanStory, regenerateAllStage, pauseActiveWork, cancelActiveWork, runCreateStoryFlow,
+  refreshRecentJobs, getCachedJobs, getStageSelection, toggleStageSelection,
+  replanStory, regenerateAllStage, stopActiveWork, runCreateStoryFlow,
+  computeRunRange, buildRunRowStatus, computeForceStages,
 } from './modules/stages.js';
 import {
   loadElevenLabsVoices, loadSparkVoices, loadPiperVoices, cloneVoice, switchMicrophone,
@@ -60,7 +61,6 @@ const els = {
   stageVideoBtn: document.getElementById('stageVideoBtn'),
   stageVideoStatus: document.getElementById('stageVideoStatus'),
   startPauseBtn: document.getElementById('startPauseBtn'),
-  cancelRunBtn: document.getElementById('cancelRunBtn'),
 
   // Settings modal: visual planning mode, scene-count recommendation policy, danger zone
   planningModeSelect: document.getElementById('planningModeSelect'),
@@ -91,7 +91,28 @@ const els = {
   generationConfirmCloseBtn: document.getElementById('generationConfirmCloseBtn'),
   generationConfirmCancelBtn: document.getElementById('generationConfirmCancelBtn'),
   generationConfirmRunBtn: document.getElementById('generationConfirmRunBtn'),
-  
+
+  // Start modal — the primary run-control surface (scene range + Planning/Images/Audio/Video rows)
+  startRunModal: document.getElementById('startRunModal'),
+  startRunSceneLabel: document.getElementById('startRunSceneLabel'),
+  startRunSceneTotal: document.getElementById('startRunSceneTotal'),
+  startRunRangeAll: document.getElementById('startRunRangeAll'),
+  startRunRangeNext: document.getElementById('startRunRangeNext'),
+  startRunNextCount: document.getElementById('startRunNextCount'),
+  startRunRows: document.getElementById('startRunRows'),
+  startRunWarning: document.getElementById('startRunWarning'),
+  startRunCloseBtn: document.getElementById('startRunCloseBtn'),
+  startRunCancelBtn: document.getElementById('startRunCancelBtn'),
+  startRunConfirmBtn: document.getElementById('startRunConfirmBtn'),
+  startRunPlanningCheck: document.getElementById('startRunPlanningCheck'),
+  startRunPlanningStatus: document.getElementById('startRunPlanningStatus'),
+  startRunImagesCheck: document.getElementById('startRunImagesCheck'),
+  startRunImagesStatus: document.getElementById('startRunImagesStatus'),
+  startRunAudioCheck: document.getElementById('startRunAudioCheck'),
+  startRunAudioStatus: document.getElementById('startRunAudioStatus'),
+  startRunVideoCheck: document.getElementById('startRunVideoCheck'),
+  startRunVideoStatus: document.getElementById('startRunVideoStatus'),
+
   // References
   characterRefs: document.getElementById('characterRefs'),
   worldRefs: document.getElementById('worldRefs'),
@@ -234,43 +255,96 @@ function getGenerationPreflight(kind, context = {}) {
         confirmLabel: 'Replan story structure',
       };
     })(),
-    startRun: (() => {
-      const status = context.status || {};
-      const selection = context.selection || {};
-      // Boxes are never permanently disabled for "nothing detected" (that tracking is a heuristic —
-      // it can't see e.g. a server-side prompt-logic change) — so the user can select a stage that
-      // looks up to date. This is where that gets flagged, loudly, instead of silently blocked.
-      const redundant = [];
-      const stageLine = (stage, label) => {
-        if (!selection[stage]) return `${label}: skipped`;
-        const s = status[stage] || {};
-        if (stage === 'planning') {
-          if (s.total === 0 || s.missing > 0) return `${label}: run planning`;
-          if (s.stale > 0) return `${label}: update ${s.stale} stale prompt${s.stale === 1 ? '' : 's'}`;
-          if (s.hasChanges) return `${label}: update script/settings changes`;
-          redundant.push(label);
-          return `${label}: no changes detected, will still re-run`;
-        }
-        const parts = [];
-        if (s.missing > 0) parts.push(`${s.missing} missing`);
-        if (s.stale > 0) parts.push(`${s.stale} stale`);
-        if (s.failed > 0) parts.push(`${s.failed} failed`);
-        if (!parts.length) redundant.push(label);
-        return parts.length ? `${label}: ${parts.join(', ')}` : `${label}: no changes detected, will still re-run`;
+    // Planning owns the final scene count before prompts/images/audio/video lock in — this is the
+    // one point where a narration-derived recommendation (which only ever grows, never shrinks; see
+    // suggestSceneCountFromNarration) gets reconciled against what was actually requested, instead of
+    // silently overriding or silently ignoring it.
+    sceneCountReconcile: (() => {
+      const scenes = (n) => `${n} scene${n === 1 ? '' : 's'}`;
+      return {
+        title: 'Narration suggests more scenes',
+        paragraph: `You planned ${scenes(context.currentCount)}, but the generated narration comfortably fills ${context.recommended}. Splitting keeps each scene's visuals, audio, and video in sync with how much narration it actually carries.`,
+        bullets: [
+          `${scenes(context.currentCount)} planned`,
+          `${scenes(context.recommended)} recommended from narration pacing`,
+          `Existing prompts/images/audio for current scenes are kept, not discarded`,
+        ],
+        cancelLabel: `Keep ${context.currentCount}`,
+        confirmLabel: `Use ${context.recommended}`,
       };
-      const bullets = [
-        stageLine('planning', 'Planning'),
-        stageLine('images', 'Images'),
-        stageLine('audio', 'Audio'),
-        stageLine('video', 'Video'),
-      ];
-      const paragraph = redundant.length
-        ? `⚠ ${redundant.join(' and ')} ${redundant.length === 1 ? 'shows' : 'show'} no detected changes — uncheck it above if that wasn't intended.`
-        : 'Runs the checked steps below, in order.';
-      return { title: 'Start production', paragraph, bullets, confirmLabel: 'Start' };
     })(),
   };
   return configurations[kind];
+}
+
+// --- Start modal: the primary run-control surface ----------------------------
+//
+// Replaces the old startRun bullet-list confirmation. This modal is genuinely interactive (the
+// range picker and checkboxes change each other's defaults live), unlike the static
+// getGenerationPreflight confirmations above, so it's driven directly rather than forced through
+// that shape.
+
+const STAGE_ROW_ELS = () => ({
+  planning: { check: els.startRunPlanningCheck, status: els.startRunPlanningStatus },
+  images: { check: els.startRunImagesCheck, status: els.startRunImagesStatus },
+  audio: { check: els.startRunAudioCheck, status: els.startRunAudioStatus },
+  video: { check: els.startRunVideoCheck, status: els.startRunVideoStatus },
+});
+
+function formatStartRunRowStatus(stage, row) {
+  if (stage === 'planning') {
+    const p = row.full;
+    // Mirrors runCreateStoryFlow's own planning branching exactly, so the row never promises
+    // something the run won't actually do.
+    if (!p.total || p.missing > 0 || p.hasChanges) return 'Creates the full storyboard structure — not limited to the selected range.';
+    if (p.stale > 0) return `Updates ${p.stale} stale prompt${p.stale === 1 ? '' : 's'} in the selected range.`;
+    return `${p.label} — up to date.`;
+  }
+  return `${row.ranged.label} selected · ${row.full.label} total`;
+}
+
+let startRunResolve = null;
+
+// One computation, reused by both the render pass and the confirm handler, so what the user sees
+// is exactly what the run acts on.
+function computeStartRunPlan() {
+  const scenes = sceneStore.get().scenes;
+  const record = getCurrentStoryboardRecord();
+  const mode = els.startRunRangeNext.checked ? 'next' : 'all';
+  const count = Number(els.startRunNextCount.value) || 1;
+  const range = computeRunRange(scenes, uiStore.get().selectedSceneId, mode, count);
+  const rowStatus = buildRunRowStatus(scenes, range, batchStore.get(), uiStore.get().operation, getCachedJobs(), record?.stageRuns || {});
+  const selectionStatus = { planning: rowStatus.planning.ranged, images: rowStatus.images.ranged, audio: rowStatus.audio.ranged, video: rowStatus.video.ranged };
+  return { scenes, range, rowStatus, selectionStatus };
+}
+
+function renderStartRunModal() {
+  const { scenes, range, rowStatus, selectionStatus } = computeStartRunPlan();
+  const selection = getStageSelection(selectionStatus);
+
+  els.startRunSceneLabel.textContent = String(Math.min(range.startIndex + 1, Math.max(scenes.length, 1)));
+  els.startRunSceneTotal.textContent = String(scenes.length);
+
+  const rowEls = STAGE_ROW_ELS();
+  for (const stage of ['planning', 'images', 'audio', 'video']) {
+    const { check, status } = rowEls[stage];
+    check.checked = Boolean(selection[stage]);
+    status.textContent = formatStartRunRowStatus(stage, rowStatus[stage]);
+  }
+  return { range, rowStatus, selectionStatus };
+}
+
+function openStartRunModal() {
+  if (!sceneStore.get().scenes.length) {
+    // Nothing to anchor a range to yet — Planning creates the first scenes. Default the range
+    // radios back to "All remaining" so a later open (once scenes exist) isn't left on a
+    // meaningless "next N of zero".
+    els.startRunRangeAll.checked = true;
+  }
+  renderStartRunModal();
+  els.startRunModal.returnValue = '';
+  els.startRunModal.showModal();
+  return new Promise((resolve) => { startRunResolve = resolve; });
 }
 
 function requestGenerationConfirmation(kind, context = {}) {
@@ -284,6 +358,7 @@ function requestGenerationConfirmation(kind, context = {}) {
     return li;
   }));
   els.generationConfirmRunBtn.textContent = details.confirmLabel;
+  els.generationConfirmCancelBtn.textContent = details.cancelLabel || 'Cancel';
   els.generationConfirmModal.returnValue = '';
   els.generationConfirmModal.showModal();
   return new Promise((resolve) => { generationConfirmResolve = resolve; });
@@ -368,6 +443,31 @@ function attachEvents() {
     const resolve = generationConfirmResolve;
     generationConfirmResolve = null;
     if (resolve) resolve(els.generationConfirmModal.returnValue === 'confirm');
+  });
+
+  els.startRunCancelBtn.addEventListener('click', () => els.startRunModal.close());
+  els.startRunCloseBtn.addEventListener('click', () => els.startRunModal.close());
+  els.startRunConfirmBtn.addEventListener('click', () => els.startRunModal.close('confirm'));
+  els.startRunModal.addEventListener('click', (event) => {
+    if (event.target === els.startRunModal) els.startRunModal.close();
+  });
+  els.startRunModal.addEventListener('close', () => {
+    const resolve = startRunResolve;
+    startRunResolve = null;
+    if (resolve) resolve(els.startRunModal.returnValue === 'confirm');
+  });
+  [els.startRunRangeAll, els.startRunRangeNext, els.startRunNextCount].forEach((input) => {
+    input.addEventListener('input', () => renderStartRunModal());
+  });
+  [els.startRunPlanningCheck, els.startRunImagesCheck, els.startRunAudioCheck, els.startRunVideoCheck].forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      // The click already flipped checkbox.checked — toggleStageSelection just needs to record
+      // that override against the range-scoped status so it survives a later re-render (e.g. the
+      // user then adjusts the range picker).
+      const { selectionStatus } = computeStartRunPlan();
+      toggleStageSelection(checkbox.dataset.stage, selectionStatus);
+      renderStartRunModal();
+    });
   });
 
   els.newStoryboardBtn.addEventListener('click', async () => {
@@ -499,14 +599,15 @@ function attachEvents() {
     });
   }
 
-  // Reads the pre-configured scene-count policy instead of opening a dialog — called by
-  // runCreateStoryFlow only when Planning's recommendation actually differs from the current target.
+  // Called by runCreateStoryFlow only when Planning's narration-derived recommendation actually
+  // differs from the requested scene count. "Auto" policy means the user already opted into always
+  // following the recommendation, so it's applied silently. Otherwise this is planning's one point
+  // to reconcile a manually-requested count against what the narration turned out to need — the
+  // recommendation is never silently discarded and never silently applied, only offered.
   const onSceneCountDecision = async ({ recommended, currentCount }) => {
     if (els.settingsSceneCountAutoCheckbox && els.settingsSceneCountAutoCheckbox.checked) return recommended;
-    if (els.settingsSceneCountInput) {
-      return Number(els.settingsSceneCountInput.value) || currentCount;
-    }
-    return currentCount;
+    const useRecommended = await requestGenerationConfirmation('sceneCountReconcile', { currentCount, recommended });
+    return useRecommended ? recommended : currentCount;
   };
 
   els.settingsReplanBtn.addEventListener('click', async () => {
@@ -528,58 +629,36 @@ function attachEvents() {
   wireRegenerateAll(els.settingsRegenerateAudioBtn, 'audio', 'audioAll');
   wireRegenerateAll(els.settingsRegenerateVideoBtn, 'video', 'videoAll');
 
-  // --- Stage boxes: select what Start will act on -----------------------------
+  // --- Start / Stop --------------------------------------------------------------
   //
-  // Clicking a box only toggles whether Start includes it — there is no per-stage modal anymore.
-  // A box with nothing to do can't be selected (see getStageSelection).
-
-  const currentStatus = () => {
-    const record = getCurrentStoryboardRecord();
-    return computeStageStatus(sceneStore.get().scenes, batchStore.get(), uiStore.get().operation, getCachedJobs(), record?.stageRuns || {});
-  };
-  const toggleSelection = (stage) => {
-    toggleStageSelection(stage, currentStatus());
-    renderStageBar(els);
-  };
-
-  els.stagePlanningBtn.addEventListener('click', () => toggleSelection('planning'));
-  els.stageImagesBtn.addEventListener('click', () => toggleSelection('images'));
-  els.stageAudioBtn.addEventListener('click', () => toggleSelection('audio'));
-  els.stageVideoBtn.addEventListener('click', () => toggleSelection('video'));
-
-  // --- Start / Pause / Cancel ---------------------------------------------------
-  //
-  // One toggle button runs the checked stages in order (all 4, by default, the 99% case) and
-  // doubles as Pause while anything is running. Targeting just one step (a partial run, or
-  // "regenerate all" on an existing project) is done by unchecking boxes / using Settings instead.
+  // A single toggle: idle -> opens the Start modal (scene range + Planning/Images/Audio/Video
+  // rows, the only place selection happens now); running -> Stop, always resumable, no separate
+  // harder-stop control. "Regenerate all" on an existing project is still Settings' job.
 
   els.startPauseBtn.addEventListener('click', async () => {
     if (els.startPauseBtn.dataset.running === 'true') {
-      const result = pauseActiveWork(projectStore.get().currentId);
-      setStatus(result.kind === 'cancelled' ? 'Cancelling planning...' : result.kind === 'paused' ? 'Pausing...' : 'Nothing to pause.');
+      const result = stopActiveWork(projectStore.get().currentId);
+      setStatus(result.kind === 'cancelled' ? 'Cancelling planning...' : result.kind === 'paused' ? 'Stopping...' : 'Nothing to stop.');
       renderStageBar(els);
       return;
     }
     if (uiStore.get().operation) return;
 
-    const status = currentStatus();
-    const selection = getStageSelection(status);
+    const confirmed = await openStartRunModal();
+    if (!confirmed) return;
+
+    const { range, rowStatus, selectionStatus } = computeStartRunPlan();
+    const selection = getStageSelection(selectionStatus);
     const stages = ['planning', 'images', 'audio', 'video'].filter((stage) => selection[stage]);
     if (!stages.length) { setStatus('Nothing selected to start — check a step above.'); return; }
-    if (!(await requestGenerationConfirmation('startRun', { status, selection }))) return;
+    const forceStages = computeForceStages(rowStatus, selection);
 
     setStatus('Starting...');
-    const result = await runCreateStoryFlow('custom', els, setStatus, { stages, autoAcceptRecommendations: false, onSceneCountDecision });
+    const result = await runCreateStoryFlow('custom', els, setStatus, { stages, range, forceStages, autoAcceptRecommendations: false, onSceneCountDecision });
     if (result.stoppedAt === 'needsReplanForShrink') setStatus('Stopped — the chosen scene count is smaller than the current structure; use Settings > Replan story structure explicitly to continue.');
     else if (result.stoppedAt) setStatus(`Stopped: ${result.stoppedAt}.`);
     else setStatus('Done.');
     await refreshRecentJobs(projectStore.get().currentId);
-    renderStageBar(els);
-  });
-
-  els.cancelRunBtn.addEventListener('click', () => {
-    const result = cancelActiveWork(projectStore.get().currentId);
-    setStatus(result.kind === 'idle' ? 'Nothing to cancel.' : 'Cancelling...');
     renderStageBar(els);
   });
 

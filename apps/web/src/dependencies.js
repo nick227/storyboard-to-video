@@ -26,6 +26,7 @@ const { createVideoProvider } = require('./providers/video');
 const { createPromptGenerationService } = require('./services/prompt-generation.service');
 const { createReferenceGenerationService } = require('./services/reference-generation.service');
 const { createDialogueService } = require('./services/dialogue.service');
+const { createSceneSplitService } = require('./services/scene-split.service');
 const { createImageGenerationService } = require('./services/image-generation.service');
 const { createAudioGenerationService } = require('./services/audio-generation.service');
 const { createVideoGenerationService } = require('./services/video-generation.service');
@@ -77,6 +78,7 @@ function createDependencies(config, overrides = {}) {
   const prompts = createPromptGenerationService({ textProviders, styles, limits: config.limits, generationCache });
   const referenceGeneration = createReferenceGenerationService({ textProviders });
   const dialogue = createDialogueService({ textProviders, generationCache });
+  const sceneSplit = createSceneSplitService({ textProviders, generationCache });
   const images = createImageGenerationService({ config, styles, provider: imageProvider, projectStore });
   const audio = createAudioGenerationService({ config, provider: audioProvider, projectStore });
   const videos = createVideoGenerationService({ config, provider: videoProvider, projectStore, styles });
@@ -90,14 +92,14 @@ function createDependencies(config, overrides = {}) {
 
   return {
     config, prisma, projectStore, queue, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, billingRepository, billing, adminRepository, paymentRepository, payments, generationContext,
-    styles, prompts, referenceGeneration, dialogue, images, audio, videos, sceneReferences, exports, voices, imageProvider,
+    styles, prompts, referenceGeneration, dialogue, sceneSplit, images, audio, videos, sceneReferences, exports, voices, imageProvider,
     upload: createUpload(config),
     auth,
     authenticate: auth.middleware(),
     idempotency: requireIdempotency(idempotencyStore, projectStore),
     execute: createJobExecution({ queue, projectStore, idempotencyStore, generationContext }),
     controllers: {
-      storyboard: createStoryboardController({ styles, prompts, dialogue, config }),
+      storyboard: createStoryboardController({ styles, prompts, dialogue, sceneSplit, config }),
       media,
       styles: createStylesController(styles),
       voices: createVoiceController(voices),

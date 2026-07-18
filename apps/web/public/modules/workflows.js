@@ -28,7 +28,7 @@ export function getPayloadBase(els) {
     textProvider: els.textProvider.value,
     imageProvider: els.imageProvider.value,
     fallbackPolicy: els.fallbackPolicy.value,
-    enrich: els.enrichNarration ? els.enrichNarration.checked : true,
+    enrich: els.enrichNarration ? els.enrichNarration.checked : false,
   };
 }
 
@@ -593,9 +593,16 @@ function anyGenerationInFlight() {
 }
 
 // Splits one existing scene's fragment into `count` new scenes at that position, then populates
-// real content (narration, if the original scene had any, then prompts) for just the new scenes —
-// everything else in the array is untouched. Used both for the manual-edit-then-regenerate case and,
-// repeatedly, for accepting a slide-count recommendation (see addRecommendedScenes below).
+// real content for just the new scenes — everything else in the array is untouched. Used both for
+// the manual-edit-then-regenerate case and, repeatedly, for accepting a slide-count recommendation
+// (see addRecommendedScenes below).
+// The split call is AI-driven and story-boundary-aware (see scene-split.service.js): it preserves
+// the parent's existing scriptFragment/narrationText verbatim, only dividing it, and is validated
+// server-side to guarantee that before it's ever accepted. So when it succeeds (`!data.usedFallback`)
+// each child already carries its real narration — no separate regeneration call, and no risk of the
+// reviewed/edited narration that justified the split in the first place being discarded and
+// rewritten. Only the deterministic last-resort fallback (script-only, no narration) still needs the
+// old per-child regenerateDialogue fill-in, exactly as before AI splitting existed.
 // Holds uiStore.operation for the ENTIRE split workflow — splice, fill-in regeneration, and
 // persistence — not just the initial splice call. Releasing the lock early (between the splice and
 // the fill-in loop, or between fill-in steps) would let another entry point that only checks
@@ -614,13 +621,19 @@ export async function splitSceneInPlace(index, rawCount, els, setStatus) {
     await ensureProjectSynced();
     if (setStatus) setStatus(`Splitting scene ${index + 1} into ${count} scenes...`);
     const base = getPayloadBase(els);
+    // Real narration exists independent of the Enrich setting (Enrich only controls how elaborate
+    // *new* narration generation is, not whether this scene already has real narration to preserve
+    // here) — only a fallback placeholder is excluded, never sent as source-of-truth text to split.
+    const narrationSource = scene.narrationText && !scene.narrationIsFallback ? scene.narrationText : '';
     const data = await api('/api/storyboard/split-scene', {
       method: 'POST',
       body: JSON.stringify({
         projectId: base.projectId,
         scriptFragment: scene.scriptFragment,
         count,
-        narrationText: base.enrich ? (scene.narrationText || '') : '',
+        narrationText: narrationSource,
+        provider: base.textProvider,
+        fallbackPolicy: base.fallbackPolicy,
       }),
     });
 
@@ -639,13 +652,19 @@ export async function splitSceneInPlace(index, rawCount, els, setStatus) {
     // current sceneStore fresh, so this is safe even though the array shape already changed above.
     // Use newScenes.length (what was actually spliced in), not the originally requested `count` —
     // the backend may have returned fewer scenes than asked for when the source couldn't support it.
-    const hadNarration = Boolean(scene.narrationText?.trim());
+    // Narration is only regenerated here when the deterministic fallback ran (data.usedFallback) —
+    // an AI-validated split already carries real preserved narration in newScenes, and regenerating
+    // it here would be exactly the "discard and rewrite" behavior this whole feature exists to avoid.
+    const needsNarrationFillIn = data.usedFallback && Boolean(narrationSource);
     for (let offset = 0; offset < newScenes.length; offset += 1) {
       const newIndex = index + offset;
-      if (hadNarration) await regenerateDialogue(newIndex, els, setStatus, '', true);
+      if (needsNarrationFillIn) await regenerateDialogue(newIndex, els, setStatus, '', true);
       await regeneratePrompt(newIndex, els, setStatus, true);
     }
-    if (setStatus) setStatus(`Scene ${index + 1} split into ${newScenes.length} scene${newScenes.length === 1 ? '' : 's'}.`);
+    const doneMessage = `Scene ${index + 1} split into ${newScenes.length} scene${newScenes.length === 1 ? '' : 's'}.`;
+    // usedFallback is surfaced in the status line (not just returned) so the deterministic fallback
+    // path is visible without having to inspect network traffic, per the "make it visible" intent.
+    if (setStatus) setStatus(data.usedFallback ? `${doneMessage} ${data.warning}` : doneMessage);
     return true;
   } catch (error) {
     if (setStatus) setStatus(`Scene split failed: ${error.message}`);

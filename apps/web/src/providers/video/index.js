@@ -59,7 +59,12 @@ function createVideoProvider(config, getCancellation, usageTracker) {
     const stagedOutput = path.join(config.paths.ltxShared, path.basename(outputPath));
     fs.copyFileSync(imagePath, stagedImage);
     try {
-      const presetFrames = { subtle: 33, medium: 49, high: 65 }[motionIntensity] || 49;
+      // subtle/medium tested empirically at 121 frames (5.04s @ 24fps): identity held cleanly
+      // through the full clip (a static-scene subtle-motion test showed zero drift; a moving-face
+      // medium-motion test — the harder case — held identity with only cosmetic softening by the
+      // end, using the tuned steps/guidance_scale defaults below). `high` is extrapolated, not
+      // tested, and kept shorter since more motion degrades faster in every test run so far.
+      const presetFrames = { subtle: 121, medium: 121, high: 97 }[motionIntensity] || 121;
       const frames = setting(config.env, 'VIDEO_FRAMES', presetFrames, 9, 297);
       const response = await fetch(url(config.env.LTX_VIDEO_GENERATE_PATH || '/generate'), {
         method: 'POST',
@@ -73,8 +78,12 @@ function createVideoProvider(config, getCancellation, usageTracker) {
           height: setting(config.env, 'VIDEO_HEIGHT', 480, 64, 2048),
           frames: (frames - 1) % 8 === 0 ? frames : presetFrames,
           frame_rate: setting(config.env, 'VIDEO_FRAME_RATE', 24, 1, 60),
-          steps: setting(config.env, 'VIDEO_STEPS', 30, 5, 100),
-          guidance_scale: decimalSetting(config.env, 'VIDEO_GUIDANCE_SCALE', 4, 1, 10),
+          // Defaults tuned against empirical testing: guidance_scale=4/steps=30 caused rapid
+          // identity collapse on image-to-video (faces warping within ~1-2s). 45 steps / 2.25
+          // guidance held identity cleanly through 5s on a moving-face scene (best of the tested
+          // combos — more steps didn't help further, and guidance 2.0 reintroduced warping).
+          steps: setting(config.env, 'VIDEO_STEPS', 45, 5, 100),
+          guidance_scale: decimalSetting(config.env, 'VIDEO_GUIDANCE_SCALE', 2.25, 1, 10),
           seed: setting(config.env, 'VIDEO_SEED', 42, 0, 2 ** 31 - 1),
           output: stagedOutput,
         }),
@@ -93,7 +102,7 @@ function createVideoProvider(config, getCancellation, usageTracker) {
       if (!fs.existsSync(stagedOutput)) throw new AppError('LTX_OUTPUT_MISSING', 'LTX-Video completed without creating output', { retryable: true });
       fs.copyFileSync(stagedOutput, outputPath);
       const frameRate = setting(config.env, 'VIDEO_FRAME_RATE', 24, 1, 60);
-      return providerResult({ output: { outputPath }, provider: 'ltx', model: config.env.LTX_VIDEO_MODEL || 'ltx-video', providerRequestId: providerRequestId(response, body), usage: { videos: 1, frames, frameRate, seconds: frames / frameRate, steps: setting(config.env, 'VIDEO_STEPS', 30, 5, 100), width: setting(config.env, 'VIDEO_WIDTH', 640, 64, 2048), height: setting(config.env, 'VIDEO_HEIGHT', 480, 64, 2048) }, rawUsage: body?.usage || body || null, measurementStatus: 'observed' });
+      return providerResult({ output: { outputPath }, provider: 'ltx', model: config.env.LTX_VIDEO_MODEL || 'ltx-video', providerRequestId: providerRequestId(response, body), usage: { videos: 1, frames, frameRate, seconds: frames / frameRate, steps: setting(config.env, 'VIDEO_STEPS', 45, 5, 100), width: setting(config.env, 'VIDEO_WIDTH', 640, 64, 2048), height: setting(config.env, 'VIDEO_HEIGHT', 480, 64, 2048) }, rawUsage: body?.usage || body || null, measurementStatus: 'observed' });
     } finally {
       fs.rmSync(stagedImage, { force: true });
       fs.rmSync(stagedOutput, { force: true });

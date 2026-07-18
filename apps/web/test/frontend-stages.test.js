@@ -2,7 +2,7 @@
 // public/modules/scene-count.js directly via dynamic import — these are browser ES modules with no
 // top-level DOM/network access, so they load fine under plain Node as long as no function that
 // touches document/localStorage/fetch is actually invoked (computeStaleness/computeStageStatus/
-// getPrimaryAction/suggestSceneCountFromNarration never do).
+// suggestSceneCountFromNarration never do).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -47,6 +47,34 @@ test('computeStaleness: image is stale when its stored generation prompt no long
   assert.equal(computeStaleness(fresh).imageStale, false);
   const stale = scene({ prompt: 'A completely different prompt.', versions: [{ path: '/a.png', prompt: 'Ink style.\n\nMara opens the door, hallway beyond.', scenePrompt: 'Mara opens the door, hallway beyond.' }], activeVersionIndex: 0 });
   assert.equal(computeStaleness(stale).imageStale, true);
+});
+
+test('computeStaleness: image is not marked stale by provider alone when the stored version predates the provider field', async () => {
+  const { computeStaleness } = await stagesPromise;
+  const { projectStore } = await storePromise;
+  // Legacy version with no `provider` key at all — must not be mass-marked stale just because a
+  // provider is now selected; only the scenePrompt comparison applies to it.
+  const legacy = scene({ versions: [{ path: '/a.png', scenePrompt: 'Mara opens the door, hallway beyond.' }], activeVersionIndex: 0 });
+  projectStore.set({ storyboards: [{ id: 'p1', imageProvider: 'dezgo' }], currentId: 'p1' });
+  try {
+    assert.equal(computeStaleness(legacy).imageStale, false);
+  } finally {
+    projectStore.set({ storyboards: [], currentId: null });
+  }
+});
+
+test('computeStaleness: image is stale when its stored provider no longer matches the currently selected image provider', async () => {
+  const { computeStaleness } = await stagesPromise;
+  const { projectStore } = await storePromise;
+  const fresh = scene({ versions: [{ path: '/a.png', scenePrompt: 'Mara opens the door, hallway beyond.', provider: 'gemini' }], activeVersionIndex: 0 });
+  projectStore.set({ storyboards: [{ id: 'p1', imageProvider: 'gemini' }], currentId: 'p1' });
+  try {
+    assert.equal(computeStaleness(fresh).imageStale, false);
+    projectStore.set({ storyboards: [{ id: 'p1', imageProvider: 'dezgo' }], currentId: 'p1' });
+    assert.equal(computeStaleness(fresh).imageStale, true);
+  } finally {
+    projectStore.set({ storyboards: [], currentId: null });
+  }
 });
 
 test('computeStaleness: audio is stale when its stored narration snapshot no longer matches the scene narration', async () => {
@@ -123,23 +151,62 @@ test('computeStageStatus: paused stage status survives a simulated reload via pe
   assert.equal(status.images.paused, true);
 });
 
-test('getPrimaryAction: always the next useful step — Plan Story before anything else, Resume overrides everything when paused', async () => {
-  const { getPrimaryAction } = await stagesPromise;
-  const empty = { planning: { total: 0, missing: 0 }, images: { paused: false, missing: 0, stale: 0 }, audio: { paused: false, missing: 0, stale: 0 }, video: { paused: false, missing: 0, stale: 0 } };
-  assert.equal(getPrimaryAction(empty).kind, 'plan');
+test('resolveSelectedSceneIndex: falls back to 0 for an empty project, a never-selected id, or a removed scene', async () => {
+  const { resolveSelectedSceneIndex } = await stagesPromise;
+  assert.equal(resolveSelectedSceneIndex([], 'anything'), 0);
+  const scenes = [scene({ id: 'a' }), scene({ id: 'b' }), scene({ id: 'c' })];
+  assert.equal(resolveSelectedSceneIndex(scenes, null), 0, 'never selected yet');
+  assert.equal(resolveSelectedSceneIndex(scenes, 'nonexistent'), 0, 'selected scene was removed');
+  assert.equal(resolveSelectedSceneIndex(scenes, 'b'), 1, 'resolves the real index once found');
+});
 
-  const planned = { planning: { total: 3, missing: 0 }, images: { paused: false, missing: 3, stale: 0 }, audio: { paused: false, missing: 3, stale: 0 }, video: { paused: false, missing: 3, stale: 0 } };
-  const imagesAction = getPrimaryAction(planned);
-  assert.equal(imagesAction.stage, 'images');
+test('computeRunRange: "all" always runs to the end of the project; "next" clamps at the end rather than overrunning it', async () => {
+  const { computeRunRange } = await stagesPromise;
+  const scenes = [scene({ id: 'a' }), scene({ id: 'b' }), scene({ id: 'c' }), scene({ id: 'd' })];
+  assert.deepEqual(computeRunRange(scenes, 'b', 'all', 5), { startIndex: 1, endIndex: 4 }, '"all" ignores count entirely');
+  assert.deepEqual(computeRunRange(scenes, 'b', 'next', 2), { startIndex: 1, endIndex: 3 });
+  assert.deepEqual(computeRunRange(scenes, 'b', 'next', 50), { startIndex: 1, endIndex: 4 }, 'clamps to scenes.length, never runs past it');
+  assert.deepEqual(computeRunRange(scenes, 'b', 'next', 0), { startIndex: 1, endIndex: 2 }, 'count is floored at 1, never a zero-scene range');
+});
 
-  const imagesDone = { planning: { total: 3, missing: 0 }, images: { paused: false, missing: 0, stale: 0 }, audio: { paused: false, missing: 3, stale: 0 }, video: { paused: false, missing: 3, stale: 0 } };
-  assert.equal(getPrimaryAction(imagesDone).stage, 'audio');
+test('buildRunRowStatus: images/audio/video are scoped to the selected range, but planning always reads the whole project', async () => {
+  const { buildRunRowStatus } = await stagesPromise;
+  const doneVersion = { path: '/a.png', prompt: 'Ink style.\n\nMara opens the door, hallway beyond.', scenePrompt: 'Mara opens the door, hallway beyond.' };
+  // Scenes 0-1 already have images; scenes 2-3 are missing them. A range covering only 0-1 must
+  // read as fully done for Images even though the whole project still has missing work.
+  const scenes = [
+    scene({ id: 'a', versions: [doneVersion], activeVersionIndex: 0 }),
+    scene({ id: 'b', versions: [doneVersion], activeVersionIndex: 0 }),
+    scene({ id: 'c' }),
+    scene({ id: 'd' }),
+  ];
+  const batchState = { images: { state: 'idle', generating: false }, audio: { state: 'idle' }, videos: { state: 'idle' } };
+  const range = { startIndex: 0, endIndex: 2 };
+  const rowStatus = buildRunRowStatus(scenes, range, batchState, null, [], {});
 
-  const paused = { planning: { total: 3, missing: 0 }, images: { paused: true, missing: 1, stale: 0 }, audio: { paused: false, missing: 3, stale: 0 }, video: { paused: false, missing: 3, stale: 0 } };
-  assert.equal(getPrimaryAction(paused).kind, 'resume', 'a paused stage must always surface Resume as the primary action');
+  assert.equal(rowStatus.images.ranged.missing, 0, 'range 0-2 has no missing images');
+  assert.equal(rowStatus.images.ranged.done, 2);
+  assert.equal(rowStatus.images.full.missing, 2, 'the whole-project count still reflects scenes 2-3');
+  assert.equal(rowStatus.images.full.total, 4);
+  assert.deepEqual(rowStatus.planning.ranged, rowStatus.planning.full, 'planning has no range-scoped mode');
+});
 
-  const allDone = { planning: { total: 3, missing: 0 }, images: { paused: false, missing: 0, stale: 0 }, audio: { paused: false, missing: 0, stale: 0 }, video: { paused: false, missing: 0, stale: 0 } };
-  assert.equal(getPrimaryAction(allDone).kind, 'idle');
+test('computeForceStages: only flags a stage the user checked despite it having no actionable work in range — never planning, never an auto-selected stage', async () => {
+  const { computeForceStages } = await stagesPromise;
+  const rowStatus = {
+    // images: nothing to do in range (already complete there) but the user checked it anyway.
+    images: { ranged: { total: 2, missing: 0, stale: 0, failed: 0 } },
+    // audio: genuinely has missing work in range — checking it must NOT force a redo of anything
+    // already fresh, so it must never appear in forceStages.
+    audio: { ranged: { total: 2, missing: 1, stale: 0, failed: 0 } },
+    // video: has no work in range AND is unchecked — force is irrelevant, must not appear.
+    video: { ranged: { total: 2, missing: 0, stale: 0, failed: 0 } },
+    // planning: no work in range but checked — must still never be force-scoped (no such mode).
+    planning: { ranged: { total: 2, missing: 0, stale: 0, failed: 0, hasChanges: false } },
+  };
+  const selection = { planning: true, images: true, audio: true, video: false };
+  const forced = computeForceStages(rowStatus, selection);
+  assert.deepEqual(forced.sort(), ['images']);
 });
 
 test('suggestSceneCountFromNarration: deterministic for identical input', async () => {

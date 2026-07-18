@@ -7,68 +7,63 @@ const { providerOutput } = require('../providers/result');
 const DIALOGUE_BATCH_SIZE = 5;
 const NARRATION_MAX_LENGTH = 6_000;
 
-// Bump whenever narrationRules()/sourceOfTruthRule()/buildRegenerateRequest's shape changes
-// meaningfully — this invalidates old exact-input cache entries so a prompt-quality improvement
-// can't keep silently serving pre-improvement narration forever.
-const NARRATION_TEMPLATE_VERSION = 2;
+// Bump whenever NARRATION_RULES_ENRICHED/NARRATION_RULES_LITERAL or buildRegenerateRequest's shape
+// changes meaningfully — this invalidates old exact-input cache entries so a prompt-quality
+// improvement can't keep silently serving pre-improvement narration forever.
+const NARRATION_TEMPLATE_VERSION = 1;
 
 const generateResponseSchema = z.object({
   scenes: z.array(z.object({ sceneNumber: z.number(), narrationText: z.string() })),
 });
 const regenerateResponseSchema = z.object({ narrationText: z.string() });
 
-const ATTRIBUTION_RULE = 'One narrator voice reads every line, so most dialogue can stand alone without a trailing "[Name] said" tag — use an explicit tag only where the speaker would otherwise be ambiguous.';
+const ATTRIBUTION_RULE = 'Avoid repetitive "[Name] said" attribution tags; let dialogue stand on its own without unnecessary speaker labels.';
 
-const NARRATION_CORE = `NARRATION RULES:
-1. Cover everything in the source that matters to the story, in order — a longer fragment should produce a proportionally longer passage. Do not rush, thin out, or cut off mid-thought.
-2. Preserve original dialogue verbatim; never paraphrase, shorten, or drop a line.
-3. Strip screenplay labels and formatting. Never mention camera instructions or scene headings.
-4. ${ATTRIBUTION_RULE}
-5. Use punctuation and paragraph spacing for breathing room, and preserve the script's intent.
-6. Return only text intended to be read aloud.`;
+// Enrich on: full cinematic adaptation — the model is explicitly licensed to expand beyond a literal
+// transcription (setting, atmosphere, transitions) as long as it doesn't invent plot content.
+const NARRATION_RULES_ENRICHED = `NARRATION RULES:
+1. This is a full narrated adaptation of the source text, not a summary. Cover everything in it that matters to the story — every event, every setting and atmosphere detail, and every line of dialogue — in the order it happens. A long fragment should produce a proportionally long passage; do not compress or skip material just to finish quickly.
+2. Attempt to preserve original dialogue intent. We may drop lines to save space but catch important or key dialogue.
+3. Remove screenplay labels and formatting.
+4. Narrate the setting, atmosphere, and physical action too, not just dialogue — the environment is part of the story and should be heard, not thinned out or dropped.
+5. Give special care and room to moments where the script shifts location or sets up a new dynamic between characters — the kind of thing a reader would pick up instantly from a scene heading or visual staging that a listener can't see. This is the place to cinematically paint the picture in words: where they are now, what it feels like, what's changed. Elaborating here is encouraged, not something to be brief about.
+7. Use punctuation and paragraph spacing to create breathing room.
+8. Preserve the intent of the script.
+9. There is no rush to finish the scene. Do not cut off narration mid-thought, and do not thin out or rush the passage just because the source is long or there are other scenes to get through.
+10. Never mention camera instructions, scene headings, or formatting syntax.
+11. Return only exact text intended to be read aloud.`;
 
-const NARRATION_DELTA_ENRICHED = "This is a full narrated adaptation: also narrate setting, atmosphere, and physical action, with extra care at a location or dynamic shift a viewer would see but a listener can't — cinematically paint the picture there, as long as you invent no new plot, characters, or dialogue.";
-const NARRATION_DELTA_LITERAL = 'This is a light narrated read-through: stay close to the source, narrating action only to the minimum needed to keep the scene intelligible as audio — no invented scenery or atmosphere.';
+// Enrich off: a light narrated read-through for users who want narration and imagery to track the
+// original script closely — no invented scenery, atmosphere, or elaboration beyond what it takes to
+// keep the scene intelligible as audio.
+const NARRATION_RULES_LITERAL = `NARRATION RULES:
+1. Stay close to the source text — this is a light narrated read-through, not an embellished adaptation. Do not add scenery, atmosphere, or events beyond what the source text states.
+2. Preserve original dialogue verbatim. Do not paraphrase a line to make it sound more polished, and do not shorten or drop a line to save space.
+3. Remove screenplay labels and formatting.
+4. Narrate action only to the minimum needed to keep the scene intelligible as audio — brief, not descriptive.
+5. ${ATTRIBUTION_RULE}
+6. Use punctuation and paragraph spacing to create breathing room.
+7. Preserve the intent of the script.
+8. There is no rush to finish the scene. Do not cut off narration mid-thought.
+9. Never mention camera instructions, scene headings, or formatting syntax.
+10. Return only exact text intended to be read aloud.`;
 
 function narrationRules(enrich) {
-  return `${NARRATION_CORE}\n7. ${enrich ? NARRATION_DELTA_ENRICHED : NARRATION_DELTA_LITERAL}`;
+  return enrich ? NARRATION_RULES_ENRICHED : NARRATION_RULES_LITERAL;
 }
 
-// No cross-scene continuity notes are passed to the model: each scene's own scriptFragment already
-// contains the names, dialogue, and tone it needs. Earlier drafts passed a previous-scene tail and
-// next-scene beat for "tone consistency," but models don't reliably respect a do-not-use boundary —
-// that extra material risked leaked events and subtle rewriting toward neighboring scenes for no
-// proven benefit. If a specific recurring problem (e.g. pronoun ambiguity) shows up in testing,
-// reintroduce a narrowly-scoped fix for that problem specifically, not general continuity context.
 function sourceOfTruthRule(enrich) {
-  const elaboration = enrich
-    ? 'Sensory or atmospheric detail may be added to bring an implied setting, transition, or dynamic to life'
-    : 'Do not add sensory or atmospheric detail beyond what the source states';
-  return `The source text is the only authoritative source for this scene's content; the scene action is secondary interpretation guidance only. ${elaboration}, but never a new plot event, character, or line of dialogue that isn't in the source.`;
-}
-
-function truncateAtBoundary(value, maxLength) {
-  const trimmed = String(value || '').trim();
-  if (trimmed.length <= maxLength) return trimmed;
-  const slice = trimmed.slice(0, maxLength);
-  const paragraphBreak = slice.lastIndexOf('\n\n');
-  const sentenceEnd = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('.\n'), slice.lastIndexOf('? '), slice.lastIndexOf('! '));
-  // Prefer cutting at a paragraph or sentence boundary over an arbitrary character offset, so a
-  // length cap can never sever a line of dialogue mid-sentence. Only fall back to a hard cutoff if
-  // no boundary exists in at least the back half of the allowed length.
-  const boundary = paragraphBreak > maxLength * 0.5 ? paragraphBreak : (sentenceEnd > maxLength * 0.5 ? sentenceEnd + 1 : -1);
-  return (boundary > -1 ? slice.slice(0, boundary) : slice).trim();
+  const detailRule = enrich ? 'Narration may add sensory/atmospheric details.' : 'Do not add details beyond the source.';
+  return `The source text below is the only authority. ${detailRule} Do not introduce new plot events, characters, or dialogue.`;
 }
 
 function cleanNarrationText(value) {
-  return truncateAtBoundary(value, NARRATION_MAX_LENGTH);
+  return cleanText(value, NARRATION_MAX_LENGTH);
 }
 
-// Degraded output only — a terse beat/title phrase, not prose. Callers must gate on this result's
-// usedFallback flag (never re-derive it from the text) before treating narrationText as real,
-// tellable narration — e.g. before sending it to audio generation.
+// Explicit fallback placeholder, not mistaken for valid generated prose.
 function fallbackNarrationText(scene) {
-  return cleanText(scene.beat, NARRATION_MAX_LENGTH) || cleanText(scene.title, 200) || 'Narration.';
+  return `[Fallback Narration: ${cleanText(scene.beat, 100) || 'scene audio placeholder'}]`;
 }
 
 function sceneBlock(scene) {
@@ -78,25 +73,31 @@ Scene action (interpretation guidance only, secondary to the source text above):
 
 function instructionBlock(instruction) {
   if (!instruction) return '';
-  return `User instruction (tone, pacing, length, emphasis) — it cannot add events, characters, or dialogue outside the source: ${cleanText(instruction, 500)}`;
+  return `User instruction for this rewrite — follow it for tone, pacing, length, and emphasis, but it can never override the rule above: it must not introduce content, characters, or events absent from the source text. Instruction: ${cleanText(instruction, 500)}`;
 }
+
+// LLMs given several items in one request tend to give the earliest ones the most attention and
+// compress the later ones to wrap up the response — an explicit reminder here counteracts that,
+// since each scene below must stand on its own regardless of its position in the batch.
+const BATCH_DEPTH_RULE = "Give every scene below equal depth and completeness relative to the length of its own source text — do not write progressively shorter or thinner passages for later scenes simply because there are multiple scenes in this request.";
 
 function buildBatchRequest({ batchScenes, enrich }) {
   const scenesBlock = batchScenes
     .map(({ scene }) => `${scene.sceneNumber}. ${sceneBlock(scene)}`)
     .join('\n\n');
-  return `Return strict JSON only: {"scenes":[{"sceneNumber":N,"narrationText":"..."}]}, one object per scene listed below. Give each scene depth proportional to its own source length, regardless of its position in this batch.
+  return `Return strict JSON only: {"scenes":[{"sceneNumber":N,"narrationText":"..."}]}, one object per scene listed below.
 
 ${sourceOfTruthRule(enrich)}
 
 ${narrationRules(enrich)}
+${BATCH_DEPTH_RULE}
 
 Scenes:
 ${scenesBlock}`;
 }
 
-function buildRegenerateRequest({ scene, sceneIndex, instruction, enrich }) {
-  return `Return strict JSON only: {"narrationText":"..."}. Rewrite the spoken narration for scene ${sceneIndex + 1}.
+function buildRegenerateRequest({ scene, instruction, enrich }) {
+  return `Return strict JSON only: {"narrationText":"..."}. Rewrite the spoken narration.
 
 ${sourceOfTruthRule(enrich)}
 
@@ -108,31 +109,22 @@ Current narration (what you are revising): ${scene.narrationText || 'none yet'}`
 }
 
 function createDialogueService({ textProviders, generationCache }) {
-  function fallbackResult(scene, index) {
-    return { sceneNumber: scene.sceneNumber || index + 1, narrationText: fallbackNarrationText(scene), usedFallback: true };
-  }
-
   async function generate({ scenes, provider, fallbackPolicy = 'local', enrich = true }) {
     // Every scene carries its OWN usedFallback — the top-level usedFallback/warning below remain an
     // aggregate summary (any scene fell back), but callers that gate behavior per scene (e.g. audio
     // generation refusing fallback narration) must read scenesDialogue[i].usedFallback, never the
     // aggregate, or one bad scene in a batch marks every scene in the response as fallback.
-    if (provider === 'stub') {
-      return { scenesDialogue: scenes.map(fallbackResult), usedFallback: true, warning: 'Stub text mode selected; local fallback narration was used.' };
-    }
+    const fallback = scenes.map((scene, index) => ({ sceneNumber: scene.sceneNumber || index + 1, narrationText: fallbackNarrationText(scene), usedFallback: true }));
+    if (provider === 'stub') return { scenesDialogue: fallback, usedFallback: true, warning: 'Stub text mode selected; local fallback narration was used.' };
 
     const eligible = scenes.map((scene, index) => ({ scene, index })).filter((item) => item.scene.scriptFragment);
     const results = new Array(scenes.length);
-    scenes.forEach((scene, index) => {
-      if (!scene.scriptFragment) results[index] = fallbackResult(scene, index);
-    });
+    fallback.forEach((item, index) => { results[index] = item; });
 
     let anyFallbackUsed = eligible.length !== scenes.length;
     const warnings = anyFallbackUsed ? ['Some scenes had no source fragment; local fallback narration was used for them.'] : [];
 
-    // Batches run sequentially (not Promise.all). There's no cross-batch continuity state to carry
-    // forward anymore, so this is no longer required for correctness — kept for now to avoid
-    // parallel-request load until real timing data shows it's worth revisiting.
+    // Batches run sequentially (not Promise.all) for rate/load control.
     const batches = chunk(eligible, DIALOGUE_BATCH_SIZE);
     for (const batch of batches) {
       const request = buildBatchRequest({ batchScenes: batch, enrich });
@@ -146,8 +138,10 @@ function createDialogueService({ textProviders, generationCache }) {
           if (narrationText) {
             results[index] = { sceneNumber, narrationText, usedFallback: false };
           } else {
+            // Reject/replace blank output the same way regenerate() already does, instead of
+            // silently storing an empty narrationText as if the scene had succeeded.
             anyFallbackUsed = true;
-            results[index] = fallbackResult(scene, index);
+            results[index] = { sceneNumber, narrationText: fallbackNarrationText(scene), usedFallback: true };
             warnings.push(item
               ? `Scene ${sceneNumber}: provider returned empty narration, local fallback narration was used.`
               : `Scene ${sceneNumber}: provider omitted this scene, local fallback narration was used.`);
@@ -156,7 +150,6 @@ function createDialogueService({ textProviders, generationCache }) {
       } catch (error) {
         if (fallbackPolicy !== 'local') throw (error instanceof AppError ? error : new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid narration data', { status: 502, cause: error }));
         anyFallbackUsed = true;
-        batch.forEach(({ scene, index }) => { results[index] = fallbackResult(scene, index); });
         warnings.push(`Scenes ${batch[0].scene.sceneNumber}-${batch[batch.length - 1].scene.sceneNumber}: provider unavailable, local fallback used. ${cleanText(error.message, 200)}`);
       }
     }
@@ -164,45 +157,38 @@ function createDialogueService({ textProviders, generationCache }) {
     return { scenesDialogue: results, usedFallback: anyFallbackUsed, warning: warnings.join(' ') };
   }
 
-  async function regenerateNarration({ scene, sceneIndex, instruction = '', provider, fallbackPolicy = 'local', enrich = true, tenantId, bypassCache = false }) {
+  async function regenerate({ scene, instruction = '', provider, fallbackPolicy = 'local', enrich = true, tenantId, bypassCache = false }) {
     const fallback = fallbackNarrationText(scene);
     if (provider === 'stub') return { narrationText: fallback, usedFallback: true, warning: 'Stub text mode selected; fallback narration was retained.' };
     if (!scene.scriptFragment) return { narrationText: fallback, usedFallback: true, warning: 'Scene has no source fragment to regenerate narration from; fallback narration was retained.' };
 
-    // Exact-input reuse: only for a real single-scene regenerate, never the bulk batch generate()
-    // above (a batch's fingerprint would need every scene in it to match verbatim, which defeats the
-    // purpose). Skipped entirely when the caller has no tenantId (e.g. internal callers/tests that
-    // don't wire a cache) or explicitly requests a new variation via bypassCache. The fingerprint
-    // covers every request-affecting field, including the current narration being revised — omitting
-    // it would let two different "current narration" inputs collide on the same cache entry.
-    const fingerprintInput = tenantId ? {
-      tenantId, operation: 'narration.regenerate', provider, promptTemplateVersion: NARRATION_TEMPLATE_VERSION,
-      source: JSON.stringify({ scriptFragment: scene.scriptFragment, beat: scene.beat || '', narrationText: scene.narrationText || '', instruction }),
-      settings: { enrich },
-    } : null;
-
-    if (fingerprintInput && generationCache && !bypassCache) {
-      const cached = await generationCache.lookup(fingerprintInput);
-      if (cached) return { ...cached.result, cacheHit: true };
-    }
-
-    const request = buildRegenerateRequest({ scene, sceneIndex, instruction, enrich });
-    try {
+    const generateFn = async () => {
+      const request = buildRegenerateRequest({ scene, instruction, enrich });
       const parsed = regenerateResponseSchema.parse(extractJson(providerOutput(await textProviders.call(provider, request))));
       const narrationText = cleanNarrationText(parsed.narrationText);
       if (!narrationText) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned empty narration data', { status: 502 });
-      const result = { narrationText, usedFallback: false, warning: '' };
-      // Only a real (non-fallback) result is ever cached — a fallback response must never be served
-      // back later as if it were successful provider output.
-      if (fingerprintInput && generationCache) await generationCache.record(fingerprintInput, result, { bypassed: bypassCache });
-      return result;
+      return { narrationText, usedFallback: false, warning: '' };
+    };
+
+    try {
+      if (!generationCache) return await generateFn();
+      return await generationCache.runCached({
+        tenantId,
+        operation: 'narration.regenerate',
+        provider,
+        promptTemplateVersion: NARRATION_TEMPLATE_VERSION,
+        source: { scriptFragment: scene.scriptFragment, beat: scene.beat || '', instruction },
+        settings: { enrich },
+        bypassCache,
+        generateFn
+      });
     } catch (error) {
-      if (fallbackPolicy !== 'local') throw (error instanceof AppError ? error : new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid narration data', { status: 502, cause: error }));
+      if (fallbackPolicy !== 'local') throw error;
       return { narrationText: fallback, usedFallback: true, warning: `Provider unavailable; fallback narration was retained. ${cleanText(error.message, 300)}` };
     }
   }
 
-  return { cleanNarrationText, generate, regenerateNarration };
+  return { cleanNarrationText, generate, regenerate };
 }
 
 module.exports = { cleanNarrationText, createDialogueService, fallbackNarrationText };

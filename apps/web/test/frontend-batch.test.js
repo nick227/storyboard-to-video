@@ -118,3 +118,82 @@ test('regression: getScenes() must return id-bearing objects, not raw id strings
   }
   assert.deepEqual(capturedScenes.map((item) => item.id), ['scene-a', 'scene-b']);
 });
+
+// Landing-scene behavior (stages.js's runStageBatch, exercised via generateMissingOrStale): the
+// selected-scene anchor must land wherever a run actually stopped, and "actually stopped" is read
+// off batchStore's real currentIndex — not guessed — so these mock batchController.start the same
+// way the regression test above does, but drive currentIndex to the three states runStageBatch
+// must distinguish: committed-then-stopped, stopped-before-committing, and ran-to-completion.
+
+test('landing scene: a Stop that lands after the in-flight scene commits selects the NEXT scene', async () => {
+  const { batchController } = await import(path.join(__dirname, '..', 'public', 'modules', 'batch.js'));
+  const { sceneStore, uiStore, batchStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+  const { generateMissingOrStale } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+
+  sceneStore.set({ scenes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }] });
+  uiStore.set({ operation: null, selectedSceneId: null });
+  batchStore.set({ images: { state: 'idle', currentIndex: 0, generating: false, stopRequested: false } });
+
+  const originalStart = batchController.start;
+  batchController.start = async (type) => {
+    // Scenes a and b committed (currentIndex advanced past them) before the next iteration's
+    // top-of-loop check discovered the stop request — the common case.
+    batchStore.set((state) => ({ [type]: { ...state[type], currentIndex: 2 } }));
+    return 'paused';
+  };
+  try {
+    await generateMissingOrStale('images', {}, () => {});
+  } finally {
+    batchController.start = originalStart;
+  }
+
+  assert.equal(uiStore.get().selectedSceneId, 'c', 'lands on the next untouched scene, not the one that just committed');
+});
+
+test('landing scene: a Stop whose in-flight scene never committed (e.g. its request was cancelled) selects that SAME scene again', async () => {
+  const { batchController } = await import(path.join(__dirname, '..', 'public', 'modules', 'batch.js'));
+  const { sceneStore, uiStore, batchStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+  const { generateMissingOrStale } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+
+  sceneStore.set({ scenes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }] });
+  uiStore.set({ operation: null, selectedSceneId: null });
+  batchStore.set({ images: { state: 'idle', currentIndex: 0, generating: false, stopRequested: false } });
+
+  const originalStart = batchController.start;
+  batchController.start = async (type) => {
+    // Scene a committed; scene b was in flight when the stop's job-cancellation made its own call
+    // throw — currentIndex never advances past it (batch.js only advances after a resolve).
+    batchStore.set((state) => ({ [type]: { ...state[type], currentIndex: 1 } }));
+    return 'failed';
+  };
+  try {
+    await generateMissingOrStale('images', {}, () => {});
+  } finally {
+    batchController.start = originalStart;
+  }
+
+  assert.equal(uiStore.get().selectedSceneId, 'b', 'lands back on the scene whose work never committed, so the next Start retries it');
+});
+
+test('landing scene: natural completion selects the LAST scene actually processed', async () => {
+  const { batchController } = await import(path.join(__dirname, '..', 'public', 'modules', 'batch.js'));
+  const { sceneStore, uiStore, batchStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+  const { generateMissingOrStale } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+
+  sceneStore.set({ scenes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }] });
+  uiStore.set({ operation: null, selectedSceneId: null });
+  batchStore.set({ images: { state: 'idle', currentIndex: 0, generating: false, stopRequested: false } });
+
+  const originalStart = batchController.start;
+  batchController.start = async (type, generateFn, getScenes) => {
+    batchStore.set((state) => ({ [type]: { ...state[type], currentIndex: getScenes().length } }));
+    return 'complete';
+  };
+  try {
+    await generateMissingOrStale('images', {}, () => {});
+  } finally {
+    batchController.start = originalStart;
+  }
+
+  assert.equal(uiStore.get().selectedSceneId, 'd', 'clamps to the last scene actually processed, not past the end of the range');
+});

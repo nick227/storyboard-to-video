@@ -220,7 +220,7 @@ test('create-scenes builds a deterministic scene skeleton with no LLM call, enab
 test('split-scene splits one fragment into the requested number of sub-scenes', async (t) => {
   const projectId = id('split'); t.after(() => cleanupProject(projectId));
   await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Split' }).expect(201);
-  const body = { projectId, scriptFragment: 'A hero opens a door. A shadow crosses the hallway. The house creaks in the wind. A voice calls out from upstairs.', count: 2 };
+  const body = { projectId, scriptFragment: 'A hero opens a door. A shadow crosses the hallway. The house creaks in the wind. A voice calls out from upstairs.', count: 2, provider: 'stub' };
   const response = await request(app).post('/api/storyboard/split-scene').set(auth()).set('Idempotency-Key', 'split-scene-001').send(body).expect(200);
   assert.equal(response.body.scenes.length, 2);
   response.body.scenes.forEach((scene) => assert.ok(typeof scene.scriptFragment === 'string' && scene.scriptFragment.length > 0));

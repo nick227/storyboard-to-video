@@ -55,7 +55,12 @@ export const batchStore = new Store({
 });
 
 export const uiStore = new Store({
-  operation: null // e.g. { type: 'prompt', sceneId: 'xyz' }
+  operation: null, // e.g. { type: 'prompt', sceneId: 'xyz' }
+  // The run anchor a Start click uses ("Start from Scene N"). Session state only — resets on
+  // reload, same convention as stages.js's manualSelectionOverride. Resolved defensively via
+  // resolveSelectedSceneIndex (stages.js) wherever it's read, so a stale/removed id never breaks
+  // rendering or a run.
+  selectedSceneId: null
 });
 
 // A helper for global debounced events (e.g., text inputs)

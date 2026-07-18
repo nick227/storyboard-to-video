@@ -60,7 +60,7 @@ function createImageGenerationService({ config, styles, provider, projectStore }
         // `scenePrompt` is the raw scene-level prompt (what staleness compares against); `prompt` is
         // the full composed prompt actually sent to the provider (style + common + scene + extra) —
         // the two are never equal, so staleness must compare against `scenePrompt`, not `prompt`.
-        const version = { path: asset.path, prompt, scenePrompt: input.scenePrompt, createdAt: new Date().toISOString() };
+        const version = { path: asset.path, prompt, scenePrompt: input.scenePrompt, provider: input.provider, createdAt: new Date().toISOString() };
         let scene, project;
         try {
           ({ scene, project } = await projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'image', version, jobId }));
