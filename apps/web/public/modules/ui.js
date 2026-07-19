@@ -3,7 +3,7 @@ import { getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from 
 import { loadProtectedAsset } from './assets.js';
 import { api } from './api.js';
 import { previewVoice, openVoiceLibraryModal } from './voices.js';
-import { computeStageStatus, getCachedJobs } from './stages.js';
+import { computeStageStatus, getCachedJobs, getCachedSpend } from './stages.js';
 import { suggestSceneCount, suggestSceneCountFromNarration } from './scene-count.js';
 
 const NO_MAPPING_AUDIO_PROVIDERS = ['stub'];
@@ -251,8 +251,6 @@ export function renderVoicesPanel(els) {
   els.voicesPanel.append(select, previewBtn);
 }
 
-const PLANNING_OPERATION_TYPES = ['prompts', 'dialogueAll', 'prompt', 'dialogue', 'action', 'splitScene', 'planningStaleUpdate'];
-
 function stageStatusLabel(stage) {
   if (!stage.total && stage.done === 0 && stage.missing === 0) return 'Not started';
   let label = stage.label;
@@ -281,11 +279,23 @@ export function renderStageBar(els) {
   const busy = uiState.operation != null;
 
   const status = computeStageStatus(sceneState.scenes, batchState, uiState.operation, getCachedJobs(), record?.stageRuns || {});
+  const spend = getCachedSpend();
 
   if (els.stagePlanningStatus) els.stagePlanningStatus.textContent = stageStatusLabel(status.planning);
   if (els.stageImagesStatus) els.stageImagesStatus.textContent = stageStatusLabel(status.images);
   if (els.stageAudioStatus) els.stageAudioStatus.textContent = stageStatusLabel(status.audio);
   if (els.stageVideoStatus) els.stageVideoStatus.textContent = stageStatusLabel(status.video);
+  if (els.stageTokensStatus) {
+    els.stageTokensStatus.textContent = spend.totalCostUSD != null ? `${spend.totalCostUSD.toFixed(4)} USD` : '0.0000 USD';
+  }
+
+  if (els.stageTokensBtn) {
+    els.stageTokensBtn.disabled = true;
+    const providerLines = Object.entries(spend.providers || {})
+      .map(([provider, stats]) => `${provider}: $${stats.costUSD.toFixed(4)} (${stats.tokens.toLocaleString()} tokens)`)
+      .join('\n');
+    els.stageTokensBtn.title = providerLines || 'No spend recorded';
+  }
 
   // Read-only status strip — selection now happens only in the Start modal (see openStartRunModal
   // in app.js), so these boxes no longer toggle anything and are always disabled/non-interactive.
@@ -305,9 +315,14 @@ export function renderStageBar(els) {
   // One Start/Stop toggle runs the checked stages from the Start modal (the 99% case is all 4) and
   // doubles as Stop while anything is running — Stop is always resumable, so there's no separate
   // harder-stop control anymore. Targeting a subset of stages/scenes is done inside the modal.
-  const activeMediaStage = ['images', 'audio', 'video'].find((stage) => status[stage].running);
-  const planningActive = Boolean(uiState.operation && PLANNING_OPERATION_TYPES.includes(uiState.operation.type));
-  const running = Boolean(activeMediaStage) || planningActive;
+  // `running` must match `busy` exactly: `uiState.operation` is set for every kind of generation,
+  // not just batches — a single-scene regenerate from the entity modal (operation.type 'image'/
+  // 'audio'/'video'/'prompt'/'action'/'dialogue') sets it too, but batchStore-derived `status[stage]
+  // .running` only reflects batch runs. Deriving `running` from just batch/planning state left
+  // single-scene operations invisible to the Start button — worse, `disabled = busy && !running`
+  // then made the button unusable (disabled, stuck on "Start") for the whole duration of a
+  // single-scene generation instead of turning into "Stop".
+  const running = busy;
 
   if (els.startPauseBtn) {
     els.startPauseBtn.textContent = running ? 'Stop' : 'Start';
@@ -901,5 +916,163 @@ function selectSceneVersion(vIndex) {
     queueSync(record);
   }
   renderActiveList();
+}
+
+export function populateTokensInfoModal(els) {
+  const spend = getCachedSpend() || {};
+  const { totalCostUSD = 0, totalTokens = 0, providers = {}, activePrices = [], estimatedPrices = [] } = spend;
+
+  // 1. Render Active Project Spend Breakdown
+  let spendHTML = '';
+  
+  // Pivot the spend data from provider -> modality -> model to modality -> provider -> model
+  const modalityGroups = {
+    text: { label: 'Text Generation', icon: '📝', costUSD: 0, items: [] },
+    image: { label: 'Image Generation', icon: '🎨', costUSD: 0, items: [] },
+    audio: { label: 'Audio Synthesis', icon: '🔊', costUSD: 0, items: [] },
+    video: { label: 'Video Generation', icon: '🎬', costUSD: 0, items: [] },
+  };
+
+  let hasAnySpend = false;
+  for (const [providerName, providerData] of Object.entries(providers)) {
+    const pModalities = providerData.modalities || {};
+    for (const [modalityName, modalityData] of Object.entries(pModalities)) {
+      const targetGroup = modalityGroups[modalityName];
+      if (targetGroup) {
+        hasAnySpend = true;
+        targetGroup.costUSD += modalityData.costUSD;
+        
+        const models = modalityData.models || {};
+        for (const [modelName, modelStats] of Object.entries(models)) {
+          targetGroup.items.push({
+            provider: providerName,
+            model: modelName,
+            ...modelStats
+          });
+        }
+      }
+    }
+  }
+
+  if (!hasAnySpend) {
+    spendHTML = `<div class="past-storyboards-placeholder" style="padding: 30px 10px; text-align: center; color: var(--muted);">
+      No tokens recorded
+    </div>`;
+  } else {
+    spendHTML = `<div style="margin-bottom: 12px; font-size: 13px; font-weight: 500; display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 10px 16px; border-radius: 8px; border: 1px solid var(--line);">
+      <span>Total Storyboard Spend: <strong style="color: var(--accent); font-size: 15px;">$${totalCostUSD.toFixed(5)} USD</strong></span>
+      <span>Total Tokens: <strong>${totalTokens.toLocaleString()}</strong></span>
+    </div>`;
+
+    spendHTML += `<div class="tokens-spend-grid">`;
+    for (const [modality, group] of Object.entries(modalityGroups)) {
+      if (group.items.length === 0) continue;
+      
+      spendHTML += `<div class="tokens-spend-card">
+        <h4>
+          <span>${group.icon} ${group.label}</span>
+          <span class="cost">$${group.costUSD.toFixed(5)}</span>
+        </h4>
+        <div class="tokens-spend-card-providers">`;
+        
+      for (const item of group.items) {
+        let countDetails = '';
+        if (modality === 'text') {
+          countDetails = `${item.count} prompt(s) (${item.inputTokens.toLocaleString()} in / ${item.outputTokens.toLocaleString()} out)`;
+        } else if (modality === 'image') {
+          countDetails = `${item.count} image(s)`;
+        } else if (modality === 'audio') {
+          const sec = item.extra.bytes ? (item.extra.bytes / (item.model.includes('piper') ? 44100 : 48000)).toFixed(1) : '0';
+          countDetails = `${item.count.toLocaleString()} character(s) (~${sec}s audio)`;
+        } else if (modality === 'video') {
+          countDetails = `${item.count} video(s) (${item.extra.frames || 0} frames total)`;
+        }
+
+        spendHTML += `<div class="tokens-spend-provider-row">
+          <div class="tokens-spend-provider-header">
+            <strong>${item.provider} <span style="font-weight: normal; color: var(--muted); font-size: 11px;">(${item.model})</span></strong>
+            <span>$${item.costUSD.toFixed(5)}</span>
+          </div>
+          <div class="tokens-spend-model-list">
+            <div class="tokens-spend-model-row">
+              <span>Usage: ${countDetails}</span>
+              ${item.tokens > 0 ? `<span>Tokens: ${item.tokens.toLocaleString()}</span>` : ''}
+            </div>
+          </div>
+        </div>`;
+      }
+      
+      spendHTML += `</div></div>`;
+    }
+    spendHTML += `</div>`;
+  }
+  
+  if (els.tokensSpendContainer) {
+    els.tokensSpendContainer.innerHTML = spendHTML;
+  }
+
+  // 2. Render Configured Modality Rates
+  let pricingHTML = `<table class="tokens-table">
+    <thead>
+      <tr>
+        <th>Provider</th>
+        <th>Modality</th>
+        <th>Model</th>
+        <th>Rate</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  // Render Database Configured Prices
+  for (const price of activePrices) {
+    let rateStr = '';
+    const card = price.rateCard || {};
+    if (card.type === 'token_components') {
+      const comps = card.components || [];
+      rateStr = comps.map(c => {
+        const ratePerM = c.nanoUsdPerMillion / 1e9;
+        const keyLabel = c.usageKey === 'inputTokens' ? 'Input' 
+                       : c.usageKey === 'cachedInputTokens' ? 'Cached Input'
+                       : c.usageKey === 'outputTokens' ? 'Output'
+                       : c.usageKey === 'inputTextTokens' ? 'Input Text'
+                       : c.usageKey === 'inputImageTokens' ? 'Input Image'
+                       : c.usageKey === 'outputImageTokens' ? 'Output Image'
+                       : c.usageKey === 'outputTextOrThinkingTokens' ? 'Output Text/Thinking'
+                       : c.usageKey;
+        return `${keyLabel}: $${ratePerM.toFixed(4)}/M`;
+      }).join(', ');
+    } else if (card.type === 'linear_steps') {
+      const baseUSD = card.baseNanoUsd / 1e9;
+      rateStr = `$${baseUSD.toFixed(4)} per ${card.baseUnits} steps (scaled linearly)`;
+    } else if (card.type === 'flat') {
+      const rate = card.nanoUsdPerUnit / 1e9;
+      rateStr = `$${rate.toFixed(4)} flat rate`;
+    } else {
+      rateStr = JSON.stringify(card);
+    }
+
+    pricingHTML += `<tr>
+      <td><strong>${price.provider}</strong></td>
+      <td style="text-transform: capitalize;">${price.modality}</td>
+      <td><code>${price.model}</code></td>
+      <td>${rateStr}</td>
+    </tr>`;
+  }
+
+  // Render Fallback / Estimated Prices
+  for (const est of estimatedPrices) {
+    pricingHTML += `<tr>
+      <td><strong>${est.provider}</strong></td>
+      <td style="text-transform: capitalize;">${est.modality}</td>
+      <td><code>${est.model}</code></td>
+      <td>${est.rate}</td>
+    </tr>`;
+  }
+
+  pricingHTML += `</tbody></table>`;
+  
+  if (els.tokensPricingContainer) {
+    els.tokensPricingContainer.innerHTML = pricingHTML;
+  }
 }
 

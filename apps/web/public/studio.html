@@ -175,6 +175,16 @@
           </span>
           <span class="stage-button-status" id="stageVideoStatus">Not started</span>
         </button>
+        <button type="button" id="stageTokensBtn" class="stage-button" disabled>
+          <span class="stage-button-top">
+            <span class="stage-button-label">Tokens</span>
+            <span class="stage-button-spinner" aria-hidden="true"></span>
+          </span>
+          <div class="row">
+            <span class="stage-button-status" id="stageTokensStatus">0.00 USD</span>
+            <span id="tokensInfoBtn" class="icon-link" aria-label="View token spend details">ℹ</span>
+          </div>
+        </button>
       </div>
 
       <div class="stage-bar-actions">
@@ -265,14 +275,6 @@
             </svg>
             <span class="status-icon-spinner" aria-hidden="true"></span>
           </button>
-          <button type="button" class="scene-status-icon is-present" data-status="reference" aria-label="Scene references"
-            title="Scene references">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect width="14" height="14" x="3" y="3" rx="2" />
-              <path d="m17 7 4 4v8a2 2 0 0 1-2 2h-8l-4-4M7 12l2-2 4 4 2-2 2 2" />
-              <circle cx="8" cy="8" r="1" />
-            </svg>
-          </button>
           <button type="button" class="scene-image-btn scene-status-icon" data-status="image" aria-label="Configure image"
             title="Configure image">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -332,6 +334,8 @@
             image</span></div>
         <div class="video-loading target-loading" role="status"><span class="spinner"></span><span>Generating
             video</span></div>
+        <div class="audio-loading target-loading" role="status"><span class="spinner"></span><span>Generating
+            audio</span></div>
         <audio class="scene-audio" preload="metadata"></audio>
       </div>
     </article>
@@ -396,6 +400,14 @@
             <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0-2-.9-2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
           </svg>
           <span>Library</span>
+        </button>
+        <button type="button" id="entityModalReferencesBtn" class="secondary flex-btn" style="display: flex; align-items: center; gap: 6px;" hidden>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <rect width="14" height="14" x="3" y="3" rx="2"/>
+            <path d="m17 7 4 4v8a2 2 0 0 1-2 2h-8l-4-4M7 12l2-2 4 4 2-2 2 2"/>
+            <circle cx="8" cy="8" r="1"/>
+          </svg>
+          <span>References</span>
         </button>
         <button type="button" id="entityModalRegenBtn" class="primary">Regenerate</button>
       </div>
@@ -720,6 +732,24 @@
     <div class="settings-modal-footer">
       <span id="libraryModalSaveNote" class="settings-modal-save-note">Changes apply automatically</span>
       <button type="button" class="primary" id="closeImageLibraryDoneBtn">Done</button>
+  </dialog>
+
+  <dialog id="tokensInfoModal" class="settings-modal tokens-info-modal" aria-labelledby="tokensInfoModalTitle" style="width: 64vw; max-width: 100%;">
+    <div class="settings-modal-header">
+      <h2 id="tokensInfoModalTitle">Token Details</h2>
+      <button type="button" id="tokensInfoModalCloseBtn" class="text-button" aria-label="Close tokens modal">✕</button>
+    </div>
+    <div class="settings-modal-body">
+      <section class="library-section">
+        <div id="tokensSpendContainer" class="tokens-spend-container"></div>
+      </section>
+
+      <section class="library-section">
+        <div id="tokensPricingContainer" class="tokens-pricing-container"></div>
+      </section>
+    </div>
+    <div class="settings-modal-footer">
+      <button type="button" class="primary" id="tokensInfoModalDoneBtn">Cancel</button>
     </div>
   </dialog>
 

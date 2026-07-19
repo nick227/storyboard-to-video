@@ -117,7 +117,7 @@ async function runTests() {
     // Test 11: Every scene exposes live, accessible generation and reference controls.
     const sceneTemplate = document.getElementById('sceneCardTemplate');
     const statusTypes = [...sceneTemplate.content.querySelectorAll('.scene-status-icon')].map((icon) => icon.dataset.status);
-    assert(statusTypes.join(',') === 'prompt,reference,image,dialogue,audio,video', 'Scene status should include references and all five generation stages');
+    assert(statusTypes.join(',') === 'prompt,image,dialogue,audio,video', 'Scene status should include all five generation stages');
     assert(renderingSource.includes("statusIcon.classList.toggle('is-present', isPresent)"), 'Scene status icons should react to scene content');
     assert(renderingSource.includes("statusIcon.setAttribute('aria-label', label)"), 'Scene status icons should announce their state');
     addResult('Scene Header Status Indicators', true);
@@ -165,7 +165,7 @@ async function runTests() {
     assert(!indexSource.includes('id="createStoryAutoAccept"') && !indexSource.includes('id="createStoryCustomStages"'), 'The auto-accept and custom-stage checkboxes should be gone');
     assert(!indexSource.includes('id="cancelRunBtn"'), 'The separate Cancel control should be gone — Stop is always resumable, so there is only one control');
     assert(indexSource.includes('class="stage-bar'), 'New stage bar markup should be present');
-    assert(indexSource.includes('id="stagePlanningBtn"') && indexSource.includes('id="stageImagesBtn"') && indexSource.includes('id="stageAudioBtn"') && indexSource.includes('id="stageVideoBtn"'), 'Stage bar should expose Planning/Images/Audio/Video status boxes');
+    assert(indexSource.includes('id="stagePlanningBtn"') && indexSource.includes('id="stageImagesBtn"') && indexSource.includes('id="stageAudioBtn"') && indexSource.includes('id="stageVideoBtn"') && indexSource.includes('id="stageTokensBtn"'), 'Stage bar should expose Planning/Images/Audio/Video/Tokens status boxes');
     assert(/id="stagePlanningBtn"[^>]*\bdisabled\b/.test(indexSource), 'Stage boxes are read-only status now — selection happens only in the Start modal');
     assert(indexSource.includes('class="stage-button-spinner"'), 'Stage boxes should have room for a running spinner');
     assert(indexSource.includes('id="startPauseBtn"'), 'Stage bar should expose a single Start/Stop toggle');

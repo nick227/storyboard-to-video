@@ -235,3 +235,94 @@ test('generate-prompts reuses existing scene fragments instead of re-splitting w
   assert.equal(response.body.scenes.length, 2);
   response.body.scenes.forEach((scene, index) => assert.equal(scene.scriptFragment, skeleton.body.scenes[index].scriptFragment));
 });
+
+test('GET /api/projects/:projectId/tokens retrieves and aggregates project token spend details', async (t) => {
+  const crypto = require('node:crypto');
+  const projectId = id('tokens'); t.after(() => cleanupProject(projectId));
+  const project = await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Tokens Test' }).expect(201);
+  const tenantId = project.body.project.tenantId;
+
+  // 1. Initially it should return zero spend/tokens
+  const emptyRes = await request(app).get(`/api/projects/${projectId}/tokens`).set(auth()).expect(200);
+  assert.equal(emptyRes.body.ok, true);
+  assert.equal(emptyRes.body.totalCostUSD, 0);
+  assert.equal(emptyRes.body.totalTokens, 0);
+  assert.deepEqual(emptyRes.body.providers, {});
+
+  // 2. Seed a generation request and a usage event with tokens
+  const reqId = crypto.randomUUID();
+  await prisma.generationRequest.create({
+    data: {
+      id: reqId,
+      tenantId,
+      projectId,
+      sequence: 1,
+      modality: 'text',
+      provider: 'openai',
+      model: 'gpt-4o',
+      status: 'completed',
+    }
+  });
+
+  const eventId = crypto.randomUUID();
+  await prisma.usageEvent.create({
+    data: {
+      id: eventId,
+      generationRequestId: reqId,
+      tenantId,
+      projectId,
+      modality: 'text',
+      provider: 'openai',
+      model: 'gpt-4o',
+      usage: { inputTokens: 1000, outputTokens: 500, totalTokens: 1500 },
+      measurementStatus: 'observed',
+    }
+  });
+
+  // Seed a price version and cost snapshot
+  const priceVersionId = crypto.randomUUID();
+  await prisma.providerPriceVersion.create({
+    data: {
+      id: priceVersionId,
+      versionKey: `test-version-${Date.now()}-${Math.random()}`,
+      provider: 'openai',
+      modality: 'text',
+      model: 'gpt-4o',
+      rateCard: { type: 'flat', nanoUsdPerUnit: 1000 },
+      reservationNanoUsd: 0n,
+      evidenceStatus: 'documented',
+    }
+  });
+
+  await prisma.providerCostSnapshot.create({
+    data: {
+      id: crypto.randomUUID(),
+      generationRequestId: reqId,
+      usageEventId: eventId,
+      providerPriceVersionId: priceVersionId,
+      usageSnapshot: { inputTokens: 1000, outputTokens: 500, totalTokens: 1500 },
+      rateCardSnapshot: { type: 'flat', nanoUsdPerUnit: 1000 },
+      providerCostNanoUsd: 50000000n, // $0.05
+      currency: 'USD',
+      calculation: {},
+    }
+  });
+
+  // 3. Request tokens endpoint and verify values
+  const populatedRes = await request(app).get(`/api/projects/${projectId}/tokens`).set(auth()).expect(200);
+  assert.equal(populatedRes.body.ok, true);
+  assert.equal(populatedRes.body.totalCostUSD, 0.05);
+  assert.equal(populatedRes.body.totalTokens, 1500);
+  assert.ok(populatedRes.body.providers.openai);
+  assert.equal(populatedRes.body.providers.openai.costUSD, 0.05);
+  assert.equal(populatedRes.body.providers.openai.tokens, 1500);
+  assert.equal(populatedRes.body.providers.openai.inputTokens, 1000);
+  assert.equal(populatedRes.body.providers.openai.outputTokens, 500);
+  assert.ok(Array.isArray(populatedRes.body.activePrices));
+  assert.ok(Array.isArray(populatedRes.body.estimatedPrices));
+  assert.ok(populatedRes.body.providers.openai.modalities);
+  assert.ok(populatedRes.body.providers.openai.modalities.text);
+  assert.equal(populatedRes.body.providers.openai.modalities.text.costUSD, 0.05);
+  assert.equal(populatedRes.body.providers.openai.modalities.text.tokens, 1500);
+  assert.ok(populatedRes.body.providers.openai.modalities.text.models['gpt-4o']);
+});

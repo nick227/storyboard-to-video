@@ -143,6 +143,23 @@ test('computeStageStatus: failed status is derived from durable job history, not
   assert.equal(status.images.failed, 1, 'failed status must be recoverable from job history alone after a reload');
 });
 
+test('buildLatestJobsByScene: exposes the same per-scene job lookup mediaTally uses internally, for the per-scene status-icon failed state', async () => {
+  const { buildLatestJobsByScene } = await stagesPromise;
+  const recentJobs = [
+    { type: 'audio', sceneId: 'a', status: 'failed', createdAt: '2026-01-01T00:00:00.000Z' },
+    { type: 'audio', sceneId: 'a', status: 'succeeded', createdAt: '2026-01-02T00:00:00.000Z' },
+    { type: 'audio', sceneId: 'b', status: 'failed', createdAt: '2026-01-01T00:00:00.000Z' },
+    { type: 'image', sceneId: 'a', status: 'failed', createdAt: '2026-01-01T00:00:00.000Z' },
+  ];
+  const byAudio = buildLatestJobsByScene(recentJobs, 'audio');
+  assert.equal(byAudio.get('a').status, 'succeeded', 'newest job wins, not the first one seen');
+  assert.equal(byAudio.get('b').status, 'failed');
+  assert.equal(byAudio.get('c'), undefined, 'a scene with no matching job has no entry');
+  const byImage = buildLatestJobsByScene(recentJobs, 'image');
+  assert.equal(byImage.get('a').status, 'failed');
+  assert.equal(byImage.get('b'), undefined, 'jobs for a different scene never leak across scenes');
+});
+
 test('computeStageStatus: paused stage status survives a simulated reload via persisted stageRuns, not just in-memory batchState', async () => {
   const { computeStageStatus } = await stagesPromise;
   const scenes = [scene({ id: 'a' })];

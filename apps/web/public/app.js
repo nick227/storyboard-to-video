@@ -1,8 +1,8 @@
 import { projectStore, sceneStore, voiceStore, uiStore, batchStore } from './modules/store.js';
 import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope } from './modules/persistence.js';
-import { initRendering } from './modules/rendering.js';
+import { initRendering, renderScenes } from './modules/rendering.js';
 import { initTimeline } from './modules/timeline.js';
-import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, renderStageBar, initImageLibraryModal } from './modules/ui.js';
+import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, renderStageBar, initImageLibraryModal, populateTokensInfoModal } from './modules/ui.js';
 import { downloadZip } from './modules/workflows.js';
 import { suggestSceneCount, suggestSceneCountFromNarration } from './modules/scene-count.js';
 import { initializeAuth } from './modules/auth.js';
@@ -10,6 +10,7 @@ import {
   refreshRecentJobs, getCachedJobs, getStageSelection, toggleStageSelection,
   replanStory, regenerateAllStage, stopActiveWork, runCreateStoryFlow,
   computeRunRange, buildRunRowStatus, computeForceStages,
+  refreshSpend, getCachedSpend,
 } from './modules/stages.js';
 import {
   loadElevenLabsVoices, loadSparkVoices, loadPiperVoices, cloneVoice, switchMicrophone,
@@ -60,6 +61,14 @@ const els = {
   stageAudioStatus: document.getElementById('stageAudioStatus'),
   stageVideoBtn: document.getElementById('stageVideoBtn'),
   stageVideoStatus: document.getElementById('stageVideoStatus'),
+  stageTokensBtn: document.getElementById('stageTokensBtn'),
+  stageTokensStatus: document.getElementById('stageTokensStatus'),
+  tokensInfoBtn: document.getElementById('tokensInfoBtn'),
+  tokensInfoModal: document.getElementById('tokensInfoModal'),
+  tokensInfoModalCloseBtn: document.getElementById('tokensInfoModalCloseBtn'),
+  tokensInfoModalDoneBtn: document.getElementById('tokensInfoModalDoneBtn'),
+  tokensSpendContainer: document.getElementById('tokensSpendContainer'),
+  tokensPricingContainer: document.getElementById('tokensPricingContainer'),
   startPauseBtn: document.getElementById('startPauseBtn'),
 
   // Settings modal: visual planning mode, scene-count recommendation policy, danger zone
@@ -413,8 +422,10 @@ async function loadStoryboardIntoUI() {
   const referencesLoaded = await runStage('Loading style references', () => loadStyleReferences(els.styleSelect.value, els, setStatus));
   const voicesLoaded = await runStage('Loading voices', () => refreshVoicesForCurrentProvider());
   await runStage('Loading job history', () => refreshRecentJobs(projectStore.get().currentId));
+  await runStage('Loading token spend', () => refreshSpend(projectStore.get().currentId));
   renderVoicesPanel(els);
   renderStageBar(els);
+  renderScenes();
   refreshSceneCountPolicy();
   return stylesLoaded && referencesLoaded && voicesLoaded;
 }
@@ -613,16 +624,24 @@ function attachEvents() {
   els.settingsReplanBtn.addEventListener('click', async () => {
     if (!(await requestGenerationConfirmation('planningReplan', {}))) return;
     await replanStory(els, setStatus);
-    await refreshRecentJobs(projectStore.get().currentId);
+    await Promise.all([
+      refreshRecentJobs(projectStore.get().currentId),
+      refreshSpend(projectStore.get().currentId)
+    ]);
     renderStageBar(els);
+    renderScenes();
   });
   const wireRegenerateAll = (button, stage, kind) => {
     button.addEventListener('click', async () => {
       if (!(await requestGenerationConfirmation(kind))) return;
       setStatus(`Regenerating all ${stage}...`);
       await regenerateAllStage(stage, els, setStatus);
-      await refreshRecentJobs(projectStore.get().currentId);
+      await Promise.all([
+        refreshRecentJobs(projectStore.get().currentId),
+        refreshSpend(projectStore.get().currentId)
+      ]);
       renderStageBar(els);
+      renderScenes();
     });
   };
   wireRegenerateAll(els.settingsRegenerateImagesBtn, 'images', 'imagesAll');
@@ -658,8 +677,12 @@ function attachEvents() {
     if (result.stoppedAt === 'needsReplanForShrink') setStatus('Stopped — the chosen scene count is smaller than the current structure; use Settings > Replan story structure explicitly to continue.');
     else if (result.stoppedAt) setStatus(`Stopped: ${result.stoppedAt}.`);
     else setStatus('Done.');
-    await refreshRecentJobs(projectStore.get().currentId);
+    await Promise.all([
+      refreshRecentJobs(projectStore.get().currentId),
+      refreshSpend(projectStore.get().currentId)
+    ]);
     renderStageBar(els);
+    renderScenes();
   });
 
   els.styleSelect.addEventListener('change', async () => {
@@ -702,6 +725,16 @@ function attachEvents() {
     } else {
       els.voiceSaveBtn.disabled = false;
     }
+  });
+
+  els.tokensInfoBtn.addEventListener('click', () => {
+    populateTokensInfoModal(els);
+    els.tokensInfoModal.showModal();
+  });
+  els.tokensInfoModalCloseBtn.addEventListener('click', () => els.tokensInfoModal.close());
+  els.tokensInfoModalDoneBtn.addEventListener('click', () => els.tokensInfoModal.close());
+  els.tokensInfoModal.addEventListener('click', (event) => {
+    if (event.target === els.tokensInfoModal) els.tokensInfoModal.close();
   });
 
   // Watchers for basic UI updates

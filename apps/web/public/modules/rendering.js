@@ -1,10 +1,10 @@
-import { sceneStore, generationStore, uiStore, debounce } from './store.js';
+import { sceneStore, generationStore, uiStore, projectStore, debounce } from './store.js';
 import { regeneratePrompt, regenerateAction, regenerateDialogue, regenerateImage, regenerateAudio, regenerateVideo, splitSceneInPlace } from './workflows.js';
 import { ensureProjectSynced, getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from './persistence.js';
 import { loadProtectedAsset } from './assets.js';
 import { api } from './api.js';
 import { suggestSceneCountFromNarration } from './scene-count.js';
-import { computeStaleness, resolveSelectedSceneIndex } from './stages.js';
+import { computeStaleness, resolveSelectedSceneIndex, getCachedJobs, refreshRecentJobs, buildLatestJobsByScene } from './stages.js';
 
 let els = {};
 let activeScenePlayback = null;
@@ -118,6 +118,14 @@ function isEntityLoading(type, scene, operation) {
   }
 }
 
+// Distinguishes "nothing here yet" from "there's already a version" so entity-modal buttons/confirm
+// copy can say Generate vs. Regenerate accurately instead of always claiming a version exists.
+function hasExistingEntity(type, scene) {
+  const config = ENTITY_CONFIG[type];
+  if (config.kind === 'text') return Boolean(String(config.getValue(scene) || '').trim());
+  return (config.versions(scene) || []).some((version) => Boolean(version?.path));
+}
+
 function setupConfirmModal() {
   const modal = els.confirmRegenModal;
   if (!modal || modal.dataset.wired) return;
@@ -134,12 +142,24 @@ function setupConfirmModal() {
   });
 }
 
-function confirmRegeneration(message) {
+function confirmRegeneration(message, confirmLabel = 'Regenerate') {
   return new Promise((resolve) => {
     modalState.confirmResolve = resolve;
     els.confirmRegenMessage.textContent = message;
+    els.confirmRegenConfirmBtn.textContent = confirmLabel;
     els.confirmRegenModal.showModal();
   });
+}
+
+// Every single-scene regenerate call in this module resolves regardless of outcome — workflows.js's
+// prompt/action/dialogue functions catch their own errors internally (never reject), and image/
+// audio/video's rejections are caught by ENTITY_CONFIG's own .catch() wrapper — so this can run
+// unconditionally after any of them settle. It exists specifically for the failure case: a failed
+// attempt never touches sceneStore (nothing to reactively re-render off of), so without an explicit
+// jobs refresh + re-render here, a failed generation leaves the status icon looking exactly like
+// "never attempted" until something unrelated happens to trigger a later refresh.
+function refreshJobsAndRerenderScenes() {
+  return refreshRecentJobs(projectStore.get().currentId).then(() => renderScenes());
 }
 
 function currentEntityModalSceneIndex() {
@@ -445,15 +465,17 @@ function renderEntityModal() {
   const promptFieldLoading = type === 'prompt'
     ? (operation?.type === 'prompts' || (operation?.type === 'prompt' && operation.sceneId === scene.id))
     : isLoading;
+  const hasExistingBeat = Boolean(String(scene.beat || '').trim());
+  const hasExisting = hasExistingEntity(type, scene);
   els.entityModalRegenBeatBtn.hidden = !(showBeat && hasBeatRegen);
   els.entityModalRegenBeatBtn.disabled = busy;
   els.entityModalRegenBeatBtn.classList.toggle('is-loading', beatLoading);
-  els.entityModalRegenBeatBtn.textContent = beatLoading ? 'Regenerating…' : 'Regenerate';
+  els.entityModalRegenBeatBtn.textContent = beatLoading ? (hasExistingBeat ? 'Regenerating…' : 'Generating…') : (hasExistingBeat ? 'Regenerate' : 'Generate');
 
   els.entityModalRegenTextBtn.hidden = !isText;
   els.entityModalRegenTextBtn.disabled = busy;
   els.entityModalRegenTextBtn.classList.toggle('is-loading', promptFieldLoading);
-  els.entityModalRegenTextBtn.textContent = promptFieldLoading ? 'Regenerating…' : 'Regenerate';
+  els.entityModalRegenTextBtn.textContent = promptFieldLoading ? (hasExisting ? 'Regenerating…' : 'Generating…') : (hasExisting ? 'Regenerate' : 'Generate');
 
   const stale = type === 'prompt' && computeStaleness(scene).promptStale;
   els.entityModalStaleWarning.hidden = !stale;
@@ -461,7 +483,7 @@ function renderEntityModal() {
   els.entityModalRegenBtn.hidden = isText;
   els.entityModalRegenBtn.disabled = busy;
   els.entityModalRegenBtn.classList.toggle('is-loading', isLoading);
-  els.entityModalRegenBtn.textContent = isLoading ? 'Regenerating' : 'Regenerate';
+  els.entityModalRegenBtn.textContent = isLoading ? (hasExisting ? 'Regenerating' : 'Generating') : (hasExisting ? 'Regenerate' : 'Generate');
 
   const modalLibraryBtn = document.getElementById('entityModalLibraryBtn');
   if (modalLibraryBtn) {
@@ -472,6 +494,14 @@ function renderEntityModal() {
     // actually hide it — toggle the inline display directly instead.
     modalLibraryBtn.style.display = showLibrary ? 'flex' : 'none';
     modalLibraryBtn.disabled = busy;
+  }
+
+  const modalReferencesBtn = document.getElementById('entityModalReferencesBtn');
+  if (modalReferencesBtn) {
+    const showReferences = type === 'image';
+    modalReferencesBtn.hidden = !showReferences;
+    modalReferencesBtn.style.display = showReferences ? 'flex' : 'none';
+    modalReferencesBtn.disabled = busy;
   }
 
   els.entityModalStatus.textContent = isLoading ? 'Regeneration in progress…' : (busy ? 'Another operation is running…' : '');
@@ -536,20 +566,30 @@ function setupEntityModal() {
     });
   });
 
+  const referencesBtn = document.getElementById('entityModalReferencesBtn');
+  referencesBtn?.addEventListener('click', () => {
+    const index = currentEntityModalSceneIndex();
+    if (index === -1) return;
+    els.entityModal.close();
+    openSceneReferencesModal(index);
+  });
+
   els.entityModalRegenBtn.addEventListener('click', () => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
     const config = ENTITY_CONFIG[modalState.type];
+    const scene = sceneStore.get().scenes[index];
+    const verb = hasExistingEntity(modalState.type, scene) ? 'Regenerate' : 'Generate';
     // Scene expansion is a deliberate storyboard-edit operation (see the "Expand into scenes"
     // action on the narration view), never an incidental side effect of regenerating an image —
     // this button always just regenerates, regardless of how long the scene's narration has grown.
-    confirmRegeneration(`Regenerate the ${config.title.toLowerCase()} for scene ${index + 1}? This creates a new version and makes it active.`).then((confirmed) => {
+    confirmRegeneration(`${verb} the ${config.title.toLowerCase()} for scene ${index + 1}? This creates a new version and makes it active.`, verb).then((confirmed) => {
       if (!confirmed) return;
       // Close immediately so the scene card's own spinner (driven by uiStore.operation, set
       // synchronously inside regenerate* before its first await) is visible right away, instead of
       // running invisibly behind a modal that never closes itself.
       els.entityModal.close();
-      config.regen(index, els, (t) => els.statusText.textContent = t);
+      config.regen(index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
     });
   });
 
@@ -559,7 +599,7 @@ function setupEntityModal() {
     const scene = sceneStore.get().scenes[index];
     const suggested = suggestSceneCountFromNarration([scene]);
     if (suggested <= 1) return;
-    confirmRegeneration(`Split scene ${index + 1} into ${suggested} scenes based on its narration? This changes the storyboard structure — existing image/audio/video for this scene apply only to the first of the new scenes.`).then((confirmed) => {
+    confirmRegeneration(`Split scene ${index + 1} into ${suggested} scenes based on its narration? This changes the storyboard structure — existing image/audio/video for this scene apply only to the first of the new scenes.`, 'Split').then((confirmed) => {
       if (confirmed) {
         splitSceneInPlace(index, suggested, els, (t) => els.statusText.textContent = t)
           .then((didSplit) => { if (didSplit) els.entityModal.close(); })
@@ -573,8 +613,10 @@ function setupEntityModal() {
     if (index === -1) return;
     const config = ENTITY_CONFIG[modalState.type];
     if (!config.regenBeat) return;
-    confirmRegeneration(`Regenerate the physical action for scene ${index + 1}? This does not change the visual prompt.`).then((confirmed) => {
-      if (confirmed) config.regenBeat(index, els, (t) => els.statusText.textContent = t);
+    const scene = sceneStore.get().scenes[index];
+    const verb = Boolean(String(scene.beat || '').trim()) ? 'Regenerate' : 'Generate';
+    confirmRegeneration(`${verb} the physical action for scene ${index + 1}? This does not change the visual prompt.`, verb).then((confirmed) => {
+      if (confirmed) config.regenBeat(index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
     });
   });
 
@@ -582,8 +624,10 @@ function setupEntityModal() {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
     const config = ENTITY_CONFIG[modalState.type];
-    confirmRegeneration(`Regenerate the ${(config.fieldLabel || config.title).toLowerCase()} for scene ${index + 1}? This replaces the current version.`).then((confirmed) => {
-      if (confirmed) config.regen(index, els, (t) => els.statusText.textContent = t);
+    const scene = sceneStore.get().scenes[index];
+    const verb = hasExistingEntity(modalState.type, scene) ? 'Regenerate' : 'Generate';
+    confirmRegeneration(`${verb} the ${(config.fieldLabel || config.title).toLowerCase()} for scene ${index + 1}? This replaces the current version.`, verb).then((confirmed) => {
+      if (confirmed) config.regen(index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
     });
   });
 
@@ -657,8 +701,7 @@ export function initRendering(domEls) {
 
     const iconBtn = e.target.closest('.scene-status-icon');
     if (iconBtn && !iconBtn.disabled) {
-      if (iconBtn.dataset.status === 'reference') openSceneReferencesModal(index);
-      else openEntityModal(index, iconBtn.dataset.status);
+      openEntityModal(index, iconBtn.dataset.status);
     }
   });
 
@@ -790,9 +833,23 @@ export function renderScenes() {
   
   const existingCards = Array.from(els.storyboardGrid.querySelectorAll('.scene-card'));
   const existingNodesMap = new Map(existingCards.map(node => [node.dataset.sceneId, node]));
-  
+
   const nextScenePlaybackCleanups = new Map();
   const nextNodes = [];
+
+  // Per-scene "did the last attempt for this entity fail" — otherwise a failed generation (LLM rate
+  // limit, provider outage, missing voice config, whatever) leaves zero trace on the card itself:
+  // the icon just reverts to the same dim "never attempted" look, indistinguishable from a scene
+  // that was simply never touched. Computed once per render pass, not per scene, since it's the same
+  // lookup for every scene of a given type.
+  const recentJobs = getCachedJobs();
+  const latestJobsByStatus = {
+    prompt: buildLatestJobsByScene(recentJobs, 'prompt'),
+    image: buildLatestJobsByScene(recentJobs, 'image'),
+    dialogue: buildLatestJobsByScene(recentJobs, 'dialogue'),
+    audio: buildLatestJobsByScene(recentJobs, 'audio'),
+    video: buildLatestJobsByScene(recentJobs, 'video'),
+  };
 
   scenes.forEach((scene, index) => {
     let node = existingNodesMap.get(scene.id);
@@ -825,26 +882,25 @@ export function renderScenes() {
     for (const [type, isPresent] of Object.entries(sceneStatus)) {
       const statusIcon = node.querySelector(`[data-status="${type}"]`);
       const isLoading = loadingByType[type];
+      // A prior failed job only counts while nothing has superseded it — a scene that now has real
+      // content (isPresent) succeeded since, and a fresh attempt in flight (isLoading) shouldn't
+      // flash red for a not-yet-refreshed stale failure.
+      const isFailed = !isPresent && !isLoading && latestJobsByStatus[type]?.get(scene.id)?.status === 'failed';
       const displayName = STATUS_LABELS[type] || `${type[0].toUpperCase()}${type.slice(1)}`;
       const label = isLoading
         ? `Generating ${displayName.toLowerCase()}...`
-        : `Configure ${displayName.toLowerCase()}`;
+        : isFailed
+          ? `${displayName} generation failed — click to retry`
+          : `Configure ${displayName.toLowerCase()}`;
       statusIcon.classList.toggle('is-present', isPresent);
       statusIcon.classList.toggle('is-loading', isLoading);
+      statusIcon.classList.toggle('is-failed', isFailed);
       statusIcon.disabled = busy;
       statusIcon.setAttribute('aria-label', label);
       statusIcon.title = label;
     }
 
-    const referenceIcon = node.querySelector('[data-status="reference"]');
-    const defaultReferenceCount = Object.values(generationStore.get().styleReferences || {}).flat().filter((item) => !(scene.disabledProjectReferenceImages || []).includes(item.url)).length;
-    const sceneReferenceCount = (scene.referenceImages || []).length;
-    const referenceCount = defaultReferenceCount + sceneReferenceCount;
-    referenceIcon.classList.add('is-present');
-    referenceIcon.classList.toggle('has-scene-references', sceneReferenceCount > 0 || (scene.disabledProjectReferenceImages || []).length > 0);
-    referenceIcon.disabled = busy;
-    referenceIcon.setAttribute('aria-label', `Scene references: ${referenceCount} active`);
-    referenceIcon.title = `${referenceCount} active reference image${referenceCount === 1 ? '' : 's'} · ${sceneReferenceCount} scene-only`;
+
 
     const activeVersion = scene.versions?.[scene.activeVersionIndex];
     const activeVideoVersion = scene.videoVersions?.[scene.activeVideoVersionIndex];
@@ -921,6 +977,7 @@ export function renderScenes() {
     node.classList.toggle('is-selected', index === selectedIndex);
     node.querySelector('.image-loading').classList.toggle('visible', loadingByType.image);
     node.querySelector('.video-loading').classList.toggle('visible', loadingByType.video);
+    node.querySelector('.audio-loading').classList.toggle('visible', loadingByType.audio);
 
     nextNodes.push(node);
     existingNodesMap.delete(scene.id);

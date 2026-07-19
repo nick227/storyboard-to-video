@@ -70,14 +70,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   outline: 3px solid rgba(79, 140, 255, 0.7);
   outline-offset: 2px;
 }
+.icon-button {
+  width: 36px !important;
+  height: 36px !important;
+  font-size: 20px !important;
+  background: transparent !important;
+  border-radius: 10px !important;
+  border: none !important;
+}
 label { display: block; }
 label > span {
   display: block;
   font-size: 12px;
   color: var(--muted);
-  margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  margin-top: 3px;
 }
 .app-shell {
   max-width: 1500px;
@@ -348,6 +356,12 @@ label > span {
 .stage-button.is-running .stage-button-spinner { display: block; }
 .stage-button.is-paused .stage-button-status { color: var(--accent); }
 .stage-bar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.icon-link {
+  cursor: pointer;
+}
+.icon-link:hover {
+  color: white;
+}
 
 /* Settings modal: visual planning mode + scene-count recommendation policy + danger zone —
    these replaced the removed Planning modal and per-stage dialog, per-run choices become
@@ -764,6 +778,30 @@ details > summary::marker { color: var(--muted); }
   opacity: 0.55;
   cursor: not-allowed;
 }
+/* The last attempt for this entity failed (LLM rate limit, provider outage, misconfigured voice,
+   etc.) and nothing has succeeded since — mutually exclusive with .is-present, so this never needs
+   to out-cascade it. Stays visible (dimmed, not hidden) even while disabled, so a failure elsewhere
+   on the card doesn't visually disappear while some other stage is busy. */
+.scene-status-icon.is-failed {
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.55);
+  background: rgba(255, 107, 107, 0.12);
+  opacity: 1;
+  cursor: pointer;
+}
+.scene-status-icon.is-failed svg {
+  stroke: #ff6b6b;
+}
+.scene-status-icon.is-failed:hover:not(:disabled) {
+  border-color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.2);
+  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.3);
+  opacity: 1;
+}
+.scene-status-icon.is-failed:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .scene-status-icon[data-status="reference"].has-scene-references {
   color: #73ddb1;
   border-color: rgba(115, 221, 177, 0.55);
@@ -1080,7 +1118,7 @@ button.text-button {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: space-between;
+  justify-content:flex-end;
   gap: 16px;
   padding: 14px 20px;
   border-top: 1px solid var(--line);
@@ -1215,11 +1253,10 @@ button.text-button {
   border: 1px solid var(--line);
   background: var(--panel-2);
   color: var(--text);
-  margin-top: -6px;
 }
 .start-run-range-option label > span {
-  margin-top: 0 !important;
-  margin-top: 2px;
+  margin-bottom: 0 !important;
+  margin-top: 2px !important;
 }
 .start-run-rows { display: grid; gap: 8px; }
 .start-run-row {
@@ -1653,6 +1690,7 @@ button.text-button {
 .row {
   display: flex;
   gap: 10px;
+  align-items: center;
 }
 .hidden {
   display: none !important;
@@ -1978,5 +2016,130 @@ button.text-button {
 }
 .style-ref-badge.user {
   background: rgba(6, 95, 70, 0.9);
+}
+
+/* Tokens Info Button & Modal */
+.stage-button-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: all 0.2s ease;
+  margin-left: 8px;
+  align-self: center;
+}
+.stage-button-info:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
+  box-shadow: 0 0 8px var(--accent-soft);
+}
+
+.tokens-spend-container, .tokens-pricing-container {
+  margin-top: 12px;
+}
+
+.tokens-spend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.tokens-spend-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.015);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: border-color 0.2s ease;
+}
+.tokens-spend-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.tokens-spend-card h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: capitalize;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: 6px;
+}
+
+.tokens-spend-card h4 span.cost {
+  color: var(--accent);
+}
+
+.tokens-spend-card-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tokens-spend-provider-row {
+  font-size: 12px;
+}
+
+.tokens-spend-provider-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.tokens-spend-model-list {
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tokens-spend-model-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.tokens-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+  margin-top: 10px;
+}
+
+.tokens-table th, .tokens-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tokens-table th {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.tokens-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.pricing-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 16px 0 8px 0;
+  color: var(--muted);
 }
 

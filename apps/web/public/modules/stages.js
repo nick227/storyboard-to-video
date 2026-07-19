@@ -52,14 +52,23 @@ function hasText(value) {
   return Boolean(String(value || '').trim());
 }
 
-function mediaTally(scenes, { hasVersion, isStale, jobType, recentJobs }) {
-  let done = 0, stale = 0, missing = 0, failed = 0;
+// Newest job per scene for a given job type — the shared lookup behind both the aggregate stage-box
+// failed counts (mediaTally below) and the per-scene status-icon failed state (rendering.js), so a
+// scene whose last attempt errored (LLM rate limit, provider outage, whatever) is identifiable the
+// same way in both places instead of two divergent notions of "failed".
+export function buildLatestJobsByScene(recentJobs, jobType) {
   const jobsByScene = new Map();
   for (const job of recentJobs || []) {
     if (job.type !== jobType || !job.sceneId) continue;
     const existing = jobsByScene.get(job.sceneId);
     if (!existing || new Date(job.createdAt) > new Date(existing.createdAt)) jobsByScene.set(job.sceneId, job);
   }
+  return jobsByScene;
+}
+
+function mediaTally(scenes, { hasVersion, isStale, jobType, recentJobs }) {
+  let done = 0, stale = 0, missing = 0, failed = 0;
+  const jobsByScene = buildLatestJobsByScene(recentJobs, jobType);
   for (const scene of scenes) {
     if (hasVersion(scene)) {
       if (isStale(scene)) stale += 1; else done += 1;
@@ -189,6 +198,26 @@ export async function refreshRecentJobs(projectId) {
 
 export function getCachedJobs() {
   return cachedJobs;
+}
+
+let cachedSpend = { totalCostUSD: 0, totalTokens: 0, providers: {} };
+
+export async function refreshSpend(projectId) {
+  if (!projectId) {
+    cachedSpend = { totalCostUSD: 0, totalTokens: 0, providers: {} };
+    return cachedSpend;
+  }
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(projectId)}/tokens`);
+    cachedSpend = data || { totalCostUSD: 0, totalTokens: 0, providers: {} };
+  } catch (_) {
+    cachedSpend = { totalCostUSD: 0, totalTokens: 0, providers: {} };
+  }
+  return cachedSpend;
+}
+
+export function getCachedSpend() {
+  return cachedSpend;
 }
 
 // --- Planning ------------------------------------------------------------

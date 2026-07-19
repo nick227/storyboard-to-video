@@ -106,6 +106,11 @@ function registerErrorHandler(app) {
     const normalized = error instanceof multer.MulterError
       ? new AppError('UPLOAD_ERROR', error.code === 'LIMIT_FILE_SIZE' ? 'Reference images must be 8 MB or smaller.' : error.message, { status: 400 })
       : error;
+    // Read by jobs/execution.js's `finish` handler: res.statusCode alone tells it the request
+    // failed, but not why — stashing the real error here (before the response goes out) lets job
+    // history/the stage-bar failed counts/the per-scene status-icon failed state show the actual
+    // failure reason instead of a generic "Request failed with status 500".
+    req.generationError = normalized;
     return errorMiddleware(normalized, req, res, next);
   });
 }
