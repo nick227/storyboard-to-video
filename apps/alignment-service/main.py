@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import time
@@ -58,6 +59,7 @@ def health():
 @app.post("/align", dependencies=[Depends(require_service_token)])
 async def align_audio(audio: UploadFile = File(...), transcript: str = Form(...)):
     import whisperx
+    from whisperx.audio import SAMPLE_RATE
 
     transcript = transcript.strip()
     if not transcript:
@@ -73,26 +75,29 @@ async def align_audio(audio: UploadFile = File(...), transcript: str = Form(...)
     tmp_path = ROOT / f"upload-{os.getpid()}-{time.time_ns()}{suffix}"
     tmp_path.write_bytes(raw)
     try:
-        waveform = whisperx.load_audio(str(tmp_path))
+        waveform = await asyncio.to_thread(whisperx.load_audio, str(tmp_path))
     except RuntimeError as error:
         raise HTTPException(400, f"Could not decode uploaded audio: {error}")
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    duration_sec = len(waveform) / 16000
+    duration_sec = len(waveform) / SAMPLE_RATE
     # Alignment-only: one segment spanning the whole clip using the caller's exact transcript,
     # instead of running ASR to produce (and possibly mis-transcribe) the segments ourselves.
     segments = [{"text": transcript, "start": 0.0, "end": duration_sec}]
-    result = whisperx.align(segments, align_model, align_metadata, waveform, str(device))
+    # whisperx.align is a synchronous CPU/GPU-bound call that can take seconds on longer
+    # narration -- run it off the event loop so /health and other concurrent /align calls
+    # (e.g. other scenes mid-batch) aren't stalled behind it.
+    result = await asyncio.to_thread(whisperx.align, segments, align_model, align_metadata, waveform, str(device))
 
+    # whisperx only sets "start"/"end" on a word once at least one of its characters aligned
+    # confidently (see whisperx/alignment.py); a word that never gets one -- e.g. a clipped or
+    # mumbled token at a clip boundary -- has no timing at all. Drop those instead of passing
+    # {start: null, end: null} downstream, where they'd be unusable for karaoke highlighting.
     words = [
-        {
-            "text": word.get("word", ""),
-            "start": word.get("start"),
-            "end": word.get("end"),
-            "score": word.get("score"),
-        }
+        {"text": word.get("word", ""), "start": word["start"], "end": word["end"], "score": word.get("score")}
         for word in result.get("word_segments", [])
+        if "start" in word and "end" in word
     ]
     return {"words": words, "durationSec": duration_sec}
 

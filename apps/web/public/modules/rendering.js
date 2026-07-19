@@ -34,7 +34,17 @@ function renderSubtitleCaption(currentTime) {
   const caption = els.entityModalAudioCaption;
   if (!caption || !words.length) return;
   const currentIndex = words.findIndex((word) => currentTime >= word.start && currentTime < word.end);
-  const centerIndex = currentIndex === -1 ? 0 : currentIndex;
+  // Between two words (a pause) or past the last word (trailing silence), nothing is "current" --
+  // but the window should still track the nearest already-spoken word instead of snapping back to
+  // the very start of the transcript, which is what always defaulting to index 0 did before.
+  let centerIndex = currentIndex;
+  if (centerIndex === -1) {
+    centerIndex = 0;
+    for (let i = 0; i < words.length; i += 1) {
+      if (words[i].start > currentTime) break;
+      centerIndex = i;
+    }
+  }
   const start = Math.max(0, centerIndex - SUBTITLE_WINDOW_RADIUS);
   const end = Math.min(words.length, centerIndex + SUBTITLE_WINDOW_RADIUS + 1);
   caption.textContent = '';

@@ -81,3 +81,25 @@ def test_align_happy_path_round_trip(monkeypatch):
         {"text": "Hello", "start": 0.0, "end": 0.4, "score": 0.9},
         {"text": "world", "start": 0.4, "end": 0.9, "score": 0.85},
     ]
+
+
+def test_align_drops_words_whisperx_could_not_time(monkeypatch):
+    # whisperx omits "start"/"end" entirely (rather than null) for a word it couldn't confidently
+    # place -- e.g. a clipped/mumbled token -- see whisperx/alignment.py's word_segment assembly.
+    # Those must not reach the client as {start: null, end: null}.
+    client = make_client(monkeypatch)
+    monkeypatch.setattr(
+        whisperx,
+        "align",
+        lambda segments, model, metadata, audio, device: {
+            "word_segments": [
+                {"word": "Hello", "start": 0.0, "end": 0.4, "score": 0.9},
+                {"word": "mumble"},
+                {"word": "world", "start": 0.4, "end": 0.9, "score": 0.85},
+            ]
+        },
+    )
+    response = client.post("/align", headers=AUTH, files={"audio": ("clip.wav", b"fake-bytes", "audio/wav")}, data={"transcript": "Hello mumble world"})
+    assert response.status_code == 200
+    words = response.json()["words"]
+    assert [w["text"] for w in words] == ["Hello", "world"]
