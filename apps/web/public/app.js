@@ -172,6 +172,7 @@ const els = {
   entityModalImage: document.getElementById('entityModalImage'),
   entityModalVideo: document.getElementById('entityModalVideo'),
   entityModalAudio: document.getElementById('entityModalAudio'),
+  entityModalAudioCaption: document.getElementById('entityModalAudioCaption'),
   entityModalMediaEmpty: document.getElementById('entityModalMediaEmpty'),
   entityModalStatus: document.getElementById('entityModalStatus'),
   entityModalRegenBtn: document.getElementById('entityModalRegenBtn'),

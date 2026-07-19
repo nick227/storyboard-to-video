@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { slugify } = require('../shared/text');
 const { providerOutput } = require('../providers/result');
 
-function createAudioGenerationService({ config, provider, projectStore }) {
+function createAudioGenerationService({ config, provider, alignmentProvider, projectStore }) {
   return {
     async generate(input, { ownerId, userId, signal, jobId } = {}) {
       const lease = await projectStore.acquireLease(input.projectId, { ownerId, userId });
@@ -19,6 +19,14 @@ function createAudioGenerationService({ config, provider, projectStore }) {
         // from and video versions store `sourceImagePath` — lets audio staleness be derived the same
         // way (compare this snapshot to the scene's current narrationText) without a separate flag.
         const version = { path: asset.path, provider: input.provider, narrationText: input.narrationText, createdAt: new Date().toISOString() };
+        // Alignment is additive, never blocking: a failed or unconfigured alignment step must
+        // never fail audio generation, since audio is the critical path and alignment isn't.
+        if (alignmentProvider) {
+          try {
+            const { words } = await alignmentProvider.align({ audioBuffer: result.buffer, transcript: input.narrationText, mimeType: result.mimeType });
+            if (words?.length) version.alignment = { words };
+          } catch (error) { /* alignment is additive; never fails audio generation */ }
+        }
         let scene, project;
         try {
           ({ scene, project } = await projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'audio', version, jobId }));

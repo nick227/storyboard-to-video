@@ -1361,6 +1361,7 @@ button.text-button {
 .entity-modal-media {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: 220px;
@@ -1381,8 +1382,20 @@ button.text-button {
 .entity-modal-media img[hidden],
 .entity-modal-media video[hidden],
 .entity-modal-media audio[hidden] { display: none; }
-.entity-modal-media audio { width: 100%; margin: 24px; }
+.entity-modal-media audio { width: 100%; margin: 24px 24px 0; }
 .entity-modal-media-empty { color: var(--muted); padding: 40px; text-align: center; }
+.subtitle-karaoke-text {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 24px 20px;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.subtitle-karaoke-text[hidden] { display: none; }
+.subtitle-word { margin: 0 2px; }
+.subtitle-word.is-current { color: var(--text); font-weight: 600; }
 .entity-modal-actions {
   display: flex;
   align-items: center;

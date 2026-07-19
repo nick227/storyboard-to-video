@@ -18,6 +18,8 @@
 /apps/voice-service/pretrained_models/
 /apps/voice-service/spark_tts_src/
 /apps/voice-service/voices/
+/apps/alignment-service/venv/
+/apps/alignment-service/.venv/
 **/__pycache__/
 *.py[cod]
 

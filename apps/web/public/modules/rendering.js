@@ -22,7 +22,30 @@ const modalState = {
   mediaPath: undefined,
   historyAbortController: null,
   mediaAbortController: null,
+  alignmentWords: [],
 };
+
+// How many neighboring words to show on each side of the current one, so the caption reads as a
+// moving phrase window rather than either a single flashing word or the entire transcript at once.
+const SUBTITLE_WINDOW_RADIUS = 4;
+
+function renderSubtitleCaption(currentTime) {
+  const words = modalState.alignmentWords;
+  const caption = els.entityModalAudioCaption;
+  if (!caption || !words.length) return;
+  const currentIndex = words.findIndex((word) => currentTime >= word.start && currentTime < word.end);
+  const centerIndex = currentIndex === -1 ? 0 : currentIndex;
+  const start = Math.max(0, centerIndex - SUBTITLE_WINDOW_RADIUS);
+  const end = Math.min(words.length, centerIndex + SUBTITLE_WINDOW_RADIUS + 1);
+  caption.textContent = '';
+  words.slice(start, end).forEach((word, i) => {
+    const span = document.createElement('span');
+    span.className = `subtitle-word${start + i === currentIndex ? ' is-current' : ''}`;
+    span.textContent = word.text;
+    caption.appendChild(span);
+    caption.appendChild(document.createTextNode(' '));
+  });
+}
 
 const referenceModalState = { sceneId: null };
 
@@ -328,7 +351,10 @@ function renderEntityModalMedia(scene, type, config) {
   els.entityModalAudio.pause();
   els.entityModalAudio.removeAttribute('src');
   els.entityModalAudio.load();
-  
+  modalState.alignmentWords = [];
+  els.entityModalAudioCaption.hidden = true;
+  els.entityModalAudioCaption.textContent = '';
+
   if (!path) return;
 
   modalState.mediaAbortController?.abort();
@@ -347,6 +373,10 @@ function renderEntityModalMedia(scene, type, config) {
     els.entityModalAudio.dataset.assetPath = path;
     loadProtectedAsset(path, { signal }).then((url) => { if (url && els.entityModalAudio.dataset.assetPath === path && modalState.mediaPath === path) els.entityModalAudio.src = url; }).catch(handleAssetError);
     els.entityModalAudio.hidden = false;
+    const words = active?.alignment?.words || [];
+    modalState.alignmentWords = words;
+    els.entityModalAudioCaption.hidden = words.length === 0;
+    if (words.length) renderSubtitleCaption(0);
   }
 }
 
@@ -520,6 +550,7 @@ function setupEntityModal() {
   };
   els.entityModalVideo.addEventListener('play', pauseOtherPlayers);
   els.entityModalAudio.addEventListener('play', pauseOtherPlayers);
+  els.entityModalAudio.addEventListener('timeupdate', () => { if (modalState.alignmentWords.length) renderSubtitleCaption(els.entityModalAudio.currentTime); });
 
   // Capture play events on the history list for delegation
   els.entityModalHistoryList.addEventListener('play', (e) => {

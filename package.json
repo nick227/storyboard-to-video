@@ -1,14 +1,16 @@
 {
   "name": "storyboard-monorepo",
   "private": true,
-  "description": "Root orchestrator for apps/web (Node, deploys to Railway) and apps/voice-service (Python/Spark-TTS, deploys to Modal). No dependencies of its own -- see apps/web/package.json and apps/voice-service/requirements.txt.",
+  "description": "Root orchestrator for apps/web (Node, deploys to Railway), apps/voice-service (Python/Spark-TTS, deploys to Modal), and apps/alignment-service (Python/WhisperX, local dev only). No dependencies of its own -- see apps/web/package.json, apps/voice-service/requirements.txt, and apps/alignment-service/requirements.txt.",
   "scripts": {
-    "start": "trap 'kill 0' INT TERM EXIT; npm run dev:web & npm run dev:voice & wait",
+    "start": "trap 'kill 0' INT TERM EXIT; npm run dev:web & npm run dev:voice & npm run dev:align & wait",
     "dev:web": "npm --prefix apps/web start",
     "dev:voice": "apps/voice-service/venv/bin/python apps/voice-service/main.py",
-    "check": "npm --prefix apps/web run check && apps/voice-service/venv/bin/python -m py_compile apps/voice-service/main.py",
-    "test": "npm --prefix apps/web test && apps/voice-service/venv/bin/python -m pytest apps/voice-service/test_main.py",
+    "dev:align": "apps/alignment-service/venv/bin/python apps/alignment-service/main.py",
+    "check": "npm --prefix apps/web run check && apps/voice-service/venv/bin/python -m py_compile apps/voice-service/main.py && apps/alignment-service/venv/bin/python -m py_compile apps/alignment-service/main.py",
+    "test": "npm --prefix apps/web test && apps/voice-service/venv/bin/python -m pytest apps/voice-service/test_main.py && apps/alignment-service/venv/bin/python -m pytest apps/alignment-service/test_main.py",
     "setup:piper": "npm --prefix apps/web run setup:piper",
-    "setup:spark": "bash apps/voice-service/setup.sh"
+    "setup:spark": "bash apps/voice-service/setup.sh",
+    "setup:align": "bash apps/alignment-service/setup.sh"
   }
 }

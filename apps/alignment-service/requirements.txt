@@ -1,0 +1,9 @@
+torch==2.8.0
+torchaudio==2.8.0
+whisperx==3.8.6
+fastapi==0.139.2
+uvicorn==0.51.0
+python-multipart==0.0.32
+python-dotenv==1.2.2
+pytest==9.1.1
+httpx==0.28.1
