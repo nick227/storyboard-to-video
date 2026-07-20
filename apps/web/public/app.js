@@ -18,9 +18,13 @@ import {
   renderVoiceLibraryList, resetVoiceRecordingUI, voiceRecordingState,
 } from './modules/voices.js';
 
+import { ScreenplayEditor } from './modules/screenplay-editor/js/ScreenplayEditor.js';
+
 const els = {
   // Elements
   scriptText: document.getElementById('scriptText'),
+  scriptModeSelect: document.getElementById('scriptModeSelect'),
+  screenplayEditorContainer: document.getElementById('screenplayEditorContainer'),
 
   styleSelect: document.getElementById('styleSelect'),
   commonPromptText: document.getElementById('commonPromptText'),
@@ -498,11 +502,56 @@ function refreshSceneCountPolicy() {
   }
 }
 
-async function refreshVoicesForCurrentProvider() {
-  const provider = voiceStore.get().audioProvider;
-  if (provider === 'elevenlabs') await loadElevenLabsVoices(setStatus);
-  if (provider === 'spark') await loadSparkVoices(setStatus);
-  if (provider === 'piper') await loadPiperVoices(setStatus);
+let screenplayEditorInstance = null;
+
+function updateScriptText(rawText, { emit = true } = {}) {
+  if (els.scriptText.value !== rawText) {
+    els.scriptText.value = rawText;
+  }
+  if (emit) {
+    els.scriptText.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+}
+
+function setScriptEditorMode(mode) {
+  const currentMode = mode || 'raw';
+  try {
+    localStorage.setItem('scriptEditorMode', currentMode);
+  } catch (_) {}
+
+  if (els.scriptModeSelect && els.scriptModeSelect.value !== currentMode) {
+    els.scriptModeSelect.value = currentMode;
+  }
+
+  if (currentMode === 'screenplay') {
+    const initialScript = els.scriptText.value || '';
+    els.scriptText.hidden = true;
+    if (els.screenplayEditorContainer) {
+      els.screenplayEditorContainer.hidden = false;
+      if (!screenplayEditorInstance) {
+        screenplayEditorInstance = new ScreenplayEditor({
+          container: els.screenplayEditorContainer,
+          initialScript,
+          format: 'fountain',
+          showToolbar: true,
+          onChange: ({ rawText }) => {
+            updateScriptText(rawText, { emit: true });
+          }
+        });
+      } else {
+        screenplayEditorInstance.loadScript(initialScript, 'fountain');
+      }
+    }
+  } else {
+    if (screenplayEditorInstance) {
+      const serialized = screenplayEditorInstance.getRawScript('fountain');
+      updateScriptText(serialized, { emit: true });
+    }
+    if (els.screenplayEditorContainer) {
+      els.screenplayEditorContainer.hidden = true;
+    }
+    els.scriptText.hidden = false;
+  }
 }
 
 async function loadStoryboardIntoUI() {
@@ -515,10 +564,19 @@ async function loadStoryboardIntoUI() {
   renderStageBar(els);
   renderScenes();
   refreshSceneCountPolicy();
+  if (screenplayEditorInstance && els.scriptModeSelect?.value === 'screenplay') {
+    screenplayEditorInstance.loadScript(els.scriptText.value || '', 'fountain');
+  }
   return stylesLoaded && referencesLoaded && voicesLoaded;
 }
 
 function attachEvents() {
+  const savedMode = (typeof localStorage !== 'undefined' && localStorage.getItem('scriptEditorMode')) || 'raw';
+  setScriptEditorMode(savedMode);
+
+  els.scriptModeSelect?.addEventListener('change', (e) => {
+    setScriptEditorMode(e.target.value);
+  });
   const settingsModalPairs = [
     [els.settingsBtn, els.settingsModal],
   ];

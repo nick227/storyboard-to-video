@@ -8,6 +8,7 @@
   <link rel="icon" type="image/png" href="/images/favicon.png" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/topbar.css" />
+  <link rel="stylesheet" href="/modules/screenplay-editor/css/screenplay-editor-standalone.css" />
   <script src="/modules/topbar.js"></script>
 </head>
 
@@ -37,8 +38,16 @@
 
     <section class="concept-grid">
       <article class="panel concept-column story-concept">
+        <div class="script-header-row">
+          <label for="scriptModeSelect" class="script-mode-label">Script Mode</label>
+          <select id="scriptModeSelect" class="script-mode-select">
+            <option value="raw">Raw Text</option>
+            <option value="screenplay">Screenplay Editor</option>
+          </select>
+        </div>
         <textarea id="scriptText" class="script-textarea" rows="7"
           placeholder="Paste story or script here..."></textarea>
+        <div id="screenplayEditorContainer" class="screenplay-editor-container" hidden></div>
       </article>
 
       <!-- Entity generation panels -->

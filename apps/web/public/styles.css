@@ -381,6 +381,36 @@ label > span {
 
 .script-field textarea,
 .script-textarea { min-height: 495px; resize: vertical; }
+
+.script-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.script-mode-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+.script-mode-select {
+  width: auto;
+  min-width: 140px;
+  padding: 4px 8px;
+  font-size: 13px;
+  background: var(--panel-2);
+  border-radius: 6px;
+}
+.screenplay-editor-container {
+  min-height: 495px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0b0f14;
+  overflow: hidden;
+}
 .settings-launchers {
   display: grid;
   gap: 8px;
