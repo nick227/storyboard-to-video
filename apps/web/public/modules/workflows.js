@@ -301,16 +301,9 @@ export async function regenerateImage(index, scene, els, setStatus) {
     if (base.imageProvider !== 'stub') {
       if (setStatus) setStatus(`Checking ${base.imageProvider} reference compatibility for scene ${index + 1}...`);
       const preflight = await api('/api/images/preflight', { method: 'POST', body: JSON.stringify(payload) });
-      if (preflight.requiresConfirmation) {
-        const used = preflight.referenceCount || 0;
-        const omitted = preflight.omittedReferenceCount || 0;
-        const providerName = String(base.imageProvider || 'provider').replace(/^./, (letter) => letter.toUpperCase());
-        const confirmed = window.confirm(`${providerName} can use ${used} of ${used + omitted} reference images for scene ${index + 1} and will omit ${omitted}. Continue with this paid generation?`);
-        if (!confirmed) {
-          if (setStatus) setStatus(`Image generation cancelled for scene ${index + 1}; no provider request was submitted.`);
-          return true;
-        }
-      }
+      // The server-authored reference plan remains bound to generation by its hash, but provider
+      // limits no longer interrupt the workflow with a browser alert. Included and omitted
+      // references remain visible in the resulting generation manifest.
       payload.confirmedReferencePlanHash = preflight.referencePlanHash;
     }
     if (setStatus) setStatus(`Generating image for scene ${index + 1}...`);

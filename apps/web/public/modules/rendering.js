@@ -160,15 +160,37 @@ function setupConfirmModal() {
   });
 }
 
+const VIDEO_PROVIDER_LABELS = Object.freeze({ ltx: 'LTX (local)', minimax: 'MiniMax', veo: 'Veo', stub: 'Stub Preview (no API)' });
+
+function goToImageGeneration(sceneIndex) {
+  els.confirmRegenModal.close();
+  openEntityModal(sceneIndex, 'image');
+}
+
 function configureVideoKeyframeConfirmation(scene, sceneIndex) {
   const record = getCurrentStoryboardRecord();
   const providerName = els.videoProvider?.value || record?.mediaSettings?.video?.provider || '';
   const shot = imageShot(scene);
   const versions = (shot.versions || []).filter((version) => Boolean(version?.path));
-  const available = providerName === 'minimax' && versions.length > 1;
+
+  if (els.confirmVideoSummary) {
+    els.confirmVideoSummary.hidden = false;
+    els.confirmVideoProviderLabel.textContent = providerName ? (VIDEO_PROVIDER_LABELS[providerName] || providerName) : 'Platform default';
+    els.confirmVideoBeatLabel.textContent = scene.beat?.trim() || '—';
+    els.confirmVideoPromptLabel.textContent = shot.prompt?.trim() || '—';
+  }
+
+  const supportsKeyframes = providerName === 'minimax';
+  const available = supportsKeyframes && versions.length > 1;
   els.confirmVideoKeyframes.hidden = !available;
+  if (els.confirmVideoNeedsImageNote) {
+    els.confirmVideoNeedsImageNote.hidden = !(supportsKeyframes && versions.length <= 1);
+    els.confirmVideoNeedsImageBtn.onclick = () => goToImageGeneration(sceneIndex);
+  }
   modalState.confirmApply = null;
   if (!available) return;
+
+  if (els.confirmVideoGenerateImageBtn) els.confirmVideoGenerateImageBtn.onclick = () => goToImageGeneration(sceneIndex);
 
   const selected = shot.videoKeyframeSelection?.source === 'video_generation_confirmation'
     ? shot.videoKeyframeSelection
@@ -242,6 +264,8 @@ function confirmRegeneration(message, confirmLabel = 'Regenerate', options = {})
     modalState.confirmResolve = resolve;
     modalState.confirmApply = null;
     if (els.confirmVideoKeyframes) els.confirmVideoKeyframes.hidden = true;
+    if (els.confirmVideoSummary) els.confirmVideoSummary.hidden = true;
+    if (els.confirmVideoNeedsImageNote) els.confirmVideoNeedsImageNote.hidden = true;
     if (options.videoScene) configureVideoKeyframeConfirmation(options.videoScene, options.sceneIndex);
     els.confirmRegenMessage.textContent = message;
     els.confirmRegenConfirmBtn.textContent = confirmLabel;

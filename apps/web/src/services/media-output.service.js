@@ -21,6 +21,7 @@ function serializeQuote(quote, quantity) {
 }
 
 function createMediaOutputService({ config, projectStore, billing, videoProviders }) {
+  const VIDEO_DURATION_OPTIONS = Object.freeze([2, 4, 6, 8, 10, 12]);
   function imageModel(provider, requested) {
     if (requested) return requested;
     return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', dezgo: config.env.DEZGO_MODEL || 'text2image', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' }[provider];
@@ -53,11 +54,35 @@ function createMediaOutputService({ config, projectStore, billing, videoProvider
     return { ...resolved, estimate: serializeQuote(billingQuote, quantity) };
   }
 
+  async function videoDurationOptions(input, context) {
+    const outputIntent = input.outputIntent && typeof input.outputIntent === 'object' ? input.outputIntent : {};
+    const videoIntent = outputIntent.video && typeof outputIntent.video === 'object' ? outputIntent.video : {};
+    const withDuration = (durationSeconds) => ({
+      ...input,
+      modality: 'video',
+      outputIntent: { ...outputIntent, video: { ...videoIntent, durationSeconds } },
+    });
+    const inspect = async (durationSeconds) => {
+      try {
+        const resolved = await selection(withDuration(durationSeconds), context);
+        return { supported: true, durationSeconds, output: resolved.output };
+      } catch (error) {
+        if (error?.code !== 'UNSUPPORTED_MEDIA_OUTPUT') throw error;
+        return { supported: false, durationSeconds, reason: error.message };
+      }
+    };
+    const [providerDefault, ...options] = await Promise.all([
+      inspect(null),
+      ...VIDEO_DURATION_OPTIONS.map((durationSeconds) => inspect(durationSeconds)),
+    ]);
+    return { providerDefault, options };
+  }
+
   function policy() {
     return { defaults: config.mediaOutputDefaults, aspectRatios: ASPECT_RATIOS, resolutionTiers: RESOLUTION_TIERS, imageQualityLevels: IMAGE_QUALITY_LEVELS };
   }
 
-  return { policy, quote, selection };
+  return { policy, quote, selection, videoDurationOptions };
 }
 
 module.exports = { createMediaOutputService };

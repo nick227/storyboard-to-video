@@ -14,8 +14,8 @@ function fixture() {
   const store = new ProjectStore(path.join(root, 'projects'));
   const videoProviders = {
     resolve({ provider, model }) {
-      if (!['ltx', 'stub'].includes(provider)) throw new Error(`unexpected provider ${provider}`);
-      return { model: model || `${provider}-default-model` };
+      if (!['ltx', 'stub', 'minimax'].includes(provider)) throw new Error(`unexpected provider ${provider}`);
+      return { model: model || (provider === 'minimax' ? 'MiniMax-Hailuo-02' : `${provider}-default-model`) };
     },
   };
   return { root, config, store, videoProviders, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
@@ -37,6 +37,22 @@ test('media output selection falls back to the project default video provider, a
     const overridden = await service.selection({ modality: 'video', projectId: 'quote-project', provider: 'ltx' });
     assert.equal(overridden.provider, 'ltx', 'an explicit request provider must still win over the project default');
     assert.equal(overridden.model, 'ltx-default-model', 'a project model for a different provider must not leak onto an overridden provider');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('video duration options come from the server resolver for the selected provider tuple', async () => {
+  const f = fixture();
+  try {
+    const service = createMediaOutputService({ config: f.config, projectStore: f.store, billing: null, videoProviders: f.videoProviders });
+    const ltx = await service.videoDurationOptions({ provider: 'ltx', outputIntent: { aspectRatio: '16:9', video: { resolutionTier: 'draft' } } });
+    assert.equal(ltx.providerDefault.supported, true);
+    assert.deepEqual(ltx.options.filter((item) => item.supported).map((item) => item.durationSeconds), [2, 4, 6, 8, 10, 12]);
+
+    const minimax = await service.videoDurationOptions({ provider: 'minimax', outputIntent: { aspectRatio: '16:9', video: { resolutionTier: 'standard' } } });
+    assert.equal(minimax.providerDefault.output.resolved.durationSeconds, 6);
+    assert.deepEqual(minimax.options.filter((item) => item.supported).map((item) => item.durationSeconds), [6, 10]);
   } finally {
     f.cleanup();
   }

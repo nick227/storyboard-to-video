@@ -48,6 +48,7 @@ const els = {
   imageQuality: document.getElementById('imageQuality'),
   videoProvider: document.getElementById('videoProvider'),
   videoResolutionTier: document.getElementById('videoResolutionTier'),
+  videoDurationSeconds: document.getElementById('videoDurationSeconds'),
   mediaCostPreview: document.getElementById('mediaCostPreview'),
   saveMediaDefaultsBtn: document.getElementById('saveMediaDefaultsBtn'),
   audioProvider: document.getElementById('audioProvider'),
@@ -190,6 +191,13 @@ const els = {
   confirmVideoEndPreview: document.getElementById('confirmVideoEndPreview'),
   confirmVideoEndPreviewEmpty: document.getElementById('confirmVideoEndPreviewEmpty'),
   confirmVideoKeyframeStatus: document.getElementById('confirmVideoKeyframeStatus'),
+  confirmVideoGenerateImageBtn: document.getElementById('confirmVideoGenerateImageBtn'),
+  confirmVideoSummary: document.getElementById('confirmVideoSummary'),
+  confirmVideoProviderLabel: document.getElementById('confirmVideoProviderLabel'),
+  confirmVideoBeatLabel: document.getElementById('confirmVideoBeatLabel'),
+  confirmVideoPromptLabel: document.getElementById('confirmVideoPromptLabel'),
+  confirmVideoNeedsImageNote: document.getElementById('confirmVideoNeedsImageNote'),
+  confirmVideoNeedsImageBtn: document.getElementById('confirmVideoNeedsImageBtn'),
 
   // Scene entity modal
   entityModal: document.getElementById('entityModal'),
@@ -912,23 +920,69 @@ function attachEvents() {
   [els.textProvider, els.imageProvider].forEach((el) => {
     el.addEventListener('change', () => saveStoryboard(els, false));
   });
-  const selectedMediaSettings = () => ({
+  const selectedMediaSettings = ({ clearInheritedDuration = false } = {}) => ({
     version: 1,
-    aspectRatio: els.mediaAspectRatio.value,
+    ...(els.mediaAspectRatio.value ? { aspectRatio: els.mediaAspectRatio.value } : {}),
     image: { resolutionTier: els.imageResolutionTier.value, quality: els.imageQuality.value },
-    video: { resolutionTier: els.videoResolutionTier.value, ...(els.videoProvider?.value ? { provider: els.videoProvider.value } : {}) },
+    video: {
+      resolutionTier: els.videoResolutionTier.value,
+      ...(els.videoDurationSeconds?.value
+        ? { durationSeconds: Number(els.videoDurationSeconds.value) }
+        : (clearInheritedDuration ? { durationSeconds: null } : {})),
+      ...(els.videoProvider?.value ? { provider: els.videoProvider.value } : {}),
+    },
   });
   let mediaQuoteSequence = 0;
-  const refreshMediaCostPreview = async () => {
-    if (!els.mediaCostPreview || !els.mediaAspectRatio.value) {
-      if (els.mediaCostPreview) els.mediaCostPreview.textContent = 'Current projects retain their existing image and video defaults until an aspect ratio is selected.';
-      return;
+  let videoDurationOptionsSequence = 0;
+  const currentProjectScope = () => {
+    const currentRecord = getCurrentStoryboardRecord();
+    return Number.isInteger(currentRecord?.revision) ? { projectId: projectStore.get().currentId } : {};
+  };
+  const refreshVideoDurationOptions = async () => {
+    if (!els.videoDurationSeconds) return;
+    const sequence = ++videoDurationOptionsSequence;
+    const outputIntent = selectedMediaSettings({ clearInheritedDuration: true });
+    try {
+      const response = await fetch('/api/media-output/video-duration-options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(els.videoProvider?.value ? { provider: els.videoProvider.value } : {}),
+          ...currentProjectScope(),
+          outputIntent,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message || 'Could not resolve video lengths');
+      if (sequence !== videoDurationOptionsSequence) return;
+      const results = new Map((body.options || []).map((item) => [String(item.durationSeconds), item]));
+      for (const option of els.videoDurationSeconds.options) {
+        const result = option.value ? results.get(option.value) : body.providerDefault;
+        const baseLabel = option.dataset.baseLabel || option.textContent;
+        option.disabled = result?.supported === false;
+        option.title = result?.reason || '';
+        if (!option.value && result?.supported) {
+          const seconds = result.output?.resolved?.durationSeconds;
+          option.textContent = seconds ? `${baseLabel} · ${seconds}s` : `${baseLabel} · Automatic`;
+        } else {
+          option.textContent = `${baseLabel}${result?.supported === false ? ' · Unsupported' : ''}`;
+        }
+      }
+    } catch (error) {
+      if (sequence !== videoDurationOptionsSequence) return;
+      for (const option of els.videoDurationSeconds.options) {
+        option.disabled = Boolean(option.value);
+        option.textContent = `${option.dataset.baseLabel || option.textContent}${option.value ? ' · Unavailable' : ' · Automatic'}`;
+        option.title = option.value ? 'Could not verify this duration against the server media policy.' : '';
+      }
     }
+  };
+  const refreshMediaCostPreview = async () => {
+    if (!els.mediaCostPreview) return;
     const sequence = ++mediaQuoteSequence;
     const quantity = Math.max(1, sceneStore.get().scenes.length || 1);
-    const outputIntent = selectedMediaSettings();
-    const currentRecord = getCurrentStoryboardRecord();
-    const projectScope = Number.isInteger(currentRecord?.revision) ? { projectId: projectStore.get().currentId } : {};
+    const outputIntent = selectedMediaSettings({ clearInheritedDuration: true });
+    const projectScope = currentProjectScope();
     try {
       const [imageQuote, videoQuote] = await Promise.all([
         fetch('/api/media-output/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modality: 'image', provider: els.imageProvider.value, ...projectScope, outputIntent, quantity }) }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Image output is unsupported'); return body; }),
@@ -939,17 +993,23 @@ function attachEvents() {
         const resolved = result.output.resolved;
         const dimensions = resolved.width && resolved.height ? `${resolved.width}×${resolved.height}` : resolved.providerSettings.resolution;
         const cost = result.estimate.available ? `${(Number(result.estimate.totalCreditMicros) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} tokens for ${quantity}` : 'price unavailable';
-        return `${label}: ${dimensions}, ${cost}`;
+        const duration = resolved.durationSeconds ? `, ${resolved.durationSeconds}s` : '';
+        return `${label}: ${dimensions}${duration}, ${cost}`;
       };
       els.mediaCostPreview.textContent = `${describe(imageQuote, 'Images')} · ${describe(videoQuote, 'Videos')}`;
     } catch (error) {
       if (sequence === mediaQuoteSequence) els.mediaCostPreview.textContent = error.message;
     }
   };
-  [els.mediaAspectRatio, els.imageResolutionTier, els.imageQuality, els.videoResolutionTier, els.videoProvider].forEach((el) => el?.addEventListener('change', () => { saveStoryboard(els, false); refreshMediaCostPreview(); }));
+  [els.mediaAspectRatio, els.imageResolutionTier, els.imageQuality, els.videoResolutionTier, els.videoDurationSeconds, els.videoProvider].forEach((el) => el?.addEventListener('change', () => {
+    saveStoryboard(els, false);
+    refreshMediaCostPreview();
+  }));
+  [els.mediaAspectRatio, els.videoResolutionTier, els.videoProvider].forEach((el) => el?.addEventListener('change', refreshVideoDurationOptions));
   els.imageProvider.addEventListener('change', refreshMediaCostPreview);
   els.saveMediaDefaultsBtn?.addEventListener('click', async () => {
-    if (!els.mediaAspectRatio.value) { els.mediaCostPreview.textContent = 'Select an aspect ratio before saving user defaults.'; return; }
+    if (!els.mediaAspectRatio.value) { els.mediaCostPreview.textContent = 'Choose a shared aspect ratio before saving defaults for new projects.'; return; }
+    if (els.videoDurationSeconds?.selectedOptions[0]?.disabled) { els.mediaCostPreview.textContent = 'Choose a video length supported by the selected provider and resolution.'; return; }
     try {
       const response = await fetch('/api/auth/preferences/media', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(selectedMediaSettings()) });
       const body = await response.json();
@@ -982,6 +1042,7 @@ function attachEvents() {
   els.settingsBtn.addEventListener('click', () => {
     syncPlanningModeFromEnrich();
     refreshShotCountDisplay();
+    refreshVideoDurationOptions();
     refreshMediaCostPreview();
   });
 

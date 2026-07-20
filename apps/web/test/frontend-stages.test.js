@@ -149,16 +149,19 @@ test('computeStaleness: manifest hash detects image inputs beyond the legacy pro
   };
   const imageVersion = {
     path: '/active.png', scenePrompt: inputs.prompt.scene, provider: 'gemini',
+    output: { requested: { aspectRatio: '1:1', resolutionTier: 'standard', quality: 'medium' } },
     manifest: { schemaVersion: 1, inputs, manifestHash: hashCanonical(inputs) },
   };
   const canonical = scene({ shots: [{
     prompt: inputs.prompt.scene, versions: [imageVersion], activeVersionIndex: 0,
     videoVersions: [], activeVideoVersionIndex: 0,
   }] });
-  projectStore.set({ storyboards: [{ id: 'p1', styleId: 'ink', commonPromptText: 'Ink style.', imageProvider: 'gemini', videoMotionIntensity: 'medium' }], currentId: 'p1' });
+  projectStore.set({ storyboards: [{ id: 'p1', styleId: 'ink', commonPromptText: 'Ink style.', imageProvider: 'gemini', videoMotionIntensity: 'medium', mediaSettings: { image: { resolutionTier: 'standard', quality: 'medium' } } }], currentId: 'p1' });
   generationStore.set({ styles: [{ id: 'ink', promptText: 'Ink style.' }], styleReferences: { characters: [], world: [] }, styleReferencesStyleId: 'ink' });
   try {
     assert.equal(computeStaleness(canonical).imageStale, false);
+    projectStore.set({ storyboards: [{ id: 'p1', styleId: 'ink', commonPromptText: 'Ink style.', imageProvider: 'gemini', videoMotionIntensity: 'medium', mediaSettings: { image: { resolutionTier: 'high', quality: 'medium' } } }], currentId: 'p1' });
+    assert.equal(computeStaleness(canonical).imageStale, true, 'resolution changes apply even when aspect ratio is inherited');
     projectStore.set({ storyboards: [{ id: 'p1', styleId: 'ink', commonPromptText: 'Ink style. Add red accents.', imageProvider: 'gemini', videoMotionIntensity: 'medium' }], currentId: 'p1' });
     assert.equal(computeStaleness(canonical).imageStale, true, 'common direction is part of the manifest hash');
   } finally {

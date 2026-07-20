@@ -1539,6 +1539,29 @@ button.text-button {
 .confirm-modal p {
   margin: 6px 0 0;
 }
+.confirm-video-summary {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  display: grid;
+  gap: 6px;
+}
+.confirm-video-summary-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px;
+  font-size: 12px;
+  align-items: baseline;
+}
+.confirm-video-summary-row > span:first-child {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-size: 10px;
+}
+.confirm-video-summary-row strong { font-weight: 700; }
 .confirm-video-keyframes {
   margin-top: 14px;
   padding: 12px;
@@ -1553,7 +1576,11 @@ button.text-button {
 .confirm-keyframe-preview figure { margin: 0; }
 .confirm-keyframe-preview img, .confirm-keyframe-empty { width: 100%; height: 96px; border-radius: 6px; border: 1px solid var(--line); object-fit: cover; background: var(--bg); }
 .confirm-keyframe-empty { display: grid; place-items: center; color: var(--muted); font-size: 11px; }
+.confirm-keyframe-empty[hidden] { display: none; }
 .confirm-keyframe-preview figcaption { margin-top: 4px; color: var(--muted); font-size: 10px; text-align: center; text-transform: uppercase; letter-spacing: .08em; }
+#confirmVideoGenerateImageBtn { display: block; margin-top: 10px; }
+#confirmVideoNeedsImageNote { margin-top: 12px; }
+#confirmVideoNeedsImageBtn { margin-left: 6px; }
 .confirm-modal-actions {
   display: flex;
   justify-content: flex-end;

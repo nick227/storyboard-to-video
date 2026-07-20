@@ -488,6 +488,18 @@
           </select>
         </label>
         <label>
+          <span>Video length</span>
+          <select id="videoDurationSeconds">
+            <option value="" data-base-label="Provider default" selected>Provider default</option>
+            <option value="2" data-base-label="2 seconds · Test">2 seconds · Test</option>
+            <option value="4" data-base-label="4 seconds">4 seconds</option>
+            <option value="6" data-base-label="6 seconds">6 seconds</option>
+            <option value="8" data-base-label="8 seconds">8 seconds</option>
+            <option value="10" data-base-label="10 seconds">10 seconds</option>
+            <option value="12" data-base-label="12 seconds">12 seconds</option>
+          </select>
+        </label>
+        <label>
           <span>Motion</span>
           <select id="videoMotionIntensity">
             <option value="subtle">Subtle</option>
@@ -511,7 +523,7 @@
           </select>
         </label>
       </div>
-      <p id="mediaCostPreview" class="settings-modal-description">Choose an aspect ratio to preview output dimensions and token cost.</p>
+      <p id="mediaCostPreview" class="settings-modal-description">Changes apply to this project immediately. “Current defaults” applies only to aspect ratio and keeps legacy 1:1 images and 4:3 video.</p>
       <button type="button" id="saveMediaDefaultsBtn" class="secondary">Use these settings for new projects</button>
 
       <div class="settings-modal-section-heading">
@@ -794,6 +806,11 @@
       <h2>Regenerate</h2>
     </div>
     <p id="confirmRegenMessage" class="field-note"></p>
+    <div id="confirmVideoSummary" class="confirm-video-summary" hidden>
+      <div class="confirm-video-summary-row"><span>Provider</span><strong id="confirmVideoProviderLabel"></strong></div>
+      <div class="confirm-video-summary-row"><span>Physical action</span><span id="confirmVideoBeatLabel"></span></div>
+      <div class="confirm-video-summary-row"><span>Visual prompt</span><span id="confirmVideoPromptLabel"></span></div>
+    </div>
     <div id="confirmVideoKeyframes" class="confirm-video-keyframes" hidden>
       <details id="confirmVideoKeyframesDetails">
         <summary>Video keyframes (optional)</summary>
@@ -818,8 +835,13 @@
           </figure>
         </div>
         <small id="confirmVideoKeyframeStatus" class="field-note"></small>
+        <button type="button" id="confirmVideoGenerateImageBtn" class="text-button">Generate a new image for this scene</button>
       </details>
     </div>
+    <p id="confirmVideoNeedsImageNote" class="field-note" hidden>
+      This provider supports a start+end keyframe pair, but this scene only has one generated image.
+      <button type="button" id="confirmVideoNeedsImageBtn" class="text-button">Generate another image</button>
+    </p>
     <div class="confirm-modal-actions">
       <button type="button" id="confirmRegenCancelBtn" class="secondary">Cancel</button>
       <button type="button" id="confirmRegenConfirmBtn" class="primary">Regenerate</button>

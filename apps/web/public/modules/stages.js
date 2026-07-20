@@ -62,8 +62,12 @@ function imageManifestStaleness(scene, shot, version) {
   const style = currentStyle(record);
   if (!record || !style || !version?.manifest?.inputs) return null;
   if (record.mediaSettings && version.output?.requested) {
-    const requested = { aspectRatio: record.mediaSettings.aspectRatio, resolutionTier: record.mediaSettings.image?.resolutionTier, quality: record.mediaSettings.image?.quality };
-    if (hashCanonical(requested) !== hashCanonical(version.output.requested)) return true;
+    const requested = {
+      ...(record.mediaSettings.aspectRatio ? { aspectRatio: record.mediaSettings.aspectRatio } : {}),
+      ...(record.mediaSettings.image?.resolutionTier ? { resolutionTier: record.mediaSettings.image.resolutionTier } : {}),
+      ...(record.mediaSettings.image?.quality ? { quality: record.mediaSettings.image.quality } : {}),
+    };
+    if (Object.entries(requested).some(([key, value]) => version.output.requested[key] !== value)) return true;
   }
   const references = currentImageReferences(scene, record.imageProvider, record.styleId);
   if (!references) return null;
@@ -85,8 +89,12 @@ function videoManifestStaleness(scene, shot, activeImage, version) {
   const style = currentStyle(record);
   if (!record || !style || !version?.manifest?.inputs) return null;
   if (record.mediaSettings && version.output?.requested) {
-    const requested = { aspectRatio: record.mediaSettings.aspectRatio, resolutionTier: record.mediaSettings.video?.resolutionTier, ...(record.mediaSettings.video?.durationSeconds ? { durationSeconds: record.mediaSettings.video.durationSeconds } : {}) };
-    if (hashCanonical(requested) !== hashCanonical(version.output.requested)) return true;
+    const requested = {
+      ...(record.mediaSettings.aspectRatio ? { aspectRatio: record.mediaSettings.aspectRatio } : {}),
+      ...(record.mediaSettings.video?.resolutionTier ? { resolutionTier: record.mediaSettings.video.resolutionTier } : {}),
+      ...(record.mediaSettings.video?.durationSeconds ? { durationSeconds: record.mediaSettings.video.durationSeconds } : {}),
+    };
+    if (Object.entries(requested).some(([key, value]) => version.output.requested[key] !== value)) return true;
   }
   const inputs = structuredClone(version.manifest.inputs);
   inputs.prompt = {

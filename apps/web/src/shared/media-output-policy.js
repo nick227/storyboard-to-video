@@ -107,8 +107,9 @@ function resolveImageOutput({ provider, model, intent }) {
 }
 
 function minimaxResolution(model, tier) {
-  // MiniMax has no distinct low-quality tier of its own; the platform's 'draft' default maps to
-  // the cheapest resolution it actually offers rather than failing generation before submission.
+  // Preserve the pre-policy MiniMax default at 768P for now. This means draft and standard are
+  // currently aliases for Hailuo; a future tier migration can map image-to-video draft to 512P,
+  // while first/last-frame mode must continue rejecting 512P as unsupported by MiniMax.
   const currentHailuo = model === 'MiniMax-Hailuo-02' || /^MiniMax-Hailuo-2(?:\.|$)/.test(String(model || ''));
   if (tier === 'draft' || tier === 'standard') return currentHailuo ? '768P' : '720P';
   if (tier === 'high') return '1080P';

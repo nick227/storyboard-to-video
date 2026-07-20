@@ -37,6 +37,17 @@ test('video resolution respects provider/model/duration tuples without downgradi
   assert.throws(() => resolveVideoOutput({ provider: 'minimax', model: 'MiniMax-Hailuo-02', mode: 'first_last_frame', intent: { ...intent, durationSeconds: 10 } }), (error) => error.code === 'UNSUPPORTED_MEDIA_OUTPUT');
 });
 
+test('two-second test clips are supported only by providers that can actually produce them', () => {
+  const intent = mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'draft', durationSeconds: 2 } } });
+  const ltx = resolveVideoOutput({ provider: 'ltx', model: 'ltx-video', intent });
+  assert.equal(ltx.resolved.durationSeconds, 2);
+  assert.equal(ltx.resolved.providerSettings.duration, 2);
+  assert.throws(
+    () => resolveVideoOutput({ provider: 'minimax', model: 'MiniMax-Hailuo-02', intent }),
+    (error) => error.code === 'UNSUPPORTED_MEDIA_OUTPUT',
+  );
+});
+
 test('the platform default draft resolution tier does not immediately fail on MiniMax', () => {
   const draftIntent = mergeMediaIntent({ modality: 'video', platform: PLATFORM_MEDIA_DEFAULTS });
   assert.equal(draftIntent.resolutionTier, 'draft');
