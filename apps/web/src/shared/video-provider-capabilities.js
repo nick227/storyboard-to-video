@@ -54,6 +54,24 @@ const MINIMAX_FIRST_LAST_FRAME = Object.freeze({
   supportsNativeAudio: false,
 });
 
+const VEO_IMAGE_TO_VIDEO = Object.freeze({
+  implemented: true,
+  execution: 'asynchronous',
+  requiredRoles: Object.freeze(['start_frame']),
+  supportedRoles: Object.freeze(['start_frame']),
+  maxInputs: 1,
+  supportsNativeAudio: true,
+});
+
+const VEO_FIRST_LAST_FRAME = Object.freeze({
+  implemented: true,
+  execution: 'asynchronous',
+  requiredRoles: Object.freeze(['start_frame', 'end_frame']),
+  supportedRoles: Object.freeze(['start_frame', 'end_frame']),
+  maxInputs: 2,
+  supportsNativeAudio: true,
+});
+
 const VIDEO_PROVIDER_CAPABILITIES = Object.freeze({
   ltx: Object.freeze({
     defaultModel: 'ltx-video',
@@ -82,6 +100,22 @@ const VIDEO_PROVIDER_CAPABILITIES = Object.freeze({
       'video-01-live2d': Object.freeze({
         modes: Object.freeze({
           image_to_video: MINIMAX_IMAGE_TO_VIDEO,
+        }),
+      }),
+    }),
+  }),
+  // Second commercial provider, added to test whether this capability model is genuinely
+  // provider-neutral. Not yet live-validated against a real Veo API key (unlike minimax); see
+  // providers/video/veo.js. Veo's up-to-three referenceImages (character/product identity) are not
+  // modeled as a mode here -- that needs the video input-role vocabulary extended, separate scope
+  // from proving a second provider fits.
+  veo: Object.freeze({
+    defaultModel: 'veo-3.1-generate-preview',
+    models: Object.freeze({
+      'veo-3.1-generate-preview': Object.freeze({
+        modes: Object.freeze({
+          image_to_video: VEO_IMAGE_TO_VIDEO,
+          first_last_frame: VEO_FIRST_LAST_FRAME,
         }),
       }),
     }),

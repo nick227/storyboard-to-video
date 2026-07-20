@@ -134,6 +134,19 @@ const VIDEO_OUTPUT_RESOLVERS = Object.freeze({
     if (resolution === '768P' && duration === 10) return { dimensions: null, providerSettings: { resolution, duration } };
     return null;
   },
+  // Veo only accepts 16:9/9:16, resolution draft/standard->720p, high->1080p, ultra->4k, and a
+  // duration of exactly 4, 6, or 8 seconds -- 8 is required once resolution reaches 1080p/4k.
+  // https://ai.google.dev/gemini-api/docs/veo (verified 2026-07-20).
+  veo(model, intent) {
+    if (!['16:9', '9:16'].includes(intent.aspectRatio)) return null;
+    const resolution = { draft: '720p', standard: '720p', high: '1080p', ultra: '4k' }[intent.resolutionTier];
+    if (!resolution) return null;
+    const requiresEightSeconds = resolution === '1080p' || resolution === '4k';
+    const duration = intent.durationSeconds ?? (requiresEightSeconds ? 8 : 6);
+    if (![4, 6, 8].includes(duration)) return null;
+    if (requiresEightSeconds && duration !== 8) return null;
+    return { dimensions: null, providerSettings: { aspectRatio: intent.aspectRatio, resolution, duration } };
+  },
   stub(model, intent) {
     const shortEdge = { draft: 480, standard: 720, high: 1080, ultra: 2160 }[intent.resolutionTier];
     const dimensions = shortEdgeDimensions(intent.aspectRatio, shortEdge);

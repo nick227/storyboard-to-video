@@ -50,7 +50,33 @@ test('the platform default draft resolution tier does not immediately fail on Mi
 test('a video provider with no registered output resolver fails clearly instead of a generic dimension error', () => {
   const intent = mergeMediaIntent({ modality: 'video', platform: PLATFORM_MEDIA_DEFAULTS });
   assert.throws(
-    () => resolveVideoOutput({ provider: 'veo', model: 'veo-3.1', intent }),
+    () => resolveVideoOutput({ provider: 'sora', model: 'sora-2', intent }),
     (error) => error.code === 'UNSUPPORTED_MEDIA_OUTPUT' && /no video output resolver is registered/i.test(error.message)
+  );
+});
+
+test('Veo only accepts its documented aspect ratios, resolutions, and durations', () => {
+  const landscape = resolveVideoOutput({
+    provider: 'veo', model: 'veo-3.1-generate-preview',
+    intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'high' } } }),
+  });
+  assert.deepEqual(landscape.resolved.providerSettings, { aspectRatio: '16:9', resolution: '1080p', duration: 8 });
+
+  const draft = resolveVideoOutput({
+    provider: 'veo', model: 'veo-3.1-generate-preview',
+    intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '9:16', video: { resolutionTier: 'draft' } } }),
+  });
+  assert.deepEqual(draft.resolved.providerSettings, { aspectRatio: '9:16', resolution: '720p', duration: 6 });
+
+  // Veo only documents 16:9 and 9:16; every other aspect ratio in this app's vocabulary is rejected.
+  assert.throws(
+    () => resolveVideoOutput({ provider: 'veo', model: 'veo-3.1-generate-preview', intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '4:3' } }) }),
+    (error) => error.code === 'UNSUPPORTED_MEDIA_OUTPUT'
+  );
+  // 1080p/4k require exactly 8 seconds; a conflicting explicit duration is rejected rather than
+  // silently coerced.
+  assert.throws(
+    () => resolveVideoOutput({ provider: 'veo', model: 'veo-3.1-generate-preview', intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'ultra', durationSeconds: 4 } } }) }),
+    (error) => error.code === 'UNSUPPORTED_MEDIA_OUTPUT'
   );
 });

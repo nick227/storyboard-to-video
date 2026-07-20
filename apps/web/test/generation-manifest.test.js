@@ -285,3 +285,59 @@ test('a selected MiniMax end frame automatically uses Hailuo first/last-frame in
     assert.equal(result.scene.shots[0].videoVersions[0].manifest.inputs.inputPlan.mode, 'first_last_frame');
   } finally { f.cleanup(); }
 });
+
+test('Veo -- a second real provider -- plugs into the same registry/execution/manifest path with no service redesign', async () => {
+  const f = fixture();
+  try {
+    f.config.paths.stubs = path.join(f.root, 'stubs');
+    f.config.paths.ltxShared = path.join(f.root, 'ltx');
+    let call = 0;
+    f.config.fetch = async (url) => {
+      call += 1;
+      if (String(url).includes(':predictLongRunning')) return new Response(JSON.stringify({ name: 'operations/veo-neutrality-1' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (String(url).includes('/v1beta/operations/')) return new Response(JSON.stringify({ done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: 'https://veo.test/output.mp4' } }] } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (String(url) === 'https://veo.test/output.mp4') return new Response(Buffer.from('veo-video-bytes'), { status: 200, headers: { 'Content-Type': 'video/mp4' } });
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+    f.config.env.GEMINI_API_KEY = 'test-key';
+
+    let project = f.store.create({ id: 'veo-neutrality', project: { scenes: [{ id: 'scene-1' }] } });
+    const source = path.join(f.root, 'source.png');
+    fs.writeFileSync(source, pngHeader(1280, 720));
+    const image = f.store.commitAsset(f.store.acquireLease('veo-neutrality'), 'images', source);
+    project = f.store.write('veo-neutrality', {
+      ...project,
+      mediaSettings: { aspectRatio: '16:9', video: { provider: 'veo', resolutionTier: 'standard' } },
+      scenes: [{ ...project.scenes[0], shots: [{ ...project.scenes[0].shots[0], versions: [{ path: image.path }], activeVersionIndex: 0, startFrame: image.path }] }],
+    }, { expectedRevision: project.revision });
+
+    // No overrides.veo -- this resolves the real createVeoAdapter through the exact registry,
+    // execution service, and generation service already proven against ltx/minimax/stub.
+    const attempts = new VideoGenerationAttemptStore(path.join(f.root, 'attempts'));
+    const providers = createVideoProviders(f.config, () => null);
+    const execution = createVideoExecutionService({ providers, attempts, assetTransport: createLocalVideoAssetTransport() });
+    const service = createVideoGenerationService({ config: f.config, providers, execution, projectStore: f.store, styles: { find: () => ({ id: 'style-1', promptText: 'Ink style.' }) } });
+
+    const submitted = await service.generate({ projectId: 'veo-neutrality', sceneId: 'scene-1', sceneNumber: 1, sceneTitle: 'One', scenePrompt: 'Mara at the door.', sceneBeat: 'Mara opens the door.', styleId: 'style-1', commonPromptText: 'Ink style.', motionIntensity: 'medium' });
+    assert.equal(submitted.pending, true, 'Veo is asynchronous like MiniMax and must not resolve synchronously');
+    assert.equal(submitted.provider, 'veo');
+
+    // The real Veo adapter sets pollAfter a few seconds out, like a real long-running operation
+    // would; fast-forward it here rather than waiting, so this test exercises the same
+    // reconcileAttempts() worker path the app actually schedules on an interval.
+    attempts.update(submitted.attemptId, { pollAfter: new Date(0).toISOString() });
+
+    // reconcileAttempts() is the same generic worker path added for MiniMax (see the video
+    // reconciliation worker); it polls, downloads, and commits the video into the project scene
+    // via finalizeRecoveredExecution -- none of which is provider-specific.
+    const [outcome] = await service.reconcileAttempts();
+    assert.equal(outcome.pending, false);
+    assert.equal(outcome.result.provider, 'veo');
+    assert.equal(call, 3, 'expected exactly submit + poll + download');
+
+    const committed = f.store.read('veo-neutrality');
+    const version = committed.scenes[0].shots[0].videoVersions[0];
+    assert.equal(version.provider, 'veo');
+    assert.equal(version.manifest.inputs.provider.name, 'veo');
+  } finally { f.cleanup(); }
+});

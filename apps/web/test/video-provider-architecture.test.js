@@ -28,7 +28,7 @@ test('video provider registry dispatches per request and rejects unknown provide
     await providers.verify({ provider: 'stub', mode: 'image_to_video' });
     await providers.verify({ provider: 'ltx', mode: 'image_to_video' });
     assert.deepEqual(calls, ['stub', 'ltx']);
-    assert.throws(() => providers.get('veo'), (error) => error.code === 'UNSUPPORTED_VIDEO_PROVIDER');
+    assert.throws(() => providers.get('sora'), (error) => error.code === 'UNSUPPORTED_VIDEO_PROVIDER');
   } finally { f.cleanup(); }
 });
 

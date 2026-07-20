@@ -5,6 +5,8 @@ const IMAGE_TO_VIDEO = Object.freeze({ implemented: true, execution: 'immediate'
 const MINIMAX_IMAGE_TO_VIDEO = Object.freeze({ implemented: true, execution: 'asynchronous', requiredRoles: Object.freeze(['start_frame']), supportedRoles: Object.freeze(['start_frame']), maxInputs: 1, supportsNativeAudio: false });
 const MINIMAX_TEXT_TO_VIDEO = Object.freeze({ implemented: true, execution: 'asynchronous', requiredRoles: Object.freeze([]), supportedRoles: Object.freeze([]), maxInputs: 0, supportsNativeAudio: false });
 const MINIMAX_FIRST_LAST_FRAME = Object.freeze({ implemented: true, execution: 'asynchronous', requiredRoles: Object.freeze(['start_frame', 'end_frame']), supportedRoles: Object.freeze(['start_frame', 'end_frame']), maxInputs: 2, supportsNativeAudio: false });
+const VEO_IMAGE_TO_VIDEO = Object.freeze({ implemented: true, execution: 'asynchronous', requiredRoles: Object.freeze(['start_frame']), supportedRoles: Object.freeze(['start_frame']), maxInputs: 1, supportsNativeAudio: true });
+const VEO_FIRST_LAST_FRAME = Object.freeze({ implemented: true, execution: 'asynchronous', requiredRoles: Object.freeze(['start_frame', 'end_frame']), supportedRoles: Object.freeze(['start_frame', 'end_frame']), maxInputs: 2, supportsNativeAudio: true });
 
 export const VIDEO_PROVIDER_CAPABILITIES = Object.freeze({
   ltx: Object.freeze({ defaultModel: 'ltx-video', models: Object.freeze({ 'ltx-video': Object.freeze({ modes: Object.freeze({ image_to_video: IMAGE_TO_VIDEO }) }) }) }),
@@ -14,6 +16,12 @@ export const VIDEO_PROVIDER_CAPABILITIES = Object.freeze({
       'MiniMax-Hailuo-02': Object.freeze({ modes: Object.freeze({ image_to_video: MINIMAX_IMAGE_TO_VIDEO, text_to_video: MINIMAX_TEXT_TO_VIDEO, first_last_frame: MINIMAX_FIRST_LAST_FRAME }) }),
       'video-01': Object.freeze({ modes: Object.freeze({ image_to_video: MINIMAX_IMAGE_TO_VIDEO, text_to_video: MINIMAX_TEXT_TO_VIDEO }) }),
       'video-01-live2d': Object.freeze({ modes: Object.freeze({ image_to_video: MINIMAX_IMAGE_TO_VIDEO }) }),
+    }),
+  }),
+  veo: Object.freeze({
+    defaultModel: 'veo-3.1-generate-preview',
+    models: Object.freeze({
+      'veo-3.1-generate-preview': Object.freeze({ modes: Object.freeze({ image_to_video: VEO_IMAGE_TO_VIDEO, first_last_frame: VEO_FIRST_LAST_FRAME }) }),
     }),
   }),
   stub: Object.freeze({ defaultModel: 'stub-video-v1', models: Object.freeze({ 'stub-video-v1': Object.freeze({ modes: Object.freeze({ image_to_video: IMAGE_TO_VIDEO }) }) }) }),
