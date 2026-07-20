@@ -496,11 +496,10 @@ export async function regenerateAllStage(stage, els, setStatus) {
 // there's no second "harder stop that discards progress" concept left to distinguish.
 //
 // Images/Audio/Video have a genuine client-side per-scene loop, so stopping them and continuing
-// from progress both really work. Planning does not: `generate-dialogue`/`generate-prompts` are
-// each a single batched server request with no per-scene client loop to stop mid-flight. Stopping
-// Planning therefore cancels the in-flight request (existing job/lease-abort path) — callers should
-// expect `kind === 'cancelled'` there, not restart-from-progress behavior, since none exists for
-// this stage.
+// from progress both really work. Planning does not: `plan-shots` is a single batched server
+// request with no per-scene client loop to stop mid-flight. Stopping Planning therefore cancels the
+// in-flight request (existing job/lease-abort path) — callers should expect `kind === 'cancelled'`
+// there, not restart-from-progress behavior, since none exists for this stage.
 export function stopActiveWork(projectId) {
   const activeMediaStage = ['images', 'audio', 'video', 'subtitles'].find((stage) => batchStore.get()[BATCH_STORE_KEY[stage]]?.generating);
   if (activeMediaStage) {

@@ -570,7 +570,7 @@ function renderEntityModal() {
 
   const beatLoading = isEntityLoading('action', scene, operation);
   const promptFieldLoading = type === 'prompt'
-    ? (operation?.type === 'prompts' || (operation?.type === 'prompt' && operation.sceneId === scene.id))
+    ? (operation?.type === 'prompt' && operation.sceneId === scene.id)
     : isLoading;
   const hasExistingBeat = Boolean(String(scene.beat || '').trim());
   const hasExisting = hasExistingEntity(type, scene);
@@ -818,18 +818,6 @@ export function initRendering(domEls) {
   uiStore.subscribe(() => { renderScenes(); renderEntityModal(); });
 }
 
-function renderEmptyPromptTargets() {
-  const count = Math.min(50, Math.max(1, Number(els.sceneCount.value) || 1));
-  const nodes = [];
-  for (let index = 0; index < count; index++) {
-    const target = document.createElement('article');
-    target.className = 'scene-card scene-card-loading';
-    target.innerHTML = `<div class="scene-index">Scene ${index + 1}</div><div class="empty-image-target"></div><div class="empty-prompt-target"><span class="spinner"></span><span>Generating prompt</span></div>`;
-    nodes.push(target);
-  }
-  els.storyboardGrid.replaceChildren(...nodes);
-}
-
 function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio, words, captionEl }) {
   let playing = false;
   let duration = 0;
@@ -937,15 +925,9 @@ export function renderScenes() {
   const operation = uiStore.get().operation;
   const selectedIndex = resolveSelectedSceneIndex(scenes, uiStore.get().selectedSceneId);
 
-  els.storyboardSection.hidden = scenes.length === 0 && operation?.type !== 'prompts';
+  els.storyboardSection.hidden = scenes.length === 0;
 
-  if (!scenes.length && operation?.type === 'prompts') {
-    scenePlaybackCleanups.forEach(cleanup => cleanup());
-    scenePlaybackCleanups.clear();
-    renderEmptyPromptTargets();
-    return;
-  }
-  
+
   const existingCards = Array.from(els.storyboardGrid.querySelectorAll('.scene-card'));
   const existingNodesMap = new Map(existingCards.map(node => [node.dataset.sceneId, node]));
 
