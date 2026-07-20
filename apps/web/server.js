@@ -4,6 +4,7 @@ const { loadConfig } = require('./src/config/env');
 const { createDependencies } = require('./src/dependencies');
 const { createApp } = require('./src/app');
 const { startServer } = require('./src/server');
+const { startVideoReconciliationWorker } = require('./src/workers/video-reconciliation-worker');
 const { createAssetResolver } = require('./src/media/assets');
 const { buildWavBuffer, concatenatePcmLines } = require('./src/media/wav');
 const { clampSceneCount, getAdditionalCommonPrompt } = require('./src/shared/text');
@@ -13,7 +14,10 @@ const config = loadConfig();
 const dependencies = createDependencies(config);
 const app = createApp(dependencies);
 
-if (require.main === module) startServer(app, config);
+if (require.main === module) {
+  startServer(app, config);
+  startVideoReconciliationWorker(dependencies.videos, { intervalMs: config.videoReconcileIntervalMs });
+}
 
 module.exports = {
   app,
