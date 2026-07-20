@@ -127,6 +127,10 @@ Current narration (what you are revising): ${scene.narrationText || 'none yet'}`
 }
 
 function createDialogueService({ textProviders, generationCache }) {
+  // Internal helper, not a routed planning entry point -- no HTTP route calls this anymore
+  // (shot-planning.service.js's plan() narrates from the raw script directly and is the one
+  // public planning path). Kept because it's a coherent, independently-tested batch narrator; re-
+  // wire it deliberately if a future caller needs per-scene narration outside the plan-shots flow.
   async function generate({ scenes, provider, fallbackPolicy = 'local', enrich = true }) {
     // Every scene carries its OWN usedFallback — the top-level usedFallback/warning below remain an
     // aggregate summary (any scene fell back), but callers that gate behavior per scene (e.g. audio

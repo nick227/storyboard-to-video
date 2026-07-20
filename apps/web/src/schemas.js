@@ -14,18 +14,6 @@ const createProject = z.object({
   project: projectDocument.optional(),
 }).default({});
 
-const promptGeneration = z.object({
-  projectId,
-  scriptText: z.string().trim().min(1).max(200_000),
-  sceneCount: z.coerce.number().int().min(1).max(50).default(6),
-  styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
-  commonPromptText: z.string().max(20_000).default(''),
-  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
-  fallbackPolicy,
-  enrich: z.boolean().default(true),
-  existingScenes: z.array(z.record(z.any())).max(50).optional(),
-});
-
 const regeneratePrompt = z.object({
   projectId,
   scene: z.record(z.any()),
@@ -42,12 +30,6 @@ const regeneratePrompt = z.object({
   // When true, skip the exact-input reuse cache lookup unconditionally (an explicit "generate a new
   // variation" request) — the fresh result is still recorded afterward. See generation-cache.service.js.
   bypassCache: z.boolean().default(false),
-});
-
-const createScenes = z.object({
-  projectId,
-  scriptText: z.string().trim().min(1).max(200_000),
-  sceneCount: z.coerce.number().int().min(1).max(50).default(6),
 });
 
 // Narration-driven planning: no sceneCount here by design -- shot count is never guessed upfront,
@@ -144,21 +126,6 @@ const audioGeneration = z.object({
   voice: narratorVoice,
 });
 
-const dialogueScene = z.object({
-  sceneNumber: z.coerce.number().int().min(1).max(50).default(1),
-  title: z.string().max(200).default(''),
-  beat: z.string().max(2_000).default(''),
-  scriptFragment: z.string().max(20_000).default(''),
-});
-
-const generateDialogue = z.object({
-  projectId,
-  scenes: z.array(dialogueScene).min(1).max(50),
-  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
-  fallbackPolicy,
-  enrich: z.boolean().default(true),
-});
-
 const regenerateDialogue = z.object({
   projectId,
   scene: z.record(z.any()),
@@ -170,4 +137,4 @@ const regenerateDialogue = z.object({
   bypassCache: z.boolean().default(false),
 });
 
-module.exports = { audioGeneration, createProject, createScenes, exportProject, fallbackPolicy, generateDialogue, imageGeneration, planShots, projectDocument, projectId, promptGeneration, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, subtitleGeneration, videoGeneration };
+module.exports = { audioGeneration, createProject, exportProject, fallbackPolicy, imageGeneration, planShots, projectDocument, projectId, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, subtitleGeneration, videoGeneration };

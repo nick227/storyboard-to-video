@@ -171,17 +171,8 @@ test('authentication and ownership protect project documents and assets', async 
 });
 
 test('validation errors retain the shared error contract behind authentication', async () => {
-  const response = await request(app).post('/api/storyboard/generate-prompts').set(auth()).set('Idempotency-Key', 'invalid-request-001').send({ projectId: 'missing', scriptText: '', sceneCount: 500 }).expect(400);
+  const response = await request(app).post('/api/storyboard/plan-shots').set(auth()).set('Idempotency-Key', 'invalid-request-001').send({ projectId: 'missing', scriptText: '' }).expect(400);
   assert.equal(response.body.error.code, 'VALIDATION_ERROR'); assert.ok(response.body.error.requestId);
-});
-
-test('successful generate-prompts populates a script fragment for every scene', async (t) => {
-  const projectId = id('fragments'); t.after(() => cleanupProject(projectId));
-  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Fragments' }).expect(201);
-  const body = { projectId, scriptText: 'A hero opens a door. A shadow crosses the hallway. The house creaks in the wind.', sceneCount: 3, styleId: 'basic-cartoon', provider: 'stub' };
-  const response = await request(app).post('/api/storyboard/generate-prompts').set(auth()).set('Idempotency-Key', 'gen-prompts-fragments-001').send(body).expect(200);
-  assert.equal(response.body.scenes.length, 3);
-  response.body.scenes.forEach((scene) => assert.ok(typeof scene.scriptFragment === 'string' && scene.scriptFragment.length > 0));
 });
 
 test('regenerate-prompt now enforces request validation', async () => {
@@ -200,21 +191,10 @@ test('regenerate-action rejects a scene with no fragment and no script text', as
 test('regenerate-action succeeds via stub and never returns a prompt field', async (t) => {
   const projectId = id('action-ok'); t.after(() => cleanupProject(projectId));
   await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Action ok' }).expect(201);
-  const genBody = { projectId, scriptText: 'A hero opens a door and steps outside into the light.', sceneCount: 1, styleId: 'basic-cartoon', provider: 'stub' };
-  const generated = await request(app).post('/api/storyboard/generate-prompts').set(auth()).set('Idempotency-Key', 'regen-action-ok-gen-001').send(genBody).expect(200);
-  const scene = generated.body.scenes[0];
+  const scene = { scriptFragment: 'A hero opens a door and steps outside into the light.', beat: 'A hero opens a door.' };
   const body = { projectId, scene, sceneIndex: 0, provider: 'stub' };
   const response = await request(app).post('/api/storyboard/regenerate-action').set(auth()).set('Idempotency-Key', 'regen-action-ok-001').send(body).expect(200);
   assert.deepEqual(Object.keys(response.body).sort(), ['beat', 'usedFallback', 'warning']);
-});
-
-test('create-scenes builds a deterministic scene skeleton with no LLM call, enabling a dialogue-first run', async (t) => {
-  const projectId = id('skeleton'); t.after(() => cleanupProject(projectId));
-  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Skeleton' }).expect(201);
-  const body = { projectId, scriptText: 'A hero opens a door. A shadow crosses the hallway. The house creaks in the wind.', sceneCount: 3 };
-  const response = await request(app).post('/api/storyboard/create-scenes').set(auth()).set('Idempotency-Key', 'create-scenes-001').send(body).expect(200);
-  assert.equal(response.body.scenes.length, 3);
-  response.body.scenes.forEach((scene) => assert.ok(typeof scene.scriptFragment === 'string' && scene.scriptFragment.length > 0));
 });
 
 test('split-scene splits one fragment into the requested number of sub-scenes', async (t) => {
@@ -224,16 +204,6 @@ test('split-scene splits one fragment into the requested number of sub-scenes', 
   const response = await request(app).post('/api/storyboard/split-scene').set(auth()).set('Idempotency-Key', 'split-scene-001').send(body).expect(200);
   assert.equal(response.body.scenes.length, 2);
   response.body.scenes.forEach((scene) => assert.ok(typeof scene.scriptFragment === 'string' && scene.scriptFragment.length > 0));
-});
-
-test('generate-prompts reuses existing scene fragments instead of re-splitting when existingScenes is provided', async (t) => {
-  const projectId = id('existing'); t.after(() => cleanupProject(projectId));
-  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Existing' }).expect(201);
-  const skeleton = await request(app).post('/api/storyboard/create-scenes').set(auth()).set('Idempotency-Key', 'existing-skeleton-001').send({ projectId, scriptText: 'A hero opens a door. A shadow crosses the hallway.', sceneCount: 2 }).expect(200);
-  const body = { projectId, scriptText: 'A hero opens a door. A shadow crosses the hallway.', sceneCount: 2, styleId: 'basic-cartoon', provider: 'stub', existingScenes: skeleton.body.scenes };
-  const response = await request(app).post('/api/storyboard/generate-prompts').set(auth()).set('Idempotency-Key', 'existing-scenes-prompts-001').send(body).expect(200);
-  assert.equal(response.body.scenes.length, 2);
-  response.body.scenes.forEach((scene, index) => assert.equal(scene.scriptFragment, skeleton.body.scenes[index].scriptFragment));
 });
 
 test('GET /api/projects/:projectId/tokens retrieves and aggregates project token spend details', async (t) => {

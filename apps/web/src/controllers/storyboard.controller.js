@@ -1,13 +1,5 @@
-const { splitIntoFragments, fallbackSceneFromFragment } = require('../shared/segmentation');
-
 function createStoryboardController({ styles, prompts, dialogue, sceneSplit, shotPlanning }) {
   return {
-    // Deterministic scene skeleton (no LLM call): lets "Dialogue" run before any prompts exist.
-    async createScenes(req, res) {
-      const fragments = splitIntoFragments(req.body.scriptText, req.body.sceneCount);
-      const scenes = fragments.map(fallbackSceneFromFragment);
-      return res.json({ scenes });
-    },
     // The planning entry point: narration is generated and locked first, then shots are planned
     // from that immutable narration in narration-sized chunks. The returned scene list length IS
     // the final shot count -- nothing upstream guesses a count or reconciles one after the fact.
@@ -24,19 +16,6 @@ function createStoryboardController({ styles, prompts, dialogue, sceneSplit, sho
     async splitScene(req, res) {
       return res.json(await sceneSplit.split({ ...req.body, tenantId: req.auth.tenantId }));
     },
-    async generatePrompts(req, res) {
-      const style = styles.find(req.body.styleId);
-      if (!style) return res.status(400).json({ error: 'Unknown style' });
-      
-      let scenes = req.body.existingScenes;
-      if (!Array.isArray(scenes) || scenes.length === 0) {
-        const fragments = splitIntoFragments(req.body.scriptText, req.body.sceneCount);
-        scenes = fragments.map(fallbackSceneFromFragment);
-      }
-      
-      const result = await prompts.generate({ ...req.body, scenes, style });
-      return res.json({ ...result, style });
-    },
     async regeneratePrompt(req, res) {
       const style = styles.find(req.body.styleId || 'basic-cartoon');
       if (!style) return res.status(400).json({ error: 'Unknown style' });
@@ -44,9 +23,6 @@ function createStoryboardController({ styles, prompts, dialogue, sceneSplit, sho
     },
     async regenerateAction(req, res) {
       return res.json(await prompts.regenerateAction({ ...req.body, sceneIndex: Math.max(0, Number.parseInt(req.body.sceneIndex, 10) || 0), tenantId: req.auth.tenantId }));
-    },
-    async generateDialogue(req, res) {
-      return res.json(await dialogue.generate(req.body));
     },
     async regenerateDialogue(req, res) {
       return res.json(await dialogue.regenerate({ ...req.body, tenantId: req.auth.tenantId }));

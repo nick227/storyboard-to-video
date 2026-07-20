@@ -48,6 +48,10 @@ ${scenesBlock}`;
 }
 
 function createPromptGenerationService({ textProviders, limits, generationCache }) {
+  // Internal helper, not a routed planning entry point -- no HTTP route calls this anymore
+  // (shot-planning.service.js's plan() is the one public planning path). Kept because it's a
+  // coherent, independently-tested batch prompt generator; re-wire it deliberately if a future
+  // caller needs script-fragment-based prompt generation outside the plan-shots flow.
   async function generate({ scenes: inputScenes, style, commonPromptText, provider, fallbackPolicy = 'local', enrich = true }) {
     if (!Array.isArray(inputScenes) || inputScenes.length === 0) {
       return { scenes: [], usedFallback: false, warning: '' };
