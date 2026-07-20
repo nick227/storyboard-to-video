@@ -7,8 +7,9 @@ const { estimatedUsage } = require('../../shared/media-output-policy');
 
 function createMiniMaxAdapter(config, getCancellation) {
   const env = config?.env || process.env;
-  const baseUrl = (env.MINIMAX_API_HOST || 'https://api.minimaxi.chat').replace(/\/+$/, '');
+  const baseUrl = (env.MINIMAX_API_HOST || 'https://api.minimax.io').replace(/\/+$/, '');
   const apiKey = env.MINIMAX_API_KEY || '';
+  const defaultModel = env.MINIMAX_VIDEO_MODEL || 'MiniMax-Hailuo-02';
 
   function headers(includeJson = true) {
     if (!apiKey) {
@@ -24,7 +25,7 @@ function createMiniMaxAdapter(config, getCancellation) {
     if (!apiKey) {
       throw new AppError('NOT_CONFIGURED', 'MiniMax API key is missing', { status: 401, retryable: false });
     }
-    return { ok: true, provider: 'minimax', model: model || 'video-01', mode: mode || 'image_to_video' };
+    return { ok: true, provider: 'minimax', model: model || defaultModel, mode: mode || 'image_to_video' };
   }
 
   async function prepareAssets(request, transport) {
@@ -53,7 +54,8 @@ function createMiniMaxAdapter(config, getCancellation) {
   async function submit(request) {
     if (!request.outputSelection?.resolved) throw new AppError('MEDIA_OUTPUT_NOT_RESOLVED', 'Video generation requires server-resolved media output', { status: 500 });
     const fetchImpl = config?.fetch || globalThis.fetch;
-    const model = request.model || 'video-01';
+    const model = request.model || defaultModel;
+    const mode = request.generationMode || 'image_to_video';
 
     let firstFrameImage = null;
     let lastFrameImage = null;
@@ -66,9 +68,14 @@ function createMiniMaxAdapter(config, getCancellation) {
       }
     }
 
+    if (mode === 'first_last_frame') {
+      if (model !== 'MiniMax-Hailuo-02') throw new AppError('UNSUPPORTED_VIDEO_MODE', `${model} does not support MiniMax first/last-frame generation`, { status: 400 });
+      if (!firstFrameImage || !lastFrameImage) throw new AppError('VIDEO_FRAME_REQUIRED', 'MiniMax first/last-frame generation requires both frame images', { status: 400 });
+    }
+
     const payload = {
       model,
-      prompt: cleanText(request.prompt, 20_000),
+      prompt: cleanText(request.prompt, 2_000),
       ...(firstFrameImage ? { first_frame_image: firstFrameImage } : {}),
       ...(lastFrameImage ? { last_frame_image: lastFrameImage } : {}),
       prompt_optimizer: request.promptOptimizer !== false,
@@ -224,14 +231,14 @@ function createMiniMaxAdapter(config, getCancellation) {
     return providerResult({
       output: { outputPath: downloaded.outputPath },
       provider: 'minimax',
-      model: task.model || 'video-01',
+      model: task.model || defaultModel,
       providerRequestId: task.providerTaskId,
       settings: {
         output: task.requestSnapshot?.outputSelection,
         mode: task.requestSnapshot?.generationMode || 'image_to_video',
         promptOptimizer: task.requestSnapshot?.promptOptimizer !== false,
       },
-      usage: { videos: 1, ...(task.requestSnapshot?.outputSelection ? estimatedUsage(task.requestSnapshot.outputSelection) : {}) },
+      usage: { videos: 1, generationMode: task.requestSnapshot?.generationMode || 'image_to_video', ...(task.requestSnapshot?.outputSelection ? estimatedUsage(task.requestSnapshot.outputSelection) : {}) },
       rawUsage: task.response || null,
       measurementStatus: 'observed',
     });
@@ -243,7 +250,7 @@ function createMiniMaxAdapter(config, getCancellation) {
 
   return {
     name: 'minimax',
-    model: 'video-01',
+    model: defaultModel,
     verify,
     prepareAssets,
     submit,

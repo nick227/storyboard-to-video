@@ -6,17 +6,26 @@ const path = require('node:path');
 const { createMiniMaxAdapter } = require('../src/providers/video/minimax');
 const { videoProviderCapabilities } = require('../src/shared/video-provider-capabilities');
 const { mergeMediaIntent, resolveVideoOutput } = require('../src/shared/media-output-policy');
+const { validateMiniMaxInterpolationFrames } = require('../src/services/video-generation.service');
 
-function outputSelection(model = 'video-01') {
-  return resolveVideoOutput({ provider: 'minimax', model, intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'standard', durationSeconds: 6 } } }) });
+function outputSelection(model = 'MiniMax-Hailuo-02', mode = 'image_to_video') {
+  return resolveVideoOutput({ provider: 'minimax', model, mode, intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'standard', durationSeconds: 6 } } }) });
+}
+
+function pngHeader(width, height) {
+  const buffer = Buffer.alloc(24);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buffer);
+  buffer.writeUInt32BE(width, 16);
+  buffer.writeUInt32BE(height, 20);
+  return buffer;
 }
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'minimax-test-'));
   const startFrame = path.join(root, 'start.png');
   const endFrame = path.join(root, 'end.png');
-  fs.writeFileSync(startFrame, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-  fs.writeFileSync(endFrame, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0b]));
+  fs.writeFileSync(startFrame, pngHeader(1280, 720));
+  fs.writeFileSync(endFrame, pngHeader(1920, 1080));
   return {
     root,
     startFrame,
@@ -76,7 +85,7 @@ test('MiniMax submit task constructs correct JSON payload with base64 image', as
   }
 });
 
-test('MiniMax submit task handles first_last_frame mode with keyframe model', async () => {
+test('MiniMax submit task handles documented Hailuo first/last-frame mode', async () => {
   const f = fixture();
   try {
     let sentBody = null;
@@ -90,7 +99,7 @@ test('MiniMax submit task handles first_last_frame mode with keyframe model', as
 
     const adapter = createMiniMaxAdapter({ env: { MINIMAX_API_KEY: 'test-key' }, fetch: mockFetch });
     const request = {
-      model: 'video-01-keyframe',
+      model: 'MiniMax-Hailuo-02',
       generationMode: 'first_last_frame',
       prompt: 'Smooth camera shift between two keyframes.',
       preparedInputs: [
@@ -98,12 +107,15 @@ test('MiniMax submit task handles first_last_frame mode with keyframe model', as
         { role: 'end_frame', assetPath: f.endFrame },
       ],
       outputPath: path.join(f.root, 'output.mp4'),
-      outputSelection: outputSelection('video-01-keyframe'),
+      outputSelection: outputSelection('MiniMax-Hailuo-02', 'first_last_frame'),
     };
 
     const task = await adapter.submit(request);
 
     assert.equal(task.providerTaskId, 'task-keyframe-999');
+    assert.equal(sentBody.model, 'MiniMax-Hailuo-02');
+    assert.equal(sentBody.resolution, '768P');
+    assert.equal(sentBody.duration, 6);
     assert.match(sentBody.first_frame_image, /^data:image\/png;base64,/);
     assert.match(sentBody.last_frame_image, /^data:image\/png;base64,/);
   } finally {
@@ -213,10 +225,19 @@ test('MiniMax provider model capability differences are enforced in capabilities
   assert.equal(capsV1.supportsEndFrame, false);
   assert.equal(capsV1.maxInputs, 1);
 
-  const capsKeyframe = videoProviderCapabilities('minimax', 'video-01-keyframe', 'first_last_frame');
+  const capsKeyframe = videoProviderCapabilities('minimax', 'MiniMax-Hailuo-02', 'first_last_frame');
   assert.equal(capsKeyframe.supportsStartFrame, true);
   assert.equal(capsKeyframe.supportsEndFrame, true);
   assert.equal(capsKeyframe.maxInputs, 2);
 
   assert.throws(() => videoProviderCapabilities('minimax', 'video-01', 'first_last_frame'), /does not implement video mode: first_last_frame/);
+});
+
+test('MiniMax interpolation validates frame dimensions and rejects provider-side cropping', () => {
+  const f = fixture();
+  try {
+    assert.deepEqual(validateMiniMaxInterpolationFrames(f.startFrame, f.endFrame, '16:9').start, { width: 1280, height: 720, format: 'png' });
+    fs.writeFileSync(f.endFrame, pngHeader(1024, 768));
+    assert.throws(() => validateMiniMaxInterpolationFrames(f.startFrame, f.endFrame, '16:9'), (error) => error.code === 'VIDEO_FRAME_ASPECT_MISMATCH');
+  } finally { f.cleanup(); }
 });

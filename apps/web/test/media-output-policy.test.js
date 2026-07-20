@@ -32,9 +32,9 @@ test('provider-specific image resolution is explicit and unsupported combination
 
 test('video resolution respects provider/model/duration tuples without downgrading', () => {
   const intent = mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'high', durationSeconds: 6 } } });
-  const minimax = resolveVideoOutput({ provider: 'minimax', model: 'video-01', intent });
+  const minimax = resolveVideoOutput({ provider: 'minimax', model: 'MiniMax-Hailuo-02', mode: 'first_last_frame', intent });
   assert.deepEqual(minimax.resolved.providerSettings, { resolution: '1080P', duration: 6 });
-  assert.throws(() => resolveVideoOutput({ provider: 'minimax', model: 'video-01', intent: { ...intent, durationSeconds: 10 } }), (error) => error.code === 'UNSUPPORTED_MEDIA_OUTPUT');
+  assert.throws(() => resolveVideoOutput({ provider: 'minimax', model: 'MiniMax-Hailuo-02', mode: 'first_last_frame', intent: { ...intent, durationSeconds: 10 } }), (error) => error.code === 'UNSUPPORTED_MEDIA_OUTPUT');
 });
 
 test('the platform default draft resolution tier does not immediately fail on MiniMax', () => {
@@ -42,8 +42,9 @@ test('the platform default draft resolution tier does not immediately fail on Mi
   assert.equal(draftIntent.resolutionTier, 'draft');
   const minimax = resolveVideoOutput({ provider: 'minimax', model: 'video-01', intent: draftIntent });
   assert.deepEqual(minimax.resolved.providerSettings, { resolution: '720P', duration: 6 });
-  const hailuo = resolveVideoOutput({ provider: 'minimax', model: 'MiniMax-Hailuo-2', intent: draftIntent });
+  const hailuo = resolveVideoOutput({ provider: 'minimax', model: 'MiniMax-Hailuo-02', mode: 'first_last_frame', intent: draftIntent });
   assert.deepEqual(hailuo.resolved.providerSettings, { resolution: '768P', duration: 6 });
+  assert.throws(() => resolveVideoOutput({ provider: 'minimax', model: 'video-01-keyframe', mode: 'first_last_frame', intent: draftIntent }), (error) => error.code === 'UNSUPPORTED_MEDIA_OUTPUT');
 });
 
 test('a video provider with no registered output resolver fails clearly instead of a generic dimension error', () => {

@@ -129,7 +129,7 @@ const videoGeneration = z.object({
   imagePath: z.string().trim().min(1).max(500).optional(),
   provider: z.enum(VIDEO_PROVIDERS).optional(),
   model: z.string().trim().min(1).max(120).optional(),
-  generationMode: z.enum(['image_to_video']).optional(),
+  generationMode: z.enum(['image_to_video', 'first_last_frame']).optional(),
   outputIntent: z.object({
     durationSeconds: z.coerce.number().positive().max(300).optional(),
     aspectRatio: aspectRatio.optional(),

@@ -496,9 +496,10 @@ export async function downloadZip(setStatus) {
   }
 }
 
-export async function preflightVideoProvider(setStatus) {
+export async function preflightVideoProvider(setStatus, selection = {}) {
   try {
-    await api('/api/videos/preflight');
+    const query = new URLSearchParams(Object.entries(selection).filter(([, value]) => value));
+    await api(`/api/videos/preflight${query.size ? `?${query}` : ''}`);
     return true;
   } catch (error) {
     if (setStatus) setStatus(`Video generation aborted during preflight: ${error.message}`);
@@ -519,7 +520,9 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
     throw new Error('Scene has no generated reference image.');
   }
 
-  if (!withinSerial && !(await preflightVideoProvider(setStatus))) return false;
+  const selectedProvider = els.videoProvider?.value || '';
+  const generationMode = selectedProvider === 'minimax' && shot.endFrame ? 'first_last_frame' : undefined;
+  if (!withinSerial && !(await preflightVideoProvider(setStatus, { provider: selectedProvider, generationMode }))) return false;
 
   if (!scene) {
     uiStore.set({ operation: { type: 'video', sceneId: activeScene.id } });
@@ -541,6 +544,8 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
         commonPromptText: base.commonPromptText,
         motionIntensity: els.videoMotionIntensity.value,
         projectId: base.projectId,
+        ...(selectedProvider ? { provider: selectedProvider } : {}),
+        ...(generationMode ? { generationMode } : {}),
       }),
     });
 

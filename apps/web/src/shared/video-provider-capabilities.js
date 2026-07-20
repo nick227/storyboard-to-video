@@ -62,8 +62,17 @@ const VIDEO_PROVIDER_CAPABILITIES = Object.freeze({
     }),
   }),
   minimax: Object.freeze({
-    defaultModel: 'video-01',
+    defaultModel: 'MiniMax-Hailuo-02',
     models: Object.freeze({
+      'MiniMax-Hailuo-02': Object.freeze({
+        modes: Object.freeze({
+          image_to_video: MINIMAX_IMAGE_TO_VIDEO,
+          text_to_video: MINIMAX_TEXT_TO_VIDEO,
+          first_last_frame: MINIMAX_FIRST_LAST_FRAME,
+        }),
+      }),
+      // Retained for existing projects that explicitly selected a legacy model. These models do
+      // not gain end-frame support merely because the current Hailuo model has it.
       'video-01': Object.freeze({
         modes: Object.freeze({
           image_to_video: MINIMAX_IMAGE_TO_VIDEO,
@@ -73,16 +82,6 @@ const VIDEO_PROVIDER_CAPABILITIES = Object.freeze({
       'video-01-live2d': Object.freeze({
         modes: Object.freeze({
           image_to_video: MINIMAX_IMAGE_TO_VIDEO,
-        }),
-      }),
-      'video-01-keyframe': Object.freeze({
-        modes: Object.freeze({
-          first_last_frame: MINIMAX_FIRST_LAST_FRAME,
-          image_to_video: Object.freeze({
-            ...MINIMAX_IMAGE_TO_VIDEO,
-            supportedRoles: Object.freeze(['start_frame', 'end_frame']),
-            maxInputs: 2,
-          }),
         }),
       }),
     }),

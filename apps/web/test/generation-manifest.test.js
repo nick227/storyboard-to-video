@@ -33,6 +33,14 @@ function fixture() {
   };
 }
 
+function pngHeader(width, height) {
+  const buffer = Buffer.alloc(24);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buffer);
+  buffer.writeUInt32BE(width, 16);
+  buffer.writeUInt32BE(height, 20);
+  return buffer;
+}
+
 test('manifest hashing is canonical and snapshots mutable inputs', async () => {
   const inputs = { provider: { name: 'gemini' }, prompt: { scene: 'Door' }, references: [] };
   const manifest = createGenerationManifest({ modality: 'image', inputs });
@@ -234,4 +242,46 @@ test('project-level media settings choose the default video provider, and an exp
   } finally {
     f.cleanup();
   }
+});
+
+test('a selected MiniMax end frame automatically uses Hailuo first/last-frame interpolation', async () => {
+  const f = fixture();
+  try {
+    f.config.paths.stubs = path.join(f.root, 'stubs');
+    f.config.paths.ltxShared = path.join(f.root, 'ltx');
+    let project = f.store.create({ id: 'minimax-interpolation', project: { scenes: [{ id: 'scene-1' }] } });
+    const startSource = path.join(f.root, 'start.png');
+    const endSource = path.join(f.root, 'end.png');
+    fs.writeFileSync(startSource, pngHeader(640, 480));
+    fs.writeFileSync(endSource, pngHeader(1280, 960));
+    const start = f.store.commitAsset(f.store.acquireLease(project.id), 'images', startSource);
+    const end = f.store.commitAsset(f.store.acquireLease(project.id), 'images', endSource);
+    project = f.store.write(project.id, {
+      ...project,
+      mediaSettings: { aspectRatio: '4:3', video: { provider: 'minimax', resolutionTier: 'standard', durationSeconds: 6 } },
+      scenes: [{ ...project.scenes[0], shots: [{ ...project.scenes[0].shots[0], versions: [{ path: start.path }, { path: end.path }], activeVersionIndex: 0, startFrame: start.path, endFrame: end.path }] }],
+    }, { expectedRevision: project.revision });
+
+    let submitted;
+    const minimax = {
+      name: 'minimax', model: 'MiniMax-Hailuo-02',
+      async verify() { return { ok: true }; },
+      async prepareAssets(request, transport) { return { ...request, preparedInputs: await Promise.all(request.inputPlan.included.map((item) => transport.prepareInput(item))), outputTransport: await transport.prepareOutput(request) }; },
+      async submit(request) {
+        submitted = request;
+        fs.writeFileSync(request.outputPath, 'video');
+        return { provider: 'minimax', model: request.model, state: 'completed', response: providerResult({ output: { outputPath: request.outputPath }, provider: 'minimax', model: request.model, settings: { mode: request.generationMode }, usage: { videos: 1 }, measurementStatus: 'estimated' }) };
+      },
+      async inspect(task) { return task; }, async cancel(task) { return { ...task, state: 'cancelled' }; }, async fetchResult(task) { return task.response; }, normalizeUsage(response) { return response; },
+    };
+    const providers = createVideoProviders(f.config, () => null, null, { minimax });
+    const execution = createVideoExecutionService({ providers, attempts: new VideoGenerationAttemptStore(path.join(f.root, 'attempts')), assetTransport: createLocalVideoAssetTransport() });
+    const service = createVideoGenerationService({ config: f.config, providers, execution, projectStore: f.store, styles: { find: () => ({ id: 'style-1', promptText: 'Ink style.' }) } });
+    const result = await service.generate({ projectId: project.id, sceneId: 'scene-1', sceneNumber: 1, sceneTitle: 'One', scenePrompt: 'Move between poses.', sceneBeat: 'Mara turns.', styleId: 'style-1', motionIntensity: 'medium' });
+
+    assert.equal(submitted.generationMode, 'first_last_frame');
+    assert.deepEqual(submitted.inputPlan.included.map((item) => item.role), ['start_frame', 'end_frame']);
+    assert.equal(submitted.outputSelection.resolved.providerSettings.resolution, '768P');
+    assert.equal(result.scene.shots[0].videoVersions[0].manifest.inputs.inputPlan.mode, 'first_last_frame');
+  } finally { f.cleanup(); }
 });

@@ -5,6 +5,7 @@ const zlib = require('node:zlib');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const { createMiniMaxAdapter } = require('../src/providers/video/minimax');
 const { videoProviderCapabilities } = require('../src/shared/video-provider-capabilities');
+const { mergeMediaIntent, resolveVideoOutput } = require('../src/shared/media-output-policy');
 
 function crc32(buf) {
   let crc = 0xffffffff;
@@ -66,32 +67,41 @@ async function runSmokeTest() {
     process.exit(0);
   }
 
-  console.log('1. Checking capabilities for MiniMax video-01...');
-  const caps = videoProviderCapabilities('minimax', 'video-01', 'image_to_video');
+  const model = process.env.MINIMAX_VIDEO_MODEL || 'MiniMax-Hailuo-02';
+  console.log(`1. Checking first/last-frame capabilities for MiniMax ${model}...`);
+  const caps = videoProviderCapabilities('minimax', model, 'first_last_frame');
   console.log('Capabilities resolved:', caps);
 
   const adapter = createMiniMaxAdapter({ env: process.env });
   console.log('2. Verifying MiniMax provider status...');
-  const verifyRes = await adapter.verify({ model: 'video-01', mode: 'image_to_video' });
+  const verifyRes = await adapter.verify({ model, mode: 'first_last_frame' });
   console.log('Verify response:', verifyRes);
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minimax-smoke-'));
   const testImagePath = path.join(tmpDir, 'test-frame.png');
+  const endImagePath = path.join(tmpDir, 'end-frame.png');
   const outputPath = path.join(tmpDir, 'smoke-result.mp4');
 
   // Create valid 512x512 test image (MiniMax requires min 300px short side)
   const samplePngBuffer = makePng(512, 512);
   fs.writeFileSync(testImagePath, samplePngBuffer);
+  fs.writeFileSync(endImagePath, samplePngBuffer);
+
+  const outputSelection = resolveVideoOutput({
+    provider: 'minimax', model, mode: 'first_last_frame',
+    intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '1:1', video: { resolutionTier: 'standard', durationSeconds: 6 } } }),
+  });
 
   const request = {
-    model: 'video-01',
-    generationMode: 'image_to_video',
+    model,
+    generationMode: 'first_last_frame',
     prompt: 'A gentle ripple across quiet blue water, high quality 4k render',
-    preparedInputs: [{ role: 'start_frame', assetPath: testImagePath }],
+    preparedInputs: [{ role: 'start_frame', assetPath: testImagePath }, { role: 'end_frame', assetPath: endImagePath }],
     outputPath,
+    outputSelection,
   };
 
-  console.log('3. Submitting task to MiniMax API with 512x512 reference frame...');
+  console.log('3. Submitting first/last-frame task to MiniMax with matching 512x512 frames...');
   const submitRes = await adapter.submit(request);
   console.log('Task submitted successfully:', submitRes);
 

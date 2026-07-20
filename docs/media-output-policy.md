@@ -36,6 +36,16 @@ Provider adapters require the resolved selection. The old `OPENAI_IMAGE_SIZE`, `
 - billing estimates and provider-cost snapshots;
 - manifest hashes used for stale-output detection.
 
+### MiniMax first/last-frame interpolation
+
+`MiniMax-Hailuo-02` supports `image_to_video` and `first_last_frame`. When a MiniMax project has an
+end frame selected, generation automatically resolves to `first_last_frame`; otherwise it remains
+`image_to_video`. Interpolation requires both frames and accepts only 768P for 6 or 10 seconds, or
+1080P for 6 seconds. Draft and standard intent both resolve to 768P, high resolves to 1080P, and
+ultra is rejected. Start/end images must be valid PNG, JPEG, or WebP files, have a short side above
+300px, and match each other and the project aspect ratio. This prevents MiniMax from silently
+cropping a mismatched end frame.
+
 `POST /api/media-output/quote` resolves a selection and returns unit and batch estimates. `GET
 /api/media-output/policy` exposes the intent vocabulary and current platform defaults.
 

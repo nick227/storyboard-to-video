@@ -6,6 +6,7 @@ const { cleanText, getAdditionalCommonPrompt, slugify } = require('../shared/tex
 const { providerOutput } = require('../providers/result');
 const { createGenerationManifest } = require('../shared/generation-manifest');
 const { imageShot } = require('../shared/scene-shots');
+const { readImageDimensions } = require('../media/image-dimensions');
 const { videoProviderCapabilities } = require('../shared/video-provider-capabilities');
 const { resolveVideoInputPlan } = require('../shared/video-input-plan');
 const { mergeMediaIntent, resolveVideoOutput } = require('../shared/media-output-policy');
@@ -53,6 +54,29 @@ function buildVideoPrompt(input, style, configuredMotionPrompt = '') {
     `Style baseline: ${clipWords(style.promptText, VIDEO_PROMPT_WORD_BUDGET.style)}`,
     common ? `Additional style direction: ${clipWords(common, VIDEO_PROMPT_WORD_BUDGET.additionalStyle)}` : '',
   ].filter(Boolean).join('\n\n');
+}
+
+function validateMiniMaxInterpolationFrames(startSource, endSource, requestedAspectRatio) {
+  if (!startSource || !endSource) throw new AppError('VIDEO_FRAME_REQUIRED', 'MiniMax first/last-frame generation requires both frame images', { status: 400 });
+  const start = readImageDimensions(startSource);
+  const end = readImageDimensions(endSource);
+  if (!start || !end) throw new AppError('INVALID_VIDEO_FRAME', 'MiniMax interpolation frames must be valid PNG, JPEG, or WebP images', { status: 400 });
+  if (Math.min(start.width, start.height, end.width, end.height) <= 300) {
+    throw new AppError('INVALID_VIDEO_FRAME', 'MiniMax interpolation frames must have a short side greater than 300px', { status: 400, details: { start, end } });
+  }
+  const startRatio = start.width / start.height;
+  const endRatio = end.width / end.height;
+  if (Math.abs(startRatio - endRatio) / startRatio > 0.01) {
+    throw new AppError('VIDEO_FRAME_ASPECT_MISMATCH', 'Start and end frames must have matching aspect ratios; MiniMax cropping is not applied automatically', { status: 400, details: { start, end } });
+  }
+  if (requestedAspectRatio) {
+    const [width, height] = requestedAspectRatio.split(':').map(Number);
+    const requestedRatio = width / height;
+    if (Math.abs(startRatio - requestedRatio) / requestedRatio > 0.01) {
+      throw new AppError('VIDEO_FRAME_ASPECT_MISMATCH', `Selected frames do not match the project aspect ratio ${requestedAspectRatio}`, { status: 400, details: { start, end, requestedAspectRatio } });
+    }
+  }
+  return { start, end };
 }
 
 function createVideoGenerationService({ config, provider, providers, execution, projectStore, styles }) {
@@ -133,7 +157,11 @@ function createVideoGenerationService({ config, provider, providers, execution, 
       const projectVideoDefaults = project.mediaSettings?.video || {};
       const providerName = input.provider || projectVideoDefaults.provider || config.videoProvider || 'ltx';
       const model = input.model || (providerName === projectVideoDefaults.provider ? projectVideoDefaults.model : undefined);
-      const generationMode = input.generationMode || 'image_to_video';
+      const generationMode = input.generationMode || (
+        providerName === 'minimax' && endSource && (!model || model === 'MiniMax-Hailuo-02')
+          ? 'first_last_frame'
+          : 'image_to_video'
+      );
       const providerResolution = providers ? providers.resolve({ provider: providerName, model, mode: generationMode }) : null;
       const capabilities = providerResolution ? providerResolution.capabilities : provider.getCapabilities ? provider.getCapabilities() : videoProviderCapabilities(providerName, model, generationMode);
       const output = resolveVideoOutput({
@@ -142,6 +170,7 @@ function createVideoGenerationService({ config, provider, providers, execution, 
         mode: generationMode,
         intent: mergeMediaIntent({ modality: 'video', platform: config.mediaOutputDefaults, project: project.mediaSettings, override: input.outputIntent }),
       });
+      if (generationMode === 'first_last_frame') validateMiniMaxInterpolationFrames(startSource, endSource, output.requested.aspectRatio);
       const style = styles.find(input.styleId);
       if (!style) throw new AppError('STYLE_NOT_FOUND', 'Unknown style', { status: 400 });
 
@@ -236,4 +265,4 @@ function createVideoGenerationService({ config, provider, providers, execution, 
   };
 }
 
-module.exports = { DEFAULT_MOTION_PROMPT, INTENSITY_MOTION_PROMPTS, STYLE_MOTION_PROMPTS, VIDEO_PROMPT_WORD_BUDGET, buildVideoPrompt, createVideoGenerationService };
+module.exports = { DEFAULT_MOTION_PROMPT, INTENSITY_MOTION_PROMPTS, STYLE_MOTION_PROMPTS, VIDEO_PROMPT_WORD_BUDGET, buildVideoPrompt, validateMiniMaxInterpolationFrames, createVideoGenerationService };

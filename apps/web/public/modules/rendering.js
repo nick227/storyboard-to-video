@@ -10,12 +10,15 @@ import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVe
 import { REFERENCE_ROLES, REFERENCE_ROLE_LABELS, normalizeReferenceRole } from './reference-roles.js';
 import { videoProviderCapabilities } from './video-provider-capabilities.js';
 
-// No model selector exists yet, so this resolves capabilities for the provider's default model.
-// That undersells providers with an opt-in higher-capability model (e.g. MiniMax's
-// video-01-keyframe), but it never overpromises what the currently active configuration can do.
 function currentVideoCapabilities() {
   const provider = els.videoProvider?.value || 'ltx';
-  try { return videoProviderCapabilities(provider); } catch { return { supportsStartFrame: true, supportsEndFrame: false }; }
+  try {
+    const ordinary = videoProviderCapabilities(provider);
+    try {
+      const interpolation = videoProviderCapabilities(provider, ordinary.model, 'first_last_frame');
+      return { ...ordinary, supportsEndFrame: interpolation.supportsEndFrame };
+    } catch { return ordinary; }
+  } catch { return { supportsStartFrame: true, supportsEndFrame: false }; }
 }
 
 let els = {};

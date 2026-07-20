@@ -9,11 +9,11 @@ const MINIMAX_FIRST_LAST_FRAME = Object.freeze({ implemented: true, execution: '
 export const VIDEO_PROVIDER_CAPABILITIES = Object.freeze({
   ltx: Object.freeze({ defaultModel: 'ltx-video', models: Object.freeze({ 'ltx-video': Object.freeze({ modes: Object.freeze({ image_to_video: IMAGE_TO_VIDEO }) }) }) }),
   minimax: Object.freeze({
-    defaultModel: 'video-01',
+    defaultModel: 'MiniMax-Hailuo-02',
     models: Object.freeze({
+      'MiniMax-Hailuo-02': Object.freeze({ modes: Object.freeze({ image_to_video: MINIMAX_IMAGE_TO_VIDEO, text_to_video: MINIMAX_TEXT_TO_VIDEO, first_last_frame: MINIMAX_FIRST_LAST_FRAME }) }),
       'video-01': Object.freeze({ modes: Object.freeze({ image_to_video: MINIMAX_IMAGE_TO_VIDEO, text_to_video: MINIMAX_TEXT_TO_VIDEO }) }),
       'video-01-live2d': Object.freeze({ modes: Object.freeze({ image_to_video: MINIMAX_IMAGE_TO_VIDEO }) }),
-      'video-01-keyframe': Object.freeze({ modes: Object.freeze({ first_last_frame: MINIMAX_FIRST_LAST_FRAME, image_to_video: Object.freeze({ ...MINIMAX_IMAGE_TO_VIDEO, supportedRoles: Object.freeze(['start_frame', 'end_frame']), maxInputs: 2 }) }) }),
     }),
   }),
   stub: Object.freeze({ defaultModel: 'stub-video-v1', models: Object.freeze({ 'stub-video-v1': Object.freeze({ modes: Object.freeze({ image_to_video: IMAGE_TO_VIDEO }) }) }) }),

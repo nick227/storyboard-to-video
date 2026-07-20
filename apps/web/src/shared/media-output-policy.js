@@ -109,7 +109,8 @@ function resolveImageOutput({ provider, model, intent }) {
 function minimaxResolution(model, tier) {
   // MiniMax has no distinct low-quality tier of its own; the platform's 'draft' default maps to
   // the cheapest resolution it actually offers rather than failing generation before submission.
-  if (tier === 'draft' || tier === 'standard') return String(model || '').includes('Hailuo-2') ? '768P' : '720P';
+  const currentHailuo = model === 'MiniMax-Hailuo-02' || /^MiniMax-Hailuo-2(?:\.|$)/.test(String(model || ''));
+  if (tier === 'draft' || tier === 'standard') return currentHailuo ? '768P' : '720P';
   if (tier === 'high') return '1080P';
   return null;
 }
@@ -124,9 +125,11 @@ const VIDEO_OUTPUT_RESOLVERS = Object.freeze({
     const dimensions = shortEdgeDimensions(intent.aspectRatio, shortEdge);
     return { dimensions, providerSettings: { width: dimensions.width, height: dimensions.height, ...(intent.durationSeconds ? { duration: intent.durationSeconds } : {}) } };
   },
-  minimax(model, intent) {
+  minimax(model, intent, mode) {
     const resolution = minimaxResolution(model, intent.resolutionTier);
     const duration = intent.durationSeconds || 6;
+    if (mode === 'first_last_frame' && model !== 'MiniMax-Hailuo-02') return null;
+    if (mode === 'first_last_frame' && !['768P', '1080P'].includes(resolution)) return null;
     if (resolution && duration === 6) return { dimensions: null, providerSettings: { resolution, duration } };
     if (resolution === '768P' && duration === 10) return { dimensions: null, providerSettings: { resolution, duration } };
     return null;
@@ -146,7 +149,7 @@ function resolveVideoOutput({ provider, model, mode = 'image_to_video', intent }
   const requested = Object.freeze({ ...intent });
   const resolver = VIDEO_OUTPUT_RESOLVERS[provider];
   if (!resolver) throw outputPolicyError(`No video output resolver is registered for provider: ${provider}`, { modality: 'video', provider, model: model || null, mode, requested });
-  const resolved = resolver(model, intent);
+  const resolved = resolver(model, intent, mode);
   const dimensions = resolved?.dimensions || null;
   const providerSettings = resolved?.providerSettings || null;
   if (!providerSettings) {
@@ -179,6 +182,7 @@ function estimatedUsage(output) {
     ...(resolved.height ? { height: resolved.height } : {}),
     ...(resolved.quality ? { quality: resolved.quality } : {}),
     ...(resolved.durationSeconds ? { seconds: resolved.durationSeconds } : {}),
+    ...(resolved.mode ? { generationMode: resolved.mode } : {}),
     resolutionTier: resolved.resolutionTier,
     aspectRatio: resolved.aspectRatio,
     ...(resolved.providerSettings?.resolution ? { resolution: resolved.providerSettings.resolution } : {}),
