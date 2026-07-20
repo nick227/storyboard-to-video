@@ -7,6 +7,13 @@ function startVideoReconciliationWorker(videos, { intervalMs = 30_000, onError, 
     running = true;
     try {
       const outcomes = await videos.reconcileAttempts();
+      if (outcomes.length) {
+        const pending = outcomes.filter((o) => o.pending).length;
+        const failed = outcomes.filter((o) => o.failed).length;
+        const cancelled = outcomes.filter((o) => o.cancelled).length;
+        const completed = outcomes.length - pending - failed - cancelled;
+        console.log(`[video-reconciliation] pass processed=${outcomes.length} pending=${pending} completed=${completed} failed=${failed} cancelled=${cancelled}`);
+      }
       if (onTick) onTick(outcomes);
     } catch (error) {
       logError(error);

@@ -500,17 +500,29 @@ export async function preflightVideoProvider(setStatus, selection = {}) {
   }
 }
 
+const VIDEO_ATTEMPT_STATE_LABELS = {
+  preparing_assets: 'preparing assets',
+  submitted: 'queued with provider',
+  provider_running: 'rendering',
+  validating: 'downloading result',
+};
+
 // Async video providers (MiniMax, Veo) return { pending: true, attemptId } immediately -- the
 // background reconciliation worker is what actually advances and commits the attempt server-side.
-// This just watches for that to land, rather than re-driving the provider itself.
-async function waitForVideoAttempt(attemptId, { intervalMs = 4000, timeoutMs = 5 * 60 * 1000 } = {}) {
-  const deadline = Date.now() + timeoutMs;
+// This just watches for that to land, rather than re-driving the provider itself. timeoutMs is kept
+// above the server's own VIDEO_ATTEMPT_TIMEOUT_MS (15 min default) so the client stays around long
+// enough to see the server's own timeout failure land, instead of giving up first and leaving the
+// user unsure whether it's still running.
+async function waitForVideoAttempt(attemptId, { intervalMs = 4000, timeoutMs = 16 * 60 * 1000, onProgress } = {}) {
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
   for (;;) {
     const { attempt } = await api(`/api/videos/attempts/${encodeURIComponent(attemptId)}`);
     if (attempt.lifecycleState === 'committed') return attempt;
     if (['failed', 'cancelled'].includes(attempt.lifecycleState)) {
       throw new Error(attempt.error?.message || `Video generation ${attempt.lifecycleState}.`);
     }
+    if (onProgress) onProgress({ attempt, elapsedMs: Date.now() - startedAt });
     if (Date.now() >= deadline) {
       throw new Error('Video generation is taking longer than expected — check back in a bit; it may still finish in the background.');
     }
@@ -573,8 +585,16 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
         if (setStatus) setStatus(`Scene ${index + 1}: video generating in the background via ${data.provider}.`);
         return false;
       }
-      if (setStatus) setStatus(`Generating video for scene ${index + 1} via ${data.provider}… this can take a minute.`);
-      await waitForVideoAttempt(data.attemptId);
+      if (setStatus) setStatus(`Generating video for scene ${index + 1} via ${data.provider}… this can take a few minutes.`);
+      await waitForVideoAttempt(data.attemptId, {
+        onProgress: ({ attempt, elapsedMs }) => {
+          if (!setStatus) return;
+          const seconds = Math.round(elapsedMs / 1000);
+          const elapsed = seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+          const stage = VIDEO_ATTEMPT_STATE_LABELS[attempt.lifecycleState] || attempt.lifecycleState;
+          setStatus(`Generating video for scene ${index + 1} via ${data.provider}… ${stage}, ${elapsed} elapsed.`);
+        },
+      });
       await hydrateCurrentProjectFromServer();
       if (setStatus) setStatus(`Video ready for scene ${index + 1}.`);
       return false;

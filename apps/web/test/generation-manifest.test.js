@@ -352,7 +352,7 @@ test('attemptStatus reports lifecycle state to its own tenant and hides it from 
     const attempt = attempts.create({ tenantId: 'owner-1', provider: 'minimax', model: 'MiniMax-Hailuo-02', generationMode: 'image_to_video', requestSnapshot: {}, lifecycleState: 'submitted', inputHashes: [] });
 
     const status = await service.attemptStatus(attempt.id, { ownerId: 'owner-1' });
-    assert.deepEqual(status, { id: attempt.id, provider: 'minimax', model: 'MiniMax-Hailuo-02', lifecycleState: 'submitted', commitState: 'pending', error: null });
+    assert.deepEqual(status, { id: attempt.id, provider: 'minimax', model: 'MiniMax-Hailuo-02', lifecycleState: 'submitted', commitState: 'pending', error: null, createdAt: attempt.createdAt, retryCount: attempt.retryCount });
 
     await assert.rejects(service.attemptStatus(attempt.id, { ownerId: 'someone-else' }), (error) => {
       assert.equal(error.code, 'ATTEMPT_NOT_FOUND');

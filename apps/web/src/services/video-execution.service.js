@@ -1,9 +1,12 @@
 const { snapshotVideoPlan } = require('../shared/video-input-plan');
 
 const PROVIDER_PENDING_STATES = new Set(['submitted', 'queued', 'running', 'provider_running']);
+const DEFAULT_ATTEMPT_TIMEOUT_MS = 15 * 60_000;
 
 function iso(value) { return value ? new Date(value).toISOString() : null; }
 function errorSnapshot(error) { return { code: error.code || 'VIDEO_PROVIDER_FAILED', message: String(error.message || error).slice(0, 1000) }; }
+function elapsedMs(attempt) { return Date.now() - new Date(attempt.createdAt).getTime(); }
+function tag(attempt) { return `attempt=${attempt.id} scene=${attempt.sceneId || 'n/a'} provider=${attempt.provider} taskId=${attempt.providerTaskId || 'n/a'}`; }
 
 function immutableSnapshot(request) {
   return structuredClone({
@@ -20,7 +23,7 @@ function immutableSnapshot(request) {
   });
 }
 
-function createVideoExecutionService({ providers, attempts, usageTracker, assetTransport }) {
+function createVideoExecutionService({ providers, attempts, usageTracker, assetTransport, attemptTimeoutMs = DEFAULT_ATTEMPT_TIMEOUT_MS }) {
   async function create(request, trace = {}) {
     const { adapter, capabilities, model, mode } = providers.resolve({ provider: request.provider, model: request.model, mode: request.generationMode });
     const snapshot = immutableSnapshot({ ...request, model, generationMode: mode });
@@ -41,12 +44,14 @@ function createVideoExecutionService({ providers, attempts, usageTracker, assetT
         providerTaskId: task.providerTaskId || null, providerOutputId: task.providerOutputId || null,
         outputExpiresAt: iso(task.outputExpiresAt), pollAfter: iso(task.pollAfter), lifecycleState,
       });
+      console.log(`[video] submit ${tag(updated)} state=${task.state}`);
       if (task.state === 'completed') return finish(updated, adapter, task, usageHandle);
       return { pending: true, attempt: updated, capabilities };
     } catch (error) {
       await usageTracker?.fail(usageHandle, error);
       const cancelled = trace.signal?.aborted || error.code === 'JOB_CANCELLED';
-      await attempts.update(attempt.id, { lifecycleState: cancelled ? 'cancelled' : 'failed', cancellationState: cancelled ? 'cancelled' : 'not_requested', error: errorSnapshot(error), completedAt: new Date().toISOString() });
+      const updated = await attempts.update(attempt.id, { lifecycleState: cancelled ? 'cancelled' : 'failed', cancellationState: cancelled ? 'cancelled' : 'not_requested', error: errorSnapshot(error), completedAt: new Date().toISOString() });
+      console.error(`[video] ${cancelled ? 'cancelled' : 'failed'} ${tag(updated)} stage=submit error=${error.message}`);
       throw error;
     }
   }
@@ -56,6 +61,7 @@ function createVideoExecutionService({ providers, attempts, usageTracker, assetT
     const result = adapter.normalizeUsage(rawResult);
     await usageTracker?.complete(usageHandle || attempt.generationRequestId, result);
     const updated = await attempts.update(attempt.id, { lifecycleState: 'validating', downloadState: 'downloaded', providerOutputId: task.providerOutputId || attempt.providerOutputId || null, outputExpiresAt: iso(task.outputExpiresAt || attempt.outputExpiresAt) });
+    console.log(`[video] completed ${tag(updated)} elapsedMs=${elapsedMs(updated)}`);
     return { pending: false, attempt: updated, result };
   }
 
@@ -65,11 +71,21 @@ function createVideoExecutionService({ providers, attempts, usageTracker, assetT
     if (attempt.cancellationState === 'requested') return cancel(attempt);
     const task = await adapter.inspect({ providerTaskId: attempt.providerTaskId, providerOutputId: attempt.providerOutputId, state: attempt.lifecycleState, outputExpiresAt: attempt.outputExpiresAt, requestSnapshot: attempt.requestSnapshot });
     if (PROVIDER_PENDING_STATES.has(task.state)) {
+      const elapsed = elapsedMs(attempt);
+      if (elapsed >= attemptTimeoutMs) {
+        const error = Object.assign(new Error(`Video generation timed out after ${Math.round(attemptTimeoutMs / 60_000)}m — the provider never returned a completed status.`), { code: 'VIDEO_GENERATION_TIMEOUT' });
+        console.error(`[video] timeout ${tag(attempt)} elapsedMs=${elapsed} retries=${attempt.retryCount}`);
+        await usageTracker?.fail(attempt.generationRequestId, error);
+        await attempts.update(attempt.id, { lifecycleState: 'failed', error: errorSnapshot(error), completedAt: new Date().toISOString() });
+        throw error;
+      }
+      console.log(`[video] pending ${tag(attempt)} state=${task.state} elapsedMs=${elapsed} retry=${attempt.retryCount}`);
       return { pending: true, attempt: await attempts.update(attempt.id, { lifecycleState: task.state === 'running' ? 'provider_running' : 'submitted', pollAfter: iso(task.pollAfter), retryCount: attempt.retryCount + 1 }) };
     }
     if (task.state === 'cancelled') return { pending: false, cancelled: true, attempt: await attempts.update(attempt.id, { lifecycleState: 'cancelled', cancellationState: 'cancelled', completedAt: new Date().toISOString() }) };
     if (task.state === 'failed') {
       const error = Object.assign(new Error(task.error?.message || 'Video provider task failed'), task.error || {});
+      console.error(`[video] failed ${tag(attempt)} elapsedMs=${elapsedMs(attempt)} error=${error.message}`);
       await usageTracker?.fail(attempt.generationRequestId, error);
       await attempts.update(attempt.id, { lifecycleState: 'failed', error: errorSnapshot(error), completedAt: new Date().toISOString() });
       throw error;
@@ -94,9 +110,16 @@ function createVideoExecutionService({ providers, attempts, usageTracker, assetT
   async function reconcile(onCompleted) {
     const results = [];
     for (const attempt of await recoverable()) {
-      const outcome = await resume(attempt);
-      if (!outcome.pending && !outcome.cancelled && onCompleted) await onCompleted(outcome);
-      results.push(outcome);
+      try {
+        const outcome = await resume(attempt);
+        if (!outcome.pending && !outcome.cancelled && onCompleted) await onCompleted(outcome);
+        results.push(outcome);
+      } catch (error) {
+        // resume() already logged and persisted the failure; keep this pass going so one stuck
+        // or timed-out attempt doesn't block every other attempt from being reconciled this tick.
+        console.error(`[video] reconcile skipped ${tag(attempt)} error=${error.message}`);
+        results.push({ pending: false, failed: true, attempt, error });
+      }
     }
     return results;
   }

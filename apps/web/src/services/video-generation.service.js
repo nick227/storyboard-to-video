@@ -286,6 +286,8 @@ function createVideoGenerationService({ config, provider, providers, execution, 
         lifecycleState: attempt.lifecycleState,
         commitState: attempt.commitState,
         error: attempt.error || null,
+        createdAt: attempt.createdAt,
+        retryCount: attempt.retryCount,
       };
     },
   };
