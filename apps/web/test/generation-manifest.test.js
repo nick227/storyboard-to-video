@@ -177,7 +177,6 @@ test('video versions record the start frame and exact provider settings', async 
 
     assert.deepEqual(version.manifest.inputs.sourceAssets, [
       { consumed: true, path: image.path, role: 'start_frame', sha256: crypto.createHash('sha256').update('image').digest('hex') },
-      { consumed: false, path: endImage.path, role: 'end_frame', sha256: crypto.createHash('sha256').update('ending').digest('hex') },
     ]);
     assert.equal(received.startFramePath, image.sourcePath);
     assert.equal(Object.hasOwn(received, 'endFramePath'), false, 'LTX must not receive an unsupported end frame');
@@ -259,7 +258,10 @@ test('a selected MiniMax end frame automatically uses Hailuo first/last-frame in
     project = f.store.write(project.id, {
       ...project,
       mediaSettings: { aspectRatio: '4:3', video: { provider: 'minimax', resolutionTier: 'standard', durationSeconds: 6 } },
-      scenes: [{ ...project.scenes[0], shots: [{ ...project.scenes[0].shots[0], versions: [{ path: start.path }, { path: end.path }], activeVersionIndex: 0, startFrame: start.path, endFrame: end.path }] }],
+      scenes: [{ ...project.scenes[0], shots: [{
+        ...project.scenes[0].shots[0], versions: [{ path: start.path }, { path: end.path }], activeVersionIndex: 0, startFrame: start.path, endFrame: end.path,
+        videoKeyframeSelection: { version: 1, source: 'video_generation_confirmation', startFrame: start.path, endFrame: end.path, confirmedAt: new Date().toISOString() },
+      }] }],
     }, { expectedRevision: project.revision });
 
     let submitted;
@@ -339,5 +341,26 @@ test('Veo -- a second real provider -- plugs into the same registry/execution/ma
     const version = committed.scenes[0].shots[0].videoVersions[0];
     assert.equal(version.provider, 'veo');
     assert.equal(version.manifest.inputs.provider.name, 'veo');
+  } finally { f.cleanup(); }
+});
+
+test('attemptStatus reports lifecycle state to its own tenant and hides it from others', async () => {
+  const f = fixture();
+  try {
+    const attempts = new VideoGenerationAttemptStore(path.join(f.root, 'attempts'));
+    const service = createVideoGenerationService({ config: f.config, projectStore: f.store, styles: { find: () => null }, attempts });
+    const attempt = attempts.create({ tenantId: 'owner-1', provider: 'minimax', model: 'MiniMax-Hailuo-02', generationMode: 'image_to_video', requestSnapshot: {}, lifecycleState: 'submitted', inputHashes: [] });
+
+    const status = await service.attemptStatus(attempt.id, { ownerId: 'owner-1' });
+    assert.deepEqual(status, { id: attempt.id, provider: 'minimax', model: 'MiniMax-Hailuo-02', lifecycleState: 'submitted', commitState: 'pending', error: null });
+
+    await assert.rejects(service.attemptStatus(attempt.id, { ownerId: 'someone-else' }), (error) => {
+      assert.equal(error.code, 'ATTEMPT_NOT_FOUND');
+      return true;
+    });
+    await assert.rejects(service.attemptStatus('does-not-exist', { ownerId: 'owner-1' }), (error) => {
+      assert.equal(error.code, 'ATTEMPT_NOT_FOUND');
+      return true;
+    });
   } finally { f.cleanup(); }
 });

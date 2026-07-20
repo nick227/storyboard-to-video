@@ -98,7 +98,12 @@ function videoManifestStaleness(scene, shot, activeImage, version) {
   };
   inputs.style = { ...(inputs.style || {}), id: record.styleId };
   inputs.settings = { ...(inputs.settings || {}), motionIntensity: record.videoMotionIntensity || 'medium' };
-  const startFramePath = shot.startFrame || activeImage?.path || '';
+  const confirmedKeyframes = shot.videoKeyframeSelection?.source === 'video_generation_confirmation'
+    && shot.videoKeyframeSelection.startFrame === shot.startFrame
+    && (shot.videoKeyframeSelection.endFrame || null) === (shot.endFrame || null)
+    ? shot.videoKeyframeSelection
+    : null;
+  const startFramePath = confirmedKeyframes?.startFrame || activeImage?.path || '';
   const frameInput = (role, selectedPath) => {
     const stored = (inputs.sourceAssets || []).find((asset) => asset?.role === role) || {};
     return {
@@ -110,7 +115,7 @@ function videoManifestStaleness(scene, shot, activeImage, version) {
   };
   inputs.sourceAssets = [
     frameInput('start_frame', startFramePath),
-    ...(shot.endFrame ? [frameInput('end_frame', shot.endFrame)] : []),
+    ...(confirmedKeyframes?.endFrame ? [frameInput('end_frame', confirmedKeyframes.endFrame)] : []),
   ];
   return manifestStaleness(version, inputs);
 }

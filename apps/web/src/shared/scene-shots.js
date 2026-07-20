@@ -18,6 +18,7 @@ function legacyShot(scene = {}) {
     disabledStyleReferencePaths: Array.isArray(scene.disabledProjectReferenceImages) ? scene.disabledProjectReferenceImages : [],
     startFrame: versions[versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0]?.path || null,
     endFrame: null,
+    videoKeyframeSelection: null,
   };
 }
 
@@ -42,6 +43,13 @@ function migrateSceneImageToImplicitShot(scene = {}) {
   const versionPaths = new Set(versions.map((version) => version?.path).filter(Boolean));
   const startFrame = typeof existing?.startFrame === 'string' && versionPaths.has(existing.startFrame) ? existing.startFrame : defaultStartFrame;
   const endFrame = typeof existing?.endFrame === 'string' && versionPaths.has(existing.endFrame) ? existing.endFrame : null;
+  const selection = existing?.videoKeyframeSelection;
+  const videoKeyframeSelection = selection?.version === 1
+    && selection.source === 'video_generation_confirmation'
+    && selection.startFrame === startFrame
+    && (selection.endFrame || null) === endFrame
+    ? selection
+    : null;
   const shot = {
     ...(existing || {}),
     prompt: typeof existing?.prompt === 'string' ? existing.prompt : legacy.prompt,
@@ -53,6 +61,7 @@ function migrateSceneImageToImplicitShot(scene = {}) {
     disabledStyleReferencePaths,
     startFrame,
     endFrame,
+    videoKeyframeSelection,
   };
 
   scene.shots = [shot, ...existingShots.slice(1)];
@@ -82,7 +91,7 @@ function attachLegacyImageProjection(scene = {}) {
 
 function hasLegacySceneImageState(scene = {}) {
   const shot = Array.isArray(scene.shots) ? scene.shots[0] : null;
-  return !shot || !Array.isArray(shot.referenceBindings) || !Array.isArray(shot.disabledStyleReferencePaths) || !Object.prototype.hasOwnProperty.call(shot, 'startFrame') || !Object.prototype.hasOwnProperty.call(shot, 'endFrame') || SHOT_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(scene, field)) || Object.prototype.hasOwnProperty.call(scene, 'referenceImages') || Object.prototype.hasOwnProperty.call(scene, 'disabledProjectReferenceImages');
+  return !shot || !Array.isArray(shot.referenceBindings) || !Array.isArray(shot.disabledStyleReferencePaths) || !Object.prototype.hasOwnProperty.call(shot, 'startFrame') || !Object.prototype.hasOwnProperty.call(shot, 'endFrame') || !Object.prototype.hasOwnProperty.call(shot, 'videoKeyframeSelection') || SHOT_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(scene, field)) || Object.prototype.hasOwnProperty.call(scene, 'referenceImages') || Object.prototype.hasOwnProperty.call(scene, 'disabledProjectReferenceImages');
 }
 
 module.exports = {

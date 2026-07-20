@@ -187,6 +187,7 @@ test('computeStaleness: video manifest hash includes motion settings and the act
       prompt: 'Mara at the door.',
       versions: [{ path: '/active.png', scenePrompt: 'Mara at the door.' }, { path: '/end.png' }], activeVersionIndex: 0,
       startFrame: '/active.png', endFrame: '/end.png',
+      videoKeyframeSelection: { version: 1, source: 'video_generation_confirmation', startFrame: '/active.png', endFrame: '/end.png', confirmedAt: '2026-07-20T00:00:00.000Z' },
       videoVersions: [{
         path: '/active.mp4', sourceImagePath: '/active.png',
         manifest: { schemaVersion: 1, inputs: videoInputs, manifestHash: hashCanonical(videoInputs) },
@@ -198,11 +199,15 @@ test('computeStaleness: video manifest hash includes motion settings and the act
   try {
     assert.equal(computeStaleness(canonical).videoStale, false);
     canonical.shots[0].endFrame = '/different-end.png';
+    canonical.shots[0].videoKeyframeSelection.endFrame = '/different-end.png';
     assert.equal(computeStaleness(canonical).videoStale, true, 'changing the selected end frame changes the manifest hash');
     canonical.shots[0].endFrame = '/end.png';
+    canonical.shots[0].videoKeyframeSelection.endFrame = '/end.png';
     canonical.shots[0].startFrame = '/different-start.png';
+    canonical.shots[0].videoKeyframeSelection.startFrame = '/different-start.png';
     assert.equal(computeStaleness(canonical).videoStale, true, 'changing the selected start frame changes the manifest hash');
     canonical.shots[0].startFrame = '/active.png';
+    canonical.shots[0].videoKeyframeSelection.startFrame = '/active.png';
     projectStore.set({ storyboards: [{ id: 'p1', styleId: 'ink', commonPromptText: 'Ink style.', imageProvider: 'gemini', videoMotionIntensity: 'high' }], currentId: 'p1' });
     assert.equal(computeStaleness(canonical).videoStale, true);
   } finally {

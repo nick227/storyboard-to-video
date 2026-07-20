@@ -150,6 +150,7 @@ test('active image switching updates shots[0] and serialization omits compatibil
       disabledStyleReferencePaths: [],
       startFrame: '/first.png',
       endFrame: null,
+      videoKeyframeSelection: null,
     }],
   });
 });
@@ -184,8 +185,14 @@ test('start and end frame selections reference image versions without duplicatin
   helpers.setEndFrame(scene, '/first.png');
   assert.equal(scene.shots[0].startFrame, '/second.png');
   assert.equal(scene.shots[0].endFrame, '/first.png');
+  assert.equal(scene.shots[0].videoKeyframeSelection, null, 'direct frame mutations are not treated as video-confirmed keyframes');
   assert.equal(scene.shots[0].versions.length, 2);
   assert.throws(() => helpers.setEndFrame(scene, '/not-a-version.png'), /must reference an image version/);
+
+  helpers.setVideoKeyframes(scene, '/first.png', '/second.png');
+  assert.equal(scene.shots[0].videoKeyframeSelection.source, 'video_generation_confirmation');
+  assert.equal(scene.shots[0].videoKeyframeSelection.endFrame, '/second.png');
+  assert.throws(() => helpers.setVideoKeyframes(scene, '/first.png', '/first.png'), /must be different/);
 });
 
 test('ZIP export resolves the active image and video from shots[0]', async () => {

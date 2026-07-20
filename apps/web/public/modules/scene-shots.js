@@ -19,6 +19,7 @@ function legacyShot(scene = {}) {
     disabledStyleReferencePaths: Array.isArray(scene.disabledProjectReferenceImages) ? scene.disabledProjectReferenceImages : [],
     startFrame: versions[versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0]?.path || null,
     endFrame: null,
+    videoKeyframeSelection: null,
   };
 }
 
@@ -42,6 +43,13 @@ export function adaptSceneImageShot(scene = {}) {
   const versionPaths = new Set(versions.map((version) => version?.path).filter(Boolean));
   const startFrame = typeof existing?.startFrame === 'string' && versionPaths.has(existing.startFrame) ? existing.startFrame : defaultStartFrame;
   const endFrame = typeof existing?.endFrame === 'string' && versionPaths.has(existing.endFrame) ? existing.endFrame : null;
+  const selection = existing?.videoKeyframeSelection;
+  const videoKeyframeSelection = selection?.version === 1
+    && selection.source === 'video_generation_confirmation'
+    && selection.startFrame === startFrame
+    && (selection.endFrame || null) === endFrame
+    ? selection
+    : null;
   scene.shots = [{
     ...(existing || {}),
     prompt: typeof existing?.prompt === 'string' ? existing.prompt : legacy.prompt,
@@ -53,6 +61,7 @@ export function adaptSceneImageShot(scene = {}) {
     disabledStyleReferencePaths,
     startFrame,
     endFrame,
+    videoKeyframeSelection,
   }, ...existingShots.slice(1)];
 
   for (const field of SHOT_FIELDS) {
@@ -90,6 +99,7 @@ export function replaceImageState(scene, sourceScene) {
   scene.shots[0].activeVersionIndex = Number.isInteger(source.activeVersionIndex) ? source.activeVersionIndex : 0;
   scene.shots[0].startFrame = typeof source.startFrame === 'string' ? source.startFrame : null;
   scene.shots[0].endFrame = typeof source.endFrame === 'string' ? source.endFrame : null;
+  scene.shots[0].videoKeyframeSelection = source.videoKeyframeSelection || null;
 }
 
 export function setActiveImageVersion(scene, index) {
@@ -103,6 +113,7 @@ export function setStartFrame(scene, path) {
   const selected = String(path || '');
   if (selected && !scene.shots[0].versions.some((version) => version?.path === selected)) throw new RangeError('Start frame must reference an image version on this shot');
   scene.shots[0].startFrame = selected || null;
+  scene.shots[0].videoKeyframeSelection = null;
 }
 
 export function setEndFrame(scene, path) {
@@ -110,6 +121,26 @@ export function setEndFrame(scene, path) {
   const selected = String(path || '');
   if (selected && !scene.shots[0].versions.some((version) => version?.path === selected)) throw new RangeError('End frame must reference an image version on this shot');
   scene.shots[0].endFrame = selected || null;
+  scene.shots[0].videoKeyframeSelection = null;
+}
+
+export function setVideoKeyframes(scene, startPath, endPath = null) {
+  adaptSceneImageShot(scene);
+  const versions = scene.shots[0].versions;
+  const startFrame = String(startPath || '');
+  const endFrame = String(endPath || '');
+  if (!startFrame || !versions.some((version) => version?.path === startFrame)) throw new RangeError('Video start keyframe must reference an image version on this shot');
+  if (endFrame && !versions.some((version) => version?.path === endFrame)) throw new RangeError('Video end keyframe must reference an image version on this shot');
+  if (endFrame && endFrame === startFrame) throw new RangeError('Video start and end keyframes must be different images');
+  scene.shots[0].startFrame = startFrame;
+  scene.shots[0].endFrame = endFrame || null;
+  scene.shots[0].videoKeyframeSelection = {
+    version: 1,
+    source: 'video_generation_confirmation',
+    startFrame,
+    endFrame: endFrame || null,
+    confirmedAt: new Date().toISOString(),
+  };
 }
 
 export function replaceVideoState(scene, sourceScene) {

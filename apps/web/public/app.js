@@ -182,6 +182,14 @@ const els = {
   confirmRegenMessage: document.getElementById('confirmRegenMessage'),
   confirmRegenCancelBtn: document.getElementById('confirmRegenCancelBtn'),
   confirmRegenConfirmBtn: document.getElementById('confirmRegenConfirmBtn'),
+  confirmVideoKeyframes: document.getElementById('confirmVideoKeyframes'),
+  confirmVideoKeyframesDetails: document.getElementById('confirmVideoKeyframesDetails'),
+  confirmVideoStartFrame: document.getElementById('confirmVideoStartFrame'),
+  confirmVideoEndFrame: document.getElementById('confirmVideoEndFrame'),
+  confirmVideoStartPreview: document.getElementById('confirmVideoStartPreview'),
+  confirmVideoEndPreview: document.getElementById('confirmVideoEndPreview'),
+  confirmVideoEndPreviewEmpty: document.getElementById('confirmVideoEndPreviewEmpty'),
+  confirmVideoKeyframeStatus: document.getElementById('confirmVideoKeyframeStatus'),
 
   // Scene entity modal
   entityModal: document.getElementById('entityModal'),

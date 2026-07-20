@@ -4,6 +4,7 @@ function createMediaController({images,audio,videos,subtitles,exports}){return{
  async audio(req,res){res.json({ok:true,...await audio.generate(req.body,{ownerId:req.auth.tenantId,userId:req.auth.userId,signal:req.generationSignal,jobId:req.generationJobId})});},
  async video(req,res){res.json({ok:true,...await videos.generate(req.body,{ownerId:req.auth.tenantId,userId:req.auth.userId,signal:req.generationSignal,jobId:req.generationJobId})});},
  async videoPreflight(req,res){res.json(await videos.verify({provider:req.query.provider,model:req.query.model,generationMode:req.query.generationMode}));},
+ async videoAttemptStatus(req,res){res.json({ok:true,attempt:await videos.attemptStatus(req.params.attemptId,{ownerId:req.auth.tenantId})});},
  async subtitle(req,res){res.json({ok:true,...await subtitles.generate(req.body,{ownerId:req.auth.tenantId,userId:req.auth.userId,signal:req.generationSignal,jobId:req.generationJobId})});},
  async export(req,res){res.json({ok:true,...await exports.generate(req.body.projectId,{ownerId:req.auth.tenantId,userId:req.auth.userId})});}
 };}

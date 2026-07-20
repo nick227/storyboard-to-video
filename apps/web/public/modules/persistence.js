@@ -288,7 +288,7 @@ export function saveStoryboard(els, immediate = false) {
     commonPromptText: els.commonPromptText.value,
     textProvider: els.textProvider.value,
     imageProvider: els.imageProvider.value,
-    mediaSettings: els.mediaAspectRatio?.value ? {
+    mediaSettings: (els.mediaAspectRatio?.value || els.videoProvider?.value) ? {
       version: 1,
       aspectRatio: els.mediaAspectRatio.value,
       image: { resolutionTier: els.imageResolutionTier.value, quality: els.imageQuality.value },

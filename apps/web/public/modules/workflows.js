@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { batchStore, projectStore, sceneStore, voiceStore, generationStore, uiStore } from './store.js';
-import { getCurrentStoryboardRecord, queueSync, ensureProjectSynced } from './persistence.js';
+import { getCurrentStoryboardRecord, queueSync, ensureProjectSynced, hydrateCurrentProjectFromServer } from './persistence.js';
 import { clampSplitCount } from './scene-count.js';
 import { adaptSceneImageShot, imageShot, replaceImageState, replaceVideoState, setImagePrompt } from './scene-shots.js';
 
@@ -507,6 +507,24 @@ export async function preflightVideoProvider(setStatus, selection = {}) {
   }
 }
 
+// Async video providers (MiniMax, Veo) return { pending: true, attemptId } immediately -- the
+// background reconciliation worker is what actually advances and commits the attempt server-side.
+// This just watches for that to land, rather than re-driving the provider itself.
+async function waitForVideoAttempt(attemptId, { intervalMs = 4000, timeoutMs = 5 * 60 * 1000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const { attempt } = await api(`/api/videos/attempts/${encodeURIComponent(attemptId)}`);
+    if (attempt.lifecycleState === 'committed') return attempt;
+    if (['failed', 'cancelled'].includes(attempt.lifecycleState)) {
+      throw new Error(attempt.error?.message || `Video generation ${attempt.lifecycleState}.`);
+    }
+    if (Date.now() >= deadline) {
+      throw new Error('Video generation is taking longer than expected — check back in a bit; it may still finish in the background.');
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+
 export async function regenerateVideo(index, scene, els, setStatus, withinSerial = false) {
   const scenes = sceneStore.get().scenes;
   const activeScene = scene || scenes[index];
@@ -521,7 +539,12 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
   }
 
   const selectedProvider = els.videoProvider?.value || '';
-  const generationMode = selectedProvider === 'minimax' && shot.endFrame ? 'first_last_frame' : undefined;
+  const confirmedKeyframes = shot.videoKeyframeSelection?.source === 'video_generation_confirmation'
+    && shot.videoKeyframeSelection.startFrame === shot.startFrame
+    && (shot.videoKeyframeSelection.endFrame || null) === (shot.endFrame || null)
+    ? shot.videoKeyframeSelection
+    : null;
+  const generationMode = selectedProvider === 'minimax' && confirmedKeyframes?.endFrame ? 'first_last_frame' : undefined;
   if (!withinSerial && !(await preflightVideoProvider(setStatus, { provider: selectedProvider, generationMode }))) return false;
 
   if (!scene) {
@@ -548,6 +571,21 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
         ...(generationMode ? { generationMode } : {}),
       }),
     });
+
+    if (data.pending) {
+      // Batch runs don't block on an async provider per scene -- reconciliation happens in the
+      // background regardless of whether this tab is open, and waiting here serially would make a
+      // multi-scene MiniMax run take minutes per scene for no benefit.
+      if (withinSerial) {
+        if (setStatus) setStatus(`Scene ${index + 1}: video generating in the background via ${data.provider}.`);
+        return false;
+      }
+      if (setStatus) setStatus(`Generating video for scene ${index + 1} via ${data.provider}… this can take a minute.`);
+      await waitForVideoAttempt(data.attemptId);
+      await hydrateCurrentProjectFromServer();
+      if (setStatus) setStatus(`Video ready for scene ${index + 1}.`);
+      return false;
+    }
 
     replaceVideoState(activeScene, data.scene);
     activeScene.activeVisualType = data.scene.activeVisualType;

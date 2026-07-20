@@ -6,20 +6,8 @@ import { loadProtectedAsset } from './assets.js';
 import { api } from './api.js';
 import { suggestSceneCountFromNarration } from './scene-count.js';
 import { computeStaleness, resolveSelectedSceneIndex, getCachedJobs, refreshRecentJobs, buildLatestJobsByScene } from './stages.js';
-import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVersion, setImagePrompt, setStartFrame, setEndFrame } from './scene-shots.js';
+import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVersion, setImagePrompt, setVideoKeyframes } from './scene-shots.js';
 import { REFERENCE_ROLES, REFERENCE_ROLE_LABELS, normalizeReferenceRole } from './reference-roles.js';
-import { videoProviderCapabilities } from './video-provider-capabilities.js';
-
-function currentVideoCapabilities() {
-  const provider = els.videoProvider?.value || 'ltx';
-  try {
-    const ordinary = videoProviderCapabilities(provider);
-    try {
-      const interpolation = videoProviderCapabilities(provider, ordinary.model, 'first_last_frame');
-      return { ...ordinary, supportsEndFrame: interpolation.supportsEndFrame };
-    } catch { return ordinary; }
-  } catch { return { supportsStartFrame: true, supportsEndFrame: false }; }
-}
 
 let els = {};
 let activeScenePlayback = null;
@@ -39,6 +27,7 @@ const modalState = {
   mediaAbortController: null,
   alignmentWords: [],
   captionTarget: null,
+  confirmApply: null,
 };
 
 const referenceModalState = { sceneId: null };
@@ -162,15 +151,98 @@ function setupConfirmModal() {
   modal.addEventListener('close', () => {
     const confirmed = modal.returnValue === 'confirm';
     modal.returnValue = '';
+    const apply = modalState.confirmApply;
+    modalState.confirmApply = null;
+    if (confirmed && apply) apply();
     const resolve = modalState.confirmResolve;
     modalState.confirmResolve = null;
     if (resolve) resolve(confirmed);
   });
 }
 
-function confirmRegeneration(message, confirmLabel = 'Regenerate') {
+function configureVideoKeyframeConfirmation(scene, sceneIndex) {
+  const record = getCurrentStoryboardRecord();
+  const providerName = els.videoProvider?.value || record?.mediaSettings?.video?.provider || '';
+  const shot = imageShot(scene);
+  const versions = (shot.versions || []).filter((version) => Boolean(version?.path));
+  const available = providerName === 'minimax' && versions.length > 1;
+  els.confirmVideoKeyframes.hidden = !available;
+  modalState.confirmApply = null;
+  if (!available) return;
+
+  const selected = shot.videoKeyframeSelection?.source === 'video_generation_confirmation'
+    ? shot.videoKeyframeSelection
+    : null;
+  const active = shot.versions?.[shot.activeVersionIndex]?.path || versions[0].path;
+  const option = (version, index) => {
+    const item = document.createElement('option');
+    item.value = version.path;
+    item.textContent = `Image version ${index + 1}${version.path === active ? ' (active)' : ''}`;
+    return item;
+  };
+  els.confirmVideoStartFrame.replaceChildren(...versions.map(option));
+  const noEnd = document.createElement('option');
+  noEnd.value = '';
+  noEnd.textContent = 'No end keyframe — animate from the start image';
+  els.confirmVideoEndFrame.replaceChildren(noEnd, ...versions.map(option));
+  els.confirmVideoStartFrame.value = versions.some((version) => version.path === selected?.startFrame) ? selected.startFrame : active;
+  els.confirmVideoEndFrame.value = versions.some((version) => version.path === selected?.endFrame) ? selected.endFrame : '';
+  els.confirmVideoKeyframesDetails.open = Boolean(els.confirmVideoEndFrame.value);
+
+  const selectedVersion = (path) => versions.find((version) => version.path === path) || null;
+  const referenceLineage = (version) => JSON.stringify((version?.manifest?.inputs?.references || [])
+    .filter((reference) => reference.consumed !== false)
+    .map((reference) => ({ role: reference.role || '', path: reference.path || '' }))
+    .sort((a, b) => `${a.role}:${a.path}`.localeCompare(`${b.role}:${b.path}`)));
+  const showPreview = (element, assetPath) => {
+    element.removeAttribute('src');
+    element.dataset.assetPath = assetPath || '';
+    element.hidden = !assetPath;
+    if (assetPath) loadProtectedAsset(assetPath).then((url) => {
+      if (url && element.dataset.assetPath === assetPath) element.src = url;
+    }).catch(handleAssetError);
+  };
+  const refresh = () => {
+    const start = els.confirmVideoStartFrame.value;
+    for (const item of els.confirmVideoEndFrame.options) item.disabled = Boolean(item.value && item.value === start);
+    if (els.confirmVideoEndFrame.value === start) els.confirmVideoEndFrame.value = '';
+    const end = els.confirmVideoEndFrame.value;
+    showPreview(els.confirmVideoStartPreview, start);
+    showPreview(els.confirmVideoEndPreview, end);
+    els.confirmVideoEndPreviewEmpty.hidden = Boolean(end);
+    const startVersion = selectedVersion(start);
+    const endVersion = selectedVersion(end);
+    const warnings = [];
+    if (end && referenceLineage(startVersion) !== referenceLineage(endVersion)) warnings.push('The two images were generated with different character/world reference lineages; consistency may be reduced.');
+    if (computeStaleness(scene).imageStale && start === active) warnings.push('The active start image is stale relative to the current scene settings.');
+    els.confirmVideoKeyframeStatus.textContent = [
+      end ? 'Interpolation enabled: MiniMax will use exactly these two generated scene images.' : 'Start-frame animation only. No final image will be attached.',
+      ...warnings,
+    ].join(' ');
+  };
+  els.confirmVideoStartFrame.onchange = refresh;
+  els.confirmVideoEndFrame.onchange = refresh;
+  refresh();
+
+  modalState.confirmApply = () => {
+    const scenes = sceneStore.get().scenes.map((current, index) => {
+      if (index !== sceneIndex) return current;
+      const next = { ...current };
+      setVideoKeyframes(next, els.confirmVideoStartFrame.value, els.confirmVideoEndFrame.value || null);
+      return next;
+    });
+    sceneStore.set({ scenes });
+    const currentRecord = getCurrentStoryboardRecord();
+    if (currentRecord) { currentRecord.scenes = scenes; queueSync(currentRecord); }
+  };
+}
+
+function confirmRegeneration(message, confirmLabel = 'Regenerate', options = {}) {
   return new Promise((resolve) => {
     modalState.confirmResolve = resolve;
+    modalState.confirmApply = null;
+    if (els.confirmVideoKeyframes) els.confirmVideoKeyframes.hidden = true;
+    if (options.videoScene) configureVideoKeyframeConfirmation(options.videoScene, options.sceneIndex);
     els.confirmRegenMessage.textContent = message;
     els.confirmRegenConfirmBtn.textContent = confirmLabel;
     els.confirmRegenModal.showModal();
@@ -533,44 +605,7 @@ function renderEntityModalHistory(scene, type, config, busy) {
     meta.textContent = `v${vIndex + 1}${providerName ? ` · ${providerName}` : ''}`;
     btn.append(mediaEl, meta);
 
-    if (type !== 'image') {
-      els.entityModalHistoryList.appendChild(btn);
-      return;
-    }
-
-    // version-thumb is itself a <button>, so the per-version start/end frame actions live in a
-    // sibling wrapper rather than nested inside it -- nested <button> elements are invalid HTML and
-    // browsers silently un-nest them, which would break both layout and click delegation below.
-    const item = document.createElement('div');
-    item.className = 'version-item';
-    const shot = imageShot(scene);
-    const capabilities = currentVideoCapabilities();
-    const frameActions = document.createElement('div');
-    frameActions.className = 'version-frame-actions';
-    const startBtn = document.createElement('button');
-    startBtn.type = 'button';
-    startBtn.className = 'text-button version-frame-btn';
-    startBtn.dataset.frameRole = 'start_frame';
-    startBtn.dataset.vindex = String(vIndex);
-    startBtn.disabled = busy;
-    const isStart = shot.startFrame === version.path;
-    startBtn.classList.toggle('is-current', isStart);
-    startBtn.textContent = isStart ? 'Start frame ✓' : 'Set start frame';
-    frameActions.append(startBtn);
-    if (capabilities.supportsEndFrame) {
-      const endBtn = document.createElement('button');
-      endBtn.type = 'button';
-      endBtn.className = 'text-button version-frame-btn';
-      endBtn.dataset.frameRole = 'end_frame';
-      endBtn.dataset.vindex = String(vIndex);
-      endBtn.disabled = busy;
-      const isEnd = shot.endFrame === version.path;
-      endBtn.classList.toggle('is-current', isEnd);
-      endBtn.textContent = isEnd ? 'End frame ✓' : 'Set end frame';
-      frameActions.append(endBtn);
-    }
-    item.append(btn, frameActions);
-    els.entityModalHistoryList.appendChild(item);
+    els.entityModalHistoryList.appendChild(btn);
   });
 }
 
@@ -742,7 +777,8 @@ function setupEntityModal() {
     // Scene expansion is a deliberate storyboard-edit operation (see the "Expand into scenes"
     // action on the narration view), never an incidental side effect of regenerating an image —
     // this button always just regenerates, regardless of how long the scene's narration has grown.
-    confirmRegeneration(`${verb} the ${config.title.toLowerCase()} for scene ${index + 1}? This creates a new version and makes it active.`, verb).then((confirmed) => {
+    const confirmationOptions = modalState.type === 'video' ? { videoScene: scene, sceneIndex: index } : {};
+    confirmRegeneration(`${verb} the ${config.title.toLowerCase()} for scene ${index + 1}? This creates a new version and makes it active.`, verb, confirmationOptions).then((confirmed) => {
       if (!confirmed) return;
       // Close immediately so the scene card's own spinner (driven by uiStore.operation, set
       // synchronously inside regenerate* before its first await) is visible right away, instead of
@@ -820,25 +856,6 @@ function setupEntityModal() {
   els.entityModalHistoryList.addEventListener('click', (event) => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
-    const frameBtn = event.target.closest('.version-frame-btn');
-    if (frameBtn && !frameBtn.disabled) {
-      const vIndex = parseInt(frameBtn.dataset.vindex, 10);
-      const role = frameBtn.dataset.frameRole;
-      const scenes = sceneStore.get().scenes.map((scene, i) => {
-        if (i !== index) return scene;
-        const next = { ...scene };
-        const shot = imageShot(next);
-        const path = shot.versions[vIndex]?.path || null;
-        if (role === 'start_frame') setStartFrame(next, shot.startFrame === path ? null : path);
-        else setEndFrame(next, shot.endFrame === path ? null : path);
-        return next;
-      });
-      sceneStore.set({ scenes });
-      const record = getCurrentStoryboardRecord();
-      if (record) { record.scenes = scenes; queueSync(record); }
-      renderEntityModal();
-      return;
-    }
     const target = event.target.closest('.audio-version-select') || event.target.closest('.version-thumb');
     if (!target || target.disabled) return;
     const vIndex = parseInt(target.dataset.vindex, 10);

@@ -58,6 +58,7 @@ function buildVideoPrompt(input, style, configuredMotionPrompt = '') {
 
 function validateMiniMaxInterpolationFrames(startSource, endSource, requestedAspectRatio) {
   if (!startSource || !endSource) throw new AppError('VIDEO_FRAME_REQUIRED', 'MiniMax first/last-frame generation requires both frame images', { status: 400 });
+  if (path.resolve(startSource) === path.resolve(endSource)) throw new AppError('VIDEO_KEYFRAMES_IDENTICAL', 'Video start and end keyframes must be different images', { status: 400 });
   const start = readImageDimensions(startSource);
   const end = readImageDimensions(endSource);
   if (!start || !end) throw new AppError('INVALID_VIDEO_FRAME', 'MiniMax interpolation frames must be valid PNG, JPEG, or WebP images', { status: 400 });
@@ -79,7 +80,7 @@ function validateMiniMaxInterpolationFrames(startSource, endSource, requestedAsp
   return { start, end };
 }
 
-function createVideoGenerationService({ config, provider, providers, execution, projectStore, styles }) {
+function createVideoGenerationService({ config, provider, providers, execution, projectStore, styles, attempts }) {
   async function resolve(publicPath, ownerId) {
     if (!publicPath) return null;
     const match = String(publicPath).match(/^\/projects\/([^/]+)\/assets\/[^/]+\/[^/]+$/);
@@ -113,7 +114,7 @@ function createVideoGenerationService({ config, provider, providers, execution, 
         inputs: {
           operation: 'video.generate', prompt: context.promptInputs, style: { id: context.styleId },
           provider: { name: metadata.provider || attempt.provider, model: metadata.model || attempt.model },
-          settings: { ...(metadata.settings || {}), output: snapshot.outputSelection, motionIntensity: snapshot.motionIntensity || 'medium' },
+          settings: { ...(metadata.settings || {}), output: snapshot.outputSelection, motionIntensity: snapshot.motionIntensity || 'medium', keyframeSelection: snapshot.keyframeSelection || null },
           sourceAssets: allInputs.map((item) => ({ role: item.role, path: item.assetPath, sha256: item.sha256, consumed: consumedRoles.has(item.role) })),
           inputPlan: { mode: attempt.generationMode, included: snapshot.inputPlan.included, excluded: snapshot.inputPlan.excluded, output: snapshot.inputPlan.output },
         },
@@ -146,8 +147,17 @@ function createVideoGenerationService({ config, provider, providers, execution, 
       if (!sceneBeforeGeneration) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
       const shot = imageShot(sceneBeforeGeneration);
       const activeImage = shot.versions?.[shot.activeVersionIndex] || null;
-      const startFramePath = shot.startFrame || activeImage?.path || input.imagePath || null;
-      const endFramePath = shot.endFrame || null;
+      const shotImagePaths = new Set((shot.versions || []).map((version) => version?.path).filter(Boolean));
+      const confirmedKeyframes = shot.videoKeyframeSelection?.version === 1
+        && shot.videoKeyframeSelection.source === 'video_generation_confirmation'
+        && shot.videoKeyframeSelection.startFrame === shot.startFrame
+        && (shot.videoKeyframeSelection.endFrame || null) === (shot.endFrame || null)
+        && shotImagePaths.has(shot.videoKeyframeSelection.startFrame)
+        && (!shot.videoKeyframeSelection.endFrame || shotImagePaths.has(shot.videoKeyframeSelection.endFrame))
+        ? shot.videoKeyframeSelection
+        : null;
+      const startFramePath = confirmedKeyframes?.startFrame || activeImage?.path || input.imagePath || null;
+      const endFramePath = confirmedKeyframes?.endFrame || null;
       const startSource = await resolve(startFramePath, ownerId);
       if (!startSource || !fs.existsSync(startSource)) {
         throw new AppError('INVALID_PATH', 'A valid generated reference image is required', { status: 400 });
@@ -162,6 +172,9 @@ function createVideoGenerationService({ config, provider, providers, execution, 
           ? 'first_last_frame'
           : 'image_to_video'
       );
+      if (input.generationMode === 'first_last_frame' && !endFramePath) {
+        throw new AppError('END_FRAME_CONFIRMATION_REQUIRED', 'Choose and confirm an end keyframe in the video generation dialog before using interpolation', { status: 400 });
+      }
       const providerResolution = providers ? providers.resolve({ provider: providerName, model, mode: generationMode }) : null;
       const capabilities = providerResolution ? providerResolution.capabilities : provider.getCapabilities ? provider.getCapabilities() : videoProviderCapabilities(providerName, model, generationMode);
       const output = resolveVideoOutput({
@@ -194,7 +207,7 @@ function createVideoGenerationService({ config, provider, providers, execution, 
         if (execution) {
           const executed = await execution.create({
             provider: providerName, model: inputPlan.model, generationMode, prompt, motionIntensity: input.motionIntensity,
-            inputPlan, outputSelection: output, outputPath: staged,
+            inputPlan, outputSelection: output, outputPath: staged, keyframeSelection: confirmedKeyframes,
             finalization: {
               projectId: input.projectId, sceneId: input.sceneId, sceneNumber: input.sceneNumber, sceneTitle: input.sceneTitle,
               ownerId, userId, startFramePath, endFramePath, styleId: style.id,
@@ -222,7 +235,7 @@ function createVideoGenerationService({ config, provider, providers, execution, 
             prompt: { composed: prompt, scene: input.scenePrompt || '', beat: input.sceneBeat || '', style: style.promptText, common: getAdditionalCommonPrompt(style.promptText, input.commonPromptText), motion: input.motionPrompt || '' },
             style: { id: style.id },
             provider: { name: metadata.provider || providerName, model: metadata.model || inputPlan.model || null },
-            settings: { ...(metadata.settings || {}), output, motionIntensity: input.motionIntensity || 'medium' },
+            settings: { ...(metadata.settings || {}), output, motionIntensity: input.motionIntensity || 'medium', keyframeSelection: confirmedKeyframes },
             sourceAssets: [
               { role: 'start_frame', path: startFramePath, sha256: fileHash(startSource), consumed: inputPlan.included.some((item) => item.role === 'start_frame') },
               ...(endFramePath ? [{ role: 'end_frame', path: endFramePath, sha256: fileHash(endSource), consumed: inputPlan.included.some((item) => item.role === 'end_frame') }] : []),
@@ -262,6 +275,19 @@ function createVideoGenerationService({ config, provider, providers, execution, 
     },
     cancelAttempt: (attemptId) => execution.cancel(attemptId),
     reconcileAttempts: () => execution.reconcile(finalizeRecoveredExecution),
+    async attemptStatus(attemptId, { ownerId } = {}) {
+      let attempt = null;
+      try { attempt = await attempts.get(attemptId); } catch (_) { attempt = null; }
+      if (!attempt || attempt.tenantId !== ownerId) throw new AppError('ATTEMPT_NOT_FOUND', 'Video generation attempt not found', { status: 404 });
+      return {
+        id: attempt.id,
+        provider: attempt.provider,
+        model: attempt.model,
+        lifecycleState: attempt.lifecycleState,
+        commitState: attempt.commitState,
+        error: attempt.error || null,
+      };
+    },
   };
 }
 
