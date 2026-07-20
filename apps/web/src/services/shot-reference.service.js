@@ -6,9 +6,9 @@ const { AppError } = require('../errors');
 const { imageShot } = require('../shared/scene-shots');
 const { REFERENCE_ROLES, normalizeReferenceRole } = require('../shared/reference-roles');
 
-const MAX_SCENE_REFERENCES = 8;
+const MAX_SHOT_REFERENCES = 8;
 
-function createSceneReferenceService({ config, projectStore }) {
+function createShotReferenceService({ config, projectStore }) {
   async function rollback(assets) {
     for (const asset of assets) {
       if (projectStore.rollbackAsset) await projectStore.rollbackAsset(asset);
@@ -29,7 +29,7 @@ function createSceneReferenceService({ config, projectStore }) {
         if (error.code !== 'REVISION_CONFLICT') throw error;
       }
     }
-    throw new AppError('PROJECT_WRITE_CONFLICT', 'Could not persist scene references after repeated conflicts', { status: 409 });
+    throw new AppError('PROJECT_WRITE_CONFLICT', 'Could not persist shot references after repeated conflicts', { status: 409 });
   }
 
   return {
@@ -41,7 +41,7 @@ function createSceneReferenceService({ config, projectStore }) {
       if (!scene) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
       const shot = imageShot(scene);
       const existing = Array.isArray(shot.referenceBindings) ? shot.referenceBindings : [];
-      if (existing.length + files.length > MAX_SCENE_REFERENCES) throw new AppError('REFERENCE_LIMIT', `A scene can have at most ${MAX_SCENE_REFERENCES} uploaded references`, { status: 400 });
+      if (existing.length + files.length > MAX_SHOT_REFERENCES) throw new AppError('REFERENCE_LIMIT', `A shot can have at most ${MAX_SHOT_REFERENCES} uploaded references`, { status: 400 });
 
       const prepared = files.map((file) => ({ file, extension: detectImageExtension(file.buffer) }));
       if (prepared.some((item) => !item.extension)) throw new AppError('INVALID_IMAGE', 'Only valid PNG, JPEG, WebP, and GIF images are accepted', { status: 400 });
@@ -77,7 +77,7 @@ function createSceneReferenceService({ config, projectStore }) {
       const document = await projectStore.verifyLease(lease);
       const scene = document.scenes?.find((item) => item.id === sceneId);
       const reference = imageShot(scene).referenceBindings?.find((item) => item?.path === assetPath);
-      if (!reference) throw new AppError('REFERENCE_NOT_FOUND', 'Scene reference not found', { status: 404 });
+      if (!reference) throw new AppError('REFERENCE_NOT_FOUND', 'Shot reference not found', { status: 404 });
       const result = await writeScene(lease, sceneId, (target) => {
         const targetShot = imageShot(target);
         targetShot.referenceBindings = (targetShot.referenceBindings || []).filter((item) => item?.path !== assetPath);
@@ -93,7 +93,7 @@ function createSceneReferenceService({ config, projectStore }) {
       const lease = await projectStore.acquireLease(projectId, { ownerId, userId });
       const document = await projectStore.verifyLease(lease);
       const scene = document.scenes?.find((item) => item.id === sceneId);
-      if (!imageShot(scene).referenceBindings?.some((item) => item?.path === assetPath)) throw new AppError('REFERENCE_NOT_FOUND', 'Scene reference not found', { status: 404 });
+      if (!imageShot(scene).referenceBindings?.some((item) => item?.path === assetPath)) throw new AppError('REFERENCE_NOT_FOUND', 'Shot reference not found', { status: 404 });
       return writeScene(lease, sceneId, (target) => {
         const targetShot = imageShot(target);
         targetShot.referenceBindings = (targetShot.referenceBindings || []).map((reference) => (
@@ -102,7 +102,7 @@ function createSceneReferenceService({ config, projectStore }) {
       });
     },
 
-    async uploadSceneImage(projectId, sceneId, file, { ownerId, userId } = {}) {
+    async uploadShotImage(projectId, sceneId, file, { ownerId, userId } = {}) {
       if (!file) throw new AppError('VALIDATION_ERROR', 'An image is required', { status: 400 });
       const lease = await projectStore.acquireLease(projectId, { ownerId, userId });
       const document = await projectStore.verifyLease(lease);
@@ -128,7 +128,7 @@ function createSceneReferenceService({ config, projectStore }) {
           const shot = imageShot(target);
           shot.versions = [
             ...(Array.isArray(shot.versions) ? shot.versions : []),
-            { path: asset.path, prompt: 'Uploaded scene image', createdAt: new Date().toISOString() },
+            { path: asset.path, prompt: 'Uploaded shot image', createdAt: new Date().toISOString() },
           ];
           shot.activeVersionIndex = shot.versions.length - 1;
           target.activeVisualType = 'image';
@@ -142,4 +142,4 @@ function createSceneReferenceService({ config, projectStore }) {
   };
 }
 
-module.exports = { createSceneReferenceService, MAX_SCENE_REFERENCES };
+module.exports = { createShotReferenceService, MAX_SHOT_REFERENCES };
