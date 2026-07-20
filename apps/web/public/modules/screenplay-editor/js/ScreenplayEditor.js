@@ -29,6 +29,7 @@ export class ScreenplayEditor {
         this.container = options.container;
         this.format = options.format || 'fountain';
         this.showToolbar = options.showToolbar !== false;
+        this.theme = options.theme || 'dark';
 
         this.callbacks = {
             onChange: options.onChange || null,
@@ -59,7 +60,7 @@ export class ScreenplayEditor {
         this.container.innerHTML = '';
         
         this.wrapper = document.createElement('div');
-        this.wrapper.className = 'screenplay-editor-wrapper';
+        this.wrapper.className = `screenplay-editor-wrapper theme-${this.theme}`;
 
         if (this.showToolbar) {
             this.toolbar = document.createElement('div');
@@ -76,22 +77,47 @@ export class ScreenplayEditor {
     }
 
     _buildToolbarUI () {
-        const select = document.createElement('select');
-        select.className = 'screenplay-format-select';
-        
+        this.toolbar.innerHTML = '';
+
+        const chipsGroup = document.createElement('div');
+        chipsGroup.className = 'screenplay-toolbar-chips';
+
+        this.chipButtons = {};
         Object.keys(FORMAT_DISPLAY_NAMES).forEach(fmt => {
-            const opt = document.createElement('option');
-            opt.value = fmt;
-            opt.textContent = FORMAT_DISPLAY_NAMES[fmt];
-            select.appendChild(opt);
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'screenplay-chip';
+            btn.dataset.format = fmt;
+            btn.textContent = FORMAT_DISPLAY_NAMES[fmt];
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.setLineFormat(fmt);
+            });
+            chipsGroup.appendChild(btn);
+            this.chipButtons[fmt] = btn;
         });
+        this.toolbar.appendChild(chipsGroup);
 
-        select.addEventListener('change', (e) => {
-            this.setLineFormat(e.target.value);
+        const rightGroup = document.createElement('div');
+        rightGroup.className = 'screenplay-toolbar-right';
+
+        this.pageBadge = document.createElement('span');
+        this.pageBadge.className = 'screenplay-page-badge';
+        this.pageBadge.textContent = 'Page 1 of 1';
+        rightGroup.appendChild(this.pageBadge);
+
+        const themeBtn = document.createElement('button');
+        themeBtn.type = 'button';
+        themeBtn.className = 'screenplay-theme-btn';
+        themeBtn.textContent = this.theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+        themeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.setTheme(this.theme === 'dark' ? 'light' : 'dark');
         });
+        this.themeBtn = themeBtn;
+        rightGroup.appendChild(themeBtn);
 
-        this.toolbar.appendChild(select);
-        this.formatSelect = select;
+        this.toolbar.appendChild(rightGroup);
     }
 
     _initEngine () {
@@ -162,10 +188,41 @@ export class ScreenplayEditor {
         }
     }
 
+    setTheme (theme) {
+        this.theme = theme === 'light' ? 'light' : 'dark';
+        if (this.wrapper) {
+            this.wrapper.classList.remove('theme-dark', 'theme-light');
+            this.wrapper.classList.add(`theme-${this.theme}`);
+        }
+        if (this.themeBtn) {
+            this.themeBtn.textContent = this.theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+        }
+    }
+
+    getPages () {
+        return this.pageManager ? this.pageManager.getPages() : [];
+    }
+
+    getPageCount () {
+        return this.pageManager ? this.pageManager.getPageCount() : 1;
+    }
+
+    getCurrentPageNumber () {
+        return this.pageManager ? this.pageManager.getCurrentPageNumber() : 1;
+    }
+
+    setLinesPerPage (maxLines) {
+        if (this.pageManager) {
+            this.pageManager.setLinesPerPage(maxLines);
+            this._updatePageBadge();
+        }
+    }
+
     _notifyChange () {
         this.isDirty = true;
         const currentDoc = this.getScriptDocument();
         const rawText = RawScriptAdapter.serialize(currentDoc, this.format);
+        this._updatePageBadge();
 
         if (typeof this.callbacks.onChange === 'function') {
             this.callbacks.onChange({
@@ -180,9 +237,13 @@ export class ScreenplayEditor {
         const activeLine = this.pageManager.getActiveLine();
         if (activeLine) {
             const currentFormat = activeLine.getAttribute('data-format') || VALID_FORMATS.ACTION;
-            if (this.formatSelect && this.formatSelect.value !== currentFormat) {
-                this.formatSelect.value = currentFormat;
+            if (this.chipButtons) {
+                Object.keys(this.chipButtons).forEach(fmt => {
+                    this.chipButtons[fmt].classList.toggle('is-active', fmt === currentFormat);
+                });
             }
+
+            this._updatePageBadge();
 
             if (typeof this.callbacks.onSelectionChange === 'function') {
                 this.callbacks.onSelectionChange({
@@ -190,6 +251,16 @@ export class ScreenplayEditor {
                     lineElement: activeLine
                 });
             }
+        } else {
+            this._updatePageBadge();
+        }
+    }
+
+    _updatePageBadge () {
+        if (this.pageBadge && this.pageManager) {
+            const current = this.pageManager.getCurrentPageNumber();
+            const total = this.pageManager.getPageCount();
+            this.pageBadge.textContent = `Page ${current} of ${total}`;
         }
     }
 

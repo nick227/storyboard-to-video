@@ -405,7 +405,7 @@ label > span {
   border-radius: 6px;
 }
 .screenplay-editor-container {
-  min-height: 495px;
+  height: 684px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #0b0f14;

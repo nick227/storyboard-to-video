@@ -66,4 +66,34 @@ export class PageManager {
         }
         return null;
     }
+
+    getPages () {
+        if (!this.container) return [];
+        const pageElements = Array.from(this.container.querySelectorAll('.script-page'));
+        return pageElements.map(el => ({
+            pageNumber: parseInt(el.dataset.pageNumber || '1', 10),
+            element: el,
+            lines: Array.from(el.querySelectorAll('.script-line'))
+        }));
+    }
+
+    getPageCount () {
+        return this.getPages().length || 1;
+    }
+
+    getCurrentPageNumber () {
+        const activeLine = this.getActiveLine();
+        if (!activeLine) return 1;
+        const pageEl = activeLine.closest('.script-page');
+        return pageEl ? parseInt(pageEl.dataset.pageNumber || '1', 10) : 1;
+    }
+
+    setLinesPerPage (maxLines) {
+        if (typeof maxLines === 'number' && maxLines > 0) {
+            this.maxLinesPerPage = maxLines;
+            if (this.pageBreakManager) {
+                this.pageBreakManager.checkAndRecalculate();
+            }
+        }
+    }
 }

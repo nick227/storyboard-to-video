@@ -2,33 +2,55 @@
 
 /* Self-contained screenplay editor CSS variables */
 .screenplay-editor-wrapper {
-    --color-border: #ddd;
-    --color-bg-light: #f5f5f5;
-    --color-bg-white: #ffffff;
-    --color-page-shadow: rgba(0, 0, 0, 0.2);
-    --color-bg-workspace: #eef1f5;
-    --color-bg-toolbar: #2c3338;
-    --color-toolbar-border: #363a3f;
     --font-script: 'Courier Prime', 'Courier New', Courier, monospace;
 
-    /* Script Dimensions & Margins */
-    --page-width: min(100%, 816px);
-    --page-min-height: 1056px;
-
     /* Screenplay Indents */
-    --dialog-left: 20%;
-    --dialog-right: 20%;
-    --speaker-left: 35%;
-    --directions-left: 28%;
-    --directions-right: 30%;
+    --dialog-left: 18%;
+    --dialog-right: 18%;
+    --speaker-left: 32%;
+    --directions-left: 24%;
+    --directions-right: 26%;
 
     display: flex;
     flex-direction: column;
     width: 100%;
     height: 100%;
     font-family: var(--font-script);
-    background-color: var(--color-bg-workspace);
     box-sizing: border-box;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Theme: Dark (Default) */
+.screenplay-editor-wrapper.theme-dark {
+    --color-bg-workspace: #0d1117;
+    --color-bg-page: #161b22;
+    --color-text-main: #e6edf3;
+    --color-bg-toolbar: #161b22;
+    --color-toolbar-border: #30363d;
+    --color-chip-bg: #21262d;
+    --color-chip-border: #363b42;
+    --color-chip-text: #c9d1d9;
+    --color-chip-active-bg: #4f8cff;
+    --color-chip-active-border: #4f8cff;
+    --color-chip-active-text: #ffffff;
+    --color-focus-bg: rgba(79, 140, 255, 0.15);
+}
+
+/* Theme: Light */
+.screenplay-editor-wrapper.theme-light {
+    --color-bg-workspace: #f6f8fa;
+    --color-bg-page: #ffffff;
+    --color-text-main: #1f2328;
+    --color-bg-toolbar: #ffffff;
+    --color-toolbar-border: #d0d7de;
+    --color-chip-bg: #f3f4f6;
+    --color-chip-border: #d0d7de;
+    --color-chip-text: #24292f;
+    --color-chip-active-bg: #0969da;
+    --color-chip-active-border: #0969da;
+    --color-chip-active-text: #ffffff;
+    --color-focus-bg: rgba(9, 105, 218, 0.08);
 }
 
 .screenplay-editor-wrapper * {
@@ -37,68 +59,120 @@
 
 /* Toolbar Styling */
 .screenplay-toolbar {
-    height: 48px;
-    padding: 0 16px;
+    min-height: 44px;
+    padding: 6px 12px;
     background: var(--color-bg-toolbar);
     border-bottom: 1px solid var(--color-toolbar-border);
     display: flex;
     align-items: center;
-    gap: 8px;
-    color: #ffffff;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
     font-family: system-ui, -apple-system, sans-serif;
-    font-size: 14px;
 }
 
-.screenplay-toolbar button, 
-.screenplay-toolbar select {
-    background: #363a3f;
-    color: #ffffff;
-    border: 1px solid #4a4f56;
-    padding: 6px 12px;
-    border-radius: 4px;
+.screenplay-toolbar-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.screenplay-chip {
+    background: var(--color-chip-bg);
+    color: var(--color-chip-text);
+    border: 1px solid var(--color-chip-border);
+    padding: 4px 10px;
+    border-radius: 14px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    transition: all 120ms ease;
+    white-space: nowrap;
 }
 
-.screenplay-toolbar button:hover, 
-.screenplay-toolbar select:hover {
-    background: #4a4f56;
+.screenplay-chip:hover {
+    border-color: var(--color-chip-active-bg);
+}
+
+.screenplay-chip.is-active {
+    background: var(--color-chip-active-bg);
+    border-color: var(--color-chip-active-border);
+    color: var(--color-chip-active-text);
+    font-weight: 600;
+}
+
+.screenplay-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.screenplay-page-badge {
+    font-size: 12px;
+    color: var(--color-chip-text);
+    opacity: 0.85;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.screenplay-theme-btn {
+    background: var(--color-chip-bg);
+    color: var(--color-chip-text);
+    border: 1px solid var(--color-chip-border);
+    padding: 4px 10px;
+    border-radius: 14px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 120ms ease;
+}
+
+.screenplay-theme-btn:hover {
+    border-color: var(--color-chip-active-bg);
 }
 
 /* Editor Workspace Container */
 .screenplay-workspace {
-    flex: 1;
+    height: 640px;
+    max-height: 640px;
     overflow-y: auto;
-    padding: 24px 0;
+    padding: 16px;
     display: flex;
     flex-direction: column;
     align-items: center;
+    background-color: var(--color-bg-workspace);
 }
 
-/* Script Page Page Layout */
+/* Script Page Layout — Surface Shadow Removed */
 .script-page {
-    width: var(--page-width);
-    min-height: var(--page-min-height);
-    background: var(--color-bg-white);
-    box-shadow: 0 4px 12px var(--color-page-shadow);
-    padding: 72px 72px 72px 96px; /* Standard 1" top/bottom/right, 1.33" left margin */
-    margin-bottom: 32px;
+    width: 100%;
+    max-width: 816px;
+    min-height: auto;
+    background: var(--color-bg-page);
+    box-shadow: none;
+    border: 1px solid var(--color-toolbar-border);
+    border-radius: 8px;
+    padding: 24px 36px;
+    margin-bottom: 16px;
     position: relative;
-    color: #000000;
+    color: var(--color-text-main);
 }
 
 /* Script Line Rules */
 .script-line {
     min-height: 1.2em;
-    line-height: 1.2;
-    font-size: 12pt;
+    line-height: 1.35;
+    font-size: 11.5pt;
     font-family: var(--font-script);
     outline: none;
     white-space: pre-wrap;
     word-break: break-word;
     margin: 0;
-    padding: 0;
+    padding: 2px 4px;
+    border-radius: 4px;
     position: relative;
+    color: var(--color-text-main);
 }
 
 /* Formatting Elements */
@@ -107,6 +181,7 @@
     font-weight: bold;
     margin-top: 1.2em;
     margin-bottom: 0.6em;
+    color: var(--color-chip-active-bg);
 }
 
 .script-line[data-format="action"] {
@@ -118,6 +193,7 @@
     margin-left: var(--speaker-left);
     margin-top: 0.8em;
     margin-bottom: 0;
+    font-weight: 600;
 }
 
 .script-line[data-format="dialog"] {
@@ -130,22 +206,23 @@
     margin-left: var(--directions-left);
     margin-right: var(--directions-right);
     margin-bottom: 0;
+    font-style: italic;
 }
 
 .script-line[data-format="chapter-break"] {
     text-align: center;
-    border-top: 1px dashed #ccc;
+    border-top: 1px dashed var(--color-toolbar-border);
     margin: 1.5em 0;
     padding-top: 0.5em;
-    color: #666;
+    color: var(--color-chip-text);
     font-style: italic;
 }
 
 /* Caret / Active Line formatting */
 .script-line:focus {
-    background-color: rgba(0, 120, 215, 0.05);
+    background-color: var(--color-focus-bg);
 }
 
 .script-page .script-line:empty::before {
-    content: "\200B"; /* Zero-width space to prevent contenteditable collapse */
+    content: "\200B";
 }

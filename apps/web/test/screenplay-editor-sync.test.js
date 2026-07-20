@@ -63,3 +63,14 @@ test('Fountain parsing classifies headers, speakers, dialogue, directions, and a
   assert.equal(doc.lines[3].format, 'dialog');
   assert.equal(doc.lines[4].format, 'action');
 });
+
+test('PageManager exposes page count, page elements, and page query API', async () => {
+  const pageManagerPath = pathToFileURL(path.join(__dirname, '..', 'public', 'modules', 'screenplay-editor', 'js', 'page', 'PageManager.js')).href;
+  const { PageManager } = await import(pageManagerPath);
+
+  const pm = new PageManager({});
+  assert.equal(typeof pm.getPages, 'function');
+  assert.equal(typeof pm.getPageCount, 'function');
+  assert.equal(typeof pm.getCurrentPageNumber, 'function');
+  assert.equal(pm.getPageCount(), 1);
+});
