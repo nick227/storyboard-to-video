@@ -41,6 +41,18 @@ SARAH walks over to the counter.`;
   assert.equal(normalize(roundTripped), normalize(originalScript));
 });
 
+test('Standard Fountain text is not unnecessarily rewritten with @ or . markers', async () => {
+  const { RawScriptAdapter } = await loadAdapters();
+
+  const standardScript = `INT. COFFEE SHOP - DAY\n\nMARCUS\n(smiling)\nStill using that ancient machine?`;
+  const doc = RawScriptAdapter.parse(standardScript, 'fountain');
+  const serialized = RawScriptAdapter.serialize(doc, 'fountain');
+
+  assert.equal(serialized.includes('.INT.'), false);
+  assert.equal(serialized.includes('@MARCUS'), false);
+  assert.equal(normalize(serialized), normalize(standardScript));
+});
+
 test('Fountain serialization handles empty scripts gracefully', async () => {
   const { RawScriptAdapter } = await loadAdapters();
 
