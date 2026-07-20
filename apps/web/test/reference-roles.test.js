@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { ProjectStore } = require('../src/storage/project-store');
-const { createSceneReferenceService } = require('../src/services/scene-reference.service');
+const { createShotReferenceService } = require('../src/services/shot-reference.service');
 const { createTextProviders } = require('../src/providers/text');
 
 function fixture() {
@@ -24,7 +24,7 @@ test('legacy scene references adapt to composition while explicit roles survive 
     f.store.create({ id: 'project', project: { scenes: [{ id: 'scene-1', referenceImages: [{ path: '/legacy.png' }] }] } });
     assert.equal(f.store.read('project').scenes[0].referenceImages[0].role, 'composition');
 
-    const service = createSceneReferenceService({ config: f.config, projectStore: f.store });
+    const service = createShotReferenceService({ config: f.config, projectStore: f.store });
     const uploaded = await service.upload('project', 'scene-1', [{
       originalname: 'hero.png', mimetype: 'image/png',
       buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),

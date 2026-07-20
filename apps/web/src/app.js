@@ -86,7 +86,7 @@ function pageGuard(auth) {
 function registerRoutes(app, d) {
   app.use(assetsRoutes(d.controllers.assets));
   app.use('/api/projects', createProjectRouter({
-    store: d.projectStore, queue: d.queue, upload: d.upload, sceneReferences: d.sceneReferences,
+    store: d.projectStore, queue: d.queue, upload: d.upload, shotReferences: d.shotReferences,
     styles: d.styles, prompts: d.prompts, referenceGeneration: d.referenceGeneration, imageProvider: d.imageProvider, prisma: d.prisma, config: d.config
   }));
   app.use('/api/jobs', createJobRouter({ queue: d.queue, store: d.projectStore }));

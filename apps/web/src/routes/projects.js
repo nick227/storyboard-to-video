@@ -7,7 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { imageShot } = require('../shared/scene-shots');
 
-function createProjectRouter({ store, queue, upload, sceneReferences, styles, prompts, referenceGeneration, imageProvider, prisma, config }) {
+function createProjectRouter({ store, queue, upload, shotReferences, styles, prompts, referenceGeneration, imageProvider, prisma, config }) {
   const router = express.Router();
   const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 
@@ -15,15 +15,15 @@ function createProjectRouter({ store, queue, upload, sceneReferences, styles, pr
   router.post('/', validate(createProject), asyncRoute(async (req, res) => res.status(201).json({ ok: true, project: await store.create(req.body, { tenantId: req.auth.tenantId, createdByUserId: req.auth.userId }) })));
   router.post('/:projectId/cleanup', asyncRoute(async (req, res) => res.json({ ok: true, removed: await store.cleanup(req.params.projectId, { ownerId: req.auth.tenantId }) })));
   router.post('/:projectId/scenes/:sceneId/references', upload.array('files', 8), asyncRoute(async (req, res) => {
-    const result = await sceneReferences.upload(req.params.projectId, req.params.sceneId, req.files, { ownerId: req.auth.tenantId, userId: req.auth.userId });
+    const result = await shotReferences.upload(req.params.projectId, req.params.sceneId, req.files, { ownerId: req.auth.tenantId, userId: req.auth.userId });
     res.json({ ok: true, scene: result.scene, revision: result.project.revision });
   }));
   router.delete('/:projectId/scenes/:sceneId/references', asyncRoute(async (req, res) => {
-    const result = await sceneReferences.remove(req.params.projectId, req.params.sceneId, req.body?.path, { ownerId: req.auth.tenantId, userId: req.auth.userId });
+    const result = await shotReferences.remove(req.params.projectId, req.params.sceneId, req.body?.path, { ownerId: req.auth.tenantId, userId: req.auth.userId });
     res.json({ ok: true, scene: result.scene, revision: result.project.revision });
   }));
   router.patch('/:projectId/scenes/:sceneId/references/role', asyncRoute(async (req, res) => {
-    const result = await sceneReferences.setRole(req.params.projectId, req.params.sceneId, req.body?.path, req.body?.role, { ownerId: req.auth.tenantId, userId: req.auth.userId });
+    const result = await shotReferences.setRole(req.params.projectId, req.params.sceneId, req.body?.path, req.body?.role, { ownerId: req.auth.tenantId, userId: req.auth.userId });
     res.json({ ok: true, scene: result.scene, revision: result.project.revision });
   }));
   router.delete('/:projectId/assets/:type/:fileName', asyncRoute(async (req, res) => {
@@ -206,7 +206,7 @@ function createProjectRouter({ store, queue, upload, sceneReferences, styles, pr
   router.post('/:projectId/scenes/:sceneId/images/upload', upload.single('file'), asyncRoute(async (req, res) => {
     const file = req.file;
     if (!file) throw new AppError('VALIDATION_ERROR', 'An image is required', { status: 400 });
-    const result = await sceneReferences.uploadSceneImage(req.params.projectId, req.params.sceneId, file, { ownerId: req.auth.tenantId, userId: req.auth.userId });
+    const result = await shotReferences.uploadShotImage(req.params.projectId, req.params.sceneId, file, { ownerId: req.auth.tenantId, userId: req.auth.userId });
     res.json({ ok: true, scene: result.scene, revision: result.project.revision });
   }));
 
