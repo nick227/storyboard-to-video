@@ -934,6 +934,8 @@ function attachEvents() {
   });
   let mediaQuoteSequence = 0;
   let videoDurationOptionsSequence = 0;
+  let imageOutputOptionsSequence = 0;
+  let imageOutputCombinations = [];
   const currentProjectScope = () => {
     const currentRecord = getCurrentStoryboardRecord();
     return Number.isInteger(currentRecord?.revision) ? { projectId: projectStore.get().currentId } : {};
@@ -977,6 +979,55 @@ function attachEvents() {
       }
     }
   };
+  const applyImageOutputOptions = () => {
+    if (!els.imageResolutionTier || !els.imageQuality) return;
+    const resolutionTier = els.imageResolutionTier.value;
+    const quality = els.imageQuality.value;
+    for (const option of els.imageResolutionTier.options) {
+      const result = imageOutputCombinations.find((item) => item.resolutionTier === option.value && item.quality === quality);
+      const baseLabel = option.dataset.baseLabel || option.textContent;
+      option.disabled = result?.supported === false;
+      option.textContent = `${baseLabel}${result?.supported === false ? ' · Unsupported' : ''}`;
+      option.title = result?.reason || '';
+    }
+    for (const option of els.imageQuality.options) {
+      const result = imageOutputCombinations.find((item) => item.resolutionTier === resolutionTier && item.quality === option.value);
+      const baseLabel = option.dataset.baseLabel || option.textContent;
+      option.disabled = result?.supported === false;
+      option.textContent = `${baseLabel}${result?.supported === false ? ' · Unsupported' : ''}`;
+      option.title = result?.reason || '';
+    }
+  };
+  const refreshImageOutputOptions = async () => {
+    if (!els.imageResolutionTier || !els.imageQuality) return;
+    const sequence = ++imageOutputOptionsSequence;
+    try {
+      const response = await fetch('/api/media-output/image-output-options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: els.imageProvider.value,
+          ...currentProjectScope(),
+          outputIntent: selectedMediaSettings({ clearInheritedDuration: true }),
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message || 'Could not resolve image settings');
+      if (sequence !== imageOutputOptionsSequence) return;
+      imageOutputCombinations = body.combinations || [];
+      applyImageOutputOptions();
+    } catch (error) {
+      if (sequence !== imageOutputOptionsSequence) return;
+      imageOutputCombinations = [];
+      for (const select of [els.imageResolutionTier, els.imageQuality]) {
+        for (const option of select.options) {
+          option.disabled = option.value !== select.value;
+          option.textContent = `${option.dataset.baseLabel || option.textContent}${option.disabled ? ' · Unavailable' : ''}`;
+          option.title = option.disabled ? 'Could not verify this setting against the server media policy.' : '';
+        }
+      }
+    }
+  };
   const refreshMediaCostPreview = async () => {
     if (!els.mediaCostPreview) return;
     const sequence = ++mediaQuoteSequence;
@@ -1006,9 +1057,12 @@ function attachEvents() {
     refreshMediaCostPreview();
   }));
   [els.mediaAspectRatio, els.videoResolutionTier, els.videoProvider].forEach((el) => el?.addEventListener('change', refreshVideoDurationOptions));
+  [els.mediaAspectRatio, els.imageProvider].forEach((el) => el?.addEventListener('change', refreshImageOutputOptions));
+  [els.imageResolutionTier, els.imageQuality].forEach((el) => el?.addEventListener('change', applyImageOutputOptions));
   els.imageProvider.addEventListener('change', refreshMediaCostPreview);
   els.saveMediaDefaultsBtn?.addEventListener('click', async () => {
     if (!els.mediaAspectRatio.value) { els.mediaCostPreview.textContent = 'Choose a shared aspect ratio before saving defaults for new projects.'; return; }
+    if (els.imageResolutionTier?.selectedOptions[0]?.disabled || els.imageQuality?.selectedOptions[0]?.disabled) { els.mediaCostPreview.textContent = 'Choose image resolution and quality settings supported by the selected provider.'; return; }
     if (els.videoDurationSeconds?.selectedOptions[0]?.disabled) { els.mediaCostPreview.textContent = 'Choose a video length supported by the selected provider and resolution.'; return; }
     try {
       const response = await fetch('/api/auth/preferences/media', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(selectedMediaSettings()) });
@@ -1042,6 +1096,7 @@ function attachEvents() {
   els.settingsBtn.addEventListener('click', () => {
     syncPlanningModeFromEnrich();
     refreshShotCountDisplay();
+    refreshImageOutputOptions();
     refreshVideoDurationOptions();
     refreshMediaCostPreview();
   });

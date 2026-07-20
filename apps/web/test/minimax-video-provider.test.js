@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createMiniMaxAdapter } = require('../src/providers/video/minimax');
+const { createLocalVideoAssetTransport } = require('../src/providers/video/asset-transport');
 const { videoProviderCapabilities } = require('../src/shared/video-provider-capabilities');
 const { mergeMediaIntent, resolveVideoOutput } = require('../src/shared/media-output-policy');
 const { validateMiniMaxInterpolationFrames } = require('../src/services/video-generation.service');
@@ -80,6 +81,52 @@ test('MiniMax submit task constructs correct JSON payload with base64 image', as
     assert.match(sentBody.first_frame_image, /^data:image\/png;base64,/);
     assert.equal(task.providerTaskId, 'task-12345');
     assert.equal(task.state, 'submitted');
+  } finally {
+    f.cleanup();
+  }
+});
+
+// Regression test: video-execution.service.js's real create() calls prepareAssets(request,
+// assetTransport) with the actual shared createLocalVideoAssetTransport() (dependencies.js has no
+// override), not with bare { assetPath } items as the tests above use. That transport's
+// prepareInput() attaches `transport: { type: 'local_file', path }` -- a path on this server's own
+// disk, meaningless to MiniMax's remote API. Submitting that path directly produced the real,
+// live "MiniMax API error (2013): invalid params, first_frame_image: invalid image url". Every
+// prior test here bypassed this because none of them ran prepareAssets() with the real transport.
+test('MiniMax submit base64-encodes the frame even when routed through the real local asset transport', async () => {
+  const f = fixture();
+  try {
+    let sentBody = null;
+    const mockFetch = async (url, options) => {
+      sentBody = JSON.parse(options.body);
+      return new Response(JSON.stringify({ task_id: 'task-local-transport', base_resp: { status_code: 0, status_msg: 'success' } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const adapter = createMiniMaxAdapter({ env: { MINIMAX_API_KEY: 'test-key' }, fetch: mockFetch });
+    const transport = createLocalVideoAssetTransport();
+
+    const request = {
+      model: 'MiniMax-Hailuo-02',
+      generationMode: 'first_last_frame',
+      prompt: 'Smooth motion between two keyframes.',
+      inputPlan: { included: [
+        { role: 'start_frame', assetPath: f.startFrame, sourcePath: f.startFrame },
+        { role: 'end_frame', assetPath: f.endFrame, sourcePath: f.endFrame },
+      ] },
+      outputPath: path.join(f.root, 'output.mp4'),
+      outputSelection: outputSelection('MiniMax-Hailuo-02', 'first_last_frame'),
+    };
+
+    const prepared = await adapter.prepareAssets(request, transport);
+    // Prove the bug condition is actually present in this test: the real transport really does
+    // hand back a bare local path, not a URL -- otherwise this test would pass for the wrong reason.
+    assert.equal(prepared.preparedInputs[0].transport.type, 'local_file');
+    assert.equal(prepared.preparedInputs[0].transport.path, f.startFrame);
+    assert.equal(prepared.preparedInputs[0].transport.url, undefined);
+
+    await adapter.submit(prepared);
+
+    assert.match(sentBody.first_frame_image, /^data:image\/png;base64,/, `first_frame_image must be base64 image data, not a local path like ${f.startFrame}`);
+    assert.match(sentBody.last_frame_image, /^data:image\/png;base64,/, `last_frame_image must be base64 image data, not a local path like ${f.endFrame}`);
   } finally {
     f.cleanup();
   }

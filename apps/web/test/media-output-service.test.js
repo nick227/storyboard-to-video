@@ -57,3 +57,17 @@ test('video duration options come from the server resolver for the selected prov
     f.cleanup();
   }
 });
+
+test('image resolution and quality options come from the server provider/model resolver', async () => {
+  const f = fixture();
+  try {
+    const service = createMediaOutputService({ config: f.config, projectStore: f.store, billing: null, videoProviders: f.videoProviders });
+    const dezgo = await service.imageOutputOptions({ provider: 'dezgo', outputIntent: { aspectRatio: '16:9', image: { resolutionTier: 'standard', quality: 'medium' } } });
+    const supported = dezgo.combinations.filter((item) => item.supported).map((item) => `${item.resolutionTier}/${item.quality}`);
+    assert.deepEqual(supported, ['standard/medium']);
+    const rejected = dezgo.combinations.find((item) => item.resolutionTier === 'standard' && item.quality === 'low');
+    assert.match(rejected.reason, /does not expose image quality low/);
+  } finally {
+    f.cleanup();
+  }
+});

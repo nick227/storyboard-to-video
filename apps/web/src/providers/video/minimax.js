@@ -57,15 +57,26 @@ function createMiniMaxAdapter(config, getCancellation) {
     const model = request.model || defaultModel;
     const mode = request.generationMode || 'image_to_video';
 
+    // MiniMax's API is remote: it can only accept a real public URL or inline base64 image data,
+    // never a path on this server's local disk. The shared asset transport used across all video
+    // providers (createLocalVideoAssetTransport) is correct for LTX, which runs locally and reads
+    // that path directly -- but for MiniMax, a `local_file`-typed transport result is not itself a
+    // usable image reference. Only trust transport.url when the transport explicitly staged the
+    // asset as inline_base64/public_url (createStagedAssetAdapter); otherwise encode the local file
+    // ourselves rather than sending a raw filesystem path as "first_frame_image"/"last_frame_image".
+    function frameImageValue(item) {
+      if (!item) return null;
+      if (item.transport && item.transport.type !== 'local_file' && item.transport.url) return item.transport.url;
+      const localPath = item.transport?.path || item.assetPath;
+      return localPath ? encodeLocalFileToBase64DataUri(localPath) : null;
+    }
+
     let firstFrameImage = null;
     let lastFrameImage = null;
 
     for (const item of request.preparedInputs || []) {
-      if (item.role === 'start_frame') {
-        firstFrameImage = item.transport?.url || item.transport?.path || (item.assetPath ? encodeLocalFileToBase64DataUri(item.assetPath) : null);
-      } else if (item.role === 'end_frame') {
-        lastFrameImage = item.transport?.url || item.transport?.path || (item.assetPath ? encodeLocalFileToBase64DataUri(item.assetPath) : null);
-      }
+      if (item.role === 'start_frame') firstFrameImage = frameImageValue(item);
+      else if (item.role === 'end_frame') lastFrameImage = frameImageValue(item);
     }
 
     if (mode === 'first_last_frame') {

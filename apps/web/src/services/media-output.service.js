@@ -78,11 +78,32 @@ function createMediaOutputService({ config, projectStore, billing, videoProvider
     return { providerDefault, options };
   }
 
+  async function imageOutputOptions(input, context) {
+    const outputIntent = input.outputIntent && typeof input.outputIntent === 'object' ? input.outputIntent : {};
+    const imageIntent = outputIntent.image && typeof outputIntent.image === 'object' ? outputIntent.image : {};
+    const inspect = async (resolutionTier, quality) => {
+      try {
+        const resolved = await selection({
+          ...input,
+          modality: 'image',
+          outputIntent: { ...outputIntent, image: { ...imageIntent, resolutionTier, quality } },
+        }, context);
+        return { supported: true, resolutionTier, quality, output: resolved.output };
+      } catch (error) {
+        if (error?.code !== 'UNSUPPORTED_MEDIA_OUTPUT') throw error;
+        return { supported: false, resolutionTier, quality, reason: error.message };
+      }
+    };
+    const combinations = await Promise.all(RESOLUTION_TIERS.flatMap((resolutionTier) =>
+      IMAGE_QUALITY_LEVELS.map((quality) => inspect(resolutionTier, quality))));
+    return { combinations };
+  }
+
   function policy() {
     return { defaults: config.mediaOutputDefaults, aspectRatios: ASPECT_RATIOS, resolutionTiers: RESOLUTION_TIERS, imageQualityLevels: IMAGE_QUALITY_LEVELS };
   }
 
-  return { policy, quote, selection, videoDurationOptions };
+  return { policy, quote, selection, videoDurationOptions, imageOutputOptions };
 }
 
 module.exports = { createMediaOutputService };
