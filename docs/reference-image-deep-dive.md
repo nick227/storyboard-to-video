@@ -27,7 +27,7 @@ The reference-control foundation proposed here is now implemented:
 - Video providers publish start/end capability flags. Current LTX advertises start-frame support only, receives only the selected start frame, and exposes no end-frame controls.
 - Changing either selected frame changes manifest-based video staleness. A selected but unsupported end frame is recorded as unconsumed rather than being sent to LTX.
 
-Multiple shots, end-frame generation behavior, the isolated LTX keyframe experiment, durable commercial jobs, and additional video providers remain proposed work rather than implemented behavior.
+Multiple shots, end-frame generation behavior, the isolated LTX keyframe experiment, and multi-provider UI remain proposed work rather than implemented behavior. One exception has since landed ahead of this roadmap: a real MiniMax adapter (submit/poll/download lifecycle, `VideoGenerationAttempt` rows, request/response mapping for `first_frame_image`/`last_frame_image`) was built directly against `api.minimaxi.chat` and is reachable today via `provider: 'minimax'` on `POST /api/videos/generate`. It was not designed against this document — there is no UI entry point, no project/scene-level preference, capability data for it is split across three files (only one of which is wired in), and its default resolution tier throws `UNSUPPORTED_MEDIA_OUTPUT`. Decision (2026-07-20): keep and formalize this adapter as the first commercial provider rather than discard it as a spike; see the revised Phase 5 below. Veo remains provider #2, now used specifically to test whether the provider abstraction this document proposes is genuinely provider-neutral, since MiniMax will have already exercised the durable-job and capability-gating machinery.
 
 ## Executive conclusion
 
@@ -40,7 +40,7 @@ The working assumptions are mostly correct, with one important wording correctio
 - Reference roles are now explicit at the shot boundary. The deliberately narrow first vocabulary is `character`, `location`, `composition`, and `continuity`; product/prop/pose-specific roles are deferred until usage proves they are needed.
 - New image versions save immutable reference provenance in their generation manifests. Role, order, inclusion, provider omission, prompt, model, and relevant setting changes participate in the canonical staleness hash.
 
-The app now has **scene as the narrative unit and shot as the generation unit**, role-based references, immutable manifests, Gemini role labels, neutral still-reference resolution, paid-generation preflight consent, and explicit shot-level frame selections. The next step is the isolated LTX keyframe experiment, followed by the commercial video job/capability layer for Veo. The current flat storyboard should remain the user experience until real multi-shot editing is needed.
+The app now has **scene as the narrative unit and shot as the generation unit**, role-based references, immutable manifests, Gemini role labels, neutral still-reference resolution, paid-generation preflight consent, and explicit shot-level frame selections. The next step is formalizing the commercial video job/capability layer around the MiniMax adapter that already exists, then adding Veo as the second provider once the abstraction is proven. The isolated LTX keyframe experiment continues in parallel. The current flat storyboard should remain the user experience until real multi-shot editing is needed.
 
 ## Terminology to standardize
 
@@ -431,8 +431,9 @@ Provider capabilities change quickly. The statements below are verified against 
 |---|---|---|---|
 | Current local LTX | One initial image through the deployed endpoint | Cheap iteration and baseline I2V | Keep as local baseline; do not claim end-frame support |
 | Newer LTX stack | Official LTX project documents multi-keyframe conditioning | Best place to test start/end and keyframe UX without per-call premium spend | Upgrade in a separate service and run the first-frame/last-frame experiment before replacing current LTX |
-| Veo 3.1 | Initial image, last frame, and up to three asset references; native audio | Strong premium hero-shot provider and clean match for the proposed roles | First commercial integration |
-| Seedance 2.0 | Text/image/audio/video multimodal input; up to nine images, three videos, and three audios in the model's official launch materials; BytePlus documents first/last frame roles | Strongest fit for complex commercial/multi-reference scenes | Second commercial integration; prefer direct BytePlus/ModelArk contract |
+| MiniMax (video-01 / video-01-keyframe) | Async submit/poll/download; `video-01-keyframe` accepts `first_frame_image` and `last_frame_image` | Already implemented against the app's durable-job model; cheapest way to prove the commercial-provider path end-to-end | **First commercial integration (revised 2026-07-20)** — formalize the existing adapter: canonical registry entry, one capability source, project-level selection, capability-gated start/end UI, fixed default-resolution mapping |
+| Veo 3.1 | Initial image, last frame, and up to three asset references; native audio | Strong premium hero-shot provider and clean match for the proposed roles | **Second commercial integration** — the architectural test: it must plug into the same registry/capability/`VideoGenerationAttempt`/shot persistence with no redesign |
+| Seedance 2.0 | Text/image/audio/video multimodal input; up to nine images, three videos, and three audios in the model's official launch materials; BytePlus documents first/last frame roles | Strongest fit for complex commercial/multi-reference scenes | Third commercial integration; prefer direct BytePlus/ModelArk contract |
 | Higgsfield | Product supports first/last images, motion reference, Soul ID, and many routed models | Valuable creative platform, but not currently a normal public REST provider | Treat as a separate enterprise/MCP/CLI integration track, not a drop-in render adapter |
 | Gemini Omni Flash | Simultaneous text/image/audio/video input and conversational video editing | Potentially excellent future multimodal iteration provider | Add to evaluation after Veo; it is preview and uses a different interaction model |
 
@@ -451,6 +452,20 @@ However, the deployed service is based on the older single-image Diffusers pipel
 7. Do not ship end-frame controls until the output consistently respects both boundaries; interpolation can satisfy endpoints while producing unusable middle motion.
 
 This is the cheapest way to validate whether the product concept is useful before paying for Veo or Seedance at scale, but it requires a real model/runtime upgrade.
+
+### MiniMax (first commercial provider — formalize, don't rebuild)
+
+A real adapter (`apps/web/src/providers/video/minimax.js`) already implements the async submit/poll/download lifecycle against `api.minimaxi.chat`, including `first_frame_image`/`last_frame_image` mapping for the `video-01-keyframe` model and a `VideoGenerationAttempt` row per attempt. This predates and was not designed against this document. Rather than discard it, formalize it as the intentional first commercial integration, since it already proves the durable-job path this document calls for and doing so is strictly cheaper than treating it as throwaway code and starting over with Veo.
+
+What "formalize" means concretely:
+
+- Fold MiniMax into one canonical provider/capability registry instead of three partially-overlapping tables (`shared/video-provider-capabilities.js`, `providers/video/minimax-capabilities.js`, `public/modules/video-provider-capabilities.js`). The latter two currently disagree with each other on which MiniMax models exist and are not exercised by production code paths.
+- Fix the default-resolution mismatch: the platform's default video resolution tier (`draft`) has no MiniMax mapping today, so selecting MiniMax with default project settings throws `UNSUPPORTED_MEDIA_OUTPUT` before a user ever sees a real error message.
+- Confirm (or build) an actual worker that drives `execution.reconcile()` for pending MiniMax attempts; async generation must complete without a human re-polling.
+- Add `MINIMAX_API_KEY`/`MINIMAX_API_HOST` to `.env.example`; the "Implemented: ltx, stub" comment on `VIDEO_PROVIDER` is stale.
+- Add real UI: provider/model selection at the project level first (platform default → project preference → optional per-generation override), and start/end-frame controls gated by the resolved model's capability flags (only `video-01-keyframe` supports an end frame; `video-01` does not).
+
+Scene/shot-level provider override is intentionally deferred until this project-level path is proven — see Phase 5 below.
 
 ### Veo 3.1
 
@@ -619,13 +634,19 @@ The sequencing is intentional: providers come last. Each phase should be indepen
 - Pending GPU execution: populate the private fixture paths, run the official LTX multi-keyframe runtime, score the full videos, and reproduce a passing result before publishing `supportsEndFrame: true`.
 - This phase can still operate on `shots[0]`; it does not require an Add Shot UI.
 
-### Phase 5 — commercial video provider foundation and Veo
+### Phase 5 — commercial video provider foundation, formalized around MiniMax, then Veo
 
-- Replace the single hardcoded video provider with registry/capability adapters.
-- Add durable long-running provider jobs and private asset transport.
-- Add Veo start-only, start+end, and up-to-three asset-reference modes.
-- Add per-provider cost estimation, reservation, final usage, cancellation, and download retention handling.
-- Roll out behind tenant/admin flags with explicit provider/model selection.
+Revised 2026-07-20: a real MiniMax adapter already exists ahead of this roadmap. This phase now formalizes it as the first commercial provider rather than building fresh against Veo first, since MiniMax already exercises the async/durable-job path this document calls for. Order within the phase:
+
+1. **Clean provider/capability sources.** Replace the single hardcoded video provider default with one canonical registry (mirroring `TEXT_PROVIDERS`/`IMAGE_PROVIDERS`/`AUDIO_PROVIDERS`); collapse the three overlapping video capability tables into one authoritative source consumed by both server and browser.
+2. **Fix MiniMax defaults.** Give the platform's default resolution tier a valid MiniMax mapping so choosing MiniMax cannot immediately fail on default project settings.
+3. **Enable async reconciliation.** Confirm or build the worker that drives `execution.reconcile()` for pending MiniMax attempts automatically — no manual re-polling.
+4. **Project-level provider/model setting.** Platform default → project provider/model preference → optional per-generation override. No scene/shot-level override yet; that stays deferred to keep the first user-facing version simple.
+5. **Capability-gated start/end-frame UI.** Wire the existing but unused `setStartFrame()`/`setEndFrame()` functions into real controls that only appear when the resolved provider/model supports them (e.g. MiniMax `video-01-keyframe` yes, `video-01` no, LTX no).
+6. **Live MiniMax end-to-end validation.** Confirm a full real generation (submit → reconcile → commit → visible in UI) works before calling MiniMax "shipped."
+7. **Add Veo as provider #2 — the architectural test.** Veo should plug into the same registry, capability source, `VideoGenerationAttempt` model, and shot persistence with no redesign of any of them. Add Veo start-only, start+end, and up-to-three asset-reference modes; durable async jobs and private asset transport; per-provider cost estimation, reservation, final usage, cancellation, and download retention handling. If adding Veo requires reshaping `video-generation.service.js`, `VideoGenerationAttempt`, or shot persistence, the abstraction from steps 1-6 was not actually provider-neutral and needs revisiting before a third provider is attempted.
+8. Update `.env.example`/deployment config for MiniMax credentials as part of this phase, not as an afterthought.
+9. Roll out behind tenant/admin flags with explicit provider/model selection once both providers are live.
 
 ### Phase 6 — Seedance
 
@@ -664,3 +685,5 @@ The reference-image work is ready for commercial providers when:
 5. Keep provenance detailed in manifests and token/cost analysis but compact in the storyboard UI; paid still-reference omission consent is complete.
 6. Keep the completed start/end selection model provider-neutral, and run a separate LTX multi-keyframe experiment rather than adding a nonfunctional end-frame control to the current endpoint.
 7. Integrate Veo after the neutral capability/job layer, Seedance second, and keep Higgsfield conditional on a supported server-to-server contract.
+8. **(2026-07-20)** Formalize the already-implemented MiniMax adapter as the first commercial provider instead of treating it as a disposable spike; use it to prove the full commercial-provider path end-to-end (registry, capability gating, durable async jobs, UI). Use Veo specifically as the test of whether the resulting abstraction is genuinely provider-neutral.
+9. **(2026-07-20)** Scope provider/model selection to the project level first (platform default → project preference → optional per-generation override). Do not add scene/shot-level provider override in the same pass — it adds per-shot configuration complexity before the provider system itself is proven.
