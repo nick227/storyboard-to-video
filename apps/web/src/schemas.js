@@ -50,6 +50,20 @@ const createScenes = z.object({
   sceneCount: z.coerce.number().int().min(1).max(50).default(6),
 });
 
+// Narration-driven planning: no sceneCount here by design -- shot count is never guessed upfront,
+// it falls out of how many shots the AI actually plans from the finalized narration. See
+// shot-planning.service.js.
+const planShots = z.object({
+  projectId,
+  scriptText: z.string().trim().min(1).max(200_000),
+  styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
+  commonPromptText: z.string().max(20_000).default(''),
+  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
+  fallbackPolicy,
+  enrich: z.boolean().default(true),
+  bypassCache: z.boolean().default(false),
+});
+
 const splitScene = z.object({
   projectId,
   scriptFragment: z.string().trim().min(1).max(20_000),
@@ -92,6 +106,7 @@ const imageGeneration = z.object({
   commonPromptText: z.string().max(20_000).default(''),
   extraPromptText: z.string().max(20_000).default(''),
   provider: z.enum(['gemini', 'openai', 'dezgo', 'stub']).default('gemini'),
+  confirmedReferencePlanHash: z.string().trim().max(80).optional(),
 });
 
 const videoGeneration = z.object({
@@ -155,4 +170,4 @@ const regenerateDialogue = z.object({
   bypassCache: z.boolean().default(false),
 });
 
-module.exports = { audioGeneration, createProject, createScenes, exportProject, fallbackPolicy, generateDialogue, imageGeneration, projectDocument, projectId, promptGeneration, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, subtitleGeneration, videoGeneration };
+module.exports = { audioGeneration, createProject, createScenes, exportProject, fallbackPolicy, generateDialogue, imageGeneration, planShots, projectDocument, projectId, promptGeneration, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, subtitleGeneration, videoGeneration };

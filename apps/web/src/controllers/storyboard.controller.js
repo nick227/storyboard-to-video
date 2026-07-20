@@ -1,12 +1,21 @@
 const { splitIntoFragments, fallbackSceneFromFragment } = require('../shared/segmentation');
 
-function createStoryboardController({ styles, prompts, dialogue, sceneSplit }) {
+function createStoryboardController({ styles, prompts, dialogue, sceneSplit, shotPlanning }) {
   return {
     // Deterministic scene skeleton (no LLM call): lets "Dialogue" run before any prompts exist.
     async createScenes(req, res) {
       const fragments = splitIntoFragments(req.body.scriptText, req.body.sceneCount);
       const scenes = fragments.map(fallbackSceneFromFragment);
       return res.json({ scenes });
+    },
+    // The planning entry point: narration is generated and locked first, then shots are planned
+    // from that immutable narration in narration-sized chunks. The returned scene list length IS
+    // the final shot count -- nothing upstream guesses a count or reconciles one after the fact.
+    async planShots(req, res) {
+      const style = styles.find(req.body.styleId || 'basic-cartoon');
+      if (!style) return res.status(400).json({ error: 'Unknown style' });
+      const result = await shotPlanning.plan({ ...req.body, style, tenantId: req.auth.tenantId });
+      return res.json({ ...result, style });
     },
     // Splits one existing scene into N sub-scenes at AI-chosen story boundaries, preserving the
     // existing scriptFragment/narrationText verbatim (validated exactly); falls back to the

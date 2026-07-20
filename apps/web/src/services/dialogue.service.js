@@ -191,4 +191,4 @@ function createDialogueService({ textProviders, generationCache }) {
   return { cleanNarrationText, generate, regenerate };
 }
 
-module.exports = { cleanNarrationText, createDialogueService, fallbackNarrationText };
+module.exports = { cleanNarrationText, createDialogueService, fallbackNarrationText, narrationRules, sourceOfTruthRule };
