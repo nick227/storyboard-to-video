@@ -10,6 +10,10 @@ const { createGenerationManifest, hashCanonical } = require('../src/shared/gener
 const { providerResult } = require('../src/providers/result');
 const { createImageGenerationService } = require('../src/services/image-generation.service');
 const { createVideoGenerationService } = require('../src/services/video-generation.service');
+const { createVideoProviders } = require('../src/providers/video');
+const { createVideoExecutionService } = require('../src/services/video-execution.service');
+const { createLocalVideoAssetTransport } = require('../src/providers/video/asset-transport');
+const { VideoGenerationAttemptStore } = require('../src/storage/video-generation-attempt-store');
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'generation-manifest-'));
@@ -176,6 +180,57 @@ test('video versions record the start frame and exact provider settings', async 
     assert.deepEqual([version.manifest.inputs.settings.output.resolved.width, version.manifest.inputs.settings.output.resolved.height], [640, 480]);
     assert.equal(version.manifest.result.providerRequestId, 'request-video');
     assert.equal(version.manifestHash, hashCanonical(version.manifest.inputs));
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('project-level media settings choose the default video provider, and an explicit request still overrides it', async () => {
+  const f = fixture();
+  try {
+    f.config.paths.stubs = path.join(f.root, 'stubs');
+    f.config.paths.ltxShared = path.join(f.root, 'ltx');
+    let project = f.store.create({ id: 'provider-project', project: { scenes: [{ id: 'scene-1' }] } });
+    const source = path.join(f.root, 'source.png');
+    fs.writeFileSync(source, 'image');
+    const image = f.store.commitAsset(f.store.acquireLease('provider-project'), 'images', source);
+    project = f.store.write('provider-project', {
+      ...project,
+      mediaSettings: { video: { resolutionTier: 'draft', provider: 'stub' } },
+      scenes: [{
+        ...project.scenes[0],
+        shots: [{ ...project.scenes[0].shots[0], versions: [{ path: image.path }], activeVersionIndex: 0, startFrame: image.path }],
+      }],
+    }, { expectedRevision: project.revision });
+
+    const calls = [];
+    const spyAdapter = (name) => ({
+      name, model: `${name}-model`,
+      async verify() { return { ok: true }; },
+      async prepareAssets(request, transport) { return { ...request, preparedInputs: await Promise.all(request.inputPlan.included.map((input) => transport.prepareInput(input))), outputTransport: await transport.prepareOutput(request) }; },
+      async submit(request) {
+        calls.push(name);
+        fs.writeFileSync(request.outputPath, 'video');
+        return { provider: name, model: `${name}-model`, state: 'completed', providerTaskId: null, response: { output: { outputPath: request.outputPath }, provider: name, model: `${name}-model`, settings: {}, usage: { videos: 1 }, measurementStatus: 'not_applicable' } };
+      },
+      async inspect(task) { return task; },
+      async cancel(task) { return { ...task, state: 'cancelled' }; },
+      async fetchResult(task) { return task.response; },
+      normalizeUsage(response) { return response; },
+    });
+    const providers = createVideoProviders(f.config, () => null, null, { ltx: spyAdapter('ltx'), stub: spyAdapter('stub') });
+    const execution = createVideoExecutionService({ providers, attempts: new VideoGenerationAttemptStore(path.join(f.root, 'attempts')), assetTransport: createLocalVideoAssetTransport() });
+    const service = createVideoGenerationService({ config: f.config, providers, execution, projectStore: f.store, styles: { find: () => ({ id: 'style-1', promptText: 'Ink style.' }) } });
+
+    const baseInput = { projectId: 'provider-project', sceneId: 'scene-1', sceneNumber: 1, sceneTitle: 'One', scenePrompt: 'Mara at the door.', sceneBeat: 'Mara opens the door.', styleId: 'style-1', commonPromptText: 'Ink style.', motionIntensity: 'medium' };
+
+    const defaulted = await service.generate({ ...baseInput });
+    assert.equal(defaulted.video.provider, 'stub', 'no explicit provider must fall back to the project default');
+
+    const overridden = await service.generate({ ...baseInput, provider: 'ltx' });
+    assert.equal(overridden.video.provider, 'ltx', 'an explicit request provider must still win over the project default');
+
+    assert.deepEqual(calls, ['stub', 'ltx']);
   } finally {
     f.cleanup();
   }

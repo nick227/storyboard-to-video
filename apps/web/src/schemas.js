@@ -89,7 +89,12 @@ const mediaSettings = z.object({
   version: z.literal(1).default(1),
   aspectRatio,
   image: z.object({ resolutionTier, quality: z.enum(['low', 'medium', 'high']) }),
-  video: z.object({ resolutionTier, durationSeconds: z.coerce.number().positive().max(300).optional() }),
+  video: z.object({
+    resolutionTier,
+    durationSeconds: z.coerce.number().positive().max(300).optional(),
+    provider: z.enum(VIDEO_PROVIDERS).optional(),
+    model: z.string().trim().min(1).max(120).optional(),
+  }),
 });
 
 const imageGeneration = z.object({

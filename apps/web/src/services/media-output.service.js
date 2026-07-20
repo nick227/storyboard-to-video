@@ -36,9 +36,11 @@ function createMediaOutputService({ config, projectStore, billing, videoProvider
       const output = resolveImageOutput({ provider: input.provider, model, intent: mergeMediaIntent({ modality, platform: config.mediaOutputDefaults, project: project?.mediaSettings, override: input.outputIntent }) });
       return { modality, provider: input.provider, model, output };
     }
-    const provider = input.provider || config.videoProvider;
+    const projectVideoDefaults = project?.mediaSettings?.video || {};
+    const provider = input.provider || projectVideoDefaults.provider || config.videoProvider;
+    const model = input.model || (provider === projectVideoDefaults.provider ? projectVideoDefaults.model : undefined);
     const mode = input.mode || 'image_to_video';
-    const resolvedProvider = videoProviders.resolve({ provider, model: input.model, mode });
+    const resolvedProvider = videoProviders.resolve({ provider, model, mode });
     const output = resolveVideoOutput({ provider, model: resolvedProvider.model, mode, intent: mergeMediaIntent({ modality, platform: config.mediaOutputDefaults, project: project?.mediaSettings, override: input.outputIntent }) });
     return { modality, provider, model: resolvedProvider.model, mode, output };
   }

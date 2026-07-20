@@ -130,13 +130,15 @@ function createVideoGenerationService({ config, provider, providers, execution, 
       }
       const endSource = endFramePath ? await resolve(endFramePath, ownerId) : null;
       if (endFramePath && (!endSource || !fs.existsSync(endSource))) throw new AppError('INVALID_END_FRAME', 'The selected end frame is unavailable', { status: 400 });
-      const providerName = input.provider || config.videoProvider || 'ltx';
+      const projectVideoDefaults = project.mediaSettings?.video || {};
+      const providerName = input.provider || projectVideoDefaults.provider || config.videoProvider || 'ltx';
+      const model = input.model || (providerName === projectVideoDefaults.provider ? projectVideoDefaults.model : undefined);
       const generationMode = input.generationMode || 'image_to_video';
-      const providerResolution = providers ? providers.resolve({ provider: providerName, model: input.model, mode: generationMode }) : null;
-      const capabilities = providerResolution ? providerResolution.capabilities : provider.getCapabilities ? provider.getCapabilities() : videoProviderCapabilities(providerName, input.model, generationMode);
+      const providerResolution = providers ? providers.resolve({ provider: providerName, model, mode: generationMode }) : null;
+      const capabilities = providerResolution ? providerResolution.capabilities : provider.getCapabilities ? provider.getCapabilities() : videoProviderCapabilities(providerName, model, generationMode);
       const output = resolveVideoOutput({
         provider: providerName,
-        model: providerResolution?.model || input.model || capabilities.model,
+        model: providerResolution?.model || model || capabilities.model,
         mode: generationMode,
         intent: mergeMediaIntent({ modality: 'video', platform: config.mediaOutputDefaults, project: project.mediaSettings, override: input.outputIntent }),
       });
@@ -144,14 +146,14 @@ function createVideoGenerationService({ config, provider, providers, execution, 
       if (!style) throw new AppError('STYLE_NOT_FOUND', 'Unknown style', { status: 400 });
 
       const prompt = buildVideoPrompt(input, style, config.env.VIDEO_MOTION_PROMPT);
-      if (providers) await providers.verify({ provider: providerName, model: input.model, mode: generationMode }); else await provider.verify();
+      if (providers) await providers.verify({ provider: providerName, model, mode: generationMode }); else await provider.verify();
       fs.mkdirSync(config.paths.videos, { recursive: true });
       const file = `${String(input.sceneNumber).padStart(2, '0')}-${slugify(input.sceneTitle || 'scene')}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.mp4`;
       const staged = path.join(config.paths.videos, file);
       let preserveStaged = false;
       try {
         const inputPlan = resolveVideoInputPlan({
-          provider: providerName, model: providerResolution?.model || input.model, mode: generationMode, capabilities,
+          provider: providerName, model: providerResolution?.model || model, mode: generationMode, capabilities,
           inputs: [
             { role: 'start_frame', assetPath: startFramePath, sourcePath: startSource, sha256: fileHash(startSource) },
             ...(endFramePath ? [{ role: 'end_frame', assetPath: endFramePath, sourcePath: endSource, sha256: fileHash(endSource) }] : []),
