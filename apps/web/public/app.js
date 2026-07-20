@@ -46,6 +46,7 @@ const els = {
   mediaAspectRatio: document.getElementById('mediaAspectRatio'),
   imageResolutionTier: document.getElementById('imageResolutionTier'),
   imageQuality: document.getElementById('imageQuality'),
+  videoProvider: document.getElementById('videoProvider'),
   videoResolutionTier: document.getElementById('videoResolutionTier'),
   mediaCostPreview: document.getElementById('mediaCostPreview'),
   saveMediaDefaultsBtn: document.getElementById('saveMediaDefaultsBtn'),
@@ -907,7 +908,7 @@ function attachEvents() {
     version: 1,
     aspectRatio: els.mediaAspectRatio.value,
     image: { resolutionTier: els.imageResolutionTier.value, quality: els.imageQuality.value },
-    video: { resolutionTier: els.videoResolutionTier.value },
+    video: { resolutionTier: els.videoResolutionTier.value, ...(els.videoProvider?.value ? { provider: els.videoProvider.value } : {}) },
   });
   let mediaQuoteSequence = 0;
   const refreshMediaCostPreview = async () => {
@@ -923,7 +924,7 @@ function attachEvents() {
     try {
       const [imageQuote, videoQuote] = await Promise.all([
         fetch('/api/media-output/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modality: 'image', provider: els.imageProvider.value, ...projectScope, outputIntent, quantity }) }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Image output is unsupported'); return body; }),
-        fetch('/api/media-output/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modality: 'video', ...projectScope, outputIntent, quantity }) }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Video output is unsupported'); return body; }),
+        fetch('/api/media-output/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modality: 'video', ...(els.videoProvider?.value ? { provider: els.videoProvider.value } : {}), ...projectScope, outputIntent, quantity }) }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Video output is unsupported'); return body; }),
       ]);
       if (sequence !== mediaQuoteSequence) return;
       const describe = (result, label) => {
@@ -937,7 +938,7 @@ function attachEvents() {
       if (sequence === mediaQuoteSequence) els.mediaCostPreview.textContent = error.message;
     }
   };
-  [els.mediaAspectRatio, els.imageResolutionTier, els.imageQuality, els.videoResolutionTier].forEach((el) => el?.addEventListener('change', () => { saveStoryboard(els, false); refreshMediaCostPreview(); }));
+  [els.mediaAspectRatio, els.imageResolutionTier, els.imageQuality, els.videoResolutionTier, els.videoProvider].forEach((el) => el?.addEventListener('change', () => { saveStoryboard(els, false); refreshMediaCostPreview(); }));
   els.imageProvider.addEventListener('change', refreshMediaCostPreview);
   els.saveMediaDefaultsBtn?.addEventListener('click', async () => {
     if (!els.mediaAspectRatio.value) { els.mediaCostPreview.textContent = 'Select an aspect ratio before saving user defaults.'; return; }

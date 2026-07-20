@@ -6,8 +6,17 @@ import { loadProtectedAsset } from './assets.js';
 import { api } from './api.js';
 import { suggestSceneCountFromNarration } from './scene-count.js';
 import { computeStaleness, resolveSelectedSceneIndex, getCachedJobs, refreshRecentJobs, buildLatestJobsByScene } from './stages.js';
-import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVersion, setImagePrompt } from './scene-shots.js';
+import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVersion, setImagePrompt, setStartFrame, setEndFrame } from './scene-shots.js';
 import { REFERENCE_ROLES, REFERENCE_ROLE_LABELS, normalizeReferenceRole } from './reference-roles.js';
+import { videoProviderCapabilities } from './video-provider-capabilities.js';
+
+// No model selector exists yet, so this resolves capabilities for the provider's default model.
+// That undersells providers with an opt-in higher-capability model (e.g. MiniMax's
+// video-01-keyframe), but it never overpromises what the currently active configuration can do.
+function currentVideoCapabilities() {
+  const provider = els.videoProvider?.value || 'ltx';
+  try { return videoProviderCapabilities(provider); } catch { return { supportsStartFrame: true, supportsEndFrame: false }; }
+}
 
 let els = {};
 let activeScenePlayback = null;
@@ -520,7 +529,45 @@ function renderEntityModalHistory(scene, type, config, busy) {
     const providerName = version.provider ? String(version.provider).replace(/^./, (letter) => letter.toUpperCase()) : '';
     meta.textContent = `v${vIndex + 1}${providerName ? ` · ${providerName}` : ''}`;
     btn.append(mediaEl, meta);
-    els.entityModalHistoryList.appendChild(btn);
+
+    if (type !== 'image') {
+      els.entityModalHistoryList.appendChild(btn);
+      return;
+    }
+
+    // version-thumb is itself a <button>, so the per-version start/end frame actions live in a
+    // sibling wrapper rather than nested inside it -- nested <button> elements are invalid HTML and
+    // browsers silently un-nest them, which would break both layout and click delegation below.
+    const item = document.createElement('div');
+    item.className = 'version-item';
+    const shot = imageShot(scene);
+    const capabilities = currentVideoCapabilities();
+    const frameActions = document.createElement('div');
+    frameActions.className = 'version-frame-actions';
+    const startBtn = document.createElement('button');
+    startBtn.type = 'button';
+    startBtn.className = 'text-button version-frame-btn';
+    startBtn.dataset.frameRole = 'start_frame';
+    startBtn.dataset.vindex = String(vIndex);
+    startBtn.disabled = busy;
+    const isStart = shot.startFrame === version.path;
+    startBtn.classList.toggle('is-current', isStart);
+    startBtn.textContent = isStart ? 'Start frame ✓' : 'Set start frame';
+    frameActions.append(startBtn);
+    if (capabilities.supportsEndFrame) {
+      const endBtn = document.createElement('button');
+      endBtn.type = 'button';
+      endBtn.className = 'text-button version-frame-btn';
+      endBtn.dataset.frameRole = 'end_frame';
+      endBtn.dataset.vindex = String(vIndex);
+      endBtn.disabled = busy;
+      const isEnd = shot.endFrame === version.path;
+      endBtn.classList.toggle('is-current', isEnd);
+      endBtn.textContent = isEnd ? 'End frame ✓' : 'Set end frame';
+      frameActions.append(endBtn);
+    }
+    item.append(btn, frameActions);
+    els.entityModalHistoryList.appendChild(item);
   });
 }
 
@@ -770,6 +817,25 @@ function setupEntityModal() {
   els.entityModalHistoryList.addEventListener('click', (event) => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
+    const frameBtn = event.target.closest('.version-frame-btn');
+    if (frameBtn && !frameBtn.disabled) {
+      const vIndex = parseInt(frameBtn.dataset.vindex, 10);
+      const role = frameBtn.dataset.frameRole;
+      const scenes = sceneStore.get().scenes.map((scene, i) => {
+        if (i !== index) return scene;
+        const next = { ...scene };
+        const shot = imageShot(next);
+        const path = shot.versions[vIndex]?.path || null;
+        if (role === 'start_frame') setStartFrame(next, shot.startFrame === path ? null : path);
+        else setEndFrame(next, shot.endFrame === path ? null : path);
+        return next;
+      });
+      sceneStore.set({ scenes });
+      const record = getCurrentStoryboardRecord();
+      if (record) { record.scenes = scenes; queueSync(record); }
+      renderEntityModal();
+      return;
+    }
     const target = event.target.closest('.audio-version-select') || event.target.closest('.version-thumb');
     if (!target || target.disabled) return;
     const vIndex = parseInt(target.dataset.vindex, 10);

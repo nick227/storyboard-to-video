@@ -202,6 +202,7 @@ function restoreStoryboardFields(els) {
   if (els.imageResolutionTier) els.imageResolutionTier.value = optionValues(els.imageResolutionTier).includes(record.mediaSettings?.image?.resolutionTier) ? record.mediaSettings.image.resolutionTier : 'standard';
   if (els.imageQuality) els.imageQuality.value = optionValues(els.imageQuality).includes(record.mediaSettings?.image?.quality) ? record.mediaSettings.image.quality : 'medium';
   if (els.videoResolutionTier) els.videoResolutionTier.value = optionValues(els.videoResolutionTier).includes(record.mediaSettings?.video?.resolutionTier) ? record.mediaSettings.video.resolutionTier : 'draft';
+  if (els.videoProvider) els.videoProvider.value = optionValues(els.videoProvider).includes(record.mediaSettings?.video?.provider) ? record.mediaSettings.video.provider : '';
   els.fallbackPolicy.value = record.fallbackPolicy === 'fail' ? 'fail' : 'local';
   els.videoMotionIntensity.value = optionValues(els.videoMotionIntensity).includes(record.videoMotionIntensity) ? record.videoMotionIntensity : 'medium';
   if (els.subtitleStyleSelect) {
@@ -273,6 +274,7 @@ export function createStoryboard(els) {
   if (els.imageResolutionTier) els.imageResolutionTier.value = 'standard';
   if (els.imageQuality) els.imageQuality.value = 'medium';
   if (els.videoResolutionTier) els.videoResolutionTier.value = 'draft';
+  if (els.videoProvider) els.videoProvider.value = '';
 }
 
 export function saveStoryboard(els, immediate = false) {
@@ -290,7 +292,7 @@ export function saveStoryboard(els, immediate = false) {
       version: 1,
       aspectRatio: els.mediaAspectRatio.value,
       image: { resolutionTier: els.imageResolutionTier.value, quality: els.imageQuality.value },
-      video: { resolutionTier: els.videoResolutionTier.value },
+      video: { resolutionTier: els.videoResolutionTier.value, ...(els.videoProvider?.value ? { provider: els.videoProvider.value } : {}) },
     } : undefined,
     fallbackPolicy: els.fallbackPolicy.value,
     videoMotionIntensity: els.videoMotionIntensity.value,
