@@ -57,18 +57,36 @@ function sourceOfTruthRule(enrich) {
   return `The source text below is the only authority. ${detailRule} Do not introduce new plot events, characters, or dialogue.`;
 }
 
+const { parseFountainDialogue } = require('../shared/fountain-dialogue');
+
 function cleanNarrationText(value) {
   return cleanText(value, NARRATION_MAX_LENGTH);
 }
 
-// Explicit fallback placeholder, not mistaken for valid generated prose.
+// Explicit fallback placeholder when no Fountain dialogue exists; formatted lines when Fountain dialogue exists.
 function fallbackNarrationText(scene) {
-  return `[Fallback Narration: ${cleanText(scene.beat, 100) || 'scene audio placeholder'}]`;
+  if (scene?.scriptFragment) {
+    const dialogueEntries = parseFountainDialogue(scene.scriptFragment);
+    if (dialogueEntries.length > 0) {
+      const dialogueLines = dialogueEntries.map((e) => `${e.character}: "${e.text}"`).join(' ');
+      return cleanNarrationText(dialogueLines);
+    }
+  }
+  return `[Fallback Narration: ${cleanText(scene?.beat, 100) || 'scene audio placeholder'}]`;
 }
 
 function sceneBlock(scene) {
-  return `Source text (the ONLY source for this scene's narration): ${scene.scriptFragment}
-Scene action (interpretation guidance only, secondary to the source text above): ${scene.beat || 'none'}`;
+  let block = `Source text (the ONLY source for this scene's narration): ${scene.scriptFragment}\nScene action (interpretation guidance only, secondary to the source text above): ${scene.beat || 'none'}`;
+  if (scene?.scriptFragment) {
+    const dialogueEntries = parseFountainDialogue(scene.scriptFragment);
+    if (dialogueEntries.length > 0) {
+      const formattedDialogue = dialogueEntries
+        .map((e) => `- ${e.character}${e.modifier ? ` (${e.modifier})` : ''}: ${e.text}`)
+        .join('\n');
+      block += `\nExtracted Dialogue:\n${formattedDialogue}`;
+    }
+  }
+  return block;
 }
 
 function instructionBlock(instruction) {
