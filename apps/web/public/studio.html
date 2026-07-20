@@ -29,9 +29,8 @@
         </div>
       </div>
       <div class="toolbar top-actions">
-        <button id="newStoryboardBtn" class="secondary">New</button>
-        <button id="saveStateBtn" class="secondary" disabled>Saved</button>
-        <button id="downloadZipBtn" class="primary">Download</button>
+        <button id="newStoryboardBtn" class="primary">New</button>
+        <button id="saveStateBtn" class="hidden" disabled>Saved</button>
       </div>
     </header>
 
@@ -175,6 +174,13 @@
           </span>
           <span class="stage-button-status" id="stageVideoStatus">Not started</span>
         </button>
+        <button type="button" id="stageSubtitlesBtn" class="stage-button" disabled>
+          <span class="stage-button-top">
+            <span class="stage-button-label">Subtitles</span>
+            <span class="stage-button-spinner" aria-hidden="true"></span>
+          </span>
+          <span class="stage-button-status" id="stageSubtitlesStatus">Not started</span>
+        </button>
         <button type="button" id="stageTokensBtn" class="stage-button" disabled>
           <span class="stage-button-top">
             <span class="stage-button-label">Tokens</span>
@@ -188,7 +194,8 @@
       </div>
 
       <div class="stage-bar-actions">
-        <button type="button" id="startPauseBtn" class="primary">Start</button>
+        <button id="downloadZipBtn" class="primary">Download</button>
+        <button type="button" id="startPauseBtn" class="primary positive">Start</button>
       </div>
     </section>
 
@@ -230,6 +237,7 @@
           style="display:none;"></video>
         <img class="timeline-stage-image" id="timelineImage" alt="Timeline preview" />
         <div class="timeline-stage-empty" id="timelineStageEmpty">No preview yet</div>
+        <div class="timeline-stage-caption subtitle-karaoke-text" id="timelineCaption" hidden></div>
         <button type="button" class="timeline-toggle" id="timelineToggle" aria-label="Play combined timeline" disabled>
           <span class="timeline-toggle-icon" aria-hidden="true">
             <svg class="timeline-icon timeline-icon-play" viewBox="0 0 24 24">
@@ -308,6 +316,14 @@
             </svg>
             <span class="status-icon-spinner" aria-hidden="true"></span>
           </button>
+          <button type="button" class="scene-status-icon" data-status="subtitle" aria-label="Configure subtitles"
+            title="Configure subtitles">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect width="18" height="14" x="3" y="5" rx="2" />
+              <path d="M7 12h4M13 12h4M7 15h7" />
+            </svg>
+            <span class="status-icon-spinner" aria-hidden="true"></span>
+          </button>
         </div>
       </div>
 
@@ -337,6 +353,7 @@
         <div class="audio-loading target-loading" role="status"><span class="spinner"></span><span>Generating
             audio</span></div>
         <audio class="scene-audio" preload="metadata"></audio>
+        <div class="scene-caption subtitle-karaoke-text" hidden></div>
       </div>
     </article>
   </template>
@@ -390,6 +407,7 @@
       <video id="entityModalVideo" controls playsinline hidden></video>
       <audio id="entityModalAudio" controls hidden></audio>
       <div id="entityModalAudioCaption" class="subtitle-karaoke-text" hidden></div>
+      <div id="entityModalSubtitleOverlay" class="subtitle-karaoke-text entity-modal-subtitle-overlay" hidden></div>
       <div id="entityModalMediaEmpty" class="entity-modal-media-empty">No version yet</div>
     </div>
 
@@ -462,6 +480,14 @@
             <option value="auto">Narration-driven</option>
           </select>
         </label>
+        <label>
+          <span>Subtitle style</span>
+          <select id="subtitleStyleSelect">
+            <option value="classic" selected>Classic</option>
+            <option value="bold">Bold</option>
+            <option value="minimal">Minimal</option>
+          </select>
+        </label>
       </div>
 
 
@@ -498,6 +524,7 @@
         <button type="button" id="settingsRegenerateImagesBtn" class="primary">Regenerate Images</button>
         <button type="button" id="settingsRegenerateAudioBtn" class="primary">Regenerate Audio</button>
         <button type="button" id="settingsRegenerateVideoBtn" class="primary">Regenerate Video</button>
+        <button type="button" id="settingsRegenerateSubtitlesBtn" class="primary">Regenerate Subtitles</button>
       </div>
     </div>
     <div class="settings-modal-footer">
@@ -556,6 +583,30 @@
     </div>
   </dialog>
 
+  <dialog id="downloadConfirmModal" class="generation-confirm-modal" aria-labelledby="downloadConfirmTitle">
+    <div class="generation-confirm-header">
+      <h2 id="downloadConfirmTitle">Confirm download</h2>
+      <button type="button" id="downloadConfirmCloseBtn" class="secondary text-button"
+        aria-label="Close download confirmation">✕</button>
+    </div>
+    <div class="generation-confirm-body">
+      <p id="downloadConfirmIntro" class="generation-confirm-intro">
+        You are about to export and download your storyboard as a ZIP archive.
+      </p>
+      <div id="downloadConfirmWarning" class="download-confirm-warning" hidden></div>
+      <div class="generation-confirm-details">
+        <section>
+          <div class="generation-confirm-label">Expected ZIP Contents</div>
+          <ul id="downloadConfirmBullets" class="download-confirm-bullets"></ul>
+        </section>
+      </div>
+    </div>
+    <div class="generation-confirm-actions">
+      <button type="button" id="downloadConfirmCancelBtn" class="secondary">Cancel</button>
+      <button type="button" id="downloadConfirmRunBtn" class="primary">Download</button>
+    </div>
+  </dialog>
+
   <dialog id="startRunModal" class="generation-confirm-modal" aria-labelledby="startRunTitle">
     <div class="generation-confirm-header">
       <h2 id="startRunTitle">Start production</h2>
@@ -590,6 +641,13 @@
           <span class="start-run-row-main">
             <span class="start-run-row-label">Video</span>
             <span class="start-run-row-status" id="startRunVideoStatus"></span>
+          </span>
+        </label>
+        <label class="start-run-row">
+          <input type="checkbox" id="startRunSubtitlesCheck" data-stage="subtitles" />
+          <span class="start-run-row-main">
+            <span class="start-run-row-label">Subtitles</span>
+            <span class="start-run-row-status" id="startRunSubtitlesStatus"></span>
           </span>
         </label>
       </div>
@@ -731,7 +789,6 @@
       </section>
     </div>
     <div class="settings-modal-footer">
-      <span id="libraryModalSaveNote" class="settings-modal-save-note">Changes apply automatically</span>
       <button type="button" class="primary" id="closeImageLibraryDoneBtn">Done</button>
   </dialog>
 

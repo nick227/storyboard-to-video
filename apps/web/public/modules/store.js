@@ -51,7 +51,8 @@ export const voiceStore = new Store({
 export const batchStore = new Store({
   images: { state: 'idle', currentIndex: 0, generating: false, stopRequested: false },
   audio: { state: 'idle', currentIndex: 0, generating: false, stopRequested: false },
-  videos: { state: 'idle', currentIndex: 0, generating: false, stopRequested: false }
+  videos: { state: 'idle', currentIndex: 0, generating: false, stopRequested: false },
+  subtitles: { state: 'idle', currentIndex: 0, generating: false, stopRequested: false }
 });
 
 export const uiStore = new Store({

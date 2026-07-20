@@ -180,6 +180,9 @@ function restoreStoryboardFields(els) {
   els.imageProvider.value = optionValues(els.imageProvider).includes(record.imageProvider) ? record.imageProvider : 'gemini';
   els.fallbackPolicy.value = record.fallbackPolicy === 'fail' ? 'fail' : 'local';
   els.videoMotionIntensity.value = optionValues(els.videoMotionIntensity).includes(record.videoMotionIntensity) ? record.videoMotionIntensity : 'medium';
+  if (els.subtitleStyleSelect) {
+    els.subtitleStyleSelect.value = optionValues(els.subtitleStyleSelect).includes(record.subtitleStyle) ? record.subtitleStyle : 'classic';
+  }
   els.enrichNarration.checked = record.enrich === true;
   if (record.styleId) els.styleSelect.value = record.styleId;
   if (record.commonPromptText != null) els.commonPromptText.value = record.commonPromptText;
@@ -239,6 +242,7 @@ export function createStoryboard(els) {
   els.commonPromptText.value = '';
   els.fallbackPolicy.value = 'local';
   els.videoMotionIntensity.value = 'medium';
+  if (els.subtitleStyleSelect) els.subtitleStyleSelect.value = 'classic';
   els.enrichNarration.checked = false;
   if (els.settingsSceneCountInput) els.settingsSceneCountInput.value = '';
   if (els.settingsSceneCountAutoCheckbox) els.settingsSceneCountAutoCheckbox.checked = false;
@@ -259,6 +263,7 @@ export function saveStoryboard(els, immediate = false) {
     imageProvider: els.imageProvider.value,
     fallbackPolicy: els.fallbackPolicy.value,
     videoMotionIntensity: els.videoMotionIntensity.value,
+    subtitleStyle: els.subtitleStyleSelect ? els.subtitleStyleSelect.value : 'classic',
     enrich: els.enrichNarration.checked,
     audioProvider: voiceStore.get().audioProvider,
     narratorVoice: voiceStore.get().narratorVoice,

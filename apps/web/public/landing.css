@@ -8,6 +8,7 @@
   --accent: #4f8cff;
   --accent-soft: rgba(79, 140, 255, .15);
   --purple: #8f6bff;
+  --dark: #000000;
 }
 
 * { box-sizing: border-box; }

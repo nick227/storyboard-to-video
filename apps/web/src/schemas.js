@@ -108,6 +108,16 @@ const videoGeneration = z.object({
   imagePath: z.string().trim().min(1).max(500),
 });
 
+const subtitleGeneration = z.object({
+  projectId,
+  sceneId,
+  sceneNumber: z.coerce.number().int().min(1).max(50).default(1),
+  sceneTitle: z.string().max(200).default(''),
+  // Cosmetic overlay preset only -- unrelated to `styleId` (the visual art style used for
+  // image/video generation elsewhere). Never affects alignment/cue-grouping logic.
+  captionStyle: z.enum(['classic', 'bold', 'minimal']).default('classic'),
+});
+
 const narratorVoice = z.object({ voiceId: z.string(), label: z.string().optional() }).nullable().default(null);
 const audioGeneration = z.object({
   projectId,
@@ -145,4 +155,4 @@ const regenerateDialogue = z.object({
   bypassCache: z.boolean().default(false),
 });
 
-module.exports = { audioGeneration, createProject, createScenes, exportProject, fallbackPolicy, generateDialogue, imageGeneration, projectDocument, projectId, promptGeneration, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, videoGeneration };
+module.exports = { audioGeneration, createProject, createScenes, exportProject, fallbackPolicy, generateDialogue, imageGeneration, projectDocument, projectId, promptGeneration, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, subtitleGeneration, videoGeneration };

@@ -253,12 +253,13 @@ test('suggestSceneCountFromNarration: grows with narration length but stays boun
 
 test('getStageSelection: a brand-new project (no scenes yet) selects Planning but not Images/Audio/Video — there is nothing for them to do yet', async () => {
   const { getStageSelection } = await stagesPromise;
-  const empty = { planning: { total: 0, missing: 0, stale: 0, failed: 0 }, images: { total: 0, missing: 0, stale: 0, failed: 0 }, audio: { total: 0, missing: 0, stale: 0, failed: 0 }, video: { total: 0, missing: 0, stale: 0, failed: 0 } };
+  const empty = { planning: { total: 0, missing: 0, stale: 0, failed: 0 }, images: { total: 0, missing: 0, stale: 0, failed: 0 }, audio: { total: 0, missing: 0, stale: 0, failed: 0 }, video: { total: 0, missing: 0, stale: 0, failed: 0 }, subtitles: { total: 0, missing: 0, stale: 0, failed: 0 } };
   const selection = getStageSelection(empty);
   assert.equal(selection.planning, true, 'an empty project always needs Planning');
   assert.equal(selection.images, false);
   assert.equal(selection.audio, false);
   assert.equal(selection.video, false);
+  assert.equal(selection.subtitles, false);
 });
 
 test('getStageSelection: defaults to selected for any stage with missing/stale/failed work, unselected when already up to date', async () => {
@@ -268,12 +269,14 @@ test('getStageSelection: defaults to selected for any stage with missing/stale/f
     images: { total: 5, missing: 0, stale: 2, failed: 0 }, // stale — should default-select
     audio: { total: 5, missing: 5, stale: 0, failed: 0 }, // missing — should default-select
     video: { total: 5, missing: 0, stale: 0, failed: 0 }, // up to date — should NOT default-select
+    subtitles: { total: 5, missing: 0, stale: 0, failed: 0 }, // up to date — should NOT default-select
   };
   const selection = getStageSelection(status);
   assert.equal(selection.planning, false, 'a fully up-to-date Planning box has nothing to select');
   assert.equal(selection.images, true);
   assert.equal(selection.audio, true);
   assert.equal(selection.video, false);
+  assert.equal(selection.subtitles, false);
 });
 
 test('toggleStageSelection: a box is never permanently disabled — the user can select or deselect ANY stage, even one with no detected work', async () => {
@@ -283,6 +286,7 @@ test('toggleStageSelection: a box is never permanently disabled — the user can
     images: { total: 5, missing: 0, stale: 3, failed: 0 },
     audio: { total: 5, missing: 0, stale: 0, failed: 0 },
     video: { total: 5, missing: 0, stale: 0, failed: 0 },
+    subtitles: { total: 5, missing: 0, stale: 0, failed: 0 },
   };
   assert.equal(getStageSelection(status).images, true, 'images starts selected (it has stale work)');
   toggleStageSelection('images', status);

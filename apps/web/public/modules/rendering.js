@@ -1,5 +1,6 @@
 import { sceneStore, generationStore, uiStore, projectStore, debounce } from './store.js';
-import { regeneratePrompt, regenerateAction, regenerateDialogue, regenerateImage, regenerateAudio, regenerateVideo, splitSceneInPlace } from './workflows.js';
+import { regeneratePrompt, regenerateAction, regenerateDialogue, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles, splitSceneInPlace } from './workflows.js';
+import { renderCaptionInto } from './subtitle-overlay.js';
 import { ensureProjectSynced, getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from './persistence.js';
 import { loadProtectedAsset } from './assets.js';
 import { api } from './api.js';
@@ -23,39 +24,8 @@ const modalState = {
   historyAbortController: null,
   mediaAbortController: null,
   alignmentWords: [],
+  captionTarget: null,
 };
-
-// How many neighboring words to show on each side of the current one, so the caption reads as a
-// moving phrase window rather than either a single flashing word or the entire transcript at once.
-const SUBTITLE_WINDOW_RADIUS = 4;
-
-function renderSubtitleCaption(currentTime) {
-  const words = modalState.alignmentWords;
-  const caption = els.entityModalAudioCaption;
-  if (!caption || !words.length) return;
-  const currentIndex = words.findIndex((word) => currentTime >= word.start && currentTime < word.end);
-  // Between two words (a pause) or past the last word (trailing silence), nothing is "current" --
-  // but the window should still track the nearest already-spoken word instead of snapping back to
-  // the very start of the transcript, which is what always defaulting to index 0 did before.
-  let centerIndex = currentIndex;
-  if (centerIndex === -1) {
-    centerIndex = 0;
-    for (let i = 0; i < words.length; i += 1) {
-      if (words[i].start > currentTime) break;
-      centerIndex = i;
-    }
-  }
-  const start = Math.max(0, centerIndex - SUBTITLE_WINDOW_RADIUS);
-  const end = Math.min(words.length, centerIndex + SUBTITLE_WINDOW_RADIUS + 1);
-  caption.textContent = '';
-  words.slice(start, end).forEach((word, i) => {
-    const span = document.createElement('span');
-    span.className = `subtitle-word${start + i === currentIndex ? ' is-current' : ''}`;
-    span.textContent = word.text;
-    caption.appendChild(span);
-    caption.appendChild(document.createTextNode(' '));
-  });
-}
 
 const referenceModalState = { sceneId: null };
 
@@ -136,6 +106,14 @@ const ENTITY_CONFIG = {
     selectVersion: (scene, vIndex) => { scene.activeVideoVersionIndex = vIndex; scene.activeVisualType = 'video'; },
     regen: (index, els, cb) => regenerateVideo(index, null, els, cb).catch((error) => cb(error.message)),
   },
+  subtitle: {
+    title: 'Subtitles',
+    kind: 'subtitle',
+    versions: (scene) => scene.subtitleVersions || [],
+    activeIndex: (scene) => scene.activeSubtitleVersionIndex,
+    selectVersion: (scene, vIndex) => { scene.activeSubtitleVersionIndex = vIndex; },
+    regen: (index, els, cb) => regenerateSubtitles(index, null, els, cb).catch((error) => cb(error.message)),
+  },
 };
 
 function isEntityLoading(type, scene, operation) {
@@ -147,6 +125,7 @@ function isEntityLoading(type, scene, operation) {
     case 'dialogue': return operation.type === 'dialogueAll' || (operation.type === 'dialogue' && operation.sceneId === scene.id);
     case 'audio': return ['audio', 'audioSerial'].includes(operation.type) && operation.sceneId === scene.id;
     case 'video': return ['video', 'videosSerial'].includes(operation.type) && operation.sceneId === scene.id;
+    case 'subtitle': return ['subtitle', 'subtitlesSerial'].includes(operation.type) && operation.sceneId === scene.id;
     default: return false;
   }
 }
@@ -362,8 +341,11 @@ function renderEntityModalMedia(scene, type, config) {
   els.entityModalAudio.removeAttribute('src');
   els.entityModalAudio.load();
   modalState.alignmentWords = [];
+  modalState.captionTarget = null;
   els.entityModalAudioCaption.hidden = true;
   els.entityModalAudioCaption.textContent = '';
+  els.entityModalSubtitleOverlay.hidden = true;
+  els.entityModalSubtitleOverlay.textContent = '';
 
   if (!path) return;
 
@@ -385,8 +367,34 @@ function renderEntityModalMedia(scene, type, config) {
     els.entityModalAudio.hidden = false;
     const words = active?.alignment?.words || [];
     modalState.alignmentWords = words;
-    els.entityModalAudioCaption.hidden = words.length === 0;
-    if (words.length) renderSubtitleCaption(0);
+    modalState.captionTarget = els.entityModalAudioCaption;
+    renderCaptionInto(els.entityModalAudioCaption, words, 0);
+  } else if (type === 'subtitle') {
+    // A subtitle version has no visual asset of its own, so preview it against the scene's current
+    // image/video. Audio is different: play `sourceAudioPath` (the exact clip this version's word
+    // timing was computed against), not necessarily the scene's current active audio -- if audio has
+    // since been regenerated, the two would drift apart and the karaoke preview would look broken
+    // (captions no longer matching the words actually being spoken) instead of just being stale.
+    const visualVersions = scene.activeVisualType === 'video' ? scene.videoVersions : scene.versions;
+    const visualIndex = scene.activeVisualType === 'video' ? scene.activeVideoVersionIndex : scene.activeVersionIndex;
+    const visualPath = visualVersions?.[visualIndex]?.path || null;
+    const visualEl = scene.activeVisualType === 'video' ? els.entityModalVideo : els.entityModalImage;
+    if (visualPath) {
+      visualEl.dataset.assetPath = visualPath;
+      loadProtectedAsset(visualPath, { signal }).then((url) => { if (url && visualEl.dataset.assetPath === visualPath && modalState.mediaPath === path) visualEl.src = url; }).catch(handleAssetError);
+      visualEl.hidden = false;
+    }
+    const audioPath = active?.sourceAudioPath || null;
+    if (audioPath) {
+      els.entityModalAudio.dataset.assetPath = audioPath;
+      loadProtectedAsset(audioPath, { signal }).then((url) => { if (url && els.entityModalAudio.dataset.assetPath === audioPath && modalState.mediaPath === path) els.entityModalAudio.src = url; }).catch(handleAssetError);
+      els.entityModalAudio.hidden = false;
+    }
+    const words = active?.words || [];
+    modalState.alignmentWords = words;
+    modalState.captionTarget = els.entityModalSubtitleOverlay;
+    els.entityModalSubtitleOverlay.dataset.captionStyle = active?.style || 'classic';
+    renderCaptionInto(els.entityModalSubtitleOverlay, words, 0);
   }
 }
 
@@ -396,11 +404,38 @@ function renderEntityModalHistory(scene, type, config, busy) {
   const activeIdx = config.activeIndex(scene);
   els.entityModalHistory.hidden = versions.length === 0;
   els.entityModalHistoryCount.textContent = `${versions.length} version${versions.length === 1 ? '' : 's'}`;
-  els.entityModalHistoryList.className = type === 'audio' ? 'audio-version-list' : 'version-list';
+  els.entityModalHistoryList.className = type === 'audio' || type === 'subtitle' ? 'audio-version-list' : 'version-list';
   els.entityModalHistoryList.innerHTML = '';
   modalState.historyAbortController?.abort();
   modalState.historyAbortController = new AbortController();
   const signal = modalState.historyAbortController.signal;
+
+  if (type === 'subtitle') {
+    // Text-only history row -- a subtitle version has no visual/audio asset of its own to preview
+    // (just timing data), so there's no thumbnail/player, unlike every other kind's history entry.
+    versions.forEach((version, vIndex) => {
+      const thumb = document.createElement('div');
+      thumb.className = `audio-version-thumb ${vIndex === activeIdx ? 'active' : ''}`;
+      const meta = document.createElement('div');
+      meta.className = 'audio-version-meta';
+      const label = document.createElement('strong');
+      label.textContent = `Version ${vIndex + 1}`;
+      const detail = document.createElement('span');
+      const cueCount = version.cues?.length || 0;
+      detail.textContent = `${cueCount} cue${cueCount === 1 ? '' : 's'} · ${version.style || 'classic'}`;
+      meta.append(label, detail);
+      const selectBtn = document.createElement('button');
+      selectBtn.type = 'button';
+      selectBtn.className = 'audio-version-select';
+      selectBtn.dataset.vindex = String(vIndex);
+      selectBtn.textContent = vIndex === activeIdx ? 'Current' : 'Use this version';
+      selectBtn.classList.toggle('is-current', vIndex === activeIdx);
+      selectBtn.disabled = busy || vIndex === activeIdx;
+      thumb.append(meta, selectBtn);
+      els.entityModalHistoryList.appendChild(thumb);
+    });
+    return;
+  }
 
   if (type === 'audio') {
     versions.forEach((version, vIndex) => {
@@ -560,7 +595,7 @@ function setupEntityModal() {
   };
   els.entityModalVideo.addEventListener('play', pauseOtherPlayers);
   els.entityModalAudio.addEventListener('play', pauseOtherPlayers);
-  els.entityModalAudio.addEventListener('timeupdate', () => { if (modalState.alignmentWords.length) renderSubtitleCaption(els.entityModalAudio.currentTime); });
+  els.entityModalAudio.addEventListener('timeupdate', () => renderCaptionInto(modalState.captionTarget, modalState.alignmentWords, els.entityModalAudio.currentTime));
 
   // Capture play events on the history list for delegation
   els.entityModalHistoryList.addEventListener('play', (e) => {
@@ -763,7 +798,7 @@ function renderEmptyPromptTargets() {
   els.storyboardGrid.replaceChildren(...nodes);
 }
 
-function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio }) {
+function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio, words, captionEl }) {
   let playing = false;
   let duration = 0;
   let currentTime = 0;
@@ -810,6 +845,7 @@ function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio }) {
   };
   const tick = (now) => {
     currentTime = Math.min(duration, (now - startedAt) / 1000);
+    if (captionEl) renderCaptionInto(captionEl, words, currentTime);
     if (currentTime >= duration) {
       positionMedia(duration, false);
       pause();
@@ -828,6 +864,9 @@ function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio }) {
     setToggleState('playing');
     startedAt = performance.now() - currentTime * 1000;
     positionMedia(currentTime, true);
+    // Paint immediately rather than waiting for the first tick(), so resuming from a paused
+    // mid-scene position doesn't show a stale (or missing) caption for one frame.
+    if (captionEl) renderCaptionInto(captionEl, words, currentTime);
     animationFrame = requestAnimationFrame(tick);
   };
   const controller = {
@@ -842,6 +881,9 @@ function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio }) {
       video.removeEventListener('durationchange', updateDuration);
       audio.removeEventListener('loadedmetadata', updateDuration);
       audio.removeEventListener('durationchange', updateDuration);
+      // A stale caption from this scene must not survive into whatever scene reuses this DOM node
+      // next -- nodes are reused across renders (see renderScenes's existingNodesMap).
+      if (captionEl) { captionEl.hidden = true; captionEl.textContent = ''; }
     },
   };
 
@@ -890,6 +932,7 @@ export function renderScenes() {
     dialogue: buildLatestJobsByScene(recentJobs, 'dialogue'),
     audio: buildLatestJobsByScene(recentJobs, 'audio'),
     video: buildLatestJobsByScene(recentJobs, 'video'),
+    subtitle: buildLatestJobsByScene(recentJobs, 'subtitle'),
   };
 
   scenes.forEach((scene, index) => {
@@ -919,6 +962,7 @@ export function renderScenes() {
       dialogue: Boolean(String(scene.narrationText || '').trim()),
       audio: (scene.audioVersions || []).some((version) => Boolean(version?.path)),
       video: (scene.videoVersions || []).some((version) => Boolean(version?.path)),
+      subtitle: (scene.subtitleVersions || []).some((version) => Boolean(version?.path)),
     };
     for (const [type, isPresent] of Object.entries(sceneStatus)) {
       const statusIcon = node.querySelector(`[data-status="${type}"]`);
@@ -992,10 +1036,20 @@ export function renderScenes() {
       playbackAudioEl.load();
     }
 
+    const activeSubtitleVersion = scene.subtitleVersions?.[scene.activeSubtitleVersionIndex];
+    const currentSubtitlePath = activeSubtitleVersion?.path || '';
+    // Only trust this version's word timing while it's still paired with the audio actually
+    // playing here -- once audio is regenerated the subtitle goes stale and its timestamps no
+    // longer line up with what's coming out of the speakers, which would look like broken
+    // alignment rather than what it actually is (a subtitle that needs regenerating).
+    const subtitleWords = activeSubtitleVersion?.sourceAudioPath === currentAudioPath ? (activeSubtitleVersion?.words || []) : [];
+    const captionEl = node.querySelector('.scene-caption');
+    if (captionEl) captionEl.dataset.captionStyle = activeSubtitleVersion?.style || 'classic';
+
     const hasVideo = scene.activeVisualType === 'video' && Boolean(currentVideoPath);
     const hasAudio = Boolean(currentAudioPath);
-    const playbackKey = `${hasVideo}-${currentVideoPath}-${hasAudio}-${currentAudioPath}`;
-    
+    const playbackKey = `${hasVideo}-${currentVideoPath}-${hasAudio}-${currentAudioPath}-${currentSubtitlePath}`;
+
     if (node.dataset.playbackKey !== playbackKey) {
       if (scenePlaybackCleanups.has(scene.id)) {
         scenePlaybackCleanups.get(scene.id)();
@@ -1006,6 +1060,8 @@ export function renderScenes() {
         audio: playbackAudioEl,
         hasVideo,
         hasAudio,
+        words: subtitleWords,
+        captionEl,
       }));
       node.dataset.playbackKey = playbackKey;
     } else {

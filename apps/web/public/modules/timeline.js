@@ -1,4 +1,5 @@
 import { sceneStore } from './store.js';
+import { renderCaptionInto } from './subtitle-overlay.js';
 
 const TIMELINE_PX_PER_SECOND = 60;
 const TIMELINE_DEFAULT_STILL_SECONDS = 3;
@@ -126,8 +127,9 @@ function timelineSceneSignature(scene) {
   const activeVersion = scene.versions[scene.activeVersionIndex];
   const activeVideoVersion = scene.videoVersions[scene.activeVideoVersionIndex];
   const activeAudioVersion = scene.audioVersions[scene.activeAudioVersionIndex];
+  const activeSubtitleVersion = scene.subtitleVersions?.[scene.activeSubtitleVersionIndex];
   const hasVideo = scene.activeVisualType === 'video' && Boolean(activeVideoVersion?.path);
-  return `${scene.id}:${scene.title || ''}:${activeVersion?.path || ''}:${hasVideo ? activeVideoVersion.path : ''}:${activeAudioVersion?.path || ''}`;
+  return `${scene.id}:${scene.title || ''}:${activeVersion?.path || ''}:${hasVideo ? activeVideoVersion.path : ''}:${activeAudioVersion?.path || ''}:${activeSubtitleVersion?.path || ''}`;
 }
 
 async function buildTimelineSegments() {
@@ -135,6 +137,7 @@ async function buildTimelineSegments() {
     const activeVersion = scene.versions[scene.activeVersionIndex];
     const activeVideoVersion = scene.videoVersions[scene.activeVideoVersionIndex];
     const activeAudioVersion = scene.audioVersions[scene.activeAudioVersionIndex];
+    const activeSubtitleVersion = scene.subtitleVersions?.[scene.activeSubtitleVersionIndex];
     const hasVideo = scene.activeVisualType === 'video' && Boolean(activeVideoVersion?.path);
     return {
       sceneId: scene.id,
@@ -143,6 +146,10 @@ async function buildTimelineSegments() {
       imagePath: activeVersion?.path || null,
       videoPath: hasVideo ? activeVideoVersion.path : null,
       audioPath: activeAudioVersion?.path || null,
+      // Only trust this version's word timing while it's still paired with the audio actually
+      // playing in this segment -- see the identical guard in rendering.js's scene-card playback.
+      words: activeSubtitleVersion?.sourceAudioPath === activeAudioVersion?.path ? (activeSubtitleVersion?.words || null) : null,
+      captionStyle: activeSubtitleVersion?.style || 'classic',
     };
   }).filter((segment) => segment.imagePath || segment.videoPath || segment.audioPath);
 
@@ -165,7 +172,7 @@ async function buildTimelineSegments() {
 
 function setupTimelinePlayback(segments, totalDuration, trackWidth) {
   const { timelineVideo, timelineVideoB, timelineAudio, timelineAudioB, timelineImage: image, timelineStageEmpty: emptyEl,
-    timelineToggle: toggle, timelinePlayhead: playhead,
+    timelineToggle: toggle, timelinePlayhead: playhead, timelineCaption: caption,
     timelineTrackWrap: trackWrap, timelineTrackInner: trackInner } = els;
 
   // Two video/audio elements, ping-ponged: while segment N plays on the "active" slot, the next
@@ -223,6 +230,12 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
 
   const updateDisplay = () => {
     playhead.style.transform = `translateX(${(globalCurrentTime / totalDuration) * trackWidth}px)`;
+  };
+
+  const updateCaption = (segment, localTime) => {
+    if (!caption) return;
+    caption.dataset.captionStyle = segment?.captionStyle || 'classic';
+    renderCaptionInto(caption, segment?.words, localTime);
   };
 
   const segmentForTime = (time) => {
@@ -309,6 +322,7 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     }
     currentSegmentIndex = index;
     applyActiveVisibility(segment);
+    updateCaption(segment, 0);
     stillClockOffset = 0;
     stillClockAt = performance.now();
     segmentEnteredAt = performance.now();
@@ -367,9 +381,11 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
     globalCurrentTime = Math.min(Math.max(target, 0), totalDuration);
     const index = segmentForTime(globalCurrentTime);
     const segment = segments[index];
-    seekWithinSegment(index, globalCurrentTime - segment.start, shouldPlay).catch((error) => {
+    const localTime = globalCurrentTime - segment.start;
+    seekWithinSegment(index, localTime, shouldPlay).catch((error) => {
       console.error('Seek to failed:', error);
     });
+    updateCaption(segment, localTime);
     updateDisplay();
   };
 
@@ -390,6 +406,7 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
   const tick = () => {
     const segment = segments[currentSegmentIndex];
     const localTime = localTimeForSegment(segment);
+    updateCaption(segment, localTime);
     const isLast = currentSegmentIndex === segments.length - 1;
     // Real media time drives advancement; a generous wall-clock overrun is only a safety valve
     // for a stalled/broken media element so the timeline can't hang forever on one segment.
@@ -476,6 +493,7 @@ function setupTimelinePlayback(segments, totalDuration, trackWidth) {
         el.load();
       });
       image.removeAttribute('src');
+      if (caption) { caption.hidden = true; caption.textContent = ''; }
       toggle.removeEventListener('click', onToggleClick);
       trackWrap.removeEventListener('pointerdown', onTrackPointerDown);
       trackWrap.removeEventListener('pointermove', onTrackPointerMove);

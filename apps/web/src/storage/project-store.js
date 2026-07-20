@@ -7,6 +7,7 @@ const SCENE_ASSET_FIELDS = Object.freeze({
   image: { list: 'versions', activeIndex: 'activeVersionIndex', visualType: 'image' },
   audio: { list: 'audioVersions', activeIndex: 'activeAudioVersionIndex', visualType: null },
   video: { list: 'videoVersions', activeIndex: 'activeVideoVersionIndex', visualType: 'video' },
+  subtitle: { list: 'subtitleVersions', activeIndex: 'activeSubtitleVersionIndex', visualType: null },
 });
 
 class ProjectStore {
@@ -31,7 +32,7 @@ class ProjectStore {
   isTombstoned(id) { return fs.existsSync(this.tombstonePath(id)); }
 
   assetDir(id, type, { create = true } = {}) {
-    if (!['images', 'audio', 'videos', 'exports', 'ai-references', 'scene-images'].includes(type)) throw new AppError('INVALID_ASSET_TYPE', 'Invalid asset type', { status: 400 });
+    if (!['images', 'audio', 'videos', 'subtitles', 'exports', 'ai-references', 'scene-images'].includes(type)) throw new AppError('INVALID_ASSET_TYPE', 'Invalid asset type', { status: 400 });
     const dir = path.join(this.projectDir(id), 'assets', type);
     if (create) fs.mkdirSync(dir, { recursive: true });
     return dir;
@@ -297,7 +298,7 @@ class ProjectStore {
     const moved = [];
     fs.mkdirSync(trash, { recursive: true });
     try {
-      for (const type of ['images', 'audio', 'videos', 'exports', 'ai-references', 'scene-images']) {
+      for (const type of ['images', 'audio', 'videos', 'subtitles', 'exports', 'ai-references', 'scene-images']) {
         const dir = this.assetDir(id, type);
         for (const fileName of fs.readdirSync(dir)) {
           const publicPath = `/projects/${encodeURIComponent(id)}/assets/${type}/${encodeURIComponent(fileName)}`;

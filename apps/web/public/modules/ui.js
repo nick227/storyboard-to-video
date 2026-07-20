@@ -262,7 +262,7 @@ function stageStatusLabel(stage) {
 function renderGenerationSummary(els, status) {
   if (!els.generationSummaryText) return;
   const line = (label, stage) => `${label} ${stage.done}/${stage.total || 0}${stage.stale ? ` (${stage.stale} stale)` : ''}${stage.failed ? ` (${stage.failed} failed)` : ''}`;
-  const summary = [line('Planning', status.planning), line('Images', status.images), line('Audio', status.audio), line('Video', status.video)].join(' · ');
+  const summary = [line('Planning', status.planning), line('Images', status.images), line('Audio', status.audio), line('Video', status.video), line('Subtitles', status.subtitles)].join(' · ');
   els.generationSummaryText.textContent = summary;
   els.generationSummaryText.title = summary;
 }
@@ -285,6 +285,7 @@ export function renderStageBar(els) {
   if (els.stageImagesStatus) els.stageImagesStatus.textContent = stageStatusLabel(status.images);
   if (els.stageAudioStatus) els.stageAudioStatus.textContent = stageStatusLabel(status.audio);
   if (els.stageVideoStatus) els.stageVideoStatus.textContent = stageStatusLabel(status.video);
+  if (els.stageSubtitlesStatus) els.stageSubtitlesStatus.textContent = stageStatusLabel(status.subtitles);
   if (els.stageTokensStatus) {
     els.stageTokensStatus.textContent = spend.totalCostUSD != null ? `${spend.totalCostUSD.toFixed(4)} USD` : '0.0000 USD';
   }
@@ -299,7 +300,7 @@ export function renderStageBar(els) {
 
   // Read-only status strip — selection now happens only in the Start modal (see openStartRunModal
   // in app.js), so these boxes no longer toggle anything and are always disabled/non-interactive.
-  for (const [key, button] of [['planning', els.stagePlanningBtn], ['images', els.stageImagesBtn], ['audio', els.stageAudioBtn], ['video', els.stageVideoBtn]]) {
+  for (const [key, button] of [['planning', els.stagePlanningBtn], ['images', els.stageImagesBtn], ['audio', els.stageAudioBtn], ['video', els.stageVideoBtn], ['subtitles', els.stageSubtitlesBtn]]) {
     if (!button) continue;
     const stage = status[key];
     const hasWork = stage.missing > 0 || stage.stale > 0 || stage.failed > 0;

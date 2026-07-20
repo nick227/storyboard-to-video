@@ -2,6 +2,7 @@ import { projectStore, sceneStore, batchStore } from '../modules/store.js';
 import { createStoryboardRecord } from '../modules/persistence.js';
 import { loadProtectedAsset, loadedAssets, revokeAllAssets } from '../modules/assets.js';
 import { loadStyles } from '../modules/ui.js';
+import { getZipSummary } from '/app.js';
 
 function addResult(name, passed, message = '') {
   const ul = document.getElementById('test-results');
@@ -270,6 +271,50 @@ async function runTests() {
       addResult('Style Dropdown Populates After Init', true);
     } finally {
       window.fetch = originalStylesFetch;
+    }
+
+    // Test 22: Download confirmation modal is wired up and summarizes ZIP contents correctly.
+    try {
+      sceneStore.set({
+        scenes: [
+          {
+            id: 's1',
+            title: 'Scene One',
+            versions: [{ path: '/projects/p/assets/images/img1.png' }],
+            activeVersionIndex: 0,
+            audioVersions: [{ path: '/projects/p/assets/audio/aud1.wav' }],
+            activeAudioVersionIndex: 0,
+            videoVersions: []
+          },
+          {
+            id: 's2',
+            title: 'Scene Two',
+            versions: [],
+            activeVersionIndex: 0,
+            audioVersions: [],
+            activeAudioVersionIndex: 0,
+            videoVersions: [{ path: '/projects/p/assets/videos/vid2.mp4' }],
+            activeVideoVersionIndex: 0
+          }
+        ]
+      });
+
+      const summary = getZipSummary();
+      assert(summary.totalScenes === 2, 'Should have 2 total scenes');
+      assert(summary.exportedScenes === 2, 'Should have 2 exported scenes');
+      assert(summary.imageCount === 1, 'Should have 1 image');
+      assert(summary.videoCount === 1, 'Should have 1 video');
+      assert(summary.audioCount === 1, 'Should have 1 audio');
+
+      // Verify that app.js binds downloadZipBtn to openDownloadConfirmModal statically
+      const appSource = await (await fetch('/app.js')).text();
+      assert(appSource.includes('els.downloadZipBtn.addEventListener'), 'app.js should bind downloadZipBtn click listener');
+      assert(appSource.includes('openDownloadConfirmModal'), 'app.js should define openDownloadConfirmModal');
+      assert(appSource.includes('downloadConfirmModal'), 'app.js should bind downloadConfirmModal elements');
+
+      addResult('Download Confirmation Modal Summary', true);
+    } catch (err) {
+      addResult('Download Confirmation Modal Summary', false, err.message);
     }
 
   } catch (e) {

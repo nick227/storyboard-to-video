@@ -28,6 +28,7 @@ const els = {
   imageProvider: document.getElementById('imageProvider'),
   audioProvider: document.getElementById('audioProvider'),
   videoMotionIntensity: document.getElementById('videoMotionIntensity'),
+  subtitleStyleSelect: document.getElementById('subtitleStyleSelect'),
   fallbackPolicy: document.getElementById('fallbackPolicy'),
   enrichNarration: document.getElementById('enrichNarration'),
   statusText: document.getElementById('statusText'),
@@ -46,6 +47,12 @@ const els = {
   newStoryboardBtn: document.getElementById('newStoryboardBtn'),
   saveStateBtn: document.getElementById('saveStateBtn'),
   downloadZipBtn: document.getElementById('downloadZipBtn'),
+  downloadConfirmModal: document.getElementById('downloadConfirmModal'),
+  downloadConfirmCloseBtn: document.getElementById('downloadConfirmCloseBtn'),
+  downloadConfirmCancelBtn: document.getElementById('downloadConfirmCancelBtn'),
+  downloadConfirmRunBtn: document.getElementById('downloadConfirmRunBtn'),
+  downloadConfirmWarning: document.getElementById('downloadConfirmWarning'),
+  downloadConfirmBullets: document.getElementById('downloadConfirmBullets'),
   authLoggedIn: document.getElementById('authLoggedIn'),
   adminConsoleLink: document.getElementById('adminConsoleLink'),
   authUserAvatar: document.getElementById('authUserAvatar'),
@@ -61,6 +68,8 @@ const els = {
   stageAudioStatus: document.getElementById('stageAudioStatus'),
   stageVideoBtn: document.getElementById('stageVideoBtn'),
   stageVideoStatus: document.getElementById('stageVideoStatus'),
+  stageSubtitlesBtn: document.getElementById('stageSubtitlesBtn'),
+  stageSubtitlesStatus: document.getElementById('stageSubtitlesStatus'),
   stageTokensBtn: document.getElementById('stageTokensBtn'),
   stageTokensStatus: document.getElementById('stageTokensStatus'),
   tokensInfoBtn: document.getElementById('tokensInfoBtn'),
@@ -80,6 +89,7 @@ const els = {
   settingsRegenerateImagesBtn: document.getElementById('settingsRegenerateImagesBtn'),
   settingsRegenerateAudioBtn: document.getElementById('settingsRegenerateAudioBtn'),
   settingsRegenerateVideoBtn: document.getElementById('settingsRegenerateVideoBtn'),
+  settingsRegenerateSubtitlesBtn: document.getElementById('settingsRegenerateSubtitlesBtn'),
 
   // Settings modals
   settingsBtn: document.getElementById('settingsBtn'),
@@ -121,6 +131,8 @@ const els = {
   startRunAudioStatus: document.getElementById('startRunAudioStatus'),
   startRunVideoCheck: document.getElementById('startRunVideoCheck'),
   startRunVideoStatus: document.getElementById('startRunVideoStatus'),
+  startRunSubtitlesCheck: document.getElementById('startRunSubtitlesCheck'),
+  startRunSubtitlesStatus: document.getElementById('startRunSubtitlesStatus'),
 
   // References
   characterRefs: document.getElementById('characterRefs'),
@@ -173,6 +185,7 @@ const els = {
   entityModalVideo: document.getElementById('entityModalVideo'),
   entityModalAudio: document.getElementById('entityModalAudio'),
   entityModalAudioCaption: document.getElementById('entityModalAudioCaption'),
+  entityModalSubtitleOverlay: document.getElementById('entityModalSubtitleOverlay'),
   entityModalMediaEmpty: document.getElementById('entityModalMediaEmpty'),
   entityModalStatus: document.getElementById('entityModalStatus'),
   entityModalRegenBtn: document.getElementById('entityModalRegenBtn'),
@@ -186,6 +199,7 @@ const els = {
   timelineVideoB: document.getElementById('timelineVideoB'),
   timelineImage: document.getElementById('timelineImage'),
   timelineStageEmpty: document.getElementById('timelineStageEmpty'),
+  timelineCaption: document.getElementById('timelineCaption'),
   timelineAudio: document.getElementById('timelineAudio'),
   timelineAudioB: document.getElementById('timelineAudioB'),
   timelineToggle: document.getElementById('timelineToggle'),
@@ -251,6 +265,7 @@ function getGenerationPreflight(kind, context = {}) {
     imagesAll: mediaConfig('Images', 'versions', els.imageProvider, ' with the selected style and references'),
     audioAll: mediaConfig('Audio', 'audioVersions', els.audioProvider, ' and the selected narrator voice'),
     videoAll: mediaConfig('Video', 'videoVersions', els.videoMotionIntensity, ' motion intensity'),
+    subtitlesAll: mediaConfig('Subtitles', 'subtitleVersions', els.subtitleStyleSelect, ' caption style'),
     planningReplan: (() => {
       const shrinking = context.fromCount != null && context.toCount != null && context.fromCount !== context.toCount;
       return {
@@ -299,6 +314,7 @@ const STAGE_ROW_ELS = () => ({
   images: { check: els.startRunImagesCheck, status: els.startRunImagesStatus },
   audio: { check: els.startRunAudioCheck, status: els.startRunAudioStatus },
   video: { check: els.startRunVideoCheck, status: els.startRunVideoStatus },
+  subtitles: { check: els.startRunSubtitlesCheck, status: els.startRunSubtitlesStatus },
 });
 
 function formatStartRunRowStatus(stage, row) {
@@ -324,7 +340,7 @@ function computeStartRunPlan() {
   const count = Number(els.startRunNextCount.value) || 1;
   const range = computeRunRange(scenes, uiStore.get().selectedSceneId, mode, count);
   const rowStatus = buildRunRowStatus(scenes, range, batchStore.get(), uiStore.get().operation, getCachedJobs(), record?.stageRuns || {});
-  const selectionStatus = { planning: rowStatus.planning.ranged, images: rowStatus.images.ranged, audio: rowStatus.audio.ranged, video: rowStatus.video.ranged };
+  const selectionStatus = { planning: rowStatus.planning.ranged, images: rowStatus.images.ranged, audio: rowStatus.audio.ranged, video: rowStatus.video.ranged, subtitles: rowStatus.subtitles.ranged };
   return { scenes, range, rowStatus, selectionStatus };
 }
 
@@ -336,7 +352,7 @@ function renderStartRunModal() {
   els.startRunSceneTotal.textContent = String(scenes.length);
 
   const rowEls = STAGE_ROW_ELS();
-  for (const stage of ['planning', 'images', 'audio', 'video']) {
+  for (const stage of ['planning', 'images', 'audio', 'video', 'subtitles']) {
     const { check, status } = rowEls[stage];
     check.checked = Boolean(selection[stage]);
     status.textContent = formatStartRunRowStatus(stage, rowStatus[stage]);
@@ -355,6 +371,77 @@ function openStartRunModal() {
   els.startRunModal.returnValue = '';
   els.startRunModal.showModal();
   return new Promise((resolve) => { startRunResolve = resolve; });
+}
+
+let downloadConfirmResolve = null;
+
+export function getZipSummary() {
+  const allScenes = sceneStore.get().scenes || [];
+  const exportScenes = allScenes.slice(0, 50);
+  
+  let imageCount = 0;
+  let videoCount = 0;
+  let audioCount = 0;
+  
+  for (const scene of exportScenes) {
+    const activeImage = Array.isArray(scene.versions) 
+      ? scene.versions[Number.isInteger(scene.activeVersionIndex) ? scene.activeVersionIndex : 0] 
+      : null;
+    if (activeImage?.path) imageCount++;
+    
+    const activeVideo = Array.isArray(scene.videoVersions) 
+      ? scene.videoVersions[Number.isInteger(scene.activeVideoVersionIndex) ? scene.activeVideoVersionIndex : 0] 
+      : null;
+    if (activeVideo?.path) videoCount++;
+    
+    const activeAudio = Array.isArray(scene.audioVersions) 
+      ? scene.audioVersions[Number.isInteger(scene.activeAudioVersionIndex) ? scene.activeAudioVersionIndex : 0] 
+      : null;
+    if (activeAudio?.path) audioCount++;
+  }
+  
+  return {
+    totalScenes: allScenes.length,
+    exportedScenes: exportScenes.length,
+    imageCount,
+    videoCount,
+    audioCount
+  };
+}
+
+export function renderDownloadConfirmModal() {
+  const summary = getZipSummary();
+  
+  els.downloadConfirmBullets.replaceChildren();
+  
+  const bulletData = [
+    `${summary.exportedScenes} storyboard scene structure${summary.exportedScenes === 1 ? '' : 's'}`,
+    `${summary.imageCount} generated image${summary.imageCount === 1 ? '' : 's'} (in images/ folder)`,
+    `${summary.videoCount} generated video${summary.videoCount === 1 ? '' : 's'} (in videos/ folder)`,
+    `${summary.audioCount} narration audio clip${summary.audioCount === 1 ? '' : 's'} (in audio/ folder)`,
+    `1 storyboard metadata file (storyboard.json)`
+  ];
+  
+  bulletData.forEach((text) => {
+    const li = document.createElement('li');
+    li.textContent = text;
+    els.downloadConfirmBullets.appendChild(li);
+  });
+  
+  if (summary.totalScenes > 50) {
+    els.downloadConfirmWarning.textContent = `Warning: Your storyboard has ${summary.totalScenes} scenes. The export tool packages only the first 50 scenes.`;
+    els.downloadConfirmWarning.hidden = false;
+  } else {
+    els.downloadConfirmWarning.replaceChildren();
+    els.downloadConfirmWarning.hidden = true;
+  }
+}
+
+function openDownloadConfirmModal() {
+  renderDownloadConfirmModal();
+  els.downloadConfirmModal.returnValue = '';
+  els.downloadConfirmModal.showModal();
+  return new Promise((resolve) => { downloadConfirmResolve = resolve; });
 }
 
 function requestGenerationConfirmation(kind, context = {}) {
@@ -468,6 +555,18 @@ function attachEvents() {
     startRunResolve = null;
     if (resolve) resolve(els.startRunModal.returnValue === 'confirm');
   });
+
+  els.downloadConfirmCancelBtn.addEventListener('click', () => els.downloadConfirmModal.close());
+  els.downloadConfirmCloseBtn.addEventListener('click', () => els.downloadConfirmModal.close());
+  els.downloadConfirmRunBtn.addEventListener('click', () => els.downloadConfirmModal.close('confirm'));
+  els.downloadConfirmModal.addEventListener('click', (event) => {
+    if (event.target === els.downloadConfirmModal) els.downloadConfirmModal.close();
+  });
+  els.downloadConfirmModal.addEventListener('close', () => {
+    const resolve = downloadConfirmResolve;
+    downloadConfirmResolve = null;
+    if (resolve) resolve(els.downloadConfirmModal.returnValue === 'confirm');
+  });
   [els.startRunRangeAll, els.startRunRangeNext, els.startRunNextCount].forEach((input) => {
     input.addEventListener('input', () => renderStartRunModal());
   });
@@ -565,7 +664,12 @@ function attachEvents() {
   els.videoMotionIntensity.addEventListener('change', () => saveStoryboard(els, false));
   els.enrichNarration.addEventListener('change', () => saveStoryboard(els, false));
 
-  els.downloadZipBtn.addEventListener('click', () => downloadZip(setStatus));
+  els.downloadZipBtn.addEventListener('click', async () => {
+    const confirmed = await openDownloadConfirmModal();
+    if (confirmed) {
+      await downloadZip(setStatus);
+    }
+  });
 
   // --- Settings: visual planning mode, scene-count policy, danger zone --------
   //
@@ -648,6 +752,7 @@ function attachEvents() {
   wireRegenerateAll(els.settingsRegenerateImagesBtn, 'images', 'imagesAll');
   wireRegenerateAll(els.settingsRegenerateAudioBtn, 'audio', 'audioAll');
   wireRegenerateAll(els.settingsRegenerateVideoBtn, 'video', 'videoAll');
+  wireRegenerateAll(els.settingsRegenerateSubtitlesBtn, 'subtitles', 'subtitlesAll');
 
   // --- Start / Stop --------------------------------------------------------------
   //
@@ -669,7 +774,7 @@ function attachEvents() {
 
     const { range, rowStatus, selectionStatus } = computeStartRunPlan();
     const selection = getStageSelection(selectionStatus);
-    const stages = ['planning', 'images', 'audio', 'video'].filter((stage) => selection[stage]);
+    const stages = ['planning', 'images', 'audio', 'video', 'subtitles'].filter((stage) => selection[stage]);
     if (!stages.length) { setStatus('Nothing selected to start — check a step above.'); return; }
     const forceStages = computeForceStages(rowStatus, selection);
 
@@ -764,7 +869,9 @@ async function init() {
   if (restored && loaded) setStatus('Ready. Saved.');
 }
 
-init().catch(err => {
-  console.error("Failed to init app:", err);
-  setStatus("Failed to initialize app.");
-});
+if (window.location.pathname !== '/test.html') {
+  init().catch(err => {
+    console.error("Failed to init app:", err);
+    setStatus("Failed to initialize app.");
+  });
+}

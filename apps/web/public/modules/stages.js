@@ -1,6 +1,6 @@
 import { api, cancelActiveProjectJobs } from './api.js';
 import { sceneStore, uiStore, projectStore, batchStore, voiceStore } from './store.js';
-import { generateDialogue, generatePrompts, regeneratePrompt, addRecommendedScenes, regenerateImage, regenerateAudio, regenerateVideo } from './workflows.js';
+import { generateDialogue, generatePrompts, regeneratePrompt, addRecommendedScenes, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles } from './workflows.js';
 import { suggestSceneCount, suggestSceneCountFromNarration } from './scene-count.js';
 import { batchController } from './batch.js';
 import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
@@ -18,6 +18,7 @@ export function computeStaleness(scene) {
   const activeImage = (scene.versions || [])[scene.activeVersionIndex] || null;
   const activeAudio = (scene.audioVersions || [])[scene.activeAudioVersionIndex] || null;
   const activeVideo = (scene.videoVersions || [])[scene.activeVideoVersionIndex] || null;
+  const activeSubtitle = (scene.subtitleVersions || [])[scene.activeSubtitleVersionIndex] || null;
 
   const hasPrompt = Boolean(String(scene.prompt || '').trim());
   const promptStale = hasPrompt && (
@@ -39,14 +40,15 @@ export function computeStaleness(scene) {
     String(activeAudio.provider || '') !== String(voiceStore.get().audioProvider || '')
   );
   const videoStale = Boolean(activeVideo?.path) && String(activeVideo.sourceImagePath || '') !== String(activeImage?.path || '');
+  const subtitleStale = Boolean(activeSubtitle?.path) && String(activeSubtitle.sourceAudioPath || '') !== String(activeAudio?.path || '');
 
-  return { promptStale, imageStale, audioStale, videoStale };
+  return { promptStale, imageStale, audioStale, videoStale, subtitleStale };
 }
 
 // --- Stage status ------------------------------------------------------------
 
 const PLANNING_JOB_TYPES = new Set(['scenes', 'prompts', 'prompt', 'action', 'dialogue']);
-const MEDIA_JOB_TYPE = { images: 'image', audio: 'audio', video: 'video' };
+const MEDIA_JOB_TYPE = { images: 'image', audio: 'audio', video: 'video', subtitles: 'subtitle' };
 
 function hasText(value) {
   return Boolean(String(value || '').trim());
@@ -163,8 +165,14 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
     jobType: MEDIA_JOB_TYPE.video,
     recentJobs,
   });
+  const subtitles = mediaTally(scenes, {
+    hasVersion: (scene) => Boolean((scene.subtitleVersions || [])[scene.activeSubtitleVersionIndex]?.path),
+    isStale: (scene) => computeStaleness(scene).subtitleStale,
+    jobType: MEDIA_JOB_TYPE.subtitles,
+    recentJobs,
+  });
 
-  for (const [key, tally] of [['images', images], ['audio', audio], ['video', video]]) {
+  for (const [key, tally] of [['images', images], ['audio', audio], ['video', video], ['subtitles', subtitles]]) {
     const batch = batchState?.[key === 'video' ? 'videos' : key];
     tally.running = Boolean(batch?.generating);
     // In-memory batch state alone doesn't survive a reload; `stageRuns[key] === 'paused'` is the
@@ -175,7 +183,7 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
       : 'Not started';
   }
 
-  return { planning, images, audio, video };
+  return { planning, images, audio, video, subtitles };
 }
 
 // --- Durable job snapshot -----------------------------------------------------
@@ -339,12 +347,18 @@ const MEDIA_STAGE_CONFIG = {
     hasVersion: (scene) => Boolean((scene.videoVersions || [])[scene.activeVideoVersionIndex]?.path),
     isStale: (scene) => computeStaleness(scene).videoStale,
   },
+  subtitles: {
+    regenerate: regenerateSubtitles,
+    hasVersion: (scene) => Boolean((scene.subtitleVersions || [])[scene.activeSubtitleVersionIndex]?.path),
+    isStale: (scene) => computeStaleness(scene).subtitleStale,
+  },
 };
 
 // batchStore/batchController key videos by the plural 'videos'; every other stage-facing API in
 // this module uses the singular 'video' to match computeStageStatus's shape. This is the one place
-// that needs to know about the mismatch.
-const BATCH_STORE_KEY = { images: 'images', audio: 'audio', video: 'videos' };
+// that needs to know about the mismatch. Subtitles has no such split -- the stage key is already
+// plural ('subtitles') everywhere.
+const BATCH_STORE_KEY = { images: 'images', audio: 'audio', video: 'videos', subtitles: 'subtitles' };
 
 function resolveLiveScene(id) {
   return sceneStore.get().scenes.find((scene) => scene.id === id) || null;
@@ -455,7 +469,7 @@ export async function regenerateAllStage(stage, els, setStatus) {
 // expect `kind === 'cancelled'` there, not restart-from-progress behavior, since none exists for
 // this stage.
 export function stopActiveWork(projectId) {
-  const activeMediaStage = ['images', 'audio', 'video'].find((stage) => batchStore.get()[BATCH_STORE_KEY[stage]]?.generating);
+  const activeMediaStage = ['images', 'audio', 'video', 'subtitles'].find((stage) => batchStore.get()[BATCH_STORE_KEY[stage]]?.generating);
   if (activeMediaStage) {
     batchController.stop(BATCH_STORE_KEY[activeMediaStage], projectId);
     return { kind: 'paused', stage: activeMediaStage };
@@ -471,8 +485,8 @@ export function stopActiveWork(projectId) {
 
 const PRESET_STAGES = {
   storyboard: ['planning', 'images'],
-  'full-story': ['planning', 'images', 'audio'],
-  'full-production': ['planning', 'images', 'audio', 'video'],
+  'full-story': ['planning', 'images', 'audio', 'subtitles'],
+  'full-production': ['planning', 'images', 'audio', 'video', 'subtitles'],
 };
 
 let flowStopRequested = false;
@@ -527,7 +541,7 @@ export async function runCreateStoryFlow(preset, els, setStatus, { autoAcceptRec
   }
   if (flowStopRequested) return { stoppedAt: 'paused' };
 
-  for (const stage of ['images', 'audio', 'video']) {
+  for (const stage of ['images', 'audio', 'video', 'subtitles']) {
     if (!stages.includes(stage)) continue;
     if (flowStopRequested) return { stoppedAt: 'paused', atStage: stage };
     const finalState = await runStageBatch(stage, els, setStatus, { onlyMissingOrStale: !forceStages.includes(stage), range });
@@ -547,7 +561,7 @@ export async function runCreateStoryFlow(preset, els, setStatus, { autoAcceptRec
 // warning in the confirmation screen (see getGenerationPreflight('startRun', ...) in app.js) rather
 // than being silently blocked. This is in-memory only (resets on reload, same as any other
 // transient UI state) and always re-derives its default from live status, not a stored preference.
-const ALL_STAGES = ['planning', 'images', 'audio', 'video'];
+const ALL_STAGES = ['planning', 'images', 'audio', 'video', 'subtitles'];
 const manualSelectionOverride = {};
 
 // --- Selected scene (run anchor) ---------------------------------------------

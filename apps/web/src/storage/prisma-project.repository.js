@@ -9,6 +9,7 @@ const SCENE_ASSET_FIELDS = Object.freeze({
   image: { list: 'versions', activeIndex: 'activeVersionIndex', visualType: 'image' },
   audio: { list: 'audioVersions', activeIndex: 'activeAudioVersionIndex', visualType: null },
   video: { list: 'videoVersions', activeIndex: 'activeVideoVersionIndex', visualType: 'video' },
+  subtitle: { list: 'subtitleVersions', activeIndex: 'activeSubtitleVersionIndex', visualType: null },
 });
 
 function json(value) { return value == null ? null : JSON.parse(JSON.stringify(value)); }

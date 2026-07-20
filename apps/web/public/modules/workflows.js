@@ -52,7 +52,12 @@ export function normalizeScene(scene, index) {
     ? scene.videoVersions.filter((version) => typeof version?.path === 'string' && (version.path.startsWith(`${projectPrefix}videos/`) || version.path.startsWith('/videos/')))
     : [];
   const requestedVideoIndex = Number.isInteger(scene?.activeVideoVersionIndex) ? scene.activeVideoVersionIndex : (videoVersions.length ? videoVersions.length - 1 : 0);
-  
+
+  const subtitleVersions = Array.isArray(scene?.subtitleVersions)
+    ? scene.subtitleVersions.filter((version) => typeof version?.path === 'string' && version.path.startsWith(`${projectPrefix}subtitles/`))
+    : [];
+  const requestedSubtitleIndex = Number.isInteger(scene?.activeSubtitleVersionIndex) ? scene.activeSubtitleVersionIndex : 0;
+
   let activeVisualType = scene?.activeVisualType === 'image' || scene?.activeVisualType === 'video'
     ? scene.activeVisualType
     : (videoVersions.length ? 'video' : 'image');
@@ -77,6 +82,8 @@ export function normalizeScene(scene, index) {
     activeAudioVersionIndex: audioVersions.length ? Math.min(Math.max(requestedAudioIndex, 0), audioVersions.length - 1) : 0,
     videoVersions,
     activeVideoVersionIndex: videoVersions.length ? Math.min(Math.max(requestedVideoIndex, 0), videoVersions.length - 1) : 0,
+    subtitleVersions,
+    activeSubtitleVersionIndex: subtitleVersions.length ? Math.min(Math.max(requestedSubtitleIndex, 0), subtitleVersions.length - 1) : 0,
     activeVisualType,
     referenceImages: Array.isArray(scene?.referenceImages) ? scene.referenceImages : [],
     disabledProjectReferenceImages: Array.isArray(scene?.disabledProjectReferenceImages) ? scene.disabledProjectReferenceImages : [],
@@ -132,6 +139,8 @@ export async function generatePrompts(els, setStatus, { rebuildFromSource = fals
       narrationIsFallback: reuseExistingScenes ? Boolean(previousScenes[index]?.narrationIsFallback) : false,
       audioVersions: reuseExistingScenes ? (previousScenes[index]?.audioVersions || []) : [],
       activeAudioVersionIndex: reuseExistingScenes ? (previousScenes[index]?.activeAudioVersionIndex || 0) : 0,
+      subtitleVersions: reuseExistingScenes ? (previousScenes[index]?.subtitleVersions || []) : [],
+      activeSubtitleVersionIndex: reuseExistingScenes ? (previousScenes[index]?.activeSubtitleVersionIndex || 0) : 0,
       referenceImages: reuseExistingScenes ? (previousScenes[index]?.referenceImages || []) : [],
       disabledProjectReferenceImages: reuseExistingScenes ? (previousScenes[index]?.disabledProjectReferenceImages || []) : [],
     }, index));
@@ -472,6 +481,61 @@ export async function regenerateAudio(index, scene, els, setStatus, withinSerial
     if (setStatus) setStatus(`Audio ready for scene ${index + 1}.`);
   } catch (error) {
     if (setStatus) setStatus(`Audio generation failed for scene ${index + 1}: ${error.message}`);
+    throw error;
+  } finally {
+    if (!scene) {
+      uiStore.set({ operation: null });
+    }
+  }
+}
+
+export async function regenerateSubtitles(index, scene, els, setStatus, withinSerial = false) {
+  const scenes = sceneStore.get().scenes;
+  const activeScene = scene || scenes[index];
+  if (!activeScene || (!scene && uiStore.get().operation)) return;
+  const activeAudio = activeScene.audioVersions?.[activeScene.activeAudioVersionIndex];
+  if (!activeAudio?.alignment?.words?.length) {
+    // Same "skip in a batch, throw on an explicit single-scene call" shape regenerateAudio/
+    // regenerateVideo use for their own missing-prerequisite guards above.
+    if (withinSerial) {
+      if (setStatus) setStatus(`Skipped scene ${index + 1}: no audio timing data yet.`);
+      return true;
+    }
+    throw new Error('This scene has no audio timing data yet. Generate (or regenerate) audio first.');
+  }
+
+  if (!scene) {
+    uiStore.set({ operation: { type: 'subtitle', sceneId: activeScene.id } });
+  }
+
+  try {
+    await ensureProjectSynced();
+    if (setStatus) setStatus(`Generating subtitles for scene ${index + 1}...`);
+    const data = await api('/api/subtitles/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        sceneNumber: index + 1,
+        sceneId: activeScene.id,
+        sceneTitle: activeScene.title,
+        captionStyle: els.subtitleStyleSelect ? els.subtitleStyleSelect.value : 'classic',
+        projectId: projectStore.get().currentId,
+      }),
+    });
+
+    activeScene.subtitleVersions = data.scene.subtitleVersions;
+    activeScene.activeSubtitleVersionIndex = data.scene.activeSubtitleVersionIndex;
+
+    sceneStore.set({ scenes: [...scenes] });
+    const record = getCurrentStoryboardRecord();
+    if (record) {
+      record.scenes = scenes;
+      record.revision = data.revision;
+      queueSync(record, setStatus);
+    }
+
+    if (setStatus) setStatus(`Subtitles ready for scene ${index + 1}.`);
+  } catch (error) {
+    if (setStatus) setStatus(`Subtitle generation failed for scene ${index + 1}: ${error.message}`);
     throw error;
   } finally {
     if (!scene) {

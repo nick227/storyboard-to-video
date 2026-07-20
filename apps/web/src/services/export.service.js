@@ -28,6 +28,7 @@ function createExportService({ config, projectStore }) {
               [scene.versions, scene.activeVersionIndex, 'images', 'images', '.png'],
               [scene.videoVersions, scene.activeVideoVersionIndex, 'videos', 'videos', '.mp4'],
               [scene.audioVersions, scene.activeAudioVersionIndex, 'audio', 'audio', '.wav'],
+              [scene.subtitleVersions, scene.activeSubtitleVersionIndex, 'subtitles', 'subtitles', '.srt'],
             ]) {
               const [versions, activeIndex, type, folder, defaultExtension] = item;
               const active = Array.isArray(versions) ? versions[Number.isInteger(activeIndex) ? activeIndex : 0] : null;

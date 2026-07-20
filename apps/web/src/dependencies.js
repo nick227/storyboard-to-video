@@ -31,6 +31,7 @@ const { createSceneSplitService } = require('./services/scene-split.service');
 const { createImageGenerationService } = require('./services/image-generation.service');
 const { createAudioGenerationService } = require('./services/audio-generation.service');
 const { createVideoGenerationService } = require('./services/video-generation.service');
+const { createSubtitleGenerationService } = require('./services/subtitle-generation.service');
 const { createSceneReferenceService } = require('./services/scene-reference.service');
 const { createExportService } = require('./services/export.service');
 const { createVoiceService } = require('./services/voice.service');
@@ -84,17 +85,18 @@ function createDependencies(config, overrides = {}) {
   const images = createImageGenerationService({ config, styles, provider: imageProvider, projectStore });
   const audio = createAudioGenerationService({ config, provider: audioProvider, alignmentProvider, projectStore });
   const videos = createVideoGenerationService({ config, provider: videoProvider, projectStore, styles });
+  const subtitles = createSubtitleGenerationService({ config, projectStore });
   const sceneReferences = createSceneReferenceService({ config, projectStore });
   const exports = createExportService({ config, projectStore });
   const voices = createVoiceService(config, cancellation, audioProvider);
-  const media = createMediaController({ images, audio, videos, exports });
+  const media = createMediaController({ images, audio, videos, subtitles, exports });
 
   const identityStore = overrides.identityStore || new PrismaIdentityRepository(prisma);
   const auth = new AuthService({ identityStore });
 
   return {
     config, prisma, projectStore, queue, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, billingRepository, billing, adminRepository, paymentRepository, payments, generationContext,
-    styles, prompts, referenceGeneration, dialogue, sceneSplit, images, audio, videos, sceneReferences, exports, voices, imageProvider,
+    styles, prompts, referenceGeneration, dialogue, sceneSplit, images, audio, videos, subtitles, sceneReferences, exports, voices, imageProvider,
     upload: createUpload(config),
     auth,
     authenticate: auth.middleware(),

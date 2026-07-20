@@ -50,7 +50,7 @@ button {
   transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
   font-size: 13px;
 }
-button.primary { background: var(--accent); border-color: var(--accent); color: white; }
+button.primary { background: var(--dark); border-color: var(--accent); color: white; }
 button.secondary { background: transparent; padding: 2px 4px; min-height: 0; }
 button.danger { background: var(--danger); border-color: var(--danger); color: white; }
 button:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -93,11 +93,12 @@ label > span {
   padding: 20px;
 }
 .storyboard-topbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
   align-items: center;
   margin-bottom: 14px;
+  grid-template-columns: 94% 5% !important;
 }
 .brand-block { min-width: 0; flex: 1; }
 .storyboard-title-row {
@@ -121,6 +122,7 @@ label > span {
   flex: 1 1 auto;
   min-width: 0;
   border-bottom: 1px solid transparent;
+  background-color: transparent !important;
 }
 .storyboard-combo:hover { border-bottom-color: var(--line); }
 .storyboard-combo:focus-within { border-bottom-color: var(--line); background-color: rgba(255,255,255,0.03); }
@@ -134,6 +136,7 @@ label > span {
   font-size: clamp(24px, 3vw, 34px);
   font-weight: 750;
   line-height: 1.2;
+  margin-right: 10px;
 }
 .storyboard-picker-toggle {
   flex: 0 0 auto;
@@ -142,7 +145,7 @@ label > span {
   color: var(--muted);
   font-size: 30px;
   cursor: pointer;
-  min-width: 60px;
+  min-width: 50px;
   background: black;
   cursor: pointer;
 }
@@ -181,7 +184,10 @@ label > span {
   background-color: rgba(255,255,255,0.1);
   font-weight: 600;
 }
-.top-actions { flex: 0 0 auto; flex-wrap: wrap; padding-top: 10px; justify-content: flex-end; }
+.top-actions { flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; margin-top: 5px; }
+#newStoryboardBtn {
+  width: 100%;
+}
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -194,7 +200,7 @@ label > span {
 .concept-grid {
   display: grid;
   grid-template-columns: 70% 29%;
-  gap: 14px;
+  gap: 1%;
   align-items: start;
 }
 .concept-column {
@@ -374,7 +380,7 @@ label > span {
 .settings-danger-zone { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .script-field textarea,
-.script-textarea { min-height: 465px; resize: vertical; }
+.script-textarea { min-height: 495px; resize: vertical; }
 .settings-launchers {
   display: grid;
   gap: 8px;
@@ -523,7 +529,7 @@ details > summary::marker { color: var(--muted); }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  height: 240px;
+  height: auto;
   overflow-y: scroll;
 }
 .voices-heading {
@@ -605,9 +611,10 @@ details > summary::marker { color: var(--muted); }
 .upload-chip input:disabled + span { opacity: 0.55; cursor: not-allowed; }
 .style-ref-list {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 8px;
-  min-height: 92px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 .style-ref-item {
   position: relative;
@@ -1234,6 +1241,30 @@ button.text-button {
   background: rgba(5, 8, 12, .22);
 }
 
+.download-confirm-bullets {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.download-confirm-bullets li {
+  margin-bottom: 4px;
+}
+.download-confirm-bullets li:last-child {
+  margin-bottom: 0;
+}
+.download-confirm-warning {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: rgba(226, 87, 76, 0.08);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .start-run-anchor { margin: 0 0 16px; font-size: 14px; font-weight: 700; color: var(--text); }
 .start-run-anchor span { color: #a9c5ff; }
 .start-run-range {
@@ -1396,6 +1427,33 @@ button.text-button {
 .subtitle-karaoke-text[hidden] { display: none; }
 .subtitle-word { margin: 0 2px; }
 .subtitle-word.is-current { color: var(--text); font-weight: 600; }
+
+/* Overlay variants: captions painted on top of a visual (image/video) rather than sitting as plain
+   text below an audio player -- used by the Timeline stage, each scene card's mini-preview, and the
+   Subtitles entity modal's preview. All three containers are already `position: relative` with
+   precedent absolutely-positioned children (loading spinners, empty-state, toggle buttons). */
+.timeline-stage-caption,
+.scene-caption,
+.entity-modal-subtitle-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.65), transparent);
+  padding-top: 24px;
+  color: #fff;
+}
+.timeline-stage-caption[hidden],
+.scene-caption[hidden],
+.entity-modal-subtitle-overlay[hidden] { display: none; }
+
+/* Cosmetic caption-style presets (Settings > Subtitle style), applied via data-caption-style on
+   whichever overlay element is active -- purely visual, never affects generation/timing logic. */
+.subtitle-karaoke-text[data-caption-style="bold"] { font-size: 18px; font-weight: 700; }
+.subtitle-karaoke-text[data-caption-style="bold"] .subtitle-word.is-current { color: #ffd54a; }
+.subtitle-karaoke-text[data-caption-style="minimal"] { background: none; font-size: 13px; color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
 .entity-modal-actions {
   display: flex;
   align-items: center;
