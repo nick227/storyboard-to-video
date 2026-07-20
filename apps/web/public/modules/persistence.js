@@ -209,6 +209,9 @@ function restoreStoryboardFields(els) {
     if (els.stageStyleSelect) els.stageStyleSelect.value = record.styleId;
   }
   if (record.commonPromptText != null) els.commonPromptText.value = record.commonPromptText;
+  if (els.settingsShotLimitSelect) {
+    els.settingsShotLimitSelect.value = optionValues(els.settingsShotLimitSelect).includes(String(record.maxShots || '')) ? String(record.maxShots || '') : '';
+  }
 
   const audioProvider = optionValues(els.audioProvider).includes(record.audioProvider) ? record.audioProvider : 'stub';
   els.audioProvider.value = audioProvider;
@@ -261,6 +264,7 @@ export function createStoryboard(els) {
   els.videoMotionIntensity.value = 'medium';
   if (els.subtitleStyleSelect) els.subtitleStyleSelect.value = 'classic';
   els.enrichNarration.checked = false;
+  if (els.settingsShotLimitSelect) els.settingsShotLimitSelect.value = '';
 }
 
 export function saveStoryboard(els, immediate = false) {
@@ -278,6 +282,7 @@ export function saveStoryboard(els, immediate = false) {
     videoMotionIntensity: els.videoMotionIntensity.value,
     subtitleStyle: els.subtitleStyleSelect ? els.subtitleStyleSelect.value : 'classic',
     enrich: els.enrichNarration.checked,
+    maxShots: els.settingsShotLimitSelect ? (Number(els.settingsShotLimitSelect.value) || null) : null,
     audioProvider: voiceStore.get().audioProvider,
     narratorVoice: voiceStore.get().narratorVoice,
     scenes: sceneStore.get().scenes,

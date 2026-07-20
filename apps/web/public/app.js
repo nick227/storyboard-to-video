@@ -100,6 +100,7 @@ const els = {
   // Settings modal: visual planning mode, read-only shot count, danger zone
   planningModeSelect: document.getElementById('planningModeSelect'),
   settingsShotCountDisplay: document.getElementById('settingsShotCountDisplay'),
+  settingsShotLimitSelect: document.getElementById('settingsShotLimitSelect'),
   settingsReplanBtn: document.getElementById('settingsReplanBtn'),
   settingsRegenerateImagesBtn: document.getElementById('settingsRegenerateImagesBtn'),
   settingsRegenerateAudioBtn: document.getElementById('settingsRegenerateAudioBtn'),
@@ -462,11 +463,15 @@ function requestGenerationConfirmation(kind, context = {}) {
 
 
 // Read-only and informational: shot count is an output of planning now, not a target the user
-// sets beforehand, so this just reflects however many shots the storyboard currently has.
+// sets beforehand, so this just reflects however many shots the storyboard currently has. The
+// shot limit (if any) is a ceiling passed into planning, not reflected back here as a target --
+// noting it alongside the actual count just explains why the count may look capped.
 function refreshShotCountDisplay() {
   if (!els.settingsShotCountDisplay) return;
   const count = sceneStore.get().scenes.length;
-  els.settingsShotCountDisplay.textContent = count ? `${count} shot${count === 1 ? '' : 's'}` : 'Not planned yet';
+  const limit = els.settingsShotLimitSelect ? Number(els.settingsShotLimitSelect.value) || null : null;
+  const base = count ? `${count} shot${count === 1 ? '' : 's'}` : 'Not planned yet';
+  els.settingsShotCountDisplay.textContent = limit ? `${base} (limit: ${limit})` : base;
 }
 
 let screenplayEditorInstance = null;
@@ -918,6 +923,13 @@ function attachEvents() {
   if (els.planningModeSelect) {
     els.planningModeSelect.addEventListener('change', () => {
       els.enrichNarration.checked = els.planningModeSelect.value === 'auto';
+      saveStoryboard(els, false);
+    });
+  }
+
+  if (els.settingsShotLimitSelect) {
+    els.settingsShotLimitSelect.addEventListener('change', () => {
+      refreshShotCountDisplay();
       saveStoryboard(els, false);
     });
   }

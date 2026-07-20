@@ -197,8 +197,11 @@ export function hasPlanningChanges(scenes, record) {
   const styleChanged = norm(last.styleId) !== norm(record.styleId);
   const providerChanged = norm(last.textProvider) !== norm(record.textProvider);
   const enrichChanged = Boolean(last.enrich) !== Boolean(record.enrich);
+  // maxShots is a real planning input (the ceiling passed to shot-planning), not the output shot
+  // count -- comparing it here is unrelated to the old sceneCount-guess comparison this replaced.
+  const maxShotsChanged = (last.maxShots || null) !== (record.maxShots || null);
 
-  return scriptChanged || commonPromptChanged || styleChanged || providerChanged || enrichChanged;
+  return scriptChanged || commonPromptChanged || styleChanged || providerChanged || enrichChanged || maxShotsChanged;
 }
 
 // `recentJobs` is the project's job list from `GET /api/jobs?projectId=` (already durable and

@@ -187,6 +187,9 @@ export async function planShots(els, setStatus) {
     await ensureProjectSynced();
     if (setStatus) setStatus('Narrating and planning shots...');
     const base = getPayloadBase(els);
+    // A ceiling, not a target -- omitted entirely when the limit select is "Unlimited" (empty), so
+    // the server never sees a maxShots field to guess a count from.
+    const maxShots = els.settingsShotLimitSelect ? Number(els.settingsShotLimitSelect.value) || null : null;
     const data = await api('/api/storyboard/plan-shots', {
       method: 'POST',
       body: JSON.stringify({
@@ -197,6 +200,7 @@ export async function planShots(els, setStatus) {
         provider: base.textProvider,
         fallbackPolicy: base.fallbackPolicy,
         enrich: base.enrich,
+        ...(maxShots ? { maxShots } : {}),
       }),
     });
 
@@ -207,6 +211,7 @@ export async function planShots(els, setStatus) {
       commonPromptText: base.commonPromptText,
       textProvider: base.textProvider,
       enrich: base.enrich,
+      maxShots,
     };
     sceneStore.set({ scenes: nextScenes, lastPromptInputs });
 
@@ -217,7 +222,10 @@ export async function planShots(els, setStatus) {
       queueSync(record, setStatus);
     }
 
-    if (setStatus) setStatus(data.usedFallback ? data.warning : `Planned ${nextScenes.length} shots with ${base.textProvider}.`);
+    // data.warning can be non-empty on an otherwise-successful run too (e.g. the shot limit had to
+    // trim down a chunk that came in over budget) -- not just on usedFallback, so it's shown
+    // whenever present, not gated behind the fallback flag.
+    if (setStatus) setStatus(data.warning ? data.warning : `Planned ${nextScenes.length} shots with ${base.textProvider}.`);
     return nextScenes.length;
   } catch (error) {
     if (setStatus) setStatus(`Shot planning failed: ${error.message}`);

@@ -181,3 +181,47 @@ test('replanStory reuses plan-shots and requests no target count -- the fresh pl
     delete global.localStorage;
   }
 });
+
+test('the shot-limit select threads maxShots into the plan-shots request as a ceiling, and "Unlimited" omits it entirely', async () => {
+  installLocalStorageShim();
+  const planShotsBodies = [];
+  const originalFetch = global.fetch;
+
+  global.fetch = async (url, options) => {
+    const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+    if (String(url).startsWith('/api/storyboard/plan-shots')) {
+      if (options?.body) planShotsBodies.push(JSON.parse(options.body));
+      return json({ scenes: [{ sceneNumber: 1, title: 'Scene 1', scriptFragment: 'One shot.', narrationText: 'One shot.', beat: 'Action.', prompt: 'Prompt.' }], narrationText: 'One shot.', usedFallback: false, warning: '' });
+    }
+    return json({ ok: true, project: { revision: 1, scenes: [] }, jobs: [], revision: 1 });
+  };
+
+  try {
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+    const { planShots } = await import(path.join(__dirname, '..', 'public', 'modules', 'workflows.js'));
+
+    const record = { id: 'shot-limit-test-project', title: 'Shot Limit Test', revision: 1, scenes: [], enrich: true };
+    projectStore.set({ currentId: record.id, storyboards: [record] });
+
+    const baseEls = {
+      scriptText: { value: 'A story.' },
+      styleSelect: { value: 'basic-cartoon' },
+      commonPromptText: { value: '' },
+      textProvider: { value: 'gemini' },
+      imageProvider: { value: 'gemini' },
+      fallbackPolicy: { value: 'fail' },
+      enrichNarration: { checked: true },
+    };
+
+    sceneStore.set({ scenes: [] }); uiStore.set({ operation: null });
+    await planShots({ ...baseEls, settingsShotLimitSelect: { value: '25' } }, () => {});
+    assert.equal(planShotsBodies[0].maxShots, 25, 'a selected limit should be sent as maxShots');
+
+    sceneStore.set({ scenes: [] }); uiStore.set({ operation: null });
+    await planShots({ ...baseEls, settingsShotLimitSelect: { value: '' } }, () => {});
+    assert.equal('maxShots' in planShotsBodies[1], false, '"Unlimited" (empty value) should omit maxShots entirely, not send a falsy value');
+  } finally {
+    global.fetch = originalFetch;
+    delete global.localStorage;
+  }
+});

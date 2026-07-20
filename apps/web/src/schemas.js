@@ -43,6 +43,10 @@ const planShots = z.object({
   provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
   fallbackPolicy,
   enrich: z.boolean().default(true),
+  // A ceiling, not a target -- shot count still emerges from planning. Omitted/undefined means
+  // uncapped. See shot-planning.service.js for how this is passed to the model as guidance and
+  // only hard-enforced by a final deterministic merge if the model doesn't land within it.
+  maxShots: z.coerce.number().int().min(1).max(200).optional(),
   bypassCache: z.boolean().default(false),
 });
 
