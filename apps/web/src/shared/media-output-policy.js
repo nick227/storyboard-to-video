@@ -106,7 +106,9 @@ function resolveImageOutput({ provider, model, intent }) {
 }
 
 function minimaxResolution(model, tier) {
-  if (tier === 'standard') return String(model || '').includes('Hailuo-2') ? '768P' : '720P';
+  // MiniMax has no distinct low-quality tier of its own; the platform's 'draft' default maps to
+  // the cheapest resolution it actually offers rather than failing generation before submission.
+  if (tier === 'draft' || tier === 'standard') return String(model || '').includes('Hailuo-2') ? '768P' : '720P';
   if (tier === 'high') return '1080P';
   return null;
 }
