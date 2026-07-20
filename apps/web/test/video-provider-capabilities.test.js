@@ -19,3 +19,18 @@ test('browser and server use the same video capability flags', async () => {
   const browser = await import(path.join(__dirname, '..', 'public', 'modules', 'video-provider-capabilities.js'));
   assert.deepEqual(browser.VIDEO_PROVIDER_CAPABILITIES, VIDEO_PROVIDER_CAPABILITIES);
 });
+
+test('browser and server resolve identical derived capability flags for every declared provider/model/mode', async () => {
+  const browser = await import(path.join(__dirname, '..', 'public', 'modules', 'video-provider-capabilities.js'));
+  for (const [provider, providerCapabilities] of Object.entries(VIDEO_PROVIDER_CAPABILITIES)) {
+    for (const [model, modelCapabilities] of Object.entries(providerCapabilities.models)) {
+      for (const mode of Object.keys(modelCapabilities.modes)) {
+        assert.deepEqual(
+          browser.videoProviderCapabilities(provider, model, mode),
+          videoProviderCapabilities(provider, model, mode),
+          `${provider}/${model}/${mode} capability output diverged between browser and server`
+        );
+      }
+    }
+  }
+});

@@ -28,5 +28,13 @@ export function videoProviderCapabilities(provider, model, mode = 'image_to_vide
   if (!VIDEO_GENERATION_MODES.includes(mode)) throw new RangeError(`Unsupported video generation mode: ${mode}`);
   const capabilities = modelCapabilities.modes[mode];
   if (!capabilities?.implemented) throw new RangeError(`${provider}/${resolvedModel} does not implement video mode: ${mode}`);
-  return Object.freeze({ provider, model: resolvedModel, mode, ...capabilities, supportsStartFrame: capabilities.supportedRoles.includes('start_frame'), supportsEndFrame: capabilities.supportedRoles.includes('end_frame'), maxReferenceImages: 0, execution: capabilities.execution === 'immediate' ? 'synchronous' : capabilities.execution });
+  return Object.freeze({
+    provider, model: resolvedModel, mode, ...capabilities,
+    supportsStartFrame: capabilities.supportedRoles.includes('start_frame'),
+    supportsEndFrame: capabilities.supportedRoles.includes('end_frame'),
+    maxReferenceImages: capabilities.supportedRoles.some((role) => ['character', 'location', 'composition'].includes(role))
+      ? capabilities.maxInputs
+      : 0,
+    execution: capabilities.execution === 'immediate' ? 'synchronous' : capabilities.execution,
+  });
 }
