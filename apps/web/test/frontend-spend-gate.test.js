@@ -225,3 +225,53 @@ test('the shot-limit select threads maxShots into the plan-shots request as a ce
     delete global.localStorage;
   }
 });
+
+// Regression test: api.js's Idempotency-Key auto-injection is a route-string allowlist regex, and
+// plan-shots was missing from it for two commits -- the client never sent the header, and the
+// server's idempotency middleware (src/middleware/idempotency.js) hard-requires one and 400s
+// without it, so every real planning/replan call in the running app would have failed. No earlier
+// test caught this because they all mock fetch and never assert on the request headers actually
+// sent.
+test('planShots sends a valid Idempotency-Key header on every request, matching what the server\'s idempotency middleware requires', async () => {
+  installLocalStorageShim();
+  const seenHeaders = [];
+  const originalFetch = global.fetch;
+
+  global.fetch = async (url, options) => {
+    const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+    if (String(url).startsWith('/api/storyboard/plan-shots')) {
+      seenHeaders.push(options?.headers || {});
+      return json({ scenes: [{ sceneNumber: 1, title: 'Scene 1', scriptFragment: 'One shot.', narrationText: 'One shot.', beat: 'Action.', prompt: 'Prompt.' }], narrationText: 'One shot.', usedFallback: false, warning: '' });
+    }
+    return json({ ok: true, project: { revision: 1, scenes: [] }, jobs: [], revision: 1 });
+  };
+
+  try {
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+    const { planShots } = await import(path.join(__dirname, '..', 'public', 'modules', 'workflows.js'));
+
+    const record = { id: 'idempotency-test-project', title: 'Idempotency Test', revision: 1, scenes: [], enrich: true };
+    projectStore.set({ currentId: record.id, storyboards: [record] });
+    sceneStore.set({ scenes: [] });
+    uiStore.set({ operation: null });
+
+    const els = {
+      scriptText: { value: 'A story.' },
+      styleSelect: { value: 'basic-cartoon' },
+      commonPromptText: { value: '' },
+      textProvider: { value: 'gemini' },
+      imageProvider: { value: 'gemini' },
+      fallbackPolicy: { value: 'fail' },
+      enrichNarration: { checked: true },
+    };
+
+    await planShots(els, () => {});
+
+    assert.equal(seenHeaders.length, 1);
+    const key = seenHeaders[0]['Idempotency-Key'];
+    assert.match(String(key || ''), /^[a-zA-Z0-9_.:-]{8,200}$/, 'the header must be present and match the exact pattern src/middleware/idempotency.js requires, or the server rejects the request with 400');
+  } finally {
+    global.fetch = originalFetch;
+    delete global.localStorage;
+  }
+});
