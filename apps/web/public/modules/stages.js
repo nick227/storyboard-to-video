@@ -1,6 +1,6 @@
 import { api, cancelActiveProjectJobs } from './api.js';
 import { sceneStore, uiStore, projectStore, batchStore, voiceStore, generationStore } from './store.js';
-import { generatePrompts, regeneratePrompt, planShots, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles } from './workflows.js';
+import { regeneratePrompt, planShots, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles } from './workflows.js';
 import { batchController } from './batch.js';
 import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
 import { imageShot } from './scene-shots.js';
@@ -343,14 +343,15 @@ export async function updateStalePlanning(els, setStatus, range) {
   }
 }
 
-// Explicit, destructive structural rebuild — re-segments from source at the current sceneCount
-// input, discarding the old scene structure. Only ever reachable after a confirm that names the
-// actual consequence (see planning modal copy), including when it's really "reduce scene count"
-// rather than a generic replan. Cleanup is called ONLY after the rebuilt document write has
-// succeeded (generatePrompts's own project write already fails closed on REVISION_CONFLICT) — never
+// Explicit, destructive structural rebuild — re-plans from source (narrate -> plan shots, same as
+// planShots/runPlanning), discarding the old scene structure. Only ever reachable after a confirm
+// that names the actual consequence. No target count goes in and none is expected back: replanning
+// follows the same invariant as initial planning — shot count is whatever the fresh plan produces,
+// never a requested/reconciled number. Cleanup is called ONLY after the rebuilt document write has
+// succeeded (planShots's own project write already fails closed on REVISION_CONFLICT) — never
 // speculatively/in parallel with that write — so a still-current document is never swept.
 export async function replanStory(els, setStatus) {
-  await generatePrompts(els, setStatus, { rebuildFromSource: true });
+  await planShots(els, setStatus);
   const projectId = projectStore.get().currentId;
   if (!projectId) return;
   try {

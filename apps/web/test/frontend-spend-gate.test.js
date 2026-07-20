@@ -125,3 +125,59 @@ test('Planning stage lands on however many shots plan-shots actually returns, wi
     delete global.localStorage;
   }
 });
+
+test('replanStory reuses plan-shots and requests no target count -- the fresh plan\'s own shot count is authoritative', async () => {
+  installLocalStorageShim();
+  const calledUrls = [];
+  const planShotsBodies = [];
+  const originalFetch = global.fetch;
+
+  global.fetch = async (url, options) => {
+    calledUrls.push(String(url));
+    const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+
+    if (String(url).startsWith('/api/storyboard/plan-shots')) {
+      if (options?.body) planShotsBodies.push(JSON.parse(options.body));
+      // A different count than whatever the project started with -- replan must accept this as-is,
+      // not reconcile it against a prior count or a requested target.
+      const scenes = Array.from({ length: 3 }, (_, i) => ({
+        sceneNumber: i + 1, title: `Scene ${i + 1}`, scriptFragment: `Shot ${i + 1}.`,
+        narrationText: `Shot ${i + 1}.`, beat: `Action ${i + 1}.`, prompt: `Prompt ${i + 1}.`,
+      }));
+      return json({ scenes, narrationText: 'Full narration.', usedFallback: false, warning: '' });
+    }
+    if (String(url).includes('create-scenes') || String(url).includes('generate-prompts') || String(url).includes('generate-dialogue')) {
+      throw new Error(`${url} must never be called by replanStory -- it should use plan-shots exclusively`);
+    }
+    return json({ ok: true, project: { revision: 1, scenes: [] }, jobs: [], revision: 1, removed: [] });
+  };
+
+  try {
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+    const { replanStory } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+
+    const record = { id: 'replan-test-project', title: 'Replan Test', revision: 1, scenes: [{ id: 'old-1' }, { id: 'old-2' }], enrich: true };
+    projectStore.set({ currentId: record.id, storyboards: [record] });
+    sceneStore.set({ scenes: record.scenes });
+    uiStore.set({ operation: null });
+
+    const els = {
+      scriptText: { value: 'A rewritten story with a different shape.' },
+      styleSelect: { value: 'basic-cartoon' },
+      commonPromptText: { value: '' },
+      textProvider: { value: 'gemini' },
+      imageProvider: { value: 'gemini' },
+      fallbackPolicy: { value: 'fail' },
+      enrichNarration: { checked: true },
+    };
+
+    await replanStory(els, () => {});
+
+    assert.equal(calledUrls.filter((url) => url.startsWith('/api/storyboard/plan-shots')).length, 1, 'replan should call plan-shots exactly once');
+    assert.equal('sceneCount' in planShotsBodies[0], false, 'the plan-shots request body must not carry a requested/target shot count');
+    assert.equal(sceneStore.get().scenes.length, 3, 'the resulting shot count is whatever the fresh plan produced, not the old count or a request');
+  } finally {
+    global.fetch = originalFetch;
+    delete global.localStorage;
+  }
+});

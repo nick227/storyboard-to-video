@@ -4,14 +4,10 @@ import { getCurrentStoryboardRecord, queueSync, ensureProjectSynced } from './pe
 import { clampSplitCount } from './scene-count.js';
 import { adaptSceneImageShot, imageShot, replaceImageState, replaceVideoState, setImagePrompt } from './scene-shots.js';
 
-// sceneCount is a fixed fallback now, not a computed target -- planShots (below) doesn't use this
-// field at all, and the only remaining reader is generatePrompts' rebuildFromSource path
-// (replanStory), which has no UI-configurable target anymore either.
 export function getPayloadBase(els) {
   return {
     projectId: projectStore.get().currentId,
     scriptText: els.scriptText.value,
-    sceneCount: 8,
     styleId: els.styleSelect.value,
     commonPromptText: els.commonPromptText.value,
     textProvider: els.textProvider.value,
