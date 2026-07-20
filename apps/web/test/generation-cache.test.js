@@ -50,6 +50,25 @@ test('prompt regenerate: identical input reuses the cached result with no second
   }
 });
 
+test('prompt regenerate: changing only the previous derived prompt does not change the fresh-generation cache key', async () => {
+  const { generationCache, cleanup } = makeCache();
+  try {
+    const provider = countingProvider([
+      '{"prompt":"Fresh prompt from canonical narration."}',
+      '{"prompt":"SHOULD NOT BE USED"}',
+    ]);
+    const service = createPromptGenerationService({ textProviders: provider, limits: { prompt: 20000 }, generationCache });
+    const input = { scene: SCENE, sceneIndex: 0, style: STYLE, provider: 'gemini', tenantId: 'tenant-a' };
+    const first = await service.regeneratePrompt(input);
+    const second = await service.regeneratePrompt({ ...input, scene: { ...SCENE, prompt: 'A completely different old style prompt.' } });
+    assert.equal(provider.calls(), 1);
+    assert.equal(second.cacheHit, true);
+    assert.equal(second.prompt, first.prompt);
+  } finally {
+    cleanup();
+  }
+});
+
 test('prompt regenerate: bypassCache forces a fresh provider call and preserves the earlier result', async () => {
   const { generationCache, store, cleanup } = makeCache();
   try {
@@ -66,21 +85,19 @@ test('prompt regenerate: bypassCache forces a fresh provider call and preserves 
     assert.notEqual(second.prompt, first.prompt);
 
     const fingerprint = require('../src/shared/fingerprint').computeFingerprint({
-      tenantId: 'tenant-a', operation: 'prompt.regenerate', provider: 'gemini', promptTemplateVersion: 2,
+      tenantId: 'tenant-a', operation: 'prompt.regenerate', provider: 'gemini', promptTemplateVersion: 3,
       source: JSON.stringify({
         source: SCENE.scriptFragment,
+        sourceType: 'script_fragment',
         sceneIndex: 0,
         title: SCENE.title || '',
         beat: SCENE.beat,
-        existingPrompt: SCENE.prompt,
-        usedNarrationSource: false,
-        narrationText: '',
         extraPromptText: undefined,
         styleId: STYLE.id,
         stylePromptText: STYLE.promptText,
         commonPromptText: undefined,
       }),
-      settings: { enrich: true },
+      settings: {},
     });
     const allFilesForFingerprint = fs.readdirSync(store.root).filter((name) => name.startsWith(store.prefix('tenant-a', fingerprint.fingerprintHash)));
     const results = allFilesForFingerprint.map((name) => JSON.parse(fs.readFileSync(path.join(store.root, name), 'utf8')).result.prompt);
