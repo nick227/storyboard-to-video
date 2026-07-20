@@ -6,6 +6,7 @@ import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
 import { imageShot } from './scene-shots.js';
 import { hashCanonical } from './generation-manifest.js';
 import { normalizeReferenceRole } from './reference-roles.js';
+import { resolveImageReferencePlan } from './image-reference-plan.js';
 
 // --- Staleness -------------------------------------------------------------
 
@@ -39,11 +40,13 @@ function currentImageReferences(scene, provider, styleId) {
     source: 'style',
     role: reference.type === 'characters' ? 'character' : reference.type === 'world' ? 'location' : 'composition',
   }));
-  const limit = provider === 'dezgo' ? 1 : provider === 'openai' ? 8 : 14;
-  return [...uploaded, ...styleReferences].slice(0, limit).map((reference, order) => ({
-    ...reference,
-    order,
-    consumed: provider !== 'stub',
+  return resolveImageReferencePlan(provider, [...uploaded, ...styleReferences]).included.map((reference) => ({
+    path: reference.path,
+    source: reference.source,
+    role: reference.role,
+    order: reference.order,
+    providerSlot: reference.providerSlot,
+    consumed: true,
   }));
 }
 
@@ -87,7 +90,20 @@ function videoManifestStaleness(scene, shot, activeImage, version) {
   };
   inputs.style = { ...(inputs.style || {}), id: record.styleId };
   inputs.settings = { ...(inputs.settings || {}), motionIntensity: record.videoMotionIntensity || 'medium' };
-  inputs.sourceAssets = [{ role: 'start_frame', path: activeImage?.path || '' }];
+  const startFramePath = shot.startFrame || activeImage?.path || '';
+  const frameInput = (role, selectedPath) => {
+    const stored = (inputs.sourceAssets || []).find((asset) => asset?.role === role) || {};
+    return {
+      ...stored,
+      role,
+      path: selectedPath,
+      ...(stored.sha256 !== undefined ? { sha256: stored.path === selectedPath ? stored.sha256 : null } : {}),
+    };
+  };
+  inputs.sourceAssets = [
+    frameInput('start_frame', startFramePath),
+    ...(shot.endFrame ? [frameInput('end_frame', shot.endFrame)] : []),
+  ];
   return manifestStaleness(version, inputs);
 }
 
@@ -122,7 +138,8 @@ export function computeStaleness(scene) {
     String(activeAudio.provider || '') !== String(voiceStore.get().audioProvider || '')
   );
   const videoManifestStale = videoManifestStaleness(scene, shot, activeImage, activeVideo);
-  const videoStale = Boolean(activeVideo?.path) && (videoManifestStale ?? String(activeVideo.sourceImagePath || '') !== String(activeImage?.path || ''));
+  const selectedStartFrame = shot.startFrame || activeImage?.path || '';
+  const videoStale = Boolean(activeVideo?.path) && (videoManifestStale ?? String(activeVideo.sourceImagePath || '') !== String(selectedStartFrame));
   const subtitleStale = Boolean(activeSubtitle?.path) && String(activeSubtitle.sourceAudioPath || '') !== String(activeAudio?.path || '');
 
   return { promptStale, imageStale, audioStale, videoStale, subtitleStale };

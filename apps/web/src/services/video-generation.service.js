@@ -5,6 +5,8 @@ const { AppError } = require('../errors');
 const { cleanText, getAdditionalCommonPrompt, slugify } = require('../shared/text');
 const { providerOutput } = require('../providers/result');
 const { createGenerationManifest } = require('../shared/generation-manifest');
+const { imageShot } = require('../shared/scene-shots');
+const { videoProviderCapabilities } = require('../shared/video-provider-capabilities');
 
 const DEFAULT_MOTION_PROMPT = [
   'Show clear continuous subject movement and follow-through; never a frozen hold.',
@@ -61,25 +63,40 @@ function createVideoGenerationService({ config, provider, projectStore, styles }
     return asset?.sourcePath || null;
   }
 
+  function fileHash(sourcePath) {
+    return crypto.createHash('sha256').update(fs.readFileSync(sourcePath)).digest('hex');
+  }
+
   return {
-    verify: () => provider.verify(),
+    verify: async () => ({ ...(await provider.verify()), capabilities: provider.getCapabilities ? provider.getCapabilities() : videoProviderCapabilities(config.videoProvider === 'stub' ? 'stub' : 'ltx') }),
     async generate(input, { ownerId, userId, signal, jobId } = {}) {
-      const source = await resolve(input.imagePath, ownerId);
-      if (!source || !fs.existsSync(source)) {
+      const lease = await projectStore.acquireLease(input.projectId, { ownerId, userId });
+      const project = await projectStore.verifyLease(lease, signal);
+      const sceneBeforeGeneration = project.scenes?.find((scene) => scene.id === input.sceneId);
+      if (!sceneBeforeGeneration) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
+      const shot = imageShot(sceneBeforeGeneration);
+      const activeImage = shot.versions?.[shot.activeVersionIndex] || null;
+      const startFramePath = shot.startFrame || activeImage?.path || input.imagePath || null;
+      const endFramePath = shot.endFrame || null;
+      const startSource = await resolve(startFramePath, ownerId);
+      if (!startSource || !fs.existsSync(startSource)) {
         throw new AppError('INVALID_PATH', 'A valid generated reference image is required', { status: 400 });
       }
+      const endSource = endFramePath ? await resolve(endFramePath, ownerId) : null;
+      if (endFramePath && (!endSource || !fs.existsSync(endSource))) throw new AppError('INVALID_END_FRAME', 'The selected end frame is unavailable', { status: 400 });
+      const capabilities = provider.getCapabilities ? provider.getCapabilities() : videoProviderCapabilities(config.videoProvider === 'stub' ? 'stub' : 'ltx');
       const style = styles.find(input.styleId);
       if (!style) throw new AppError('STYLE_NOT_FOUND', 'Unknown style', { status: 400 });
 
       const prompt = buildVideoPrompt(input, style, config.env.VIDEO_MOTION_PROMPT);
-      const lease = await projectStore.acquireLease(input.projectId, { ownerId, userId });
       await provider.verify();
       fs.mkdirSync(config.paths.videos, { recursive: true });
       const file = `${String(input.sceneNumber).padStart(2, '0')}-${slugify(input.sceneTitle || 'scene')}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.mp4`;
       const staged = path.join(config.paths.videos, file);
       try {
         const providerResponse = await provider.generate({
-          imagePath: source,
+          startFramePath: startSource,
+          ...(capabilities.supportsEndFrame && endSource ? { endFramePath: endSource } : {}),
           prompt,
           motionIntensity: input.motionIntensity,
           outputPath: staged,
@@ -97,11 +114,14 @@ function createVideoGenerationService({ config, provider, projectStore, styles }
             style: { id: style.id },
             provider: { name: metadata.provider || config.videoProvider, model: metadata.model || null },
             settings: { ...(metadata.settings || {}), motionIntensity: input.motionIntensity || 'medium' },
-            sourceAssets: [{ role: 'start_frame', path: input.imagePath }],
+            sourceAssets: [
+              { role: 'start_frame', path: startFramePath, sha256: fileHash(startSource), consumed: capabilities.supportsStartFrame },
+              ...(endFramePath ? [{ role: 'end_frame', path: endFramePath, sha256: fileHash(endSource), consumed: capabilities.supportsEndFrame }] : []),
+            ],
           },
           result: { providerRequestId: metadata.providerRequestId || null, measurementStatus: metadata.measurementStatus || 'unavailable', mimeType: 'video/mp4' },
         });
-        const version = { path: asset.path, prompt, sourceImagePath: input.imagePath, provider: config.videoProvider, manifest, manifestHash: manifest.manifestHash, createdAt };
+        const version = { path: asset.path, prompt, sourceImagePath: startFramePath, startFramePath, endFramePath, provider: config.videoProvider, manifest, manifestHash: manifest.manifestHash, createdAt };
         let scene, project;
         try {
           ({ scene, project } = await projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'video', version, jobId }));
@@ -113,7 +133,9 @@ function createVideoGenerationService({ config, provider, projectStore, styles }
           video: {
             fileName: file,
             path: asset.path,
-            sourceImagePath: input.imagePath,
+            sourceImagePath: startFramePath,
+            startFramePath,
+            endFramePath,
             prompt,
             mimeType: 'video/mp4',
             provider: config.videoProvider,

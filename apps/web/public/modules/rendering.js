@@ -517,7 +517,8 @@ function renderEntityModalHistory(scene, type, config, busy) {
     loadProtectedAsset(version.path, { signal }).then((url) => { if (url && mediaEl.dataset.assetPath === version.path) mediaEl.src = url; }).catch(handleAssetError);
     const meta = document.createElement('div');
     meta.className = 'version-meta';
-    meta.textContent = `v${vIndex + 1}`;
+    const providerName = version.provider ? String(version.provider).replace(/^./, (letter) => letter.toUpperCase()) : '';
+    meta.textContent = `v${vIndex + 1}${providerName ? ` · ${providerName}` : ''}`;
     btn.append(mediaEl, meta);
     els.entityModalHistoryList.appendChild(btn);
   });

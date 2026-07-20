@@ -204,7 +204,10 @@ function restoreStoryboardFields(els) {
     els.subtitleStyleSelect.value = optionValues(els.subtitleStyleSelect).includes(record.subtitleStyle) ? record.subtitleStyle : 'classic';
   }
   els.enrichNarration.checked = record.enrich === true;
-  if (record.styleId) els.styleSelect.value = record.styleId;
+  if (record.styleId) {
+    els.styleSelect.value = record.styleId;
+    if (els.stageStyleSelect) els.stageStyleSelect.value = record.styleId;
+  }
   if (record.commonPromptText != null) els.commonPromptText.value = record.commonPromptText;
 
   const audioProvider = optionValues(els.audioProvider).includes(record.audioProvider) ? record.audioProvider : 'stub';

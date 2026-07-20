@@ -176,13 +176,17 @@ test('computeStaleness: video manifest hash includes motion settings and the act
     prompt: { composed: 'Video prompt', scene: 'Mara at the door.', beat: 'Mara opens the door.', style: 'Ink style.', common: '', motion: '' },
     provider: { name: 'ltx', model: 'ltx-test' },
     settings: { motionIntensity: 'medium', seed: 42 }, style: { id: 'ink' },
-    sourceAssets: [{ role: 'start_frame', path: '/active.png' }],
+    sourceAssets: [
+      { role: 'start_frame', path: '/active.png', sha256: 'start-hash', consumed: true },
+      { role: 'end_frame', path: '/end.png', sha256: 'end-hash', consumed: false },
+    ],
   };
   const canonical = scene({
     beat: 'Mara opens the door.',
     shots: [{
       prompt: 'Mara at the door.',
-      versions: [{ path: '/active.png', scenePrompt: 'Mara at the door.' }], activeVersionIndex: 0,
+      versions: [{ path: '/active.png', scenePrompt: 'Mara at the door.' }, { path: '/end.png' }], activeVersionIndex: 0,
+      startFrame: '/active.png', endFrame: '/end.png',
       videoVersions: [{
         path: '/active.mp4', sourceImagePath: '/active.png',
         manifest: { schemaVersion: 1, inputs: videoInputs, manifestHash: hashCanonical(videoInputs) },
@@ -193,6 +197,12 @@ test('computeStaleness: video manifest hash includes motion settings and the act
   generationStore.set({ styles: [{ id: 'ink', promptText: 'Ink style.' }] });
   try {
     assert.equal(computeStaleness(canonical).videoStale, false);
+    canonical.shots[0].endFrame = '/different-end.png';
+    assert.equal(computeStaleness(canonical).videoStale, true, 'changing the selected end frame changes the manifest hash');
+    canonical.shots[0].endFrame = '/end.png';
+    canonical.shots[0].startFrame = '/different-start.png';
+    assert.equal(computeStaleness(canonical).videoStale, true, 'changing the selected start frame changes the manifest hash');
+    canonical.shots[0].startFrame = '/active.png';
     projectStore.set({ storyboards: [{ id: 'p1', styleId: 'ink', commonPromptText: 'Ink style.', imageProvider: 'gemini', videoMotionIntensity: 'high' }], currentId: 'p1' });
     assert.equal(computeStaleness(canonical).videoStale, true);
   } finally {

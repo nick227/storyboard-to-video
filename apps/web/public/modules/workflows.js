@@ -279,20 +279,36 @@ export async function regenerateImage(index, scene, els, setStatus) {
   
   try {
     await ensureProjectSynced();
-    if (setStatus) setStatus(`Generating image for scene ${index + 1}...`);
     const base = getPayloadBase(els);
+    const payload = {
+      sceneNumber: index + 1,
+      sceneId: activeScene.id,
+      sceneTitle: activeScene.title,
+      scenePrompt: activeScene.prompt,
+      styleId: base.styleId,
+      commonPromptText: base.commonPromptText,
+      provider: base.imageProvider,
+      projectId: base.projectId,
+    };
+    if (base.imageProvider !== 'stub') {
+      if (setStatus) setStatus(`Checking ${base.imageProvider} reference compatibility for scene ${index + 1}...`);
+      const preflight = await api('/api/images/preflight', { method: 'POST', body: JSON.stringify(payload) });
+      if (preflight.requiresConfirmation) {
+        const used = preflight.referenceCount || 0;
+        const omitted = preflight.omittedReferenceCount || 0;
+        const providerName = String(base.imageProvider || 'provider').replace(/^./, (letter) => letter.toUpperCase());
+        const confirmed = window.confirm(`${providerName} can use ${used} of ${used + omitted} reference images for scene ${index + 1} and will omit ${omitted}. Continue with this paid generation?`);
+        if (!confirmed) {
+          if (setStatus) setStatus(`Image generation cancelled for scene ${index + 1}; no provider request was submitted.`);
+          return true;
+        }
+      }
+      payload.confirmedReferencePlanHash = preflight.referencePlanHash;
+    }
+    if (setStatus) setStatus(`Generating image for scene ${index + 1}...`);
     const data = await api('/api/images/generate', {
       method: 'POST',
-      body: JSON.stringify({
-        sceneNumber: index + 1,
-        sceneId: activeScene.id,
-        sceneTitle: activeScene.title,
-        scenePrompt: activeScene.prompt,
-        styleId: base.styleId,
-        commonPromptText: base.commonPromptText,
-        provider: base.imageProvider,
-        projectId: base.projectId,
-      }),
+      body: JSON.stringify(payload),
     });
 
     replaceImageState(activeScene, data.scene);
@@ -306,7 +322,10 @@ export async function regenerateImage(index, scene, els, setStatus) {
       queueSync(record, setStatus);
     }
 
-    if (setStatus) setStatus(`Image ready for scene ${index + 1}. ${data.referenceCount || 0} reference image${data.referenceCount === 1 ? '' : 's'} used (${data.sceneReferenceCount || 0} scene-only).`);
+    if (setStatus) {
+      const omitted = data.referencePlan?.excluded?.length || 0;
+      setStatus(`Image ready for scene ${index + 1}. ${data.referenceCount || 0} reference image${data.referenceCount === 1 ? '' : 's'} used (${data.sceneReferenceCount || 0} shot-specific)${omitted ? `; ${omitted} omitted by provider capabilities` : ''}.`);
+    }
   } catch (error) {
     if (setStatus) setStatus(`Image generation failed for scene ${index + 1}: ${error.message}`);
     throw error;
@@ -485,8 +504,9 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
   if (!activeScene || (!scene && uiStore.get().operation)) return false;
   
   const shot = imageShot(activeScene);
-  const sourceImage = shot.versions[shot.activeVersionIndex];
-  if (!sourceImage?.path) {
+  const activeImage = shot.versions[shot.activeVersionIndex];
+  const startFramePath = shot.startFrame || activeImage?.path || null;
+  if (!startFramePath) {
     if (withinSerial) return true; // skip this scene
     throw new Error('Scene has no generated reference image.');
   }
@@ -512,7 +532,6 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
         styleId: base.styleId,
         commonPromptText: base.commonPromptText,
         motionIntensity: els.videoMotionIntensity.value,
-        imagePath: sourceImage.path,
         projectId: base.projectId,
       }),
     });

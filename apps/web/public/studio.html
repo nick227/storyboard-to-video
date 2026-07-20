@@ -36,178 +36,128 @@
       </div>
     </header>
 
-    <section class="concept-grid">
+    <section class="page-tabs page-controls" role="tablist" aria-label="Studio pages">
+      <button type="button" id="tabScriptBtn" class="page-tab" role="tab" data-page="script"
+        aria-controls="scriptPagePanel" aria-selected="false" tabindex="-1">Script</button>
+      <button type="button" id="tabStoryboardBtn" class="page-tab is-active" role="tab" data-page="storyboard"
+        aria-controls="storyboardPagePanel" aria-selected="true">Storyboard</button>
+      <button type="button" id="tabTimelineBtn" class="page-tab" role="tab" data-page="timeline"
+        aria-controls="timelinePagePanel" aria-selected="false" tabindex="-1">Timeline</button>
+    </section>
+
+    <div class="studio-page-stage">
+      <div id="pageTransition" class="page-transition" role="status" aria-live="polite" aria-atomic="true" hidden>
+        <span class="page-transition-spinner" aria-hidden="true"></span>
+        <span id="pageTransitionLabel">Opening page…</span>
+      </div>
+
+      <!-- Start screenplay editor -->
+
+    <section id="scriptPagePanel" class="screenplay-editor w-full" role="tabpanel"
+      aria-labelledby="tabScriptBtn" hidden>
       <article class="panel concept-column story-concept">
-        <div class="script-header-row">
-          <label for="scriptModeSelect" class="script-mode-label">Script Mode</label>
+        <div class="script-header-row row align-end">
           <select id="scriptModeSelect" class="script-mode-select">
             <option value="raw">Raw Text</option>
             <option value="screenplay">Screenplay Editor</option>
           </select>
+          <div class="script-header-actions">
+            <div class="script-download-control">
+              <button type="button" id="scriptDownloadBtn" class="script-icon-button" aria-label="Download script"
+                title="Download script" aria-haspopup="menu" aria-expanded="false" aria-controls="scriptDownloadMenu">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3v12M7 10l5 5 5-5M4 20h16" />
+                </svg>
+              </button>
+              <div id="scriptDownloadMenu" class="script-download-menu" role="menu" aria-label="Script download format" hidden>
+                <button type="button" role="menuitem" data-script-format="fountain"><strong>Fountain</strong><small>.fountain</small></button>
+                <button type="button" role="menuitem" data-script-format="fdx"><strong>Final Draft XML</strong><small>.fdx</small></button>
+                <button type="button" role="menuitem" data-script-format="rtf"><strong>Rich Text</strong><small>.rtf</small></button>
+                <button type="button" role="menuitem" data-script-format="text"><strong>Plain Text</strong><small>.txt</small></button>
+                <button type="button" role="menuitem" data-script-format="json"><strong>Structured JSON</strong><small>.json</small></button>
+                <button type="button" role="menuitem" data-script-format="print"><strong>Print / PDF</strong><small>formatted pages</small></button>
+              </div>
+            </div>
+            <button type="button" id="scriptFocusBtn" class="script-focus-button" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+              </svg>
+              <span id="scriptFocusBtnLabel">Full screen</span>
+            </button>
+          </div>
         </div>
         <textarea id="scriptText" class="script-textarea" rows="7"
           placeholder="Paste story or script here..."></textarea>
         <div id="screenplayEditorContainer" class="screenplay-editor-container" hidden></div>
       </article>
 
-      <!-- Entity generation panels -->
+    </section>
 
-      <!-- ooo -->
+      <!-- Entity screenplay editor -->
 
-      <article class="panel concept-column video-concept">
+      <!-- Start storyboard -->
 
-        <!-- o -->
+    <div id="storyboardPagePanel" role="tabpanel" aria-labelledby="tabStoryboardBtn">
+      <input type="hidden" id="fallbackPolicy" value="local" />
+      <input type="checkbox" id="enrichNarration" hidden aria-hidden="true" />
 
-        <input type="hidden" id="fallbackPolicy" value="local" />
-
-        <!-- o -->
-
-        <div class="settings-launchers" aria-label="Additional settings">
-          <button type="button" id="settingsBtn" class="settings-launch-button" aria-haspopup="dialog"
-            aria-controls="settingsModal">
-            <span class="settings-launch-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
+      <section class="stage-bar mb-20" aria-label="Production stages">
+        <div class="stage-bar-stages">
+          <button type="button" id="stagePlanningBtn" class="stage-button" disabled>
+            <span class="stage-button-top">
+              <span class="stage-button-label">Planning</span>
+              <span class="stage-button-spinner" aria-hidden="true"></span>
             </span>
-            <span class="settings-launch-copy"><strong>Settings</strong><small>Text provider, motion, scene
-                count &amp; common prompt</small></span>
-            <span class="settings-launch-arrow" aria-hidden="true">›</span>
+            <span class="stage-button-status" id="stagePlanningStatus">Not started</span>
+          </button>
+          <button type="button" id="stageImagesBtn" class="stage-button" disabled>
+            <span class="stage-button-top">
+              <span class="stage-button-label">Images</span>
+              <span class="stage-button-spinner" aria-hidden="true"></span>
+            </span>
+            <span class="stage-button-status" id="stageImagesStatus">Not started</span>
+          </button>
+          <button type="button" id="stageAudioBtn" class="stage-button" disabled>
+            <span class="stage-button-top">
+              <span class="stage-button-label">Audio</span>
+              <span class="stage-button-spinner" aria-hidden="true"></span>
+            </span>
+            <span class="stage-button-status" id="stageAudioStatus">Not started</span>
+          </button>
+          <button type="button" id="stageVideoBtn" class="stage-button" disabled>
+            <span class="stage-button-top">
+              <span class="stage-button-label">Video</span>
+              <span class="stage-button-spinner" aria-hidden="true"></span>
+            </span>
+            <span class="stage-button-status" id="stageVideoStatus">Not started</span>
+          </button>
+          <button type="button" id="stageSubtitlesBtn" class="stage-button" disabled>
+            <span class="stage-button-top">
+              <span class="stage-button-label">Subtitles</span>
+              <span class="stage-button-spinner" aria-hidden="true"></span>
+            </span>
+            <span class="stage-button-status" id="stageSubtitlesStatus">Not started</span>
+          </button>
+          <button type="button" id="stageTokensBtn" class="stage-button" disabled>
+            <span class="stage-button-top">
+              <span class="stage-button-label">Tokens</span>
+              <span class="stage-button-spinner" aria-hidden="true"></span>
+            </span>
+            <div class="row">
+              <span class="stage-button-status" id="stageTokensStatus">0.00 USD</span>
+              <span id="tokensInfoBtn" class="icon-link" aria-label="View token spend details">ℹ</span>
+            </div>
           </button>
         </div>
 
-        <!-- o -->
-
-        <div class="full-fields">
-          <label>
-            <span>Style</span>
-            <select id="styleSelect"></select>
-          </label>
+        <div class="stage-bar-actions">
+          <select id="stageStyleSelect" class="stage-style-select" aria-label="Select Style" title="Select Style"></select>
+          <button type="button" id="settingsBtn" class="primary" aria-haspopup="dialog"
+            aria-controls="settingsModal" title="Open Settings">Settings</button>
+          <button id="downloadZipBtn" class="primary">Download</button>
+          <button type="button" id="startPauseBtn" class="primary positive">Start</button>
         </div>
-
-        <!-- o -->
-
-        <div class="audio-settings-compact">
-          <label class="audio-settings-field">
-            <span>Audio provider</span>
-            <select id="audioProvider">
-              <option value="stub">Local voice (TTS)</option>
-              <option value="piper">Piper</option>
-              <option value="spark">Voice cloning</option>
-              <option value="elevenlabs">ElevenLabs</option>
-            </select>
-          </label>
-          <div class="audio-settings-field">
-            <span>Narrator voice</span>
-            <div id="voicesPanel" class="audio-settings-voice"></div>
-          </div>
-        </div>
-
-        <!-- o -->
-         
-        <div id="styleReferencesPanel" class="reference-groups">
-          <section class="style-ref-col">
-            <div class="style-ref-col-header">
-              <div><strong>Character references</strong></div>
-              <div class="ref-actions">
-                <label class="upload-chip hidden">
-                  <input id="characterRefInput" type="file" accept="image/*" multiple hidden />
-                  <span>Upload</span>
-                </label>
-                <button type="button" id="characterRefLibraryBtn" class="secondary icon-button" title="Open Image Library">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                    <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0-2-.9-2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div id="characterRefs" class="style-ref-list"></div>
-          </section>
-          
-          <section class="style-ref-col">
-            <div class="style-ref-col-header">
-              <div><strong>World references</strong></div>
-              <div class="ref-actions">
-                <label class="upload-chip hidden">
-                  <input id="worldRefInput" type="file" accept="image/*" multiple hidden />
-                  <span>Upload</span>
-                </label>
-                <button type="button" id="worldRefLibraryBtn" class="secondary icon-button" title="Open Image Library">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                    <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0-2-.9-2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div id="worldRefs" class="style-ref-list"></div>
-          </section>
-        </div>
-
-        <!-- o -->
-
-      </article>
-
-      <!-- End entity generation panels -->
-
-    </section>
-
-    <input type="checkbox" id="enrichNarration" hidden aria-hidden="true" />
-
-    <section class="stage-bar mb-20" aria-label="Production stages">
-      <div class="stage-bar-stages">
-        <button type="button" id="stagePlanningBtn" class="stage-button" disabled>
-          <span class="stage-button-top">
-            <span class="stage-button-label">Planning</span>
-            <span class="stage-button-spinner" aria-hidden="true"></span>
-          </span>
-          <span class="stage-button-status" id="stagePlanningStatus">Not started</span>
-        </button>
-        <button type="button" id="stageImagesBtn" class="stage-button" disabled>
-          <span class="stage-button-top">
-            <span class="stage-button-label">Images</span>
-            <span class="stage-button-spinner" aria-hidden="true"></span>
-          </span>
-          <span class="stage-button-status" id="stageImagesStatus">Not started</span>
-        </button>
-        <button type="button" id="stageAudioBtn" class="stage-button" disabled>
-          <span class="stage-button-top">
-            <span class="stage-button-label">Audio</span>
-            <span class="stage-button-spinner" aria-hidden="true"></span>
-          </span>
-          <span class="stage-button-status" id="stageAudioStatus">Not started</span>
-        </button>
-        <button type="button" id="stageVideoBtn" class="stage-button" disabled>
-          <span class="stage-button-top">
-            <span class="stage-button-label">Video</span>
-            <span class="stage-button-spinner" aria-hidden="true"></span>
-          </span>
-          <span class="stage-button-status" id="stageVideoStatus">Not started</span>
-        </button>
-        <button type="button" id="stageSubtitlesBtn" class="stage-button" disabled>
-          <span class="stage-button-top">
-            <span class="stage-button-label">Subtitles</span>
-            <span class="stage-button-spinner" aria-hidden="true"></span>
-          </span>
-          <span class="stage-button-status" id="stageSubtitlesStatus">Not started</span>
-        </button>
-        <button type="button" id="stageTokensBtn" class="stage-button" disabled>
-          <span class="stage-button-top">
-            <span class="stage-button-label">Tokens</span>
-            <span class="stage-button-spinner" aria-hidden="true"></span>
-          </span>
-          <div class="row">
-            <span class="stage-button-status" id="stageTokensStatus">0.00 USD</span>
-            <span id="tokensInfoBtn" class="icon-link" aria-label="View token spend details">ℹ</span>
-          </div>
-        </button>
-      </div>
-
-      <div class="stage-bar-actions">
-        <button id="downloadZipBtn" class="primary">Download</button>
-        <button type="button" id="startPauseBtn" class="primary positive">Start</button>
-      </div>
-    </section>
+      </section>
 
     <section class="panel panel-tight status-panel">
       <div class="status-row">
@@ -221,51 +171,49 @@
 
     <section class="storyboard-section" id="storyboardSection" hidden>
       <div class="storyboard-heading">
-        <h2>Storyboard</h2>
         <div class="row resize-scene-list" role="group" aria-label="Scenes per row">
           <button class="resize-scenes" type="button" data-columns="1" aria-label="Show 1 scene per row" aria-pressed="false">1</button>
-          <button class="resize-scenes" type="button" data-columns="2" aria-label="Show 2 scenes per row" aria-pressed="false">2</button>
           <button class="resize-scenes" type="button" data-columns="3" aria-label="Show 3 scenes per row" aria-pressed="false">3</button>
-          <button class="resize-scenes" type="button" data-columns="4" aria-label="Show 4 scenes per row" aria-pressed="false">4</button>
-          <button class="resize-scenes" type="button" data-columns="5" aria-label="Show 5 scenes per row" aria-pressed="false">5</button>
           <button class="resize-scenes is-active" type="button" data-columns="6" aria-label="Show 6 scenes per row" aria-pressed="true">6</button>
         </div>
       </div>
       <div id="storyboardGrid" class="storyboard-grid" data-columns="6"></div>
     </section>
 
-    <section class="panel timeline-section" id="timelineSection" hidden>
-      <div class="storyboard-heading">
-        <div>
-          <h2>Timeline</h2>
-        </div>
-      </div>
+    </div>
 
-      <div class="timeline-stage">
-        <video class="timeline-stage-video" id="timelineVideo" muted playsinline preload="auto"></video>
-        <video class="timeline-stage-video" id="timelineVideoB" muted playsinline preload="auto"
-          style="display:none;"></video>
-        <img class="timeline-stage-image" id="timelineImage" alt="Timeline preview" />
-        <div class="timeline-stage-empty" id="timelineStageEmpty">No preview yet</div>
-        <div class="timeline-stage-caption subtitle-karaoke-text" id="timelineCaption" hidden></div>
-        <button type="button" class="timeline-toggle" id="timelineToggle" aria-label="Play combined timeline" disabled>
-          <span class="timeline-toggle-icon" aria-hidden="true">
-            <svg class="timeline-icon timeline-icon-play" viewBox="0 0 24 24">
-              <path d="m9 7 8 5-8 5Z" />
-            </svg>
-            <svg class="timeline-icon timeline-icon-pause" viewBox="0 0 24 24">
-              <path d="M9 7v10M15 7v10" />
-            </svg>
-            <svg class="timeline-icon timeline-icon-replay" viewBox="0 0 24 24">
-              <path d="M7.5 8H4V4.5" />
-              <path d="M4.5 8A8 8 0 1 1 4 15" />
-            </svg>
-          </span>
-        </button>
-      </div>
-      <audio id="timelineAudio" preload="auto"></audio>
-      <audio id="timelineAudioB" preload="auto"></audio>
-      
+    <!-- End storyboard -->
+
+    <!-- Start timeline -->
+
+    <div id="timelinePagePanel" role="tabpanel" aria-labelledby="tabTimelineBtn" hidden>
+      <section class="panel timeline-section" id="timelineSection" hidden>
+
+        <div class="timeline-stage">
+          <video class="timeline-stage-video" id="timelineVideo" muted playsinline preload="auto"></video>
+          <video class="timeline-stage-video" id="timelineVideoB" muted playsinline preload="auto"
+            style="display:none;"></video>
+          <img class="timeline-stage-image" id="timelineImage" alt="Timeline preview" />
+          <div class="timeline-stage-empty" id="timelineStageEmpty">No preview yet</div>
+          <div class="timeline-stage-caption subtitle-karaoke-text" id="timelineCaption" hidden></div>
+          <button type="button" class="timeline-toggle" id="timelineToggle" aria-label="Play combined timeline" disabled>
+            <span class="timeline-toggle-icon" aria-hidden="true">
+              <svg class="timeline-icon timeline-icon-play" viewBox="0 0 24 24">
+                <path d="m9 7 8 5-8 5Z" />
+              </svg>
+              <svg class="timeline-icon timeline-icon-pause" viewBox="0 0 24 24">
+                <path d="M9 7v10M15 7v10" />
+              </svg>
+              <svg class="timeline-icon timeline-icon-replay" viewBox="0 0 24 24">
+                <path d="M7.5 8H4V4.5" />
+                <path d="M4.5 8A8 8 0 1 1 4 15" />
+              </svg>
+            </span>
+          </button>
+        </div>
+        <audio id="timelineAudio" preload="auto"></audio>
+        <audio id="timelineAudioB" preload="auto"></audio>
+
         <div class="timeline-track-wrap" id="timelineTrackWrap">
           <div class="timeline-track-inner" id="timelineTrackInner">
             <div class="timeline-thumbs" id="timelineThumbs"></div>
@@ -274,7 +222,17 @@
           </div>
         </div>
 
-    </section>
+      </section>
+      <div class="timeline-page-empty">
+        <span class="timeline-page-empty-icon" aria-hidden="true">▶</span>
+        <p>Your combined timeline will appear here after the storyboard has generated media.</p>
+      </div>
+    </div>
+
+    <!-- End timeline -->
+
+    </div>
+
   </div>
 
   <template id="sceneCardTemplate">
@@ -457,7 +415,14 @@
         aria-label="Close settings">✕</button>
     </div>
     <div class="settings-modal-body">
+      <div class="settings-modal-section-heading" style="margin-top: 0; padding-top: 0; border-top: none;">
+        <h3>Style &amp; Generation</h3>
+      </div>
       <div class="compact-fields">
+        <label>
+          <span>Style</span>
+          <select id="styleSelect"></select>
+        </label>
         <label>
           <span>Text provider</span>
           <select id="textProvider">
@@ -500,13 +465,67 @@
         </label>
       </div>
 
+      <div class="settings-modal-section-heading">
+        <h3>Audio &amp; Narration</h3>
+      </div>
+      <div class="audio-settings-compact">
+        <label class="audio-settings-field">
+          <span>Audio provider</span>
+          <select id="audioProvider">
+            <option value="stub">Local voice (TTS)</option>
+            <option value="piper">Piper</option>
+            <option value="spark">Voice cloning</option>
+            <option value="elevenlabs">ElevenLabs</option>
+          </select>
+        </label>
+        <div class="audio-settings-field">
+          <span>Narrator voice</span>
+          <div id="voicesPanel" class="audio-settings-voice"></div>
+        </div>
+      </div>
 
+      <div class="settings-modal-section-heading">
+        <h3>Style &amp; World References</h3>
+      </div>
+      <div id="styleReferencesPanel" class="reference-groups">
+        <section class="style-ref-row">
+          <div class="style-ref-row-header">
+            <div><strong>Character references</strong></div>
+            <div class="ref-actions">
+              <label class="upload-chip">
+                <input id="characterRefInput" type="file" accept="image/*" multiple hidden />
+                <span>Upload</span>
+              </label>
+              <button type="button" id="characterRefLibraryBtn" class="upload-chip secondary" title="Open Image Library">
+                edit
+              </button>
+            </div>
+          </div>
+          <div id="characterRefs" class="style-ref-list"></div>
+        </section>
+
+        <section class="style-ref-row">
+          <div class="style-ref-row-header">
+            <div><strong>World references</strong></div>
+            <div class="ref-actions">
+              <label class="upload-chip">
+                <input id="worldRefInput" type="file" accept="image/*" multiple hidden />
+                <span>Upload</span>
+              </label>
+              <button type="button" id="worldRefLibraryBtn" class="upload-chip secondary" title="Open Image Library">
+                edit
+              </button>
+            </div>
+          </div>
+          <div id="worldRefs" class="style-ref-list"></div>
+        </section>
+      </div>
 
       <div class="settings-modal-section-heading">
         <h3>Common Prompt</h3>
       </div>
       <label>
-        <textarea id="commonPromptText" rows="8"
+        <textarea id="commonPromptText" rows="6"
           placeholder="Style direction applied to prompts and images."></textarea>
       </label>
 
@@ -516,7 +535,6 @@
       <div class="shot-count-info row" style="display: flex; align-items: center; gap: 8px; margin: 12px 0;">
         <span id="settingsShotCountDisplay">Not planned yet</span>
       </div>
-
 
       <div class="settings-modal-section-heading hidden">
         <h3>Regenerate media</h3>

@@ -281,6 +281,7 @@ class ProjectStore {
       if (jobId && list.some((entry) => entry?.jobId === jobId)) return { project: document, scene };
       owner[fields.list] = [...list, { ...version, jobId }];
       owner[fields.activeIndex] = owner[fields.list].length - 1;
+      if (kind === 'image' && !owner.startFrame) owner.startFrame = version.path || null;
       if (fields.visualType) scene.activeVisualType = fields.visualType;
       try {
         const next = this.write(lease.projectId, document, { expectedRevision: document.revision, ownerId: lease.ownerId });

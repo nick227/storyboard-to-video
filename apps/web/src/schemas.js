@@ -102,7 +102,7 @@ const videoGeneration = z.object({
   commonPromptText: z.string().max(20_000).default(''),
   motionPrompt: z.string().max(4_000).default(''),
   motionIntensity: z.enum(['subtle', 'medium', 'high']).default('medium'),
-  imagePath: z.string().trim().min(1).max(500),
+  imagePath: z.string().trim().min(1).max(500).optional(),
 });
 
 const subtitleGeneration = z.object({

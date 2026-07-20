@@ -1,0 +1,9 @@
+{
+  "minimumEndpointPassRate": 1.0,
+  "minimumMeanEndFrameImprovement": 0.75,
+  "minimumCategoriesImproved": 3,
+  "minimumCategoryEndFrameImprovement": 0.75,
+  "maximumIdentityRegression": 0.5,
+  "maximumMotionRegression": 0.5,
+  "maximumMeanArtifactSeverity": 2.0
+}

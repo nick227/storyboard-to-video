@@ -5,6 +5,7 @@ const { asyncRoute } = require('./helpers');
 
 function imagesRoutes({ controller, idempotency, execute }) {
   const router = express.Router();
+  router.post('/preflight', validate(imageGeneration), asyncRoute(controller.imagePreflight));
   router.post('/generate', validate(imageGeneration), idempotency, execute('image'), asyncRoute(controller.image));
   return router;
 }

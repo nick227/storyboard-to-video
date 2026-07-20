@@ -17,6 +17,8 @@ function legacyShot(scene = {}) {
     activeVideoVersionIndex: videoVersions.length ? Math.min(Math.max(requestedVideoIndex, 0), videoVersions.length - 1) : 0,
     referenceBindings: normalizeReferenceImages(scene.referenceImages),
     disabledStyleReferencePaths: Array.isArray(scene.disabledProjectReferenceImages) ? scene.disabledProjectReferenceImages : [],
+    startFrame: versions[versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0]?.path || null,
+    endFrame: null,
   };
 }
 
@@ -36,6 +38,10 @@ export function adaptSceneImageShot(scene = {}) {
   const requestedVideoIndex = Number.isInteger(existing?.activeVideoVersionIndex) ? existing.activeVideoVersionIndex : legacy.activeVideoVersionIndex;
   const referenceBindings = Array.isArray(existing?.referenceBindings) ? normalizeReferenceImages(existing.referenceBindings) : legacy.referenceBindings;
   const disabledStyleReferencePaths = Array.isArray(existing?.disabledStyleReferencePaths) ? existing.disabledStyleReferencePaths : legacy.disabledStyleReferencePaths;
+  const defaultStartFrame = versions[versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0]?.path || null;
+  const versionPaths = new Set(versions.map((version) => version?.path).filter(Boolean));
+  const startFrame = typeof existing?.startFrame === 'string' && versionPaths.has(existing.startFrame) ? existing.startFrame : defaultStartFrame;
+  const endFrame = typeof existing?.endFrame === 'string' && versionPaths.has(existing.endFrame) ? existing.endFrame : null;
   scene.shots = [{
     ...(existing || {}),
     prompt: typeof existing?.prompt === 'string' ? existing.prompt : legacy.prompt,
@@ -45,6 +51,8 @@ export function adaptSceneImageShot(scene = {}) {
     activeVideoVersionIndex: videoVersions.length ? Math.min(Math.max(requestedVideoIndex, 0), videoVersions.length - 1) : 0,
     referenceBindings,
     disabledStyleReferencePaths,
+    startFrame,
+    endFrame,
   }, ...existingShots.slice(1)];
 
   for (const field of SHOT_FIELDS) {
@@ -80,12 +88,28 @@ export function replaceImageState(scene, sourceScene) {
   const source = imageShot(sourceScene);
   scene.shots[0].versions = Array.isArray(source.versions) ? source.versions : [];
   scene.shots[0].activeVersionIndex = Number.isInteger(source.activeVersionIndex) ? source.activeVersionIndex : 0;
+  scene.shots[0].startFrame = typeof source.startFrame === 'string' ? source.startFrame : null;
+  scene.shots[0].endFrame = typeof source.endFrame === 'string' ? source.endFrame : null;
 }
 
 export function setActiveImageVersion(scene, index) {
   adaptSceneImageShot(scene);
   const versions = scene.shots[0].versions;
   scene.shots[0].activeVersionIndex = versions.length ? Math.min(Math.max(Number(index) || 0, 0), versions.length - 1) : 0;
+}
+
+export function setStartFrame(scene, path) {
+  adaptSceneImageShot(scene);
+  const selected = String(path || '');
+  if (selected && !scene.shots[0].versions.some((version) => version?.path === selected)) throw new RangeError('Start frame must reference an image version on this shot');
+  scene.shots[0].startFrame = selected || null;
+}
+
+export function setEndFrame(scene, path) {
+  adaptSceneImageShot(scene);
+  const selected = String(path || '');
+  if (selected && !scene.shots[0].versions.some((version) => version?.path === selected)) throw new RangeError('End frame must reference an image version on this shot');
+  scene.shots[0].endFrame = selected || null;
 }
 
 export function replaceVideoState(scene, sourceScene) {

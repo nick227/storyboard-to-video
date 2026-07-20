@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "scale": "1-5; higher is better except artifactSeverity, where 1 is clean and 5 is unusable",
+  "ratings": [
+    {
+      "fixtureId": "character-movement",
+      "category": "character_movement",
+      "case": "start-only",
+      "startFrameFidelity": 0,
+      "endFrameFidelity": 0,
+      "identityConsistency": 0,
+      "middleMotionQuality": 0,
+      "artifactSeverity": 0,
+      "runtimeSec": 0,
+      "peakVramMiB": 0,
+      "notes": "Replace zero placeholders with blind-review scores from 1 to 5. Rate end fidelity against the intended end image even in start-only output."
+    }
+  ]
+}

@@ -18,14 +18,28 @@ import {
 } from './modules/voices.js';
 
 import { ScreenplayEditor } from './modules/screenplay-editor/js/ScreenplayEditor.js';
+import { toFinalDraftXml, toPlainScript, toPrintableScriptHtml, toRichTextScript, toStructuredScriptJson } from './modules/script-export.js';
 
 const els = {
   // Elements
   scriptText: document.getElementById('scriptText'),
   scriptModeSelect: document.getElementById('scriptModeSelect'),
   screenplayEditorContainer: document.getElementById('screenplayEditorContainer'),
+  scriptPagePanel: document.getElementById('scriptPagePanel'),
+  scriptFocusBtn: document.getElementById('scriptFocusBtn'),
+  scriptFocusBtnLabel: document.getElementById('scriptFocusBtnLabel'),
+  scriptDownloadBtn: document.getElementById('scriptDownloadBtn'),
+  scriptDownloadMenu: document.getElementById('scriptDownloadMenu'),
+
+  // Studio page navigation
+  pageTabs: document.querySelector('.page-tabs'),
+  pageTabButtons: Array.from(document.querySelectorAll('.page-tab[data-page]')),
+  pagePanels: Array.from(document.querySelectorAll('[role="tabpanel"]')),
+  pageTransition: document.getElementById('pageTransition'),
+  pageTransitionLabel: document.getElementById('pageTransitionLabel'),
 
   styleSelect: document.getElementById('styleSelect'),
+  stageStyleSelect: document.getElementById('stageStyleSelect'),
   commonPromptText: document.getElementById('commonPromptText'),
   textProvider: document.getElementById('textProvider'),
   imageProvider: document.getElementById('imageProvider'),
@@ -402,6 +416,7 @@ export function renderDownloadConfirmModal() {
     `${summary.imageCount} generated image${summary.imageCount === 1 ? '' : 's'} (in images/ folder)`,
     `${summary.videoCount} generated video${summary.videoCount === 1 ? '' : 's'} (in videos/ folder)`,
     `${summary.audioCount} narration audio clip${summary.audioCount === 1 ? '' : 's'} (in audio/ folder)`,
+    `1 Fountain screenplay source (script/screenplay.fountain)`,
     `1 storyboard metadata file (storyboard.json)`
   ];
   
@@ -455,6 +470,176 @@ function refreshShotCountDisplay() {
 }
 
 let screenplayEditorInstance = null;
+let activeStudioPage = 'storyboard';
+let pageSwitchToken = 0;
+const STUDIO_PAGE_STORAGE_KEY = 'storyframe.activeStudioPage';
+
+function applyStudioPage(page, { persist = true } = {}) {
+  const activeButton = els.pageTabButtons.find((button) => button.dataset.page === page);
+  if (!activeButton) return;
+
+  els.pageTabButtons.forEach((button) => {
+    const isActive = button === activeButton;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-selected', String(isActive));
+    button.tabIndex = isActive ? 0 : -1;
+  });
+  els.pagePanels.forEach((panel) => {
+    panel.hidden = panel.id !== activeButton.getAttribute('aria-controls');
+  });
+  activeStudioPage = page;
+  if (persist) {
+    try {
+      localStorage.setItem(STUDIO_PAGE_STORAGE_KEY, page);
+    } catch (_) {}
+  }
+  if (page === 'script' && els.scriptModeSelect?.value === 'screenplay' && !screenplayEditorInstance) {
+    setScriptEditorMode('screenplay');
+  }
+}
+
+async function switchStudioPage(page, { instant = false } = {}) {
+  if (!els.pageTabButtons.some((button) => button.dataset.page === page)) return;
+  if (page === activeStudioPage) {
+    try {
+      localStorage.setItem(STUDIO_PAGE_STORAGE_KEY, page);
+    } catch (_) {}
+    return;
+  }
+  if (instant || !els.pageTransition) {
+    applyStudioPage(page);
+    return;
+  }
+
+  const token = ++pageSwitchToken;
+  const pageLabel = els.pageTabButtons.find((button) => button.dataset.page === page)?.textContent.trim() || 'page';
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  els.pageTransitionLabel.textContent = `Opening ${pageLabel}…`;
+  els.pageTransition.hidden = false;
+
+  // Give the browser a frame to paint the intermediary before changing a potentially heavy panel.
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  if (token !== pageSwitchToken) return;
+  els.pageTransition.classList.add('is-visible');
+  await new Promise((resolve) => setTimeout(resolve, reducedMotion ? 60 : 150));
+  if (token !== pageSwitchToken) return;
+
+  applyStudioPage(page);
+  els.pageTransition.classList.remove('is-visible');
+  await new Promise((resolve) => setTimeout(resolve, reducedMotion ? 0 : 120));
+  if (token !== pageSwitchToken) return;
+  els.pageTransition.hidden = true;
+}
+
+function initPageTabs() {
+  let savedPage = activeStudioPage;
+  try {
+    const storedPage = localStorage.getItem(STUDIO_PAGE_STORAGE_KEY);
+    if (els.pageTabButtons.some((button) => button.dataset.page === storedPage)) savedPage = storedPage;
+  } catch (_) {}
+  applyStudioPage(savedPage, { persist: false });
+  els.pageTabButtons.forEach((button) => {
+    button.addEventListener('click', () => switchStudioPage(button.dataset.page));
+  });
+  els.pageTabs?.addEventListener('keydown', (event) => {
+    const currentIndex = els.pageTabButtons.indexOf(document.activeElement);
+    if (currentIndex < 0) return;
+    let nextIndex;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % els.pageTabButtons.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + els.pageTabButtons.length) % els.pageTabButtons.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = els.pageTabButtons.length - 1;
+    else return;
+    event.preventDefault();
+    els.pageTabButtons[nextIndex].focus();
+    els.pageTabButtons[nextIndex].click();
+  });
+}
+
+function setScriptFocusMode(enabled) {
+  const isEnabled = Boolean(enabled);
+  els.scriptPagePanel?.classList.toggle('is-script-focus', isEnabled);
+  document.body.classList.toggle('script-focus-active', isEnabled);
+  els.scriptFocusBtn?.setAttribute('aria-pressed', String(isEnabled));
+  if (els.scriptFocusBtn) {
+    els.scriptFocusBtn.title = isEnabled ? 'Exit distraction-free mode (Esc)' : 'Open distraction-free mode';
+  }
+  if (els.scriptFocusBtnLabel) {
+    els.scriptFocusBtnLabel.textContent = isEnabled ? 'Exit full screen' : 'Full screen';
+  }
+
+  [document.querySelector('.storyboard-topbar'), els.pageTabs].forEach((element) => {
+    if (!element) return;
+    element.inert = isEnabled;
+    if (isEnabled) element.setAttribute('aria-hidden', 'true');
+    else element.removeAttribute('aria-hidden');
+  });
+}
+
+function currentFountainScript() {
+  if (screenplayEditorInstance && els.scriptModeSelect?.value === 'screenplay') {
+    return screenplayEditorInstance.getRawScript('fountain');
+  }
+  return els.scriptText?.value || '';
+}
+
+function currentScriptExportSource() {
+  if (screenplayEditorInstance && els.scriptModeSelect?.value === 'screenplay') {
+    return screenplayEditorInstance.getScriptDocument();
+  }
+  return currentFountainScript();
+}
+
+function scriptFileBaseName() {
+  const title = els.storyboardTitle?.value.trim() || 'screenplay';
+  return title.toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'screenplay';
+}
+
+function downloadScriptFile(content, extension, mimeType) {
+  const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `${scriptFileBaseName()}.${extension}`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function closeScriptDownloadMenu({ restoreFocus = false } = {}) {
+  if (!els.scriptDownloadMenu || !els.scriptDownloadBtn) return;
+  els.scriptDownloadMenu.hidden = true;
+  els.scriptDownloadBtn.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) els.scriptDownloadBtn.focus();
+}
+
+function exportCurrentScript(format) {
+  const fountain = currentFountainScript();
+  const formattedSource = currentScriptExportSource();
+  const title = els.storyboardTitle?.value.trim() || 'Screenplay';
+  if (format === 'fountain') downloadScriptFile(`${fountain.replace(/\s+$/, '')}\n`, 'fountain', 'text/plain;charset=utf-8');
+  else if (format === 'fdx') downloadScriptFile(toFinalDraftXml(formattedSource), 'fdx', 'application/xml;charset=utf-8');
+  else if (format === 'rtf') downloadScriptFile(toRichTextScript(formattedSource), 'rtf', 'application/rtf');
+  else if (format === 'text') downloadScriptFile(`${toPlainScript(formattedSource).replace(/\s+$/, '')}\n`, 'txt', 'text/plain;charset=utf-8');
+  else if (format === 'json') downloadScriptFile(toStructuredScriptJson(formattedSource), 'json', 'application/json;charset=utf-8');
+  else if (format === 'print') {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      setStatus('Allow pop-ups to print or save the screenplay as PDF.');
+      return;
+    }
+    printWindow.opener = null;
+    printWindow.document.open();
+    printWindow.document.write(toPrintableScriptHtml(formattedSource, title));
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 100);
+  }
+}
 
 function updateScriptText(rawText, { emit = true } = {}) {
   if (els.scriptText.value !== rawText) {
@@ -481,15 +666,17 @@ function setScriptEditorMode(mode) {
     if (els.screenplayEditorContainer) {
       els.screenplayEditorContainer.hidden = false;
       if (!screenplayEditorInstance) {
-        screenplayEditorInstance = new ScreenplayEditor({
-          container: els.screenplayEditorContainer,
-          initialScript,
-          format: 'fountain',
-          showToolbar: true,
-          onChange: ({ rawText }) => {
-            updateScriptText(rawText, { emit: true });
-          }
-        });
+        if (!document.getElementById('scriptPagePanel')?.hidden) {
+          screenplayEditorInstance = new ScreenplayEditor({
+            container: els.screenplayEditorContainer,
+            initialScript,
+            format: 'fountain',
+            showToolbar: true,
+            onChange: ({ rawText }) => {
+              updateScriptText(rawText, { emit: true });
+            }
+          });
+        }
       } else {
         screenplayEditorInstance.loadScript(initialScript, 'fountain');
       }
@@ -523,12 +710,43 @@ async function loadStoryboardIntoUI() {
 }
 
 function attachEvents() {
+  initPageTabs();
   const savedMode = (typeof localStorage !== 'undefined' && localStorage.getItem('scriptEditorMode')) || 'raw';
   setScriptEditorMode(savedMode);
 
   els.scriptModeSelect?.addEventListener('change', (e) => {
     setScriptEditorMode(e.target.value);
   });
+  els.scriptFocusBtn?.addEventListener('click', () => {
+    setScriptFocusMode(!els.scriptPagePanel.classList.contains('is-script-focus'));
+  });
+  els.scriptDownloadBtn?.addEventListener('click', () => {
+    const willOpen = els.scriptDownloadMenu.hidden;
+    els.scriptDownloadMenu.hidden = !willOpen;
+    els.scriptDownloadBtn.setAttribute('aria-expanded', String(willOpen));
+    if (willOpen) els.scriptDownloadMenu.querySelector('[role="menuitem"]')?.focus();
+  });
+  els.scriptDownloadMenu?.addEventListener('click', (event) => {
+    const option = event.target.closest('[data-script-format]');
+    if (!option) return;
+    exportCurrentScript(option.dataset.scriptFormat);
+    closeScriptDownloadMenu();
+  });
+  document.addEventListener('click', (event) => {
+    if (els.scriptDownloadMenu?.hidden || event.target === els.scriptDownloadBtn || els.scriptDownloadBtn?.contains(event.target)) return;
+    if (!els.scriptDownloadMenu.contains(event.target)) closeScriptDownloadMenu();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!els.scriptDownloadMenu?.hidden) {
+      event.preventDefault();
+      closeScriptDownloadMenu({ restoreFocus: true });
+    } else if (els.scriptPagePanel?.classList.contains('is-script-focus')) {
+      event.preventDefault();
+      setScriptFocusMode(false);
+      els.scriptFocusBtn?.focus();
+    }
+  }, true);
   const settingsModalPairs = [
     [els.settingsBtn, els.settingsModal],
   ];
@@ -769,12 +987,23 @@ function attachEvents() {
   });
 
   els.styleSelect.addEventListener('change', async () => {
+    if (els.stageStyleSelect && els.stageStyleSelect.value !== els.styleSelect.value) {
+      els.stageStyleSelect.value = els.styleSelect.value;
+    }
     const styleId = els.styleSelect.value;
     prefillCommonPrompt(styleId, els);
     saveStoryboard(els, false);
     renderStageBar(els);
     await loadStyleReferences(styleId, els, setStatus);
   });
+  if (els.stageStyleSelect) {
+    els.stageStyleSelect.addEventListener('change', () => {
+      if (els.styleSelect.value !== els.stageStyleSelect.value) {
+        els.styleSelect.value = els.stageStyleSelect.value;
+        els.styleSelect.dispatchEvent(new Event('change'));
+      }
+    });
+  }
   els.characterRefInput.addEventListener('change', (e) => uploadStyleReferences('characters', e.target.files, els, setStatus));
   els.worldRefInput.addEventListener('change', (e) => uploadStyleReferences('world', e.target.files, els, setStatus));
 

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "settings": {
+    "width": 768,
+    "height": 512,
+    "numFrames": 121,
+    "seed": 42
+  },
+  "fixtures": [
+    {
+      "id": "character-movement",
+      "category": "character_movement",
+      "startImage": "character-movement/start.png",
+      "endImage": "character-movement/end.png",
+      "prompt": "The same character walks from the left side of the room to the marked chair, turns naturally, and sits. Preserve the character's face, clothing, proportions, and the room layout. The camera remains locked.",
+      "strongMotionPrompt": "The same character immediately strides from the left side of the room to the marked chair with clearly visible leg and arm motion, turns in one continuous movement, and sits decisively by the final frame. Preserve face, clothing, proportions, and room layout. Keep the camera locked; show continuous subject motion throughout."
+    },
+    {
+      "id": "product-movement",
+      "category": "product_object_movement",
+      "startImage": "product-movement/start.png",
+      "endImage": "product-movement/end.png",
+      "prompt": "The same product package slides smoothly across the tabletop from its starting mark to its ending mark and rotates one quarter turn. Preserve its shape, label, colors, and tabletop. The camera remains locked.",
+      "strongMotionPrompt": "The exact product package accelerates smoothly across the tabletop, visibly rotates one quarter turn while moving, then settles precisely on the ending mark by the final frame. Preserve its shape, readable label, colors, and tabletop. Keep the camera locked and motion continuous."
+    },
+    {
+      "id": "camera-location-transition",
+      "category": "camera_location_transition",
+      "startImage": "camera-location-transition/start.png",
+      "endImage": "camera-location-transition/end.png",
+      "prompt": "The camera moves forward through the same location from the wide starting composition to the close ending composition. Preserve the architecture, spatial layout, lighting, and visual style with a smooth continuous camera path.",
+      "strongMotionPrompt": "The camera immediately dollies forward through the same location along a smooth readable path, passing the foreground landmarks in correct perspective and arriving precisely at the close ending composition by the final frame. Preserve architecture, layout, lighting, and style; maintain continuous camera motion."
+    }
+  ]
+}

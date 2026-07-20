@@ -5,6 +5,7 @@ const { cleanText } = require('../../shared/text');
 const { stubVideo } = require('../../media/stub-media');
 const { AppError } = require('../../errors');
 const { providerRequestId, providerResult } = require('../result');
+const { videoProviderCapabilities } = require('../../shared/video-provider-capabilities');
 
 function setting(env, name, fallback, min, max) {
   const value = Number.parseInt(env[name], 10);
@@ -45,7 +46,8 @@ function createVideoProvider(config, getCancellation, usageTracker) {
     }
   }
 
-  async function generateCore({ imagePath, prompt, motionIntensity = 'medium', outputPath }) {
+  async function generateCore({ startFramePath, imagePath, prompt, motionIntensity = 'medium', outputPath }) {
+    const sourceFramePath = startFramePath || imagePath;
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     if (config.videoProvider === 'stub') {
       fs.copyFileSync(stubVideo(config), outputPath);
@@ -53,11 +55,11 @@ function createVideoProvider(config, getCancellation, usageTracker) {
     }
 
     fs.mkdirSync(config.paths.ltxShared, { recursive: true });
-    const extension = path.extname(imagePath) || '.png';
+    const extension = path.extname(sourceFramePath) || '.png';
     const base = path.parse(outputPath).name;
     const stagedImage = path.join(config.paths.ltxShared, `${base}-source${extension}`);
     const stagedOutput = path.join(config.paths.ltxShared, path.basename(outputPath));
-    fs.copyFileSync(imagePath, stagedImage);
+    fs.copyFileSync(sourceFramePath, stagedImage);
     try {
       // subtle/medium tested empirically at 121 frames (5.04s @ 24fps): identity held cleanly
       // through the full clip (a static-scene subtle-motion test showed zero drift; a moving-face
@@ -122,7 +124,8 @@ function createVideoProvider(config, getCancellation, usageTracker) {
     return usageTracker ? usageTracker.execute({ modality: 'video', provider, model, inputMetadata: { promptCharacters: String(input.prompt || '').length, motionIntensity: input.motionIntensity || 'medium' } }, operation) : operation();
   }
 
-  return { generate, verify };
+  const selectedProvider = config.videoProvider === 'stub' ? 'stub' : 'ltx';
+  return { capabilities: videoProviderCapabilities(selectedProvider), generate, getCapabilities: () => videoProviderCapabilities(selectedProvider), verify };
 }
 
 module.exports = { createVideoProvider };

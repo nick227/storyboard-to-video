@@ -47,6 +47,8 @@ test('legacy scene image fields migrate intact to the implicit shot and persist 
     assert.equal(loaded.scenes[0].shots[0].activeVideoVersionIndex, 1);
     assert.deepEqual(loaded.scenes[0].shots[0].referenceBindings, [{ path: '/character.png', name: 'Character', role: 'composition' }]);
     assert.deepEqual(loaded.scenes[0].shots[0].disabledStyleReferencePaths, ['/style.png']);
+    assert.equal(loaded.scenes[0].shots[0].startFrame, '/two.png');
+    assert.equal(loaded.scenes[0].shots[0].endFrame, null);
     assert.equal(loaded.scenes[0].versions, loaded.scenes[0].shots[0].versions, 'legacy reads are projections');
     assert.equal(loaded.scenes[0].videoVersions, loaded.scenes[0].shots[0].videoVersions, 'legacy video reads are projections');
 
@@ -81,6 +83,8 @@ test('new writes and regenerated image versions use shots[0] as the sole persist
 
     assert.deepEqual(regenerated.scene.shots[0].versions.map((version) => version.jobId), ['first', 'second']);
     assert.equal(regenerated.scene.shots[0].activeVersionIndex, 1);
+    assert.equal(regenerated.scene.shots[0].startFrame, '/first.png', 'new active versions do not overwrite the selected start frame');
+    assert.equal(regenerated.scene.shots[0].endFrame, null);
 
     const reloaded = f.store.read('canonical');
     assert.equal(reloaded.scenes[0].shots[0].prompt, 'Canonical prompt');
@@ -144,6 +148,8 @@ test('active image switching updates shots[0] and serialization omits compatibil
       activeVideoVersionIndex: 0,
       referenceBindings: [],
       disabledStyleReferencePaths: [],
+      startFrame: '/first.png',
+      endFrame: null,
     }],
   });
 });
@@ -164,6 +170,22 @@ test('active video switching updates shots[0] while legacy reads remain compatib
   const serialized = JSON.parse(JSON.stringify(scene));
   assert.equal(serialized.shots[0].activeVideoVersionIndex, 1);
   assert.equal(Object.hasOwn(serialized, 'videoVersions'), false);
+});
+
+test('start and end frame selections reference image versions without duplicating assets', async () => {
+  const helpers = await import(path.join(__dirname, '..', 'public', 'modules', 'scene-shots.js'));
+  const scene = helpers.adaptSceneImageShot({
+    id: 'scene-1',
+    versions: [{ path: '/first.png' }, { path: '/second.png' }],
+    activeVersionIndex: 0,
+  });
+
+  helpers.setStartFrame(scene, '/second.png');
+  helpers.setEndFrame(scene, '/first.png');
+  assert.equal(scene.shots[0].startFrame, '/second.png');
+  assert.equal(scene.shots[0].endFrame, '/first.png');
+  assert.equal(scene.shots[0].versions.length, 2);
+  assert.throws(() => helpers.setEndFrame(scene, '/not-a-version.png'), /must reference an image version/);
 });
 
 test('ZIP export resolves the active image and video from shots[0]', async () => {

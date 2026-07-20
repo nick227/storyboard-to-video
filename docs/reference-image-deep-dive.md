@@ -12,28 +12,35 @@ The reference-control foundation proposed here is now implemented:
 - Legacy scene-level image/video fields load through read-only compatibility projections and are no longer persisted or dual-written.
 - Newly generated image and video versions carry an immutable generation manifest plus a canonical manifest hash.
 - Image manifests record the resolved prompt components, style, provider/model, request settings, consumed references in provider order, provider-limit omissions, and provider request ID.
-- Video manifests record prompt components, style, provider/model, request settings, motion intensity, and the active shot image as `start_frame`.
+- Video manifests record prompt components, style, provider/model, request settings, motion intensity, and the exact selected start/end frame paths plus SHA-256 hashes.
 - Manifest-aware image/video staleness compares the stored hash with current user-controlled inputs. Older outputs without manifests retain the legacy staleness checks.
 - Reference inputs are now canonical at `scene.shots[0].referenceBindings[]`; the former scene-level fields are read-only compatibility projections and are not persisted or dual-written.
 - The first role vocabulary is intentionally small: `character`, `location`, `composition`, and `continuity`. Existing unclassified scene uploads migrate to `composition`.
 - The scene reference modal lets users classify an uploaded reference with those four simple labels.
 - Gemini now receives a numbered, role-specific instruction immediately before each inline image instead of the generic text `Reference image`.
 - Image manifests record each consumed or provider-omitted reference with its role, source, order, and provider slot. Reference-role changes therefore participate in manifest-hash staleness.
+- Still-image providers now publish machine-readable reference capabilities. A shared resolver creates the included/excluded plan before the adapter call: Gemini gets up to 14 role-aware inline references, OpenAI gets up to eight edit inputs, Dezgo gets one explicit image-to-image anchor, and stub consumes none.
+- Final provider adapters no longer silently truncate reference arrays. They reject an unplanned overflow, while the resolver records every omission and reason in the manifest and generation response.
+- Paid still-image generation now runs an exact server preflight. When references will be omitted, the UI shows the used/total count and requires confirmation before submission. The confirmed plan hash is revalidated server-side so a changed plan cannot spend against stale consent.
+- Normal storyboard UI stays deliberately compact: image/video version history shows the provider name, while full provenance remains stored for token/cost analysis and debugging rather than receiving a dedicated panel.
+- Every implicit shot now has `startFrame` and nullable `endFrame` path selections separate from image versions. Existing shots default `startFrame` to their active image without duplicating the asset.
+- Video providers publish start/end capability flags. Current LTX advertises start-frame support only, receives only the selected start frame, and exposes no end-frame controls.
+- Changing either selected frame changes manifest-based video staleness. A selected but unsupported end frame is recorded as unconsumed rather than being sent to LTX.
 
-Multiple shots, end frames, provider-neutral capability planning, preflight exclusion warnings, and additional video providers remain proposed work rather than implemented behavior.
+Multiple shots, end-frame generation behavior, the isolated LTX keyframe experiment, durable commercial jobs, and additional video providers remain proposed work rather than implemented behavior.
 
 ## Executive conclusion
 
 The working assumptions are mostly correct, with one important wording correction:
 
 - The app does send the selected style's character/world references to every **scene image generation** unless a user disables a default for that scene.
-- The app also supports up to eight **shot-specific reference uploads** through the existing scene-card UI. These are sent before the style defaults and therefore win when a provider limit truncates the list.
-- The app does **not** send those raw character/world/shot-specific references directly to LTX. It sends one selected shot image—the active image version—as LTX's single image-to-video input. The influence of the earlier references is baked into that image indirectly.
+- The app also supports up to eight **shot-specific reference uploads** through the existing scene-card UI. These are ordered before style defaults and therefore win when the capability resolver must omit inputs beyond a provider limit.
+- The app does **not** send those raw character/world/shot-specific references directly to LTX. It sends the shot's explicitly selected `startFrame` as LTX's single image-to-video input. Existing projects initialize that selection from the active image. The influence of earlier references is baked into the selected frame indirectly.
 - The current LTX HTTP service accepts only one `image`. It has no end-frame or multiple-keyframe field, so first/last-frame generation cannot be tested through today's endpoint without changing the LTX runtime and API.
 - Reference roles are now explicit at the shot boundary. The deliberately narrow first vocabulary is `character`, `location`, `composition`, and `continuity`; product/prop/pose-specific roles are deferred until usage proves they are needed.
 - New image versions save immutable reference provenance in their generation manifests. Role, order, inclusion, provider omission, prompt, model, and relevant setting changes participate in the canonical staleness hash.
 
-The next step is not simply to increase the number of images or providers. The app now has **scene as the narrative unit and shot as the generation unit**, role-based references, immutable manifests, and Gemini role labels. The next architectural slice should be provider-neutral reference resolution and capability validation, followed by an isolated LTX keyframe experiment and then Veo. The current flat storyboard should remain the user experience until real multi-shot editing is needed.
+The app now has **scene as the narrative unit and shot as the generation unit**, role-based references, immutable manifests, Gemini role labels, neutral still-reference resolution, paid-generation preflight consent, and explicit shot-level frame selections. The next step is the isolated LTX keyframe experiment, followed by the commercial video job/capability layer for Veo. The current flat storyboard should remain the user experience until real multi-shot editing is needed.
 
 ## Terminology to standardize
 
@@ -44,8 +51,8 @@ The current product uses “reference image” for several different jobs. That 
 | Style reference | Reusable visual baseline for a selected style; normally character look or world look | Files under `style-references/<style>/characters` and `world`, plus user style uploads |
 | Shot reference | An ingredient that should influence still-image generation for the implicit shot | `scene.shots[0].referenceBindings[]` |
 | Shot image / keyframe | The composed image that depicts a particular shot | `scene.shots[0].versions[]`; UI sometimes calls it a “generated reference image” |
-| Start frame | The image that must initialize a video shot | Today, implicitly the active `scene.shots[0].versions[]` image |
-| End frame | The image that should constrain the final video frame | Not represented |
+| Start frame | The image that must initialize a video shot | `scene.shots[0].startFrame`, a path referencing an existing image version |
+| End frame | The image that should constrain the final video frame | Nullable `scene.shots[0].endFrame`; modeled but not exposed or consumed by current LTX |
 | Content reference | Character, location, composition, or continuity input | Typed with the first four-role vocabulary |
 | Style reference for a provider | An image meant to transfer visual treatment rather than content | Not distinguished from content |
 | Motion reference | A video used for movement, performance, or camera direction | Not represented |
@@ -112,25 +119,27 @@ At generation time the service:
 1. Resolves valid shot-specific reference bindings and preserves their roles.
 2. Resolves the selected style references and filters the defaults disabled for this shot. Character defaults infer `character`; world defaults infer `location`.
 3. Concatenates `shot-specific references` first, then `style defaults`.
-4. Silently truncates the result to the provider limit.
+4. Passes the ordered candidates through the provider-neutral capability resolver.
+5. Produces an explicit plan containing included references, provider slots, excluded references, and omission reasons before calling the adapter.
+6. Sends only the planned inputs to the adapter. The adapter rejects overflow rather than applying another hidden truncation.
 
 The implemented limits are:
 
-| Image provider | App limit | Actual adapter behavior |
+| Image provider | Resolver limit | Planned transport behavior |
 |---|---:|---|
-| Gemini | 14 | Sends up to 14 inline images after the text prompt |
-| OpenAI | 8 | Switches from image generation to `/v1/images/edits` and sends `image[]` |
-| Dezgo | 1 | Switches to `image2image`; only the first reference becomes `init_image` |
-| Stub | 14 by the service | Stub output ignores the references |
+| Gemini | 14 | Sends up to 14 role-labeled inline images |
+| OpenAI | 8 | Switches from image generation to `/v1/images/edits` and sends the planned `image[]` inputs |
+| Dezgo | 1 | Switches to `image2image`; the one planned reference becomes `init_image` |
+| Stub | 0 | Consumes no references; every candidate is recorded as `provider_does_not_consume_references` |
 
-The assembly is in `apps/web/src/services/image-generation.service.js:35-53`; provider transport is in `apps/web/src/providers/image/index.js:13-59`.
+Capability resolution is shared between server generation and browser staleness through `src/shared/image-reference-plan.js` and `public/modules/image-reference-plan.js`. Provider transport remains isolated in `src/providers/image/index.js`.
 
 Consequences:
 
 - Shot-specific images have priority, which is a good default.
-- Truncation is invisible except for the returned counts. The user is not told which assets were dropped.
-- With eight scene references and eight style references, Gemini receives the eight scene references plus only the first six defaults. Ordering within the style group is character first, then world, so world references are most likely to be dropped.
-- With Dezgo, the first scene reference becomes the sole `init_image`. If no scene reference exists, the first character style reference becomes the init image. This is materially different from “use references to preserve a visual system”; it is an image-to-image transformation anchored on one arbitrary ordered image.
+- Omission is no longer silent: the response and immutable manifest identify every excluded asset and reason, and paid generation requires confirmation of the exact plan hash before submission. The confirmation stays concise—used versus total and omitted count—rather than exposing provider slots or manifest internals.
+- With eight shot references and eight style references, Gemini receives the eight shot references plus the first six defaults. The remaining two are explicitly recorded as `provider_limit` omissions. Ordering within the style group is character first, then world, so world references remain most likely to be excluded until role-priority planning is introduced.
+- With Dezgo, the first shot reference becomes the sole `init_image`. If no shot reference exists, the first character style reference becomes the anchor. This choice is deterministic and auditable, but still role-agnostic; Dezgo is an image-to-image transformation, not a multi-reference compositor.
 - The generated image version now retains the consumed and omitted bindings in its immutable manifest, including role, source, order, provider slot, and omission reason.
 
 ### 4. Gemini behavior—the first role-aware adapter
@@ -160,7 +169,7 @@ REFERENCE IMAGE 3 — COMPOSITION. Use this image for framing, camera angle, blo
 [image]
 ```
 
-The provider adapter should build these labels from typed bindings. The same role model can then map differently for OpenAI, Dezgo, Veo, Seedance, or LTX.
+The Gemini adapter builds these labels from typed bindings. The same role model can map differently for OpenAI, Dezgo, Veo, Seedance, or LTX.
 
 Gemini-specific recommendations:
 
@@ -173,7 +182,7 @@ Gemini-specific recommendations:
 
 ### 4a. OpenAI behavior
 
-OpenAI receives no reference images through its ordinary generation request. As soon as at least one reference exists, the adapter changes endpoints to `/v1/images/edits` and appends up to eight files as `image[]`. As with Gemini, there is no per-image role or label in the provider request; all role meaning must be inferred from the shared prompt and array order.
+OpenAI receives no reference images through its ordinary generation request. As soon as the resolved plan contains a reference, the adapter changes endpoints to `/v1/images/edits` and appends the planned files as `image[]`. The resolver enforces the eight-input limit; the adapter does not slice again. Unlike Gemini, OpenAI does not yet receive per-image role labels, so role meaning must still be inferred from the shared prompt and array order.
 
 The configured default is `gpt-image-1`. OpenAI's current catalog labels GPT Image 1 as a previous/deprecated image model and identifies GPT Image 2 as the current state-of-the-art image generation/editing model. See [GPT Image 1](https://developers.openai.com/api/docs/models/gpt-image-1) and [GPT Image 2](https://developers.openai.com/api/docs/models/gpt-image-2).
 
@@ -349,7 +358,7 @@ The UI should show an “Effective inputs for this generation” list before spe
 
 ## Clamp reference use deliberately
 
-The server should resolve bindings into a provider-neutral **reference plan** before calling an adapter.
+The server now resolves still-image bindings into a provider-neutral **reference plan** before calling an adapter.
 
 ```json
 {
@@ -363,14 +372,22 @@ The server should resolve bindings into a provider-neutral **reference plan** be
 }
 ```
 
-Rules:
+Implemented rules for still generation:
 
 - Never silently call `.slice()` at the final provider boundary.
-- Select by explicit priority, required/optional status, target, and provider capability—not by filename order.
+- Preserve deterministic candidate order: shot-specific bindings first, then enabled style defaults.
+- Apply the selected provider's declared limit and supported roles before submission.
+- Reject adapter overflow so every provider input must come from the resolved plan.
+- Return exclusions and reasons to the client and save them in the immutable manifest.
+- Include the ordered resolved bindings in the canonical manifest hash used for staleness.
+
+Future rules:
+
+- Add explicit priority and required/optional semantics when real workflows require them.
 - Fail before charging when a required binding cannot be represented.
-- Warn and request confirmation when optional bindings will be dropped or converted to prompt text.
+- Warn and request confirmation before spend when optional bindings will be omitted.
+- Add immutable asset checksums so replacing file contents at the same path changes the manifest hash.
 - Do not automatically send style defaults to video providers. The composed start frame already carries style; direct video references should be intentional.
-- Hash the ordered resolved bindings and their immutable asset checksums for cache and staleness decisions.
 
 ## Provider-neutral video request
 
@@ -550,7 +567,7 @@ Save an immutable manifest on every image and video version:
 
 Use the manifest hash for staleness and cache identity. Any change to a referenced file, binding role/instruction/order, prompt component, model, or relevant setting should mark the output stale.
 
-The UI should expose a compact “Made with” inspector on every version. This directly answers the user's current question and makes provider comparisons auditable.
+The normal storyboard UI should show only the provider name on each image/video version. Detailed manifests remain available to token/cost summaries, administrative analysis, debugging, and provider comparisons without adding a dedicated provenance panel.
 
 ## Proposed delivery phases
 
@@ -579,21 +596,27 @@ The sequencing is intentional: providers come last. Each phase should be indepen
 - Label every Gemini inline image by role and number.
 - Record consumed and omitted roles in the generation manifest.
 
-### Phase 3 — provider-neutral reference resolution and provenance UI (next)
+### Phase 3 — provider-neutral reference resolution and preflight consent (complete)
 
-- Move provider limits and supported roles into machine-readable provider capabilities.
-- Resolve a deterministic included/excluded reference plan before submission; stop relying on adapter-boundary `.slice()` semantics.
-- Preserve compatibility for OpenAI and Dezgo while accurately stating that Dezgo consumes one image-to-image anchor.
-- Surface a compact `Made with` inspector from the existing manifests.
-- Add preflight warnings before a paid provider call when references will be omitted; reject before spend when a future required input cannot be represented.
-- Add contract tests for ordering, clamping, omissions, and provider role mappings.
+- **Complete:** move provider limits, transport type, role awareness, and supported roles into machine-readable provider capabilities.
+- **Complete:** resolve a deterministic included/excluded reference plan before submission and remove adapter-boundary silent slicing.
+- **Complete:** preserve compatibility for OpenAI and Dezgo while accurately recording that Dezgo consumes one image-to-image anchor.
+- **Complete:** return the effective plan with generation results and store provider slots plus exclusion reasons in manifests.
+- **Complete:** show provider names in version history while keeping detailed provenance out of the normal scene UI.
+- **Complete:** preflight paid still generation, warn when references will be omitted, and require a server-validated confirmation hash before provider submission.
+- **Complete:** add matching browser/server contract tests for ordering, clamping, omissions, capabilities, and overflow rejection.
 
-### Phase 4 — shot-level start/end model and isolated LTX experiment
+### Phase 4 — shot-level start/end model and isolated LTX experiment (model and harness complete; GPU run next)
 
-- Let users generate or select a start frame and an optional end frame independently.
-- Let one shot own multiple image versions and multiple video attempts.
-- Upgrade a separate local LTX service for multi-keyframe conditioning and run the evaluation matrix.
-- Keep end-frame controls behind the upgraded provider capability; never render them for the current single-image LTX endpoint.
+- **Complete:** store start/end selections independently as references to existing shot image versions.
+- **Complete:** default legacy and new shots to the first selected/active image without coupling later active-version changes to frame selection.
+- **Complete:** record selected frame paths, hashes, and consumed status in video manifests and staleness.
+- **Complete:** publish capability flags and keep current LTX start-only with no end-frame controls.
+- Let users select frames only through provider-capability-gated controls when an applicable provider workflow is enabled.
+- **Complete:** add a separate `experiments/ltx-keyframes` API and official-CLI runner with no imports, routes, configuration, UI, or capability changes in the production app.
+- **Complete:** lock the experiment to nine runs: start-only, start+end, and start+end with stronger motion prompting across character, product/object, and camera/location fixtures.
+- **Complete:** capture exact input hashes, LTX revision/config, runtime, peak VRAM, output hashes, and blind-review fields in per-run manifests, then apply a strict preregistered binary gate that requires endpoint improvement without material middle-clip regression across all three fixture types.
+- Pending GPU execution: populate the private fixture paths, run the official LTX multi-keyframe runtime, score the full videos, and reproduce a passing result before publishing `supportsEndFrame: true`.
 - This phase can still operate on `shots[0]`; it does not require an Add Shot UI.
 
 ### Phase 5 — commercial video provider foundation and Veo
@@ -637,7 +660,7 @@ The reference-image work is ready for commercial providers when:
 1. Keep the completed invariant: **scene is the narrative unit and shot is the generation unit**; retain one implicit shot and the flat storyboard UI.
 2. Keep reference ownership and all new image/video writes canonical at `scene.shots[0]`; remove compatibility projections only in a future explicit migration.
 3. Keep Gemini as the primary still-image path and the four-role vocabulary small until observed use cases justify expansion.
-4. Build provider-neutral reference resolution and capability validation next, using the existing manifests as the audit record.
-5. Add the compact provenance inspector and preflight omission warnings before introducing paid multi-reference video generation.
-6. Run a separate LTX multi-keyframe experiment rather than adding a nonfunctional end-frame control to the current endpoint.
+4. Keep the completed provider-neutral still-reference resolver as the only clamping boundary; extend the same pattern to video providers later.
+5. Keep provenance detailed in manifests and token/cost analysis but compact in the storyboard UI; paid still-reference omission consent is complete.
+6. Keep the completed start/end selection model provider-neutral, and run a separate LTX multi-keyframe experiment rather than adding a nonfunctional end-frame control to the current endpoint.
 7. Integrate Veo after the neutral capability/job layer, Seedance second, and keep Higgsfield conditional on a supported server-to-server contract.

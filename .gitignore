@@ -31,6 +31,13 @@ coverage/
 .cache/
 .pytest_cache/
 
+# Isolated LTX keyframe experiment outputs and local fixture bindings
+/experiments/ltx-keyframes/artifacts/
+/experiments/ltx-keyframes/.venv/
+/experiments/ltx-keyframes/fixtures/
+/experiments/ltx-keyframes/fixtures.local.json
+/experiments/ltx-keyframes/ratings.local.json
+
 # Editor and operating-system files
 .DS_Store
 Thumbs.db

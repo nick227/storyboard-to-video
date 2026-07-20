@@ -5,6 +5,13 @@ const archiver = require('archiver');
 const { slugify } = require('../shared/text');
 const { imageShot } = require('../shared/scene-shots');
 
+const SCREENPLAY_BUNDLE_PATH = 'script/screenplay.fountain';
+
+function fountainBundleSource(scriptText) {
+  const source = typeof scriptText === 'string' ? scriptText.replace(/\s+$/, '') : '';
+  return `${source}\n`;
+}
+
 function createExportService({ config, projectStore }) {
   return {
     async generate(projectId, { ownerId, userId } = {}) {
@@ -21,6 +28,7 @@ function createExportService({ config, projectStore }) {
         archive.on('error', reject);
         archive.pipe(output);
         try {
+          archive.append(fountainBundleSource(project.scriptText), { name: SCREENPLAY_BUNDLE_PATH });
           for (let index = 0; index < scenes.length; index += 1) {
             const scene = scenes[index];
             const shot = imageShot(scene);
@@ -55,4 +63,4 @@ function createExportService({ config, projectStore }) {
   };
 }
 
-module.exports = { createExportService };
+module.exports = { createExportService, fountainBundleSource, SCREENPLAY_BUNDLE_PATH };

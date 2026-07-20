@@ -16,6 +16,8 @@ function legacyShot(scene = {}) {
     activeVideoVersionIndex: videoVersions.length ? Math.min(Math.max(requestedVideoIndex, 0), videoVersions.length - 1) : 0,
     referenceBindings: normalizeReferenceImages(scene.referenceImages),
     disabledStyleReferencePaths: Array.isArray(scene.disabledProjectReferenceImages) ? scene.disabledProjectReferenceImages : [],
+    startFrame: versions[versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0]?.path || null,
+    endFrame: null,
   };
 }
 
@@ -36,6 +38,10 @@ function migrateSceneImageToImplicitShot(scene = {}) {
   const requestedVideoIndex = Number.isInteger(existing?.activeVideoVersionIndex) ? existing.activeVideoVersionIndex : legacy.activeVideoVersionIndex;
   const referenceBindings = Array.isArray(existing?.referenceBindings) ? normalizeReferenceImages(existing.referenceBindings) : legacy.referenceBindings;
   const disabledStyleReferencePaths = Array.isArray(existing?.disabledStyleReferencePaths) ? existing.disabledStyleReferencePaths : legacy.disabledStyleReferencePaths;
+  const defaultStartFrame = versions[versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0]?.path || null;
+  const versionPaths = new Set(versions.map((version) => version?.path).filter(Boolean));
+  const startFrame = typeof existing?.startFrame === 'string' && versionPaths.has(existing.startFrame) ? existing.startFrame : defaultStartFrame;
+  const endFrame = typeof existing?.endFrame === 'string' && versionPaths.has(existing.endFrame) ? existing.endFrame : null;
   const shot = {
     ...(existing || {}),
     prompt: typeof existing?.prompt === 'string' ? existing.prompt : legacy.prompt,
@@ -45,6 +51,8 @@ function migrateSceneImageToImplicitShot(scene = {}) {
     activeVideoVersionIndex: videoVersions.length ? Math.min(Math.max(requestedVideoIndex, 0), videoVersions.length - 1) : 0,
     referenceBindings,
     disabledStyleReferencePaths,
+    startFrame,
+    endFrame,
   };
 
   scene.shots = [shot, ...existingShots.slice(1)];
@@ -74,7 +82,7 @@ function attachLegacyImageProjection(scene = {}) {
 
 function hasLegacySceneImageState(scene = {}) {
   const shot = Array.isArray(scene.shots) ? scene.shots[0] : null;
-  return !shot || !Array.isArray(shot.referenceBindings) || !Array.isArray(shot.disabledStyleReferencePaths) || SHOT_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(scene, field)) || Object.prototype.hasOwnProperty.call(scene, 'referenceImages') || Object.prototype.hasOwnProperty.call(scene, 'disabledProjectReferenceImages');
+  return !shot || !Array.isArray(shot.referenceBindings) || !Array.isArray(shot.disabledStyleReferencePaths) || !Object.prototype.hasOwnProperty.call(shot, 'startFrame') || !Object.prototype.hasOwnProperty.call(shot, 'endFrame') || SHOT_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(scene, field)) || Object.prototype.hasOwnProperty.call(scene, 'referenceImages') || Object.prototype.hasOwnProperty.call(scene, 'disabledProjectReferenceImages');
 }
 
 module.exports = {

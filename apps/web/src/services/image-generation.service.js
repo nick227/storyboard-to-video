@@ -4,9 +4,10 @@ const crypto = require('node:crypto');
 const { getAdditionalCommonPrompt, slugify } = require('../shared/text');
 const { providerOutput } = require('../providers/result');
 const { AppError } = require('../errors');
-const { createGenerationManifest } = require('../shared/generation-manifest');
+const { createGenerationManifest, hashCanonical } = require('../shared/generation-manifest');
 const { normalizeReferenceRole } = require('../shared/reference-roles');
 const { imageShot } = require('../shared/scene-shots');
+const { resolveImageReferencePlan } = require('../shared/image-reference-plan');
 
 function createImageGenerationService({ config, styles, provider, projectStore }) {
   async function sceneReferencePaths(projectId, scene) {
@@ -27,41 +28,87 @@ function createImageGenerationService({ config, styles, provider, projectStore }
     return paths;
   }
 
+  function publicReferencePlan(referencePlan) {
+    return {
+      provider: referencePlan.provider,
+      transport: referencePlan.capabilities.transport,
+      maxReferences: referencePlan.capabilities.maxReferences,
+      roleAwarePrompting: referencePlan.capabilities.roleAwarePrompting,
+      included: referencePlan.included.map((reference) => ({ path: reference.path, source: reference.source, role: reference.role, order: reference.order, providerSlot: reference.providerSlot })),
+      excluded: referencePlan.excluded.map((reference) => ({ path: reference.path, source: reference.source, role: reference.role, order: reference.candidateOrder, reason: reference.reason })),
+    };
+  }
+
+  async function resolveReferenceContext(input, { ownerId, userId, signal, lease } = {}) {
+    const style = styles.find(input.styleId);
+    if (!style) throw new AppError('UNKNOWN_STYLE', 'Unknown style', { status: 400 });
+    const project = lease
+      ? await projectStore.verifyLease(lease, signal)
+      : await projectStore.read(input.projectId, { ownerId });
+    const scene = project.scenes?.find((item) => item.id === input.sceneId);
+    if (!scene) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
+    const disabledDefaults = new Set(imageShot(scene).disabledStyleReferencePaths || []);
+    const styleSources = styles.referenceSources
+      ? styles.referenceSources(style.id, userId)
+      : (styles.referencePaths?.(style.id, userId) || []).map((referencePath) => ({ path: referencePath, url: null }));
+    const defaultReferences = styleSources
+      .filter((item) => !item.url || !disabledDefaults.has(item.url))
+      .map((item) => ({
+        localPath: item.path,
+        path: item.url || `style://${style.id}/${item.type || 'reference'}/${path.basename(item.path)}`,
+        source: 'style',
+        role: item.type === 'characters' ? 'character' : item.type === 'world' ? 'location' : 'composition',
+      }));
+    const uploadedReferences = await sceneReferencePaths(input.projectId, scene);
+    const referencePlan = resolveImageReferencePlan(input.provider, [...uploadedReferences, ...defaultReferences]);
+    const visiblePlan = publicReferencePlan(referencePlan);
+    const referencePlanHash = hashCanonical(visiblePlan);
+    return {
+      style,
+      project,
+      scene,
+      referencePlan,
+      visiblePlan,
+      referencePlanHash,
+      referenceCount: referencePlan.included.length,
+      sceneReferenceCount: referencePlan.included.filter((item) => item.source === 'scene').length,
+      defaultReferenceCount: referencePlan.included.filter((item) => item.source === 'style').length,
+      requiresConfirmation: input.provider !== 'stub' && referencePlan.excluded.length > 0,
+    };
+  }
+
   return {
+    async preflight(input, context = {}) {
+      const resolved = await resolveReferenceContext(input, context);
+      return {
+        provider: input.provider,
+        referenceCount: resolved.referenceCount,
+        sceneReferenceCount: resolved.sceneReferenceCount,
+        defaultReferenceCount: resolved.defaultReferenceCount,
+        omittedReferenceCount: resolved.visiblePlan.excluded.length,
+        requiresConfirmation: resolved.requiresConfirmation,
+        referencePlanHash: resolved.referencePlanHash,
+        referencePlan: resolved.visiblePlan,
+      };
+    },
+
     async generate(input, { ownerId, userId, signal, jobId } = {}) {
-      const style = styles.find(input.styleId);
-      if (!style) {
-        const error = new Error('Unknown style');
-        error.statusCode = 400;
-        throw error;
+      const lease = await projectStore.acquireLease(input.projectId, { ownerId, userId });
+      const resolved = await resolveReferenceContext(input, { ownerId, userId, signal, lease });
+      if (resolved.requiresConfirmation && input.confirmedReferencePlanHash !== resolved.referencePlanHash) {
+        throw new AppError('REFERENCE_OMISSIONS_CONFIRMATION_REQUIRED', 'Reference omissions changed or were not confirmed. Review the current preflight plan before generating.', {
+          status: 409,
+          details: { referencePlanHash: resolved.referencePlanHash, referencePlan: resolved.visiblePlan },
+        });
       }
+      const { style, referencePlan } = resolved;
       const common = getAdditionalCommonPrompt(style.promptText, input.commonPromptText);
       const prompt = [style.promptText, common, input.scenePrompt, input.extraPromptText].filter(Boolean).join('\n\n');
-      const lease = await projectStore.acquireLease(input.projectId, { ownerId, userId });
-      const projectBeforeGeneration = await projectStore.verifyLease(lease, signal);
-      const sceneBeforeGeneration = projectBeforeGeneration.scenes?.find((item) => item.id === input.sceneId);
-      if (!sceneBeforeGeneration) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
-      const disabledDefaults = new Set(imageShot(sceneBeforeGeneration).disabledStyleReferencePaths || []);
-      const styleSources = styles.referenceSources
-        ? styles.referenceSources(style.id, userId)
-        : (styles.referencePaths?.(style.id, userId) || []).map((referencePath) => ({ path: referencePath, url: null }));
-      const defaultReferences = styleSources
-        .filter((item) => !item.url || !disabledDefaults.has(item.url))
-        .map((item) => ({
-          localPath: item.path,
-          path: item.url || `style://${style.id}/${item.type || 'reference'}/${path.basename(item.path)}`,
-          source: 'style',
-          role: item.type === 'characters' ? 'character' : item.type === 'world' ? 'location' : 'composition',
-        }));
-      const uploadedReferences = await sceneReferencePaths(input.projectId, sceneBeforeGeneration);
-      const referenceLimit = input.provider === 'dezgo' ? 1 : input.provider === 'openai' ? 8 : 14;
-      const candidates = [...uploadedReferences, ...defaultReferences];
-      const selectedReferences = candidates.slice(0, referenceLimit);
+      const selectedReferences = referencePlan.included;
       const references = selectedReferences.map((item) => item.localPath);
-      const sceneReferenceCount = Math.min(uploadedReferences.length, selectedReferences.length);
-      const defaultReferenceCount = selectedReferences.length - sceneReferenceCount;
+      const { sceneReferenceCount, defaultReferenceCount } = resolved;
       const referenceBindings = selectedReferences.map((reference) => ({ path: reference.localPath, role: reference.role, source: reference.source }));
-      const providerResponse = await provider.generate({ provider: input.provider, prompt, references, referenceBindings, title: input.sceneTitle });
+      const providerResponse = await provider.generate({ provider: input.provider, prompt, references, referenceBindings, referencePlan, title: input.sceneTitle });
       const result = providerOutput(providerResponse);
       const metadata = providerResponse && Object.hasOwn(providerResponse, 'output') ? providerResponse : {};
       fs.mkdirSync(config.paths.generated, { recursive: true });
@@ -83,10 +130,10 @@ function createImageGenerationService({ config, styles, provider, projectStore }
             style: { id: style.id },
             provider: { name: metadata.provider || input.provider, model: metadata.model || null },
             settings: metadata.settings || {},
-            references: selectedReferences.map((reference, order) => ({ path: reference.path, source: reference.source, role: reference.role, order, consumed: input.provider !== 'stub' })),
+            references: selectedReferences.map((reference) => ({ path: reference.path, source: reference.source, role: reference.role, order: reference.order, providerSlot: reference.providerSlot, consumed: true })),
           },
           result: { providerRequestId: metadata.providerRequestId || null, measurementStatus: metadata.measurementStatus || 'unavailable', mimeType: result.mimeType },
-          omissions: candidates.slice(referenceLimit).map((reference, offset) => ({ path: reference.path, source: reference.source, role: reference.role, order: referenceLimit + offset, reason: 'provider_limit' })),
+          omissions: referencePlan.excluded.map((reference) => ({ path: reference.path, source: reference.source, role: reference.role, order: reference.candidateOrder, reason: reference.reason })),
         });
         const version = { path: asset.path, prompt, scenePrompt: input.scenePrompt, provider: input.provider, manifest, manifestHash: manifest.manifestHash, createdAt };
         let scene, project;
@@ -96,7 +143,15 @@ function createImageGenerationService({ config, styles, provider, projectStore }
           if (projectStore.rollbackAsset) await projectStore.rollbackAsset(asset); else fs.rmSync(asset.sourcePath, { force: true });
           throw error;
         }
-        return { image: { fileName: file, path: asset.path, prompt, mimeType: result.mimeType }, referenceCount: references.length, defaultReferenceCount, sceneReferenceCount, scene, revision: project.revision };
+        return {
+          image: { fileName: file, path: asset.path, prompt, mimeType: result.mimeType },
+          referenceCount: references.length,
+          defaultReferenceCount,
+          sceneReferenceCount,
+          referencePlan: resolved.visiblePlan,
+          scene,
+          revision: project.revision,
+        };
       } finally {
         fs.rmSync(staged, { force: true });
       }

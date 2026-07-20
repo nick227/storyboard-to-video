@@ -1,5 +1,6 @@
 function createMediaController({images,audio,videos,subtitles,exports}){return{
  async image(req,res){res.json({ok:true,...await images.generate(req.body,{ownerId:req.auth.tenantId,userId:req.auth.userId,signal:req.generationSignal,jobId:req.generationJobId})});},
+ async imagePreflight(req,res){res.json({ok:true,...await images.preflight(req.body,{ownerId:req.auth.tenantId,userId:req.auth.userId})});},
  async audio(req,res){res.json({ok:true,...await audio.generate(req.body,{ownerId:req.auth.tenantId,userId:req.auth.userId,signal:req.generationSignal,jobId:req.generationJobId})});},
  async video(req,res){res.json({ok:true,...await videos.generate(req.body,{ownerId:req.auth.tenantId,userId:req.auth.userId,signal:req.generationSignal,jobId:req.generationJobId})});},
  async videoPreflight(req,res){res.json(await videos.verify());},

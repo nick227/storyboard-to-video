@@ -49,16 +49,22 @@ export async function loadStyles(els) {
   const data = await api('/api/styles');
   generationStore.set({ styles: data.styles || [] });
   els.styleSelect.replaceChildren();
+  if (els.stageStyleSelect) els.stageStyleSelect.replaceChildren();
   generationStore.get().styles.forEach((style) => {
     const option = document.createElement('option');
     option.value = style.id;
     option.textContent = style.name;
     els.styleSelect.appendChild(option);
+    if (els.stageStyleSelect) {
+      const stageOption = option.cloneNode(true);
+      els.stageStyleSelect.appendChild(stageOption);
+    }
   });
   const saved = getCurrentStoryboardRecord();
   if (saved?.styleId && generationStore.get().styles.some((x) => x.id === saved.styleId)) {
     els.styleSelect.value = saved.styleId;
   }
+  if (els.stageStyleSelect) els.stageStyleSelect.value = els.styleSelect.value;
   const selectedStyle = generationStore.get().styles.find((item) => item.id === els.styleSelect.value);
   if (migrateLegacyStylePrompt(saved, selectedStyle, els)) {
     persistStoryboardLibrary();

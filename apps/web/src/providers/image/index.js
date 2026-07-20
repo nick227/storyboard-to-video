@@ -1,6 +1,7 @@
 const { signal, throwResponse } = require('../http');
 const { stubImage } = require('../../media/stub-media');
 const { providerRequestId, providerResult } = require('../result');
+const { IMAGE_PROVIDER_CAPABILITIES, imageProviderCapabilities } = require('../../shared/image-reference-plan');
 const fs = require('node:fs');
 
 function fileBlob(file) {
@@ -22,7 +23,7 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
       headers = { Authorization: `Bearer ${config.env.OPENAI_API_KEY}` };
       const form = new FormData();
       form.append('model', model); form.append('prompt', prompt); form.append('size', size); form.append('quality', quality);
-      references.slice(0, 8).forEach((file, index) => form.append('image[]', fileBlob(file), `reference-${index}.${file.split('.').pop() || 'png'}`));
+      references.forEach((file, index) => form.append('image[]', fileBlob(file), `reference-${index}.${file.split('.').pop() || 'png'}`));
       body = form;
     }
     const response = await fetch(url, { method: 'POST', headers, body, signal: signal(config.env.IMAGE_PROVIDER_TIMEOUT_MS || 180_000, getCancellation) });
@@ -52,12 +53,14 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
     if (!response.ok) await throwResponse('gemini', response); const data = await response.json(); const part = (data.candidates?.[0]?.content?.parts || []).find((item) => item.inlineData?.data || item.inline_data?.data); const b64 = part?.inlineData?.data || part?.inline_data?.data; if (!b64) throw new Error('Gemini image error: no image returned'); const mimeType = part?.inlineData?.mimeType || part?.inline_data?.mime_type || 'image/png'; const rawUsage = data.usageMetadata || null; const outputImageTokens = (rawUsage?.candidatesTokensDetails || []).filter((item) => item.modality === 'IMAGE').reduce((sum, item) => sum + (item.tokenCount || 0), 0); const candidateTokens = rawUsage?.candidatesTokenCount || 0; return providerResult({ output: { buffer: Buffer.from(b64, 'base64'), mimeType, extension: mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/webp' ? 'webp' : 'png' }, provider: 'gemini', model: data.modelVersion || model, providerRequestId: providerRequestId(response, data), settings: { temperature: 0.7, responseModalities: ['TEXT', 'IMAGE'] }, usage: { images: 1, ...(rawUsage ? { inputTokens: rawUsage.promptTokenCount || 0, cachedInputTokens: rawUsage.cachedContentTokenCount || 0, outputTokens: candidateTokens + (rawUsage.thoughtsTokenCount || 0), candidateTokens, outputImageTokens, outputTextOrThinkingTokens: Math.max(0, candidateTokens - outputImageTokens) + (rawUsage.thoughtsTokenCount || 0), thinkingTokens: rawUsage.thoughtsTokenCount || 0, totalTokens: rawUsage.totalTokenCount || 0, serviceTier: rawUsage.serviceTier || 'standard' } : {}) }, rawUsage, measurementStatus: rawUsage ? 'observed' : 'estimated' });
   }
   function generate({ provider, prompt, references = [], referenceBindings = [], title }) {
+    const capabilities = imageProviderCapabilities(provider);
+    if (references.length > capabilities.maxReferences) throw new RangeError(`${provider} accepts at most ${capabilities.maxReferences} planned reference image${capabilities.maxReferences === 1 ? '' : 's'}`);
     const models = { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', dezgo: config.env.DEZGO_MODEL || 'text2image', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' };
     const operation = () => provider === 'stub'
       ? Promise.resolve(providerResult({ output: { buffer: stubImage(prompt, title), mimeType: 'image/svg+xml', extension: 'svg' }, provider: 'stub', model: models.stub, settings: { renderer: 'stub-svg-v1' }, usage: { images: 1 }, measurementStatus: 'not_applicable' }))
-      : provider === 'openai' ? openai(prompt, references) : provider === 'dezgo' ? dezgo(prompt, references) : gemini(prompt, (referenceBindings.length ? referenceBindings : references).slice(0, 14));
+      : provider === 'openai' ? openai(prompt, references) : provider === 'dezgo' ? dezgo(prompt, references) : gemini(prompt, referenceBindings.length ? referenceBindings : references);
     return usageTracker ? usageTracker.execute({ modality: 'image', provider, model: models[provider], inputMetadata: { promptCharacters: String(prompt).length, referenceCount: references.length } }, operation) : operation();
   }
-  return { generate };
+  return { capabilities: IMAGE_PROVIDER_CAPABILITIES, generate, getCapabilities: imageProviderCapabilities };
 }
 module.exports = { createImageProviders };
