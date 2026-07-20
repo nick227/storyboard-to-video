@@ -12,6 +12,13 @@ class PrismaBillingRepository {
   activeMarkup() { return this.prisma.markupPolicyVersion.findFirst({ where: { active: true }, orderBy: { effectiveAt: 'desc' } }); }
   activeCreditRate() { return this.prisma.siteCreditRateVersion.findFirst({ where: { active: true }, orderBy: { effectiveAt: 'desc' } }); }
 
+  reservationQuote(generationRequestId) {
+    return this.prisma.creditReservation.findUnique({
+      where: { generationRequestId },
+      include: { providerPriceVersion: true, markupPolicyVersion: true, siteCreditRateVersion: true },
+    });
+  }
+
   async createMonitoringReservation(data) {
     return this.prisma.creditReservation.upsert({
       where: { generationRequestId: data.generationRequestId }, update: {},

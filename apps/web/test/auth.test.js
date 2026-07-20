@@ -60,3 +60,33 @@ test('login rejects invalid credentials without exposing account existence', asy
     assert.equal(wrong.body.error.message, missing.body.error.message);
   } finally { f.cleanup(); }
 });
+
+test('user media defaults apply only when a new project is created', async () => {
+  const f = fixture();
+  try {
+    const agent = request.agent(f.app);
+    await agent.post('/api/auth/register').send({ email: 'media@example.com', displayName: 'Media', password: 'a-secure-password' }).expect(201);
+    const first = await agent.post('/api/projects').send({ id: 'before-defaults', title: 'Before' }).expect(201);
+    assert.equal(first.body.project.mediaSettings, undefined);
+    const defaults = { version: 1, aspectRatio: '16:9', image: { resolutionTier: 'high', quality: 'medium' }, video: { resolutionTier: 'standard', durationSeconds: 6 } };
+    await agent.put('/api/auth/preferences/media').send(defaults).expect(200);
+    const second = await agent.post('/api/projects').send({ id: 'after-defaults', title: 'After' }).expect(201);
+    assert.deepEqual(second.body.project.mediaSettings, defaults);
+    const unchanged = await agent.get('/api/projects/before-defaults').expect(200);
+    assert.equal(unchanged.body.project.mediaSettings, undefined);
+  } finally { f.cleanup(); }
+});
+
+test('media quote endpoint resolves provider reality and rejects unsupported combinations', async () => {
+  const f = fixture();
+  try {
+    const agent = request.agent(f.app);
+    await agent.post('/api/auth/register').send({ email: 'quote@example.com', displayName: 'Quote', password: 'a-secure-password' }).expect(201);
+    const intent = { version: 1, aspectRatio: '16:9', image: { resolutionTier: 'high', quality: 'medium' }, video: { resolutionTier: 'standard' } };
+    const quote = await agent.post('/api/media-output/quote').send({ modality: 'image', provider: 'gemini', outputIntent: intent, quantity: 12 }).expect(200);
+    assert.equal(quote.body.output.requested.resolutionTier, 'high');
+    assert.deepEqual(quote.body.output.resolved.providerSettings, { imageSize: '2K', aspectRatio: '16:9' });
+    assert.equal(quote.body.estimate.available, false);
+    await agent.post('/api/media-output/quote').send({ modality: 'image', provider: 'openai', outputIntent: intent }).expect(400).expect((response) => assert.equal(response.body.error.code, 'UNSUPPORTED_MEDIA_OUTPUT'));
+  } finally { f.cleanup(); }
+});

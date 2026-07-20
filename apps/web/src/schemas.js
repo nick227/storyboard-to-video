@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { VIDEO_PROVIDERS } = require('./shared/video-provider-capabilities');
 
 const projectId = z.string().trim().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/);
 const fallbackPolicy = z.enum(['fail', 'local']).default('local');
@@ -82,6 +83,15 @@ const exportProject = z.object({
 
 const sceneId = z.string().trim().min(1).max(120);
 
+const aspectRatio = z.enum(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']);
+const resolutionTier = z.enum(['draft', 'standard', 'high', 'ultra']);
+const mediaSettings = z.object({
+  version: z.literal(1).default(1),
+  aspectRatio,
+  image: z.object({ resolutionTier, quality: z.enum(['low', 'medium', 'high']) }),
+  video: z.object({ resolutionTier, durationSeconds: z.coerce.number().positive().max(300).optional() }),
+});
+
 const imageGeneration = z.object({
   projectId,
   sceneId,
@@ -93,6 +103,11 @@ const imageGeneration = z.object({
   extraPromptText: z.string().max(20_000).default(''),
   provider: z.enum(['gemini', 'openai', 'dezgo', 'stub']).default('gemini'),
   confirmedReferencePlanHash: z.string().trim().max(80).optional(),
+  outputIntent: z.object({
+    aspectRatio: aspectRatio.optional(),
+    resolutionTier: resolutionTier.optional(),
+    quality: z.enum(['low', 'medium', 'high']).optional(),
+  }).optional(),
 });
 
 const videoGeneration = z.object({
@@ -107,6 +122,17 @@ const videoGeneration = z.object({
   motionPrompt: z.string().max(4_000).default(''),
   motionIntensity: z.enum(['subtle', 'medium', 'high']).default('medium'),
   imagePath: z.string().trim().min(1).max(500).optional(),
+  provider: z.enum(VIDEO_PROVIDERS).optional(),
+  model: z.string().trim().min(1).max(120).optional(),
+  generationMode: z.enum(['image_to_video']).optional(),
+  outputIntent: z.object({
+    durationSeconds: z.coerce.number().positive().max(300).optional(),
+    aspectRatio: aspectRatio.optional(),
+    resolutionTier: resolutionTier.optional(),
+    audioPolicy: z.enum(['none', 'provider_native', 'replace_with_project_audio']).optional(),
+    seed: z.coerce.number().int().min(0).max(2 ** 31 - 1).optional(),
+    providerOptions: z.object({ version: z.literal(1), values: z.record(z.string(), z.unknown()) }).optional(),
+  }).optional(),
 });
 
 const subtitleGeneration = z.object({
@@ -141,4 +167,4 @@ const regenerateDialogue = z.object({
   bypassCache: z.boolean().default(false),
 });
 
-module.exports = { audioGeneration, createProject, exportProject, fallbackPolicy, imageGeneration, planShots, projectDocument, projectId, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, subtitleGeneration, videoGeneration };
+module.exports = { audioGeneration, createProject, exportProject, fallbackPolicy, imageGeneration, mediaSettings, planShots, projectDocument, projectId, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, subtitleGeneration, videoGeneration };

@@ -23,7 +23,11 @@ const { createTextProviders } = require('./providers/text');
 const { createImageProviders } = require('./providers/image');
 const { createAudioProviders } = require('./providers/audio');
 const { createAlignmentProvider } = require('./providers/alignment');
-const { createVideoProvider } = require('./providers/video');
+const { createVideoProviders } = require('./providers/video');
+const { createLocalVideoAssetTransport } = require('./providers/video/asset-transport');
+const { createVideoExecutionService } = require('./services/video-execution.service');
+const { VideoGenerationAttemptStore } = require('./storage/video-generation-attempt-store');
+const { PrismaVideoGenerationAttemptRepository } = require('./storage/prisma-video-generation-attempt.repository');
 const { createPromptGenerationService } = require('./services/prompt-generation.service');
 const { createReferenceGenerationService } = require('./services/reference-generation.service');
 const { createDialogueService } = require('./services/dialogue.service');
@@ -36,6 +40,7 @@ const { createSubtitleGenerationService } = require('./services/subtitle-generat
 const { createShotReferenceService } = require('./services/shot-reference.service');
 const { createExportService } = require('./services/export.service');
 const { createVoiceService } = require('./services/voice.service');
+const { createMediaOutputService } = require('./services/media-output.service');
 const { requireIdempotency } = require('./middleware/idempotency');
 const { createJobExecution } = require('./jobs/execution');
 const { AuthService } = require('./auth');
@@ -72,13 +77,15 @@ function createDependencies(config, overrides = {}) {
     repository: paymentRepository, stripe, webhookSecret: config.payments?.stripeWebhookSecret, publicAppUrl: config.payments?.publicAppUrl,
   });
   const usageTracker = createProviderUsageService({ repository: usageRepository, generationContext, billing });
+  const videoAttemptRepository = overrides.videoAttemptRepository || (prisma ? new PrismaVideoGenerationAttemptRepository(prisma) : new VideoGenerationAttemptStore(config.paths.videoAttempts));
 
   const styles = createStylesService(config);
   const textProviders = createTextProviders(config, cancellation, usageTracker);
   const imageProvider = createImageProviders(config, textProviders, cancellation, usageTracker);
   const audioProvider = createAudioProviders(config, cancellation, usageTracker);
   const alignmentProvider = createAlignmentProvider(config, cancellation);
-  const videoProvider = createVideoProvider(config, cancellation, usageTracker);
+  const videoProviders = createVideoProviders(config, cancellation, usageTracker, overrides.videoProviderAdapters);
+  const videoExecution = createVideoExecutionService({ providers: videoProviders, attempts: videoAttemptRepository, usageTracker, assetTransport: overrides.videoAssetTransport || createLocalVideoAssetTransport() });
   const prompts = createPromptGenerationService({ textProviders, styles, limits: config.limits, generationCache });
   const referenceGeneration = createReferenceGenerationService({ textProviders });
   const dialogue = createDialogueService({ textProviders, generationCache });
@@ -86,7 +93,8 @@ function createDependencies(config, overrides = {}) {
   const shotPlanning = createShotPlanningService({ textProviders, generationCache });
   const images = createImageGenerationService({ config, styles, provider: imageProvider, projectStore });
   const audio = createAudioGenerationService({ config, provider: audioProvider, alignmentProvider, projectStore });
-  const videos = createVideoGenerationService({ config, provider: videoProvider, projectStore, styles });
+  const videos = createVideoGenerationService({ config, providers: videoProviders, execution: videoExecution, projectStore, styles });
+  const mediaOutput = createMediaOutputService({ config, projectStore, billing, videoProviders });
   const subtitles = createSubtitleGenerationService({ config, projectStore });
   const shotReferences = createShotReferenceService({ config, projectStore });
   const exports = createExportService({ config, projectStore });
@@ -97,8 +105,8 @@ function createDependencies(config, overrides = {}) {
   const auth = new AuthService({ identityStore });
 
   return {
-    config, prisma, projectStore, queue, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, billingRepository, billing, adminRepository, paymentRepository, payments, generationContext,
-    styles, prompts, referenceGeneration, dialogue, sceneSplit, shotPlanning, images, audio, videos, subtitles, shotReferences, exports, voices, imageProvider,
+    config, prisma, projectStore, queue, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, generationContext, identityStore,
+    styles, prompts, referenceGeneration, dialogue, sceneSplit, shotPlanning, images, audio, videos, subtitles, shotReferences, exports, voices, imageProvider, mediaOutput,
     upload: createUpload(config),
     auth,
     authenticate: auth.middleware(),

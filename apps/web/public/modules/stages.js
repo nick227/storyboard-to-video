@@ -61,6 +61,10 @@ function imageManifestStaleness(scene, shot, version) {
   const record = getCurrentStoryboardRecord();
   const style = currentStyle(record);
   if (!record || !style || !version?.manifest?.inputs) return null;
+  if (record.mediaSettings && version.output?.requested) {
+    const requested = { aspectRatio: record.mediaSettings.aspectRatio, resolutionTier: record.mediaSettings.image?.resolutionTier, quality: record.mediaSettings.image?.quality };
+    if (hashCanonical(requested) !== hashCanonical(version.output.requested)) return true;
+  }
   const references = currentImageReferences(scene, record.imageProvider, record.styleId);
   if (!references) return null;
   const inputs = structuredClone(version.manifest.inputs);
@@ -80,6 +84,10 @@ function videoManifestStaleness(scene, shot, activeImage, version) {
   const record = getCurrentStoryboardRecord();
   const style = currentStyle(record);
   if (!record || !style || !version?.manifest?.inputs) return null;
+  if (record.mediaSettings && version.output?.requested) {
+    const requested = { aspectRatio: record.mediaSettings.aspectRatio, resolutionTier: record.mediaSettings.video?.resolutionTier, ...(record.mediaSettings.video?.durationSeconds ? { durationSeconds: record.mediaSettings.video.durationSeconds } : {}) };
+    if (hashCanonical(requested) !== hashCanonical(version.output.requested)) return true;
+  }
   const inputs = structuredClone(version.manifest.inputs);
   inputs.prompt = {
     ...(inputs.prompt || {}),

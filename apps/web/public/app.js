@@ -12,7 +12,7 @@ import {
   refreshSpend, getCachedSpend,
 } from './modules/stages.js';
 import {
-  loadElevenLabsVoices, loadSparkVoices, loadPiperVoices, cloneVoice, switchMicrophone,
+  loadElevenLabsVoices, loadSparkVoices, loadPiperVoices, refreshVoicesForCurrentProvider, cloneVoice, switchMicrophone,
   openVoiceLibraryModal, closeVoiceLibraryCleanup, toggleVoiceRecording,
   renderVoiceLibraryList, resetVoiceRecordingUI, voiceRecordingState,
 } from './modules/voices.js';
@@ -43,6 +43,12 @@ const els = {
   commonPromptText: document.getElementById('commonPromptText'),
   textProvider: document.getElementById('textProvider'),
   imageProvider: document.getElementById('imageProvider'),
+  mediaAspectRatio: document.getElementById('mediaAspectRatio'),
+  imageResolutionTier: document.getElementById('imageResolutionTier'),
+  imageQuality: document.getElementById('imageQuality'),
+  videoResolutionTier: document.getElementById('videoResolutionTier'),
+  mediaCostPreview: document.getElementById('mediaCostPreview'),
+  saveMediaDefaultsBtn: document.getElementById('saveMediaDefaultsBtn'),
   audioProvider: document.getElementById('audioProvider'),
   videoMotionIntensity: document.getElementById('videoMotionIntensity'),
   subtitleStyleSelect: document.getElementById('subtitleStyleSelect'),
@@ -701,7 +707,7 @@ function setScriptEditorMode(mode) {
 async function loadStoryboardIntoUI() {
   const stylesLoaded = await runStage('Loading styles', () => loadStyles(els));
   const referencesLoaded = await runStage('Loading style references', () => loadStyleReferences(els.styleSelect.value, els, setStatus));
-  const voicesLoaded = await runStage('Loading voices', () => refreshVoicesForCurrentProvider());
+  const voicesLoaded = await runStage('Loading voices', () => refreshVoicesForCurrentProvider(setStatus));
   await runStage('Loading job history', () => refreshRecentJobs(projectStore.get().currentId));
   await runStage('Loading token spend', () => refreshSpend(projectStore.get().currentId));
   renderVoicesPanel(els);
@@ -756,7 +762,11 @@ function attachEvents() {
     [els.settingsBtn, els.settingsModal],
   ];
   settingsModalPairs.forEach(([trigger, modal]) => {
-    trigger.addEventListener('click', () => modal.showModal());
+    trigger.addEventListener('click', async () => {
+      await refreshVoicesForCurrentProvider(setStatus);
+      renderVoicesPanel(els);
+      modal.showModal();
+    });
     modal.querySelectorAll('[data-close-settings]').forEach((button) => {
       button.addEventListener('click', () => modal.close());
     });
@@ -893,6 +903,51 @@ function attachEvents() {
   [els.textProvider, els.imageProvider].forEach((el) => {
     el.addEventListener('change', () => saveStoryboard(els, false));
   });
+  const selectedMediaSettings = () => ({
+    version: 1,
+    aspectRatio: els.mediaAspectRatio.value,
+    image: { resolutionTier: els.imageResolutionTier.value, quality: els.imageQuality.value },
+    video: { resolutionTier: els.videoResolutionTier.value },
+  });
+  let mediaQuoteSequence = 0;
+  const refreshMediaCostPreview = async () => {
+    if (!els.mediaCostPreview || !els.mediaAspectRatio.value) {
+      if (els.mediaCostPreview) els.mediaCostPreview.textContent = 'Current projects retain their existing image and video defaults until an aspect ratio is selected.';
+      return;
+    }
+    const sequence = ++mediaQuoteSequence;
+    const quantity = Math.max(1, sceneStore.get().scenes.length || 1);
+    const outputIntent = selectedMediaSettings();
+    const currentRecord = getCurrentStoryboardRecord();
+    const projectScope = Number.isInteger(currentRecord?.revision) ? { projectId: projectStore.get().currentId } : {};
+    try {
+      const [imageQuote, videoQuote] = await Promise.all([
+        fetch('/api/media-output/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modality: 'image', provider: els.imageProvider.value, ...projectScope, outputIntent, quantity }) }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Image output is unsupported'); return body; }),
+        fetch('/api/media-output/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modality: 'video', ...projectScope, outputIntent, quantity }) }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Video output is unsupported'); return body; }),
+      ]);
+      if (sequence !== mediaQuoteSequence) return;
+      const describe = (result, label) => {
+        const resolved = result.output.resolved;
+        const dimensions = resolved.width && resolved.height ? `${resolved.width}×${resolved.height}` : resolved.providerSettings.resolution;
+        const cost = result.estimate.available ? `${(Number(result.estimate.totalCreditMicros) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} tokens for ${quantity}` : 'price unavailable';
+        return `${label}: ${dimensions}, ${cost}`;
+      };
+      els.mediaCostPreview.textContent = `${describe(imageQuote, 'Images')} · ${describe(videoQuote, 'Videos')}`;
+    } catch (error) {
+      if (sequence === mediaQuoteSequence) els.mediaCostPreview.textContent = error.message;
+    }
+  };
+  [els.mediaAspectRatio, els.imageResolutionTier, els.imageQuality, els.videoResolutionTier].forEach((el) => el?.addEventListener('change', () => { saveStoryboard(els, false); refreshMediaCostPreview(); }));
+  els.imageProvider.addEventListener('change', refreshMediaCostPreview);
+  els.saveMediaDefaultsBtn?.addEventListener('click', async () => {
+    if (!els.mediaAspectRatio.value) { els.mediaCostPreview.textContent = 'Select an aspect ratio before saving user defaults.'; return; }
+    try {
+      const response = await fetch('/api/auth/preferences/media', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(selectedMediaSettings()) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message || 'Could not save media defaults');
+      els.mediaCostPreview.textContent = 'Saved as your defaults for new projects. Existing projects are unchanged.';
+    } catch (error) { els.mediaCostPreview.textContent = error.message; }
+  });
   els.videoMotionIntensity.addEventListener('change', () => saveStoryboard(els, false));
   els.enrichNarration.addEventListener('change', () => saveStoryboard(els, false));
 
@@ -918,6 +973,7 @@ function attachEvents() {
   els.settingsBtn.addEventListener('click', () => {
     syncPlanningModeFromEnrich();
     refreshShotCountDisplay();
+    refreshMediaCostPreview();
   });
 
   if (els.planningModeSelect) {
@@ -1021,7 +1077,7 @@ function attachEvents() {
 
   els.audioProvider.addEventListener('change', async (e) => {
     voiceStore.set({ audioProvider: e.target.value });
-    await refreshVoicesForCurrentProvider();
+    await refreshVoicesForCurrentProvider(setStatus);
     renderVoicesPanel(els);
     saveStoryboard(els, false);
   });
@@ -1029,7 +1085,10 @@ function attachEvents() {
   els.voiceLibraryModal.addEventListener('click', (event) => {
     if (event.target === els.voiceLibraryModal) els.voiceLibraryModal.close();
   });
-  els.voiceLibraryModal.addEventListener('close', () => closeVoiceLibraryCleanup(els));
+  els.voiceLibraryModal.addEventListener('close', () => {
+    closeVoiceLibraryCleanup(els);
+    renderVoicesPanel(els);
+  });
   els.voiceMicSelect.addEventListener('change', () => switchMicrophone(els.voiceMicSelect.value, els));
   els.voiceRecordBtn.addEventListener('click', () => toggleVoiceRecording(els));
   els.voiceSaveBtn.addEventListener('click', async () => {

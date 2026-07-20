@@ -198,6 +198,10 @@ function restoreStoryboardFields(els) {
   els.scriptText.value = record.scriptText || '';
   els.textProvider.value = optionValues(els.textProvider).includes(record.textProvider) ? record.textProvider : 'gemini';
   els.imageProvider.value = optionValues(els.imageProvider).includes(record.imageProvider) ? record.imageProvider : 'gemini';
+  if (els.mediaAspectRatio) els.mediaAspectRatio.value = optionValues(els.mediaAspectRatio).includes(record.mediaSettings?.aspectRatio) ? record.mediaSettings.aspectRatio : '';
+  if (els.imageResolutionTier) els.imageResolutionTier.value = optionValues(els.imageResolutionTier).includes(record.mediaSettings?.image?.resolutionTier) ? record.mediaSettings.image.resolutionTier : 'standard';
+  if (els.imageQuality) els.imageQuality.value = optionValues(els.imageQuality).includes(record.mediaSettings?.image?.quality) ? record.mediaSettings.image.quality : 'medium';
+  if (els.videoResolutionTier) els.videoResolutionTier.value = optionValues(els.videoResolutionTier).includes(record.mediaSettings?.video?.resolutionTier) ? record.mediaSettings.video.resolutionTier : 'draft';
   els.fallbackPolicy.value = record.fallbackPolicy === 'fail' ? 'fail' : 'local';
   els.videoMotionIntensity.value = optionValues(els.videoMotionIntensity).includes(record.videoMotionIntensity) ? record.videoMotionIntensity : 'medium';
   if (els.subtitleStyleSelect) {
@@ -265,6 +269,10 @@ export function createStoryboard(els) {
   if (els.subtitleStyleSelect) els.subtitleStyleSelect.value = 'classic';
   els.enrichNarration.checked = false;
   if (els.settingsShotLimitSelect) els.settingsShotLimitSelect.value = '';
+  if (els.mediaAspectRatio) els.mediaAspectRatio.value = '';
+  if (els.imageResolutionTier) els.imageResolutionTier.value = 'standard';
+  if (els.imageQuality) els.imageQuality.value = 'medium';
+  if (els.videoResolutionTier) els.videoResolutionTier.value = 'draft';
 }
 
 export function saveStoryboard(els, immediate = false) {
@@ -278,6 +286,12 @@ export function saveStoryboard(els, immediate = false) {
     commonPromptText: els.commonPromptText.value,
     textProvider: els.textProvider.value,
     imageProvider: els.imageProvider.value,
+    mediaSettings: els.mediaAspectRatio?.value ? {
+      version: 1,
+      aspectRatio: els.mediaAspectRatio.value,
+      image: { resolutionTier: els.imageResolutionTier.value, quality: els.imageQuality.value },
+      video: { resolutionTier: els.videoResolutionTier.value },
+    } : undefined,
     fallbackPolicy: els.fallbackPolicy.value,
     videoMotionIntensity: els.videoMotionIntensity.value,
     subtitleStyle: els.subtitleStyleSelect ? els.subtitleStyleSelect.value : 'classic',

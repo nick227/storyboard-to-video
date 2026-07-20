@@ -13,8 +13,8 @@ export const voiceRecordingState = {
   recordedBlob: null,
 };
 
-export async function loadElevenLabsVoices(setStatus) {
-  if (voiceStore.get().availableVoices.elevenlabs.length) return;
+export async function loadElevenLabsVoices(setStatus, force = false) {
+  if (!force && voiceStore.get().availableVoices.elevenlabs.length) return;
   try {
     const data = await api('/api/audio/voices?provider=elevenlabs');
     voiceStore.set(state => ({
@@ -25,8 +25,8 @@ export async function loadElevenLabsVoices(setStatus) {
   }
 }
 
-export async function loadSparkVoices(setStatus) {
-  if (voiceStore.get().availableVoices.spark.length) return;
+export async function loadSparkVoices(setStatus, force = false) {
+  if (!force && voiceStore.get().availableVoices.spark.length) return;
   try {
     const data = await api('/api/audio/spark/voices');
     voiceStore.set(state => ({
@@ -37,8 +37,8 @@ export async function loadSparkVoices(setStatus) {
   }
 }
 
-export async function loadPiperVoices(setStatus) {
-  if (voiceStore.get().availableVoices.piper.length) return;
+export async function loadPiperVoices(setStatus, force = false) {
+  if (!force && voiceStore.get().availableVoices.piper.length) return;
   try {
     const data = await api('/api/audio/voices?provider=piper');
     voiceStore.set(state => ({
@@ -46,6 +46,17 @@ export async function loadPiperVoices(setStatus) {
     }));
   } catch (error) {
     if (setStatus) setStatus(`Could not load Piper voices: ${error.message}`);
+  }
+}
+
+export async function refreshVoicesForCurrentProvider(setStatus, { force = false } = {}) {
+  const provider = voiceStore.get().audioProvider;
+  if (provider === 'elevenlabs') {
+    await loadElevenLabsVoices(setStatus, force);
+  } else if (provider === 'spark') {
+    await loadSparkVoices(setStatus, force);
+  } else if (provider === 'piper') {
+    await loadPiperVoices(setStatus, force);
   }
 }
 
@@ -270,7 +281,7 @@ export function renderVoiceLibraryList(els, setStatus) {
 }
 
 export async function openVoiceLibraryModal(els, setStatus) {
-  await loadSparkVoices(setStatus);
+  await loadSparkVoices(setStatus, true);
   renderVoiceLibraryList(els, setStatus);
   resetVoiceRecordingUI(els);
   els.voiceLibraryModal.showModal();

@@ -17,6 +17,7 @@ const { usageRoutes } = require('./routes/usage.routes');
 const { billingRoutes } = require('./routes/billing.routes');
 const { adminRoutes } = require('./routes/admin.routes');
 const { paymentRoutes, stripeWebhookHandler } = require('./routes/payment.routes');
+const { mediaOutputRoutes } = require('./routes/media-output.routes');
 const { isPlatformAdmin } = require('./middleware/style-admin');
 
 function createApp(dependencies) {
@@ -87,13 +88,14 @@ function registerRoutes(app, d) {
   app.use(assetsRoutes(d.controllers.assets));
   app.use('/api/projects', createProjectRouter({
     store: d.projectStore, queue: d.queue, upload: d.upload, shotReferences: d.shotReferences,
-    styles: d.styles, prompts: d.prompts, referenceGeneration: d.referenceGeneration, imageProvider: d.imageProvider, prisma: d.prisma, config: d.config
+    styles: d.styles, prompts: d.prompts, referenceGeneration: d.referenceGeneration, imageProvider: d.imageProvider, identityStore: d.identityStore, prisma: d.prisma, config: d.config
   }));
   app.use('/api/jobs', createJobRouter({ queue: d.queue, store: d.projectStore }));
   app.use('/api/admin/usage', usageRoutes(d.usageRepository));
   app.use('/api/admin/billing', billingRoutes(d.billingRepository, d.billing, d.adminRepository));
   app.use('/api/admin', adminRoutes(d.adminRepository, d.queue, d.paymentRepository, d.payments));
   app.use('/api/billing', paymentRoutes(d.paymentRepository, d.payments));
+  app.use('/api/media-output', mediaOutputRoutes(d.mediaOutput));
   app.use('/api/styles', stylesRoutes({ controller: d.controllers.styles, upload: d.upload }));
   app.use('/api/storyboard', storyboardRoutes({ controller: d.controllers.storyboard, idempotency: d.idempotency, execute: d.execute }));
   app.use('/api/images', imagesRoutes({ controller: d.controllers.media, idempotency: d.idempotency, execute: d.execute }));

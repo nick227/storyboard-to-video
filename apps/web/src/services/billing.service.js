@@ -3,13 +3,28 @@ const { applyMarkup, calculateProviderCost, convertNanoUsdToCreditMicros } = req
 function createBillingService({ repository, chargingEnabled = false }) {
   if (!repository) return null;
 
-  async function reserve(request, metadata) {
+  async function quote(metadata) {
     const [price, markup, creditRate] = await Promise.all([
       repository.findActivePrice(metadata), repository.activeMarkup(), repository.activeCreditRate(),
     ]);
-    const estimatedProviderNanoUsd = price?.reservationNanoUsd || 0n;
-    const estimatedCustomerNanoUsd = price && markup ? applyMarkup(estimatedProviderNanoUsd, markup) : 0n;
+    let estimatedProviderNanoUsd = price?.reservationNanoUsd || 0n;
+    let calculation = null;
+    if (price && metadata?.estimatedUsage && (price.rateCard?.type === 'matrix' || metadata.estimatedUsageComplete === true)) {
+      const estimate = calculateProviderCost(price.rateCard, metadata.estimatedUsage);
+      // The static reservation remains a safety floor for prompt/reference usage that cannot be
+      // known before the provider call; the resolved-output calculation raises it when the chosen
+      // size/quality/duration is more expensive.
+      estimatedProviderNanoUsd = estimate.nanoUsd > estimatedProviderNanoUsd ? estimate.nanoUsd : estimatedProviderNanoUsd;
+      calculation = estimate.calculation;
+    }
+    const estimatedCustomerNanoUsd = price && markup ? applyMarkup(estimatedProviderNanoUsd, markup) : estimatedProviderNanoUsd;
     const quotedCreditMicros = creditRate ? convertNanoUsdToCreditMicros(estimatedCustomerNanoUsd, creditRate) : 0n;
+    return { price, markup, creditRate, estimatedProviderNanoUsd, estimatedCustomerNanoUsd, quotedCreditMicros, calculation };
+  }
+
+  async function reserve(request, metadata) {
+    const quoted = await quote(metadata);
+    const { price, markup, creditRate, estimatedProviderNanoUsd, quotedCreditMicros } = quoted;
     const liveEligible = Boolean(chargingEnabled && price?.billable && markup && creditRate);
     const chargingMode = liveEligible ? 'live'
       : !chargingEnabled ? 'charging_disabled'
@@ -42,9 +57,23 @@ function createBillingService({ repository, chargingEnabled = false }) {
     });
   }
 
+  async function restoreQuote(request) {
+    const reservation = await repository.reservationQuote(request.id);
+    if (!reservation) return null;
+    return {
+      reservation,
+      price: reservation.providerPriceVersion,
+      markup: reservation.markupPolicyVersion,
+      creditRate: reservation.siteCreditRateVersion,
+      live: reservation.chargingMode === 'live',
+    };
+  }
+
   return {
     chargingEnabled: Boolean(chargingEnabled),
+    quote,
     reserve,
+    restoreQuote,
     settle,
     release: (request, error) => repository.release(request.id, error?.code || error?.message || 'provider_failed'),
     markSettlementPending: (request, error) => repository.markSettlementPending(request.id, error),

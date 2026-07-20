@@ -25,6 +25,8 @@ class PrismaUsageRepository {
     }
   }
 
+  getRequest(id) { return this.prisma.generationRequest.findUnique({ where: { id } }); }
+
   async complete(request, result, outputMetadata) {
     return this.prisma.$transaction(async (db) => {
       const settled = await db.generationRequest.updateMany({

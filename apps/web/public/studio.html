@@ -441,6 +441,44 @@
           </select>
         </label>
         <label>
+          <span>Aspect ratio</span>
+          <select id="mediaAspectRatio">
+            <option value="">Current defaults</option>
+            <option value="1:1">Square · 1:1</option>
+            <option value="16:9">Landscape · 16:9</option>
+            <option value="9:16">Portrait · 9:16</option>
+            <option value="4:3">Landscape · 4:3</option>
+            <option value="3:2">Landscape · 3:2</option>
+            <option value="2:3">Portrait · 2:3</option>
+          </select>
+        </label>
+        <label>
+          <span>Image resolution</span>
+          <select id="imageResolutionTier">
+            <option value="draft">Draft</option>
+            <option value="standard" selected>Standard</option>
+            <option value="high">High</option>
+            <option value="ultra">Ultra</option>
+          </select>
+        </label>
+        <label>
+          <span>Image quality</span>
+          <select id="imageQuality">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+        <label>
+          <span>Video resolution</span>
+          <select id="videoResolutionTier">
+            <option value="draft" selected>Draft</option>
+            <option value="standard">Standard</option>
+            <option value="high">High</option>
+            <option value="ultra">Ultra</option>
+          </select>
+        </label>
+        <label>
           <span>Motion</span>
           <select id="videoMotionIntensity">
             <option value="subtle">Subtle</option>
@@ -464,6 +502,8 @@
           </select>
         </label>
       </div>
+      <p id="mediaCostPreview" class="settings-modal-description">Choose an aspect ratio to preview output dimensions and token cost.</p>
+      <button type="button" id="saveMediaDefaultsBtn" class="secondary">Use these settings for new projects</button>
 
       <div class="settings-modal-section-heading">
         <h3>Audio &amp; Narration</h3>

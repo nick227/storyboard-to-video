@@ -26,6 +26,14 @@ function divideCeil(numerator, denominator) {
 }
 
 function calculateProviderCost(rateCard, usage = {}) {
+  if (rateCard?.type === 'matrix') {
+    const entries = Array.isArray(rateCard.entries) ? rateCard.entries : [];
+    const entry = entries.find((candidate) => Object.entries(candidate.when || {}).every(([key, value]) => String(usage[key]) === String(value)));
+    if (!entry) throw new Error(`No provider price matches resolved output: ${JSON.stringify(usage)}`);
+    const quantity = entry.quantityKey ? nonnegative(usage[entry.quantityKey], entry.quantityKey) : 1n;
+    const nanoUsdPerUnit = nonnegative(entry.nanoUsdPerUnit, 'nanoUsdPerUnit');
+    return { nanoUsd: nanoUsdPerUnit * quantity, calculation: { type: rateCard.type, matched: entry.when || {}, quantityKey: entry.quantityKey || null, quantity: quantity.toString(), nanoUsdPerUnit: nanoUsdPerUnit.toString() } };
+  }
   if (rateCard?.type === 'token_components') {
     let numerator = 0n;
     const lines = [];

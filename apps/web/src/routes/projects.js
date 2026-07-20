@@ -6,13 +6,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { imageShot } = require('../shared/scene-shots');
+const { mergeMediaIntent, resolveImageOutput } = require('../shared/media-output-policy');
 
-function createProjectRouter({ store, queue, upload, shotReferences, styles, prompts, referenceGeneration, imageProvider, prisma, config }) {
+function createProjectRouter({ store, queue, upload, shotReferences, styles, prompts, referenceGeneration, imageProvider, identityStore, prisma, config }) {
   const router = express.Router();
   const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 
   router.get('/', asyncRoute(async (req, res) => res.json({ ok: true, projects: await store.list({ ownerId: req.auth.tenantId }) })));
-  router.post('/', validate(createProject), asyncRoute(async (req, res) => res.status(201).json({ ok: true, project: await store.create(req.body, { tenantId: req.auth.tenantId, createdByUserId: req.auth.userId }) })));
+  router.post('/', validate(createProject), asyncRoute(async (req, res) => {
+    const mediaDefaults = identityStore?.getMediaDefaults ? await identityStore.getMediaDefaults(req.auth.userId) : null;
+    const input = mediaDefaults ? { ...req.body, project: { ...(req.body.project || {}), mediaSettings: req.body.project?.mediaSettings || mediaDefaults } } : req.body;
+    res.status(201).json({ ok: true, project: await store.create(input, { tenantId: req.auth.tenantId, createdByUserId: req.auth.userId }) });
+  }));
   router.post('/:projectId/cleanup', asyncRoute(async (req, res) => res.json({ ok: true, removed: await store.cleanup(req.params.projectId, { ownerId: req.auth.tenantId }) })));
   router.post('/:projectId/scenes/:sceneId/references', upload.array('files', 8), asyncRoute(async (req, res) => {
     const result = await shotReferences.upload(req.params.projectId, req.params.sceneId, req.files, { ownerId: req.auth.tenantId, userId: req.auth.userId });
@@ -134,9 +139,9 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
       throw new AppError('VALIDATION_ERROR', 'Prompt or Use Story is required', { status: 400 });
     }
 
+    const project = await store.read(projectId, { ownerId: req.auth.tenantId });
     let finalPrompt = userPrompt || '';
     if (useStory && prompts) {
-      const project = await store.read(projectId, { ownerId: req.auth.tenantId });
       if (project.scriptText) {
         const storyPrompt = await referenceGeneration.generateVisualPromptFromScript({ scriptText: project.scriptText, provider, mode });
         if (storyPrompt) {
@@ -150,12 +155,16 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
     const stylePrompt = selectedStyle?.promptText || '';
     const fullPrompt = [stylePrompt, finalPrompt].filter(Boolean).join('\n\n');
 
+    const providerName = provider || 'gemini';
+    const imageModels = { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', dezgo: config.env.DEZGO_MODEL || 'text2image', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' };
+    const output = resolveImageOutput({ provider: providerName, model: imageModels[providerName], intent: mergeMediaIntent({ modality: 'image', platform: config.mediaOutputDefaults, project: project.mediaSettings, override: req.body.outputIntent }) });
     const result = require('../providers/result').providerOutput(
       await imageProvider.generate({
-        provider: provider || 'gemini',
+        provider: providerName,
         prompt: fullPrompt,
         references: [],
-        title: 'Reference'
+        title: 'Reference',
+        output,
       })
     );
 

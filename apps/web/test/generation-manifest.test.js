@@ -101,6 +101,8 @@ test('image versions record resolved provider, settings, references, and provide
     assert.equal(version.manifestHash, version.manifest.manifestHash);
     assert.equal(version.manifest.inputs.provider.model, 'flux-test');
     assert.equal(version.manifest.inputs.settings.strength, 0.65);
+    assert.deepEqual(version.manifest.inputs.settings.output.requested, { aspectRatio: '1:1', quality: 'medium', resolutionTier: 'standard' });
+    assert.equal(version.manifest.inputs.settings.output.resolved.width, 1024);
     assert.deepEqual(version.manifest.inputs.references, [{ consumed: true, order: 0, path: '/style-references/style-1/characters/character.png', providerSlot: 'init_image', role: 'character', source: 'style' }]);
     assert.deepEqual(version.manifest.omissions, [{ order: 1, path: '/style-references/style-1/world/location.png', reason: 'provider_limit', role: 'location', source: 'style' }]);
     assert.equal(result.referencePlan.transport, 'image_to_image_anchor');
@@ -170,6 +172,8 @@ test('video versions record the start frame and exact provider settings', async 
     assert.equal(version.manifest.inputs.provider.model, 'ltx-test');
     assert.equal(version.manifest.inputs.settings.motionIntensity, 'high');
     assert.equal(version.manifest.inputs.settings.seed, 42);
+    assert.deepEqual(version.manifest.inputs.settings.output.requested, { aspectRatio: '4:3', resolutionTier: 'draft' });
+    assert.deepEqual([version.manifest.inputs.settings.output.resolved.width, version.manifest.inputs.settings.output.resolved.height], [640, 480]);
     assert.equal(version.manifest.result.providerRequestId, 'request-video');
     assert.equal(version.manifestHash, hashCanonical(version.manifest.inputs));
   } finally {

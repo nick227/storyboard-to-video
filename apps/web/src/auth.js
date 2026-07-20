@@ -109,6 +109,16 @@ class AuthService {
     if (token && this.identityStore) await this.identityStore.deleteSession(tokenHash(token));
     res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/' });
   }
+
+
+  async getMediaDefaults(userId) {
+    return this.identityStore?.getMediaDefaults ? this.identityStore.getMediaDefaults(userId) : null;
+  }
+
+  async setMediaDefaults(userId, value) {
+    if (!this.identityStore?.setMediaDefaults) throw new AppError('PREFERENCES_NOT_CONFIGURED', 'User preferences require an identity store', { status: 503 });
+    return this.identityStore.setMediaDefaults(userId, value);
+  }
 }
 
 module.exports = { AuthService, SESSION_COOKIE, normalizeEmail, tokenHash };

@@ -18,6 +18,15 @@ test('frozen provider rate cards reproduce the July validation costs exactly', (
   assert.equal(costs.reduce((sum, value) => sum + value, 0n), 128261333n);
 });
 
+test('matrix rate cards price the exact resolved provider tuple and reject unpriced output', () => {
+  const rate = { type: 'matrix', entries: [
+    { when: { resolution: '768P', seconds: 6 }, nanoUsdPerUnit: 500000000, quantityKey: 'videos' },
+    { when: { resolution: '1080P', seconds: 6 }, nanoUsdPerUnit: 1000000000, quantityKey: 'videos' },
+  ] };
+  assert.equal(calculateProviderCost(rate, { resolution: '1080P', seconds: 6, videos: 2 }).nanoUsd, 2000000000n);
+  assert.throws(() => calculateProviderCost(rate, { resolution: '1080P', seconds: 10, videos: 1 }), /No provider price matches/);
+});
+
 test('markup and site-credit conversion use deterministic integer rounding', () => {
   assert.equal(applyMarkup(15083333n, { markupBasisPoints: 2500, fixedNanoUsd: 0n }), 18854166n);
   assert.equal(convertNanoUsdToCreditMicros(18854166n, { nanoUsdPerSiteCredit: 10000000n }), 1885417n);

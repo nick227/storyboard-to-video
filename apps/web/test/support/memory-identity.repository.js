@@ -53,6 +53,17 @@ class MemoryIdentityRepository {
   async deleteSession(tokenHash) {
     this.sessions = this.sessions.filter((item) => item.tokenHash !== tokenHash);
   }
+
+  async getMediaDefaults(userId) {
+    return this.users.find((item) => item.id === userId)?.mediaDefaults || null;
+  }
+
+  async setMediaDefaults(userId, mediaDefaults) {
+    const user = this.users.find((item) => item.id === userId);
+    if (!user) throw new AppError('USER_NOT_FOUND', 'User not found', { status: 404 });
+    user.mediaDefaults = structuredClone(mediaDefaults);
+    return structuredClone(user.mediaDefaults);
+  }
 }
 
 module.exports = { MemoryIdentityRepository };

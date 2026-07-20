@@ -1,5 +1,7 @@
 const path = require('node:path');
 const { PIPER_VOICE_CATALOG } = require('./piper-voices');
+const { PLATFORM_MEDIA_DEFAULTS } = require('../shared/media-output-policy');
+const { VIDEO_PROVIDERS } = require('../shared/video-provider-capabilities');
 
 function integer(value, fallback, min, max) {
   const parsed = Number.parseInt(value, 10);
@@ -19,6 +21,7 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     stubs: path.join(root, 'data', 'stubs'), zips: path.join(root, 'data', 'zips'), projects: path.join(root, 'data', 'projects'),
     jobs: path.join(root, 'data', 'jobs'), idempotency: path.join(root, 'data', 'idempotency'),
     generationCache: path.join(root, 'data', 'generation-cache'),
+    videoAttempts: path.join(root, 'data', 'video-attempts'),
     piper: env.PIPER_BINARY_PATH || path.join(root, 'vendor', 'piper', 'piper'),
     piperVoices: path.join(root, 'vendor', 'piper', 'voices'),
     ltxShared: path.resolve(env.LTX_SHARED_DIR || '/home/administrator/web/ltx-env/io/basic-cartoon-poc'),
@@ -27,6 +30,18 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     port: integer(env.PORT, 3000, 1, 65535), paths,
     limits: { references: 8, referenceBytes: 8 * 1024 * 1024, script: 200_000, prompt: 20_000, line: 2_000, json: '10mb' },
     generationConcurrency: integer(env.GENERATION_CONCURRENCY, 1, 1, 32),
+    mediaOutputDefaults: {
+      aspectRatio: env.MEDIA_DEFAULT_ASPECT_RATIO || PLATFORM_MEDIA_DEFAULTS.aspectRatio,
+      image: {
+        aspectRatio: env.MEDIA_IMAGE_DEFAULT_ASPECT_RATIO || PLATFORM_MEDIA_DEFAULTS.image.aspectRatio,
+        resolutionTier: env.MEDIA_IMAGE_DEFAULT_RESOLUTION_TIER || PLATFORM_MEDIA_DEFAULTS.image.resolutionTier,
+        quality: env.MEDIA_IMAGE_DEFAULT_QUALITY || env.OPENAI_IMAGE_QUALITY || PLATFORM_MEDIA_DEFAULTS.image.quality,
+      },
+      video: {
+        aspectRatio: env.MEDIA_VIDEO_DEFAULT_ASPECT_RATIO || PLATFORM_MEDIA_DEFAULTS.video.aspectRatio,
+        resolutionTier: env.MEDIA_VIDEO_DEFAULT_RESOLUTION_TIER || PLATFORM_MEDIA_DEFAULTS.video.resolutionTier,
+      },
+    },
     billing: { customerChargingEnabled: enabled(env.BILLING_CUSTOMER_CHARGING_ENABLED) },
     payments: {
       publicAppUrl: String(env.PUBLIC_APP_URL || `http://localhost:${integer(env.PORT, 3000, 1, 65535)}`).replace(/\/+$/, ''),
@@ -35,7 +50,7 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     },
     sparkUrl: String(env.SPARK_TTS_URL || 'http://localhost:8001').replace(/\/+$/, ''), sparkTimeout: integer(env.SPARK_TTS_TIMEOUT_MS, 120_000, 1, 600_000), sparkServiceToken: String(env.SPARK_SERVICE_TOKEN || ''),
     alignUrl: String(env.ALIGNMENT_SERVICE_URL || 'http://localhost:8002').replace(/\/+$/, ''), alignTimeout: integer(env.ALIGNMENT_SERVICE_TIMEOUT_MS, 60_000, 1, 600_000), alignServiceToken: String(env.ALIGNMENT_SERVICE_TOKEN || ''),
-    ltxUrl: String(env.LTX_VIDEO_URL || 'http://localhost:8000').replace(/\/+$/, ''), videoProvider: env.VIDEO_PROVIDER === 'stub' ? 'stub' : 'ltx',
+    ltxUrl: String(env.LTX_VIDEO_URL || 'http://localhost:8000').replace(/\/+$/, ''), videoProvider: VIDEO_PROVIDERS.includes(env.VIDEO_PROVIDER) ? env.VIDEO_PROVIDER : 'ltx',
     piperVoices: String(env.PIPER_VOICE_IDS || PIPER_VOICE_CATALOG.map((v) => v.id).join(',')).split(',').map((x) => x.trim()).filter(Boolean),
     audio: { sampleRate: 24_000, channels: 1, bits: 16, gapMs: 250 }, env,
   };

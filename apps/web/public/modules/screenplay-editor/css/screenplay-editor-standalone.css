@@ -5,8 +5,8 @@
     --font-script: 'Courier Prime', 'Courier New', Courier, monospace;
 
     /* Screenplay Indents */
-    --dialog-left: 18%;
-    --dialog-right: 18%;
+    --dialog-left: 25%;
+    --dialog-right: 25%;
     --speaker-left: 32%;
     --directions-left: 24%;
     --directions-right: 26%;

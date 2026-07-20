@@ -8,6 +8,7 @@ const { createGenerationManifest, hashCanonical } = require('../shared/generatio
 const { normalizeReferenceRole } = require('../shared/reference-roles');
 const { imageShot } = require('../shared/scene-shots');
 const { resolveImageReferencePlan } = require('../shared/image-reference-plan');
+const { mergeMediaIntent, resolveImageOutput } = require('../shared/media-output-policy');
 
 function createImageGenerationService({ config, styles, provider, projectStore }) {
   async function sceneReferencePaths(projectId, scene) {
@@ -45,6 +46,12 @@ function createImageGenerationService({ config, styles, provider, projectStore }
     const project = lease
       ? await projectStore.verifyLease(lease, signal)
       : await projectStore.read(input.projectId, { ownerId });
+    const models = { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', dezgo: config.env.DEZGO_MODEL || 'text2image', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' };
+    const output = resolveImageOutput({
+      provider: input.provider,
+      model: models[input.provider],
+      intent: mergeMediaIntent({ modality: 'image', platform: config.mediaOutputDefaults, project: project.mediaSettings, override: input.outputIntent }),
+    });
     const scene = project.scenes?.find((item) => item.id === input.sceneId);
     if (!scene) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
     const disabledDefaults = new Set(imageShot(scene).disabledStyleReferencePaths || []);
@@ -74,6 +81,7 @@ function createImageGenerationService({ config, styles, provider, projectStore }
       sceneReferenceCount: referencePlan.included.filter((item) => item.source === 'scene').length,
       defaultReferenceCount: referencePlan.included.filter((item) => item.source === 'style').length,
       requiresConfirmation: input.provider !== 'stub' && referencePlan.excluded.length > 0,
+      output,
     };
   }
 
@@ -89,6 +97,7 @@ function createImageGenerationService({ config, styles, provider, projectStore }
         requiresConfirmation: resolved.requiresConfirmation,
         referencePlanHash: resolved.referencePlanHash,
         referencePlan: resolved.visiblePlan,
+        output: resolved.output,
       };
     },
 
@@ -108,7 +117,7 @@ function createImageGenerationService({ config, styles, provider, projectStore }
       const references = selectedReferences.map((item) => item.localPath);
       const { sceneReferenceCount, defaultReferenceCount } = resolved;
       const referenceBindings = selectedReferences.map((reference) => ({ path: reference.localPath, role: reference.role, source: reference.source }));
-      const providerResponse = await provider.generate({ provider: input.provider, prompt, references, referenceBindings, referencePlan, title: input.sceneTitle });
+      const providerResponse = await provider.generate({ provider: input.provider, prompt, references, referenceBindings, referencePlan, title: input.sceneTitle, output: resolved.output });
       const result = providerOutput(providerResponse);
       const metadata = providerResponse && Object.hasOwn(providerResponse, 'output') ? providerResponse : {};
       fs.mkdirSync(config.paths.generated, { recursive: true });
@@ -129,13 +138,13 @@ function createImageGenerationService({ config, styles, provider, projectStore }
             prompt: { composed: prompt, scene: input.scenePrompt, style: style.promptText, common, extra: input.extraPromptText || '' },
             style: { id: style.id },
             provider: { name: metadata.provider || input.provider, model: metadata.model || null },
-            settings: metadata.settings || {},
+            settings: { ...(metadata.settings || {}), output: resolved.output },
             references: selectedReferences.map((reference) => ({ path: reference.path, source: reference.source, role: reference.role, order: reference.order, providerSlot: reference.providerSlot, consumed: true })),
           },
           result: { providerRequestId: metadata.providerRequestId || null, measurementStatus: metadata.measurementStatus || 'unavailable', mimeType: result.mimeType },
           omissions: referencePlan.excluded.map((reference) => ({ path: reference.path, source: reference.source, role: reference.role, order: reference.candidateOrder, reason: reference.reason })),
         });
-        const version = { path: asset.path, prompt, scenePrompt: input.scenePrompt, provider: input.provider, manifest, manifestHash: manifest.manifestHash, createdAt };
+        const version = { path: asset.path, prompt, scenePrompt: input.scenePrompt, provider: input.provider, output: resolved.output, manifest, manifestHash: manifest.manifestHash, createdAt };
         let scene, project;
         try {
           ({ scene, project } = await projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'image', version, jobId }));
@@ -149,6 +158,7 @@ function createImageGenerationService({ config, styles, provider, projectStore }
           defaultReferenceCount,
           sceneReferenceCount,
           referencePlan: resolved.visiblePlan,
+          output: resolved.output,
           scene,
           revision: project.revision,
         };

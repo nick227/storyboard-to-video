@@ -94,6 +94,16 @@ class PrismaIdentityRepository {
     await this.prisma.session.deleteMany({ where: { tokenHash } });
   }
 
+  async getMediaDefaults(userId) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { mediaDefaults: true } });
+    return user?.mediaDefaults || null;
+  }
+
+  async setMediaDefaults(userId, mediaDefaults) {
+    const user = await this.prisma.user.update({ where: { id: userId }, data: { mediaDefaults }, select: { mediaDefaults: true } });
+    return user.mediaDefaults;
+  }
+
   async disconnect() {
     if (this.ownsClient) await this.prisma.$disconnect();
   }

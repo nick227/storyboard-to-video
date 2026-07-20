@@ -18,6 +18,7 @@ model User {
   passwordHash       String              @map("password_hash")
   status             String              @default("active")
   platformRole       String              @default("user") @map("platform_role")
+  mediaDefaults      Json?               @map("media_defaults")
   createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
   memberships        Membership[]
@@ -37,6 +38,7 @@ model User {
   checkoutAttempts   CheckoutAttempt[]
   welcomePoliciesCreated WelcomeCreditPolicyVersion[] @relation("WelcomeCreditPolicyCreator")
   adminAuditEvents   AdminAuditEvent[]    @relation("AdminAuditActor")
+  videoGenerationAttempts VideoGenerationAttempt[]
 
   @@map("users")
 }
@@ -63,6 +65,7 @@ model Workspace {
   paymentCustomers   PaymentCustomer[]
   checkoutAttempts   CheckoutAttempt[]
   adminAuditEvents   AdminAuditEvent[]
+  videoGenerationAttempts VideoGenerationAttempt[]
 
   @@map("workspaces")
 }
@@ -111,6 +114,7 @@ model Project {
   jobs            GenerationJob[]
   assets          Asset[]
   idempotency     IdempotencyRecord[]
+  videoGenerationAttempts VideoGenerationAttempt[]
 
   @@index([tenantId, updatedAt])
   @@map("projects")
@@ -133,10 +137,51 @@ model GenerationJob {
   project        Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tenant         Workspace? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user           User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  videoGenerationAttempts VideoGenerationAttempt[]
 
   @@index([projectId, createdAt])
   @@index([tenantId, status])
   @@map("generation_jobs")
+}
+
+model VideoGenerationAttempt {
+  id                    String         @id @db.Uuid
+  generationJobId       String?        @map("generation_job_id") @db.Uuid
+  generationRequestId   String?        @unique @map("generation_request_id") @db.Uuid
+  tenantId              String?        @map("tenant_id") @db.Uuid
+  userId                String?        @map("user_id") @db.Uuid
+  projectId             String?        @map("project_id") @db.VarChar(80)
+  sceneId               String?        @map("scene_id")
+  provider              String
+  model                 String
+  generationMode        String         @map("generation_mode")
+  requestSnapshot       Json           @map("request_snapshot")
+  providerTaskId        String?        @map("provider_task_id")
+  lifecycleState        String         @map("lifecycle_state")
+  pollAfter             DateTime?      @map("poll_after") @db.Timestamptz(3)
+  retryCount            Int            @default(0) @map("retry_count")
+  cancellationState     String         @default("not_requested") @map("cancellation_state")
+  inputHashes           Json           @map("input_hashes")
+  providerOutputId      String?        @map("provider_output_id")
+  outputExpiresAt       DateTime?      @map("output_expires_at") @db.Timestamptz(3)
+  downloadState         String         @default("pending") @map("download_state")
+  commitState           String         @default("pending") @map("commit_state")
+  costReferences        Json?          @map("cost_references")
+  error                 Json?
+  createdAt             DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  completedAt           DateTime?      @map("completed_at") @db.Timestamptz(3)
+  generationJob         GenerationJob? @relation(fields: [generationJobId], references: [id], onDelete: SetNull)
+  generationRequest     GenerationRequest? @relation(fields: [generationRequestId], references: [id], onDelete: SetNull)
+  tenant                Workspace?     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user                  User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project               Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([lifecycleState, pollAfter])
+  @@index([tenantId, createdAt])
+  @@index([projectId, sceneId, createdAt])
+  @@index([provider, providerTaskId])
+  @@map("video_generation_attempts")
 }
 
 model Asset {
@@ -247,6 +292,7 @@ model GenerationRequest {
   usageEvent        UsageEvent?
   costSnapshot      ProviderCostSnapshot?
   creditReservation CreditReservation?
+  videoGenerationAttempt VideoGenerationAttempt?
 
   @@unique([jobId, sequence])
   @@index([tenantId, startedAt])
