@@ -1,23 +1,105 @@
 import { api, cancelActiveProjectJobs } from './api.js';
-import { sceneStore, uiStore, projectStore, batchStore, voiceStore } from './store.js';
+import { sceneStore, uiStore, projectStore, batchStore, voiceStore, generationStore } from './store.js';
 import { generateDialogue, generatePrompts, regeneratePrompt, addRecommendedScenes, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles } from './workflows.js';
 import { suggestSceneCount, suggestSceneCountFromNarration } from './scene-count.js';
 import { batchController } from './batch.js';
 import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
+import { imageShot } from './scene-shots.js';
+import { hashCanonical } from './generation-manifest.js';
+import { normalizeReferenceRole } from './reference-roles.js';
 
 // --- Staleness -------------------------------------------------------------
 
-// Provenance fields (promptGeneratedFromBeat / promptGeneratedFromNarration / audio version
-// narrationText) are server-authored (see prompt-generation.service.js / audio-generation.service.js)
-// so staleness survives reloads and concurrent tabs instead of depending on client-held state. The
-// audio/image provider checks are the one exception: they compare against the currently selected
-// voiceStore.audioProvider / record.imageProvider so switching providers immediately marks existing
-// media stale, even though that selection isn't itself part of the persisted version's provenance
-// snapshot.
+function additionalCommonPrompt(stylePrompt, commonPrompt) {
+  const style = String(stylePrompt || '').trim();
+  const common = String(commonPrompt || '').trim();
+  if (!style || !common) return common;
+  if (common === style) return '';
+  return common.startsWith(style) ? common.slice(style.length).trim() : common;
+}
+
+function currentStyle(record) {
+  return generationStore.get().styles.find((style) => style.id === record?.styleId) || null;
+}
+
+function currentImageReferences(scene, provider, styleId) {
+  const generation = generationStore.get();
+  if (generation.styleReferencesStyleId !== styleId) return null;
+  const shot = imageShot(scene);
+  const uploaded = (shot.referenceBindings || []).map((reference) => ({
+    path: reference.path,
+    source: 'scene',
+    role: normalizeReferenceRole(reference.role),
+  })).filter((reference) => Boolean(reference.path));
+  const disabled = new Set(shot.disabledStyleReferencePaths || []);
+  const styleReferences = [
+    ...(generation.styleReferences?.characters || []).slice(0, 4),
+    ...(generation.styleReferences?.world || []).slice(0, 4),
+  ].slice(0, 8).filter((reference) => !disabled.has(reference.url)).map((reference) => ({
+    path: reference.url,
+    source: 'style',
+    role: reference.type === 'characters' ? 'character' : reference.type === 'world' ? 'location' : 'composition',
+  }));
+  const limit = provider === 'dezgo' ? 1 : provider === 'openai' ? 8 : 14;
+  return [...uploaded, ...styleReferences].slice(0, limit).map((reference, order) => ({
+    ...reference,
+    order,
+    consumed: provider !== 'stub',
+  }));
+}
+
+function manifestStaleness(version, currentInputs) {
+  const manifest = version?.manifest;
+  if (!manifest?.inputs || !manifest?.manifestHash || !currentInputs) return null;
+  if (hashCanonical(manifest.inputs) !== manifest.manifestHash) return true;
+  return hashCanonical(currentInputs) !== manifest.manifestHash;
+}
+
+function imageManifestStaleness(scene, shot, version) {
+  const record = getCurrentStoryboardRecord();
+  const style = currentStyle(record);
+  if (!record || !style || !version?.manifest?.inputs) return null;
+  const references = currentImageReferences(scene, record.imageProvider, record.styleId);
+  if (!references) return null;
+  const inputs = structuredClone(version.manifest.inputs);
+  inputs.prompt = {
+    ...(inputs.prompt || {}),
+    scene: shot.prompt || '',
+    style: style.promptText || '',
+    common: additionalCommonPrompt(style.promptText, record.commonPromptText),
+  };
+  inputs.style = { ...(inputs.style || {}), id: record.styleId };
+  inputs.provider = { ...(inputs.provider || {}), name: record.imageProvider };
+  inputs.references = references;
+  return manifestStaleness(version, inputs);
+}
+
+function videoManifestStaleness(scene, shot, activeImage, version) {
+  const record = getCurrentStoryboardRecord();
+  const style = currentStyle(record);
+  if (!record || !style || !version?.manifest?.inputs) return null;
+  const inputs = structuredClone(version.manifest.inputs);
+  inputs.prompt = {
+    ...(inputs.prompt || {}),
+    scene: shot.prompt || '',
+    beat: scene.beat || '',
+    style: style.promptText || '',
+    common: additionalCommonPrompt(style.promptText, record.commonPromptText),
+  };
+  inputs.style = { ...(inputs.style || {}), id: record.styleId };
+  inputs.settings = { ...(inputs.settings || {}), motionIntensity: record.videoMotionIntensity || 'medium' };
+  inputs.sourceAssets = [{ role: 'start_frame', path: activeImage?.path || '' }];
+  return manifestStaleness(version, inputs);
+}
+
+// New image/video versions use immutable generation manifests and canonical input hashes. Legacy
+// versions retain the older field comparisons below, while audio/subtitle still use their existing
+// server-authored provenance snapshots.
 export function computeStaleness(scene) {
-  const activeImage = (scene.versions || [])[scene.activeVersionIndex] || null;
+  const shot = imageShot(scene);
+  const activeImage = (shot.versions || [])[shot.activeVersionIndex] || null;
   const activeAudio = (scene.audioVersions || [])[scene.activeAudioVersionIndex] || null;
-  const activeVideo = (scene.videoVersions || [])[scene.activeVideoVersionIndex] || null;
+  const activeVideo = (shot.videoVersions || [])[shot.activeVideoVersionIndex] || null;
   const activeSubtitle = (scene.subtitleVersions || [])[scene.activeSubtitleVersionIndex] || null;
 
   const hasPrompt = Boolean(String(scene.prompt || '').trim());
@@ -31,15 +113,17 @@ export function computeStaleness(scene) {
   // never equal `scene.prompt` alone, which would make every image read as permanently stale. The
   // provider check only applies when the version actually recorded one — versions created before
   // this field existed have `provider: undefined` and must not all be mass-marked stale on upgrade.
-  const imageStale = Boolean(activeImage?.path) && (
-    String(activeImage.scenePrompt || '') !== String(scene.prompt || '') ||
+  const imageManifestStale = imageManifestStaleness(scene, shot, activeImage);
+  const imageStale = Boolean(activeImage?.path) && (imageManifestStale ?? (
+    String(activeImage.scenePrompt || '') !== String(shot.prompt || '') ||
     (Boolean(activeImage.provider) && String(activeImage.provider) !== String(getCurrentStoryboardRecord()?.imageProvider || ''))
-  );
+  ));
   const audioStale = Boolean(activeAudio?.path) && (
     String(activeAudio.narrationText || '') !== String(scene.narrationText || '') ||
     String(activeAudio.provider || '') !== String(voiceStore.get().audioProvider || '')
   );
-  const videoStale = Boolean(activeVideo?.path) && String(activeVideo.sourceImagePath || '') !== String(activeImage?.path || '');
+  const videoManifestStale = videoManifestStaleness(scene, shot, activeImage, activeVideo);
+  const videoStale = Boolean(activeVideo?.path) && (videoManifestStale ?? String(activeVideo.sourceImagePath || '') !== String(activeImage?.path || ''));
   const subtitleStale = Boolean(activeSubtitle?.path) && String(activeSubtitle.sourceAudioPath || '') !== String(activeAudio?.path || '');
 
   return { promptStale, imageStale, audioStale, videoStale, subtitleStale };
@@ -160,7 +244,7 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
     recentJobs,
   });
   const video = mediaTally(scenes, {
-    hasVersion: (scene) => Boolean((scene.videoVersions || [])[scene.activeVideoVersionIndex]?.path),
+    hasVersion: (scene) => { const shot = imageShot(scene); return Boolean((shot.videoVersions || [])[shot.activeVideoVersionIndex]?.path); },
     isStale: (scene) => computeStaleness(scene).videoStale,
     jobType: MEDIA_JOB_TYPE.video,
     recentJobs,
@@ -344,7 +428,7 @@ const MEDIA_STAGE_CONFIG = {
   },
   video: {
     regenerate: regenerateVideo,
-    hasVersion: (scene) => Boolean((scene.videoVersions || [])[scene.activeVideoVersionIndex]?.path),
+    hasVersion: (scene) => { const shot = imageShot(scene); return Boolean((shot.videoVersions || [])[shot.activeVideoVersionIndex]?.path); },
     isStale: (scene) => computeStaleness(scene).videoStale,
   },
   subtitles: {

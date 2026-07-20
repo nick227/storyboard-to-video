@@ -4,10 +4,10 @@ function providerRequestId(response, body) {
   return body?.responseId || body?.id || response?.headers?.get('x-request-id') || response?.headers?.get('request-id') || null;
 }
 
-function providerResult({ output, provider, model, providerRequestId: requestId = null, usage = {}, rawUsage = null, measurementStatus = 'unavailable' }) {
+function providerResult({ output, provider, model, providerRequestId: requestId = null, settings = {}, usage = {}, rawUsage = null, measurementStatus = 'unavailable' }) {
   if (!provider || !model) throw new Error('Provider results require provider and model identifiers');
   if (!MEASUREMENT_STATUSES.has(measurementStatus)) throw new Error(`Invalid measurement status: ${measurementStatus}`);
-  return { output, provider, model, providerRequestId: requestId, usage, rawUsage, measurementStatus };
+  return { output, provider, model, providerRequestId: requestId, settings, usage, rawUsage, measurementStatus };
 }
 
 function outputMetadata(output) {

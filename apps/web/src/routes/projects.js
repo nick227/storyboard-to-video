@@ -5,6 +5,7 @@ const { AppError } = require('../errors');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { imageShot } = require('../shared/scene-shots');
 
 function createProjectRouter({ store, queue, upload, sceneReferences, styles, prompts, referenceGeneration, imageProvider, prisma, config }) {
   const router = express.Router();
@@ -19,6 +20,10 @@ function createProjectRouter({ store, queue, upload, sceneReferences, styles, pr
   }));
   router.delete('/:projectId/scenes/:sceneId/references', asyncRoute(async (req, res) => {
     const result = await sceneReferences.remove(req.params.projectId, req.params.sceneId, req.body?.path, { ownerId: req.auth.tenantId, userId: req.auth.userId });
+    res.json({ ok: true, scene: result.scene, revision: result.project.revision });
+  }));
+  router.patch('/:projectId/scenes/:sceneId/references/role', asyncRoute(async (req, res) => {
+    const result = await sceneReferences.setRole(req.params.projectId, req.params.sceneId, req.body?.path, req.body?.role, { ownerId: req.auth.tenantId, userId: req.auth.userId });
     res.json({ ok: true, scene: result.scene, revision: result.project.revision });
   }));
   router.delete('/:projectId/assets/:type/:fileName', asyncRoute(async (req, res) => {
@@ -100,7 +105,7 @@ function createProjectRouter({ store, queue, upload, sceneReferences, styles, pr
         const fullProj = await store.read(proj.id, { ownerId: req.auth.tenantId });
         const scenes = fullProj.scenes || [];
         for (const scene of scenes) {
-          const versions = scene.versions || [];
+          const versions = imageShot(scene).versions || [];
           for (const ver of versions) {
             if (ver.path) {
               pastStoryboards.push({

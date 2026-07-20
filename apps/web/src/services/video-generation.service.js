@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { AppError } = require('../errors');
 const { cleanText, getAdditionalCommonPrompt, slugify } = require('../shared/text');
 const { providerOutput } = require('../providers/result');
+const { createGenerationManifest } = require('../shared/generation-manifest');
 
 const DEFAULT_MOTION_PROMPT = [
   'Show clear continuous subject movement and follow-through; never a frozen hold.',
@@ -77,14 +78,30 @@ function createVideoGenerationService({ config, provider, projectStore, styles }
       const file = `${String(input.sceneNumber).padStart(2, '0')}-${slugify(input.sceneTitle || 'scene')}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.mp4`;
       const staged = path.join(config.paths.videos, file);
       try {
-        providerOutput(await provider.generate({
+        const providerResponse = await provider.generate({
           imagePath: source,
           prompt,
           motionIntensity: input.motionIntensity,
           outputPath: staged,
-        }));
+        });
+        providerOutput(providerResponse);
+        const metadata = providerResponse && Object.hasOwn(providerResponse, 'output') ? providerResponse : {};
         const asset = await projectStore.commitAsset(lease, 'videos', staged, { signal, mimeType: 'video/mp4' });
-        const version = { path: asset.path, prompt, sourceImagePath: input.imagePath, provider: config.videoProvider, createdAt: new Date().toISOString() };
+        const createdAt = new Date().toISOString();
+        const manifest = createGenerationManifest({
+          modality: 'video',
+          createdAt,
+          inputs: {
+            operation: 'video.generate',
+            prompt: { composed: prompt, scene: input.scenePrompt || '', beat: input.sceneBeat || '', style: style.promptText, common: getAdditionalCommonPrompt(style.promptText, input.commonPromptText), motion: input.motionPrompt || '' },
+            style: { id: style.id },
+            provider: { name: metadata.provider || config.videoProvider, model: metadata.model || null },
+            settings: { ...(metadata.settings || {}), motionIntensity: input.motionIntensity || 'medium' },
+            sourceAssets: [{ role: 'start_frame', path: input.imagePath }],
+          },
+          result: { providerRequestId: metadata.providerRequestId || null, measurementStatus: metadata.measurementStatus || 'unavailable', mimeType: 'video/mp4' },
+        });
+        const version = { path: asset.path, prompt, sourceImagePath: input.imagePath, provider: config.videoProvider, manifest, manifestHash: manifest.manifestHash, createdAt };
         let scene, project;
         try {
           ({ scene, project } = await projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'video', version, jobId }));

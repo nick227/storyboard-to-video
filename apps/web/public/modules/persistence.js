@@ -1,6 +1,7 @@
 import { projectStore, sceneStore, voiceStore } from './store.js';
 import { api } from './api.js';
 import { revokeAllAssets } from './assets.js';
+import { adaptSceneImageShot, adaptSceneImageShots, imageShot } from './scene-shots.js';
 
 // Valid provider/intensity values live in index.html's <select> options — the single
 // source of truth. Reading them here avoids a second, driftable copy of that enumeration.
@@ -26,13 +27,15 @@ function parseStoredObject(raw) {
 }
 
 export function createStoryboardRecord(storyboard = {}, title = 'Untitled') {
-  return {
+  const record = {
     ...storyboard,
     id: typeof storyboard.id === 'string' && storyboard.id ? storyboard.id : crypto.randomUUID(),
     title: String(storyboard.title || title),
     sceneCountMode: storyboard.sceneCountMode === 'manual' || (storyboard.sceneCountMode == null && storyboard.sceneCount != null) ? 'manual' : 'auto',
     updatedAt: storyboard.updatedAt || new Date().toISOString(),
   };
+  record.scenes = adaptSceneImageShots(record.scenes);
+  return record;
 }
 
 export function initializeStoryboardLibrary() {
@@ -89,24 +92,35 @@ function mergeScenes(serverScenes, localScenes) {
   
   const mergedScenes = localScenesArr.map((localScene) => {
     const serverScene = serverScenesArr.find((scene) => scene.id === localScene.id);
-    if (!serverScene) return localScene;
-    
-    return {
-      ...localScene,
-      versions: mergeVersions(serverScene.versions, localScene.versions),
+    const local = adaptSceneImageShot(localScene);
+    if (!serverScene) return local;
+
+    const server = adaptSceneImageShot(serverScene);
+    const localShot = imageShot(local);
+    const serverShot = imageShot(server);
+    return adaptSceneImageShot({
+      ...local,
+      shots: [{
+        ...localShot,
+        versions: mergeVersions(serverShot.versions, localShot.versions),
+        activeVersionIndex: serverShot.versions?.length
+          ? serverShot.activeVersionIndex || 0
+          : localShot.activeVersionIndex || 0,
+        videoVersions: mergeVersions(serverShot.videoVersions, localShot.videoVersions),
+        activeVideoVersionIndex: serverShot.videoVersions?.length
+          ? serverShot.activeVideoVersionIndex || 0
+          : localShot.activeVideoVersionIndex || 0,
+      }, ...(local.shots || []).slice(1)],
       audioVersions: mergeVersions(serverScene.audioVersions, localScene.audioVersions),
-      videoVersions: mergeVersions(serverScene.videoVersions, localScene.videoVersions),
-      activeVersionIndex: serverScene.versions?.length ? serverScene.activeVersionIndex || 0 : localScene.activeVersionIndex || 0,
       activeAudioVersionIndex: serverScene.audioVersions?.length ? serverScene.activeAudioVersionIndex || 0 : localScene.activeAudioVersionIndex || 0,
-      activeVideoVersionIndex: serverScene.videoVersions?.length ? serverScene.activeVideoVersionIndex || 0 : localScene.activeVideoVersionIndex || 0,
       activeVisualType: serverScene.activeVisualType || localScene.activeVisualType,
-    };
+    });
   });
   
   // Add any server scenes that are not locally present (if they were added from another device)
   for (const sScene of serverScenesArr) {
     if (!mergedScenes.some(lScene => lScene.id === sScene.id)) {
-      mergedScenes.push(sScene);
+      mergedScenes.push(adaptSceneImageShot(sScene));
     }
   }
 
@@ -121,7 +135,10 @@ export async function hydrateCurrentProjectFromServer() {
     const serverProject = response.project;
     
     const mergedScenes = mergeScenes(serverProject.scenes, record.scenes);
-    Object.assign(record, { revision: serverProject.revision, scenes: mergedScenes.length ? mergedScenes : serverProject.scenes });
+    Object.assign(record, {
+      revision: serverProject.revision,
+      scenes: mergedScenes.length ? mergedScenes : adaptSceneImageShots(serverProject.scenes),
+    });
     
     persistStoryboardLibrary();
     // Update local scene store if this is the active project
@@ -134,6 +151,7 @@ export async function hydrateCurrentProjectFromServer() {
 }
 
 export async function syncProjectRecord(record, setStatus) {
+  record.scenes = adaptSceneImageShots(record.scenes);
   const project = { ...record, id: record.id, title: record.title };
   try {
     if (!Number.isInteger(record.revision)) {
@@ -144,12 +162,14 @@ export async function syncProjectRecord(record, setStatus) {
         if (error.code !== 'PROJECT_NOT_FOUND') throw error;
         const created = await api('/api/projects', { method: 'POST', body: JSON.stringify({ id: record.id, title: record.title, project }) });
         Object.assign(record, created.project);
+        record.scenes = adaptSceneImageShots(record.scenes);
         persistStoryboardLibrary();
         return;
       }
     }
     const saved = await api(`/api/projects/${encodeURIComponent(record.id)}`, { method: 'PUT', headers: { 'If-Match': `"${record.revision}"` }, body: JSON.stringify(project) });
     Object.assign(record, saved.project);
+    record.scenes = adaptSceneImageShots(record.scenes);
     
     if (record.id === projectStore.get().currentId) {
       // Re-hydrate the scene store to make sure everything matches (like paths changing or revision updates)
@@ -172,6 +192,7 @@ export function queueSync(record, setStatus) {
 
 function restoreStoryboardFields(els) {
   const record = getCurrentStoryboardRecord();
+  if (record) record.scenes = adaptSceneImageShots(record.scenes);
   sceneStore.set({ scenes: record?.scenes || [], lastPromptInputs: record?.lastPromptInputs || null });
   if (!record) return;
 

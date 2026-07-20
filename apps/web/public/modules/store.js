@@ -39,7 +39,8 @@ export const sceneStore = new Store({
 
 export const generationStore = new Store({
   styles: [],
-  styleReferences: { characters: [], world: [] }
+  styleReferences: { characters: [], world: [] },
+  styleReferencesStyleId: null
 });
 
 export const voiceStore = new Store({

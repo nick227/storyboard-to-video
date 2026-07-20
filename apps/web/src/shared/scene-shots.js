@@ -1,0 +1,87 @@
+const IMAGE_FIELDS = Object.freeze(['prompt', 'versions', 'activeVersionIndex']);
+const VIDEO_FIELDS = Object.freeze(['videoVersions', 'activeVideoVersionIndex']);
+const SHOT_FIELDS = Object.freeze([...IMAGE_FIELDS, ...VIDEO_FIELDS]);
+const { normalizeReferenceImages } = require('./reference-roles');
+
+function legacyShot(scene = {}) {
+  const versions = Array.isArray(scene.versions) ? scene.versions : [];
+  const requestedIndex = Number.isInteger(scene.activeVersionIndex) ? scene.activeVersionIndex : 0;
+  const videoVersions = Array.isArray(scene.videoVersions) ? scene.videoVersions : [];
+  const requestedVideoIndex = Number.isInteger(scene.activeVideoVersionIndex) ? scene.activeVideoVersionIndex : 0;
+  return {
+    prompt: typeof scene.prompt === 'string' ? scene.prompt : '',
+    versions,
+    activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
+    videoVersions,
+    activeVideoVersionIndex: videoVersions.length ? Math.min(Math.max(requestedVideoIndex, 0), videoVersions.length - 1) : 0,
+    referenceBindings: normalizeReferenceImages(scene.referenceImages),
+    disabledStyleReferencePaths: Array.isArray(scene.disabledProjectReferenceImages) ? scene.disabledProjectReferenceImages : [],
+  };
+}
+
+function imageShot(scene = {}) {
+  const shot = Array.isArray(scene.shots) && scene.shots[0] && typeof scene.shots[0] === 'object'
+    ? scene.shots[0]
+    : null;
+  return shot || legacyShot(scene);
+}
+
+function migrateSceneImageToImplicitShot(scene = {}) {
+  const existingShots = Array.isArray(scene.shots) ? scene.shots : [];
+  const existing = existingShots[0] && typeof existingShots[0] === 'object' ? existingShots[0] : null;
+  const legacy = legacyShot(scene);
+  const versions = Array.isArray(existing?.versions) ? existing.versions : legacy.versions;
+  const requestedIndex = Number.isInteger(existing?.activeVersionIndex) ? existing.activeVersionIndex : legacy.activeVersionIndex;
+  const videoVersions = Array.isArray(existing?.videoVersions) ? existing.videoVersions : legacy.videoVersions;
+  const requestedVideoIndex = Number.isInteger(existing?.activeVideoVersionIndex) ? existing.activeVideoVersionIndex : legacy.activeVideoVersionIndex;
+  const referenceBindings = Array.isArray(existing?.referenceBindings) ? normalizeReferenceImages(existing.referenceBindings) : legacy.referenceBindings;
+  const disabledStyleReferencePaths = Array.isArray(existing?.disabledStyleReferencePaths) ? existing.disabledStyleReferencePaths : legacy.disabledStyleReferencePaths;
+  const shot = {
+    ...(existing || {}),
+    prompt: typeof existing?.prompt === 'string' ? existing.prompt : legacy.prompt,
+    versions,
+    activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
+    videoVersions,
+    activeVideoVersionIndex: videoVersions.length ? Math.min(Math.max(requestedVideoIndex, 0), videoVersions.length - 1) : 0,
+    referenceBindings,
+    disabledStyleReferencePaths,
+  };
+
+  scene.shots = [shot, ...existingShots.slice(1)];
+  for (const field of SHOT_FIELDS) delete scene[field];
+  delete scene.referenceImages;
+  delete scene.disabledProjectReferenceImages;
+  return scene;
+}
+
+function attachLegacyImageProjection(scene = {}) {
+  migrateSceneImageToImplicitShot(scene);
+  for (const field of SHOT_FIELDS) {
+    Object.defineProperty(scene, field, {
+      configurable: true,
+      enumerable: false,
+      get() { return imageShot(scene)[field]; },
+    });
+  }
+  Object.defineProperty(scene, 'referenceImages', {
+    configurable: true, enumerable: false, get() { return imageShot(scene).referenceBindings; },
+  });
+  Object.defineProperty(scene, 'disabledProjectReferenceImages', {
+    configurable: true, enumerable: false, get() { return imageShot(scene).disabledStyleReferencePaths; },
+  });
+  return scene;
+}
+
+function hasLegacySceneImageState(scene = {}) {
+  const shot = Array.isArray(scene.shots) ? scene.shots[0] : null;
+  return !shot || !Array.isArray(shot.referenceBindings) || !Array.isArray(shot.disabledStyleReferencePaths) || SHOT_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(scene, field)) || Object.prototype.hasOwnProperty.call(scene, 'referenceImages') || Object.prototype.hasOwnProperty.call(scene, 'disabledProjectReferenceImages');
+}
+
+module.exports = {
+  IMAGE_FIELDS,
+  VIDEO_FIELDS,
+  attachLegacyImageProjection,
+  hasLegacySceneImageState,
+  imageShot,
+  migrateSceneImageToImplicitShot,
+};

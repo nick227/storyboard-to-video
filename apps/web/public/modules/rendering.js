@@ -6,6 +6,8 @@ import { loadProtectedAsset } from './assets.js';
 import { api } from './api.js';
 import { suggestSceneCountFromNarration } from './scene-count.js';
 import { computeStaleness, resolveSelectedSceneIndex, getCachedJobs, refreshRecentJobs, buildLatestJobsByScene } from './stages.js';
+import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVersion, setImagePrompt } from './scene-shots.js';
+import { REFERENCE_ROLES, REFERENCE_ROLE_LABELS, normalizeReferenceRole } from './reference-roles.js';
 
 let els = {};
 let activeScenePlayback = null;
@@ -67,7 +69,7 @@ const ENTITY_CONFIG = {
     kind: 'text',
     fieldLabel: 'Visual prompt',
     getValue: (scene) => scene.prompt || '',
-    setValue: (scene, value) => { scene.prompt = value; },
+    setValue: (scene, value) => { setImagePrompt(scene, value); },
     regen: (index, els, cb) => regeneratePrompt(index, els, cb),
     regenBeat: (index, els, cb) => regenerateAction(index, els, cb),
   },
@@ -84,7 +86,7 @@ const ENTITY_CONFIG = {
     kind: 'image',
     versions: (scene) => scene.versions || [],
     activeIndex: (scene) => scene.activeVersionIndex,
-    selectVersion: (scene, vIndex) => { scene.activeVersionIndex = vIndex; scene.activeVisualType = 'image'; },
+    selectVersion: (scene, vIndex) => { setActiveImageVersion(scene, vIndex); scene.activeVisualType = 'image'; },
     // regenerate* throws deliberately on unmet prerequisites so the caller "has to consciously deal
     // with it" rather than silently no-op-ing — surface that via the same setStatus callback used
     // for progress messages, instead of discarding it.
@@ -101,9 +103,9 @@ const ENTITY_CONFIG = {
   video: {
     title: 'Video',
     kind: 'video',
-    versions: (scene) => scene.videoVersions || [],
-    activeIndex: (scene) => scene.activeVideoVersionIndex,
-    selectVersion: (scene, vIndex) => { scene.activeVideoVersionIndex = vIndex; scene.activeVisualType = 'video'; },
+    versions: (scene) => imageShot(scene).videoVersions || [],
+    activeIndex: (scene) => imageShot(scene).activeVideoVersionIndex,
+    selectVersion: (scene, vIndex) => { setActiveVideoVersion(scene, vIndex); scene.activeVisualType = 'video'; },
     regen: (index, els, cb) => regenerateVideo(index, null, els, cb).catch((error) => cb(error.message)),
   },
   subtitle: {
@@ -213,9 +215,10 @@ function renderSceneReferencesModal() {
   const index = currentReferenceSceneIndex();
   if (index === -1) { els.sceneReferencesModal.close(); return; }
   const scene = sceneStore.get().scenes[index];
-  const disabled = new Set(scene.disabledProjectReferenceImages || []);
+  const shot = imageShot(scene);
+  const disabled = new Set(shot.disabledStyleReferencePaths || []);
   const defaults = Object.values(generationStore.get().styleReferences || {}).flat();
-  const uploaded = scene.referenceImages || [];
+  const uploaded = shot.referenceBindings || [];
   els.sceneReferencesModalSceneLabel.textContent = `Scene ${index + 1} · ${scene.title || 'Untitled'}`;
   els.sceneDefaultReferences.replaceChildren();
   els.sceneUploadedReferences.replaceChildren();
@@ -238,7 +241,14 @@ function renderSceneReferencesModal() {
   uploaded.forEach((item) => {
     const card = document.createElement('div'); card.className = 'scene-reference-item';
     const name = document.createElement('div'); name.className = 'scene-reference-name';
-    const text = document.createElement('span'); text.textContent = item.fileName || 'Scene reference'; name.appendChild(text);
+    const text = document.createElement('span'); text.textContent = item.fileName || 'Scene reference';
+    const role = document.createElement('select'); role.className = 'scene-reference-role'; role.dataset.sceneReferenceRole = item.path;
+    role.setAttribute('aria-label', `Role for ${item.fileName || 'scene reference'}`);
+    for (const value of REFERENCE_ROLES) {
+      const option = document.createElement('option'); option.value = value; option.textContent = REFERENCE_ROLE_LABELS[value]; role.appendChild(option);
+    }
+    role.value = normalizeReferenceRole(item.role);
+    name.append(text, role);
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'ref-delete-btn'; remove.textContent = '×';
     remove.dataset.sceneReferencePath = item.path; remove.setAttribute('aria-label', `Delete ${item.fileName || 'scene reference'}`);
     card.append(referenceImage(item.path, item.fileName || 'Scene reference'), name, remove);
@@ -248,7 +258,8 @@ function renderSceneReferencesModal() {
 }
 
 function replaceSceneFromReferenceResponse(data) {
-  const scenes = sceneStore.get().scenes.map((scene) => scene.id === data.scene.id ? data.scene : scene);
+  const updated = adaptSceneImageShot(data.scene);
+  const scenes = sceneStore.get().scenes.map((scene) => scene.id === updated.id ? updated : scene);
   sceneStore.set({ scenes });
   const record = getCurrentStoryboardRecord();
   if (record) {
@@ -273,9 +284,12 @@ function setupSceneReferencesModal() {
     const url = checkbox.dataset.defaultReference;
     const scenes = sceneStore.get().scenes.map((scene, sceneIndex) => {
       if (sceneIndex !== index) return scene;
-      const disabled = new Set(scene.disabledProjectReferenceImages || []);
+      const next = adaptSceneImageShot({ ...scene, shots: (scene.shots || []).map((shot) => ({ ...shot })) });
+      const shot = imageShot(next);
+      const disabled = new Set(shot.disabledStyleReferencePaths || []);
       if (checkbox.checked) disabled.delete(url); else disabled.add(url);
-      return { ...scene, disabledProjectReferenceImages: [...disabled] };
+      shot.disabledStyleReferencePaths = [...disabled];
+      return next;
     });
     sceneStore.set({ scenes });
     const record = getCurrentStoryboardRecord();
@@ -309,6 +323,23 @@ function setupSceneReferencesModal() {
       const data = await api(`/api/projects/${encodeURIComponent(record.id)}/scenes/${encodeURIComponent(scene.id)}/references`, { method: 'DELETE', body: JSON.stringify({ path: button.dataset.sceneReferencePath }) });
       replaceSceneFromReferenceResponse(data); els.sceneReferencesSaveNote.textContent = 'Deleted';
     } catch (error) { els.sceneReferencesSaveNote.textContent = `Delete failed: ${error.message}`; }
+    finally { modal.removeAttribute('aria-busy'); renderSceneReferencesModal(); }
+  });
+
+  els.sceneUploadedReferences.addEventListener('change', async (event) => {
+    const select = event.target.closest('[data-scene-reference-role]');
+    const index = currentReferenceSceneIndex();
+    if (!select || index === -1) return;
+    const scene = sceneStore.get().scenes[index]; const record = getCurrentStoryboardRecord();
+    try {
+      modal.setAttribute('aria-busy', 'true'); els.sceneReferencesSaveNote.textContent = 'Saving role…';
+      await ensureProjectSynced();
+      const data = await api(`/api/projects/${encodeURIComponent(record.id)}/scenes/${encodeURIComponent(scene.id)}/references/role`, {
+        method: 'PATCH',
+        body: JSON.stringify({ path: select.dataset.sceneReferenceRole, role: select.value }),
+      });
+      replaceSceneFromReferenceResponse(data); els.sceneReferencesSaveNote.textContent = 'Role saved';
+    } catch (error) { els.sceneReferencesSaveNote.textContent = `Role update failed: ${error.message}`; }
     finally { modal.removeAttribute('aria-busy'); renderSceneReferencesModal(); }
   });
 }
@@ -375,8 +406,9 @@ function renderEntityModalMedia(scene, type, config) {
     // timing was computed against), not necessarily the scene's current active audio -- if audio has
     // since been regenerated, the two would drift apart and the karaoke preview would look broken
     // (captions no longer matching the words actually being spoken) instead of just being stale.
-    const visualVersions = scene.activeVisualType === 'video' ? scene.videoVersions : scene.versions;
-    const visualIndex = scene.activeVisualType === 'video' ? scene.activeVideoVersionIndex : scene.activeVersionIndex;
+    const shot = imageShot(scene);
+    const visualVersions = scene.activeVisualType === 'video' ? shot.videoVersions : shot.versions;
+    const visualIndex = scene.activeVisualType === 'video' ? shot.activeVideoVersionIndex : shot.activeVersionIndex;
     const visualPath = visualVersions?.[visualIndex]?.path || null;
     const visualEl = scene.activeVisualType === 'video' ? els.entityModalVideo : els.entityModalImage;
     if (visualPath) {
@@ -956,12 +988,13 @@ export function renderScenes() {
     const busy = operation != null;
     const loadingByType = Object.fromEntries(Object.keys(ENTITY_CONFIG).map((type) => [type, isEntityLoading(type, scene, operation)]));
 
+    const shot = imageShot(scene);
     const sceneStatus = {
       prompt: Boolean(String(scene.prompt || '').trim()),
       image: (scene.versions || []).some((version) => Boolean(version?.path)),
       dialogue: Boolean(String(scene.narrationText || '').trim()),
       audio: (scene.audioVersions || []).some((version) => Boolean(version?.path)),
-      video: (scene.videoVersions || []).some((version) => Boolean(version?.path)),
+      video: (shot.videoVersions || []).some((version) => Boolean(version?.path)),
       subtitle: (scene.subtitleVersions || []).some((version) => Boolean(version?.path)),
     };
     for (const [type, isPresent] of Object.entries(sceneStatus)) {
@@ -987,8 +1020,8 @@ export function renderScenes() {
 
 
 
-    const activeVersion = scene.versions?.[scene.activeVersionIndex];
-    const activeVideoVersion = scene.videoVersions?.[scene.activeVideoVersionIndex];
+    const activeVersion = shot.versions?.[shot.activeVersionIndex];
+    const activeVideoVersion = shot.videoVersions?.[shot.activeVideoVersionIndex];
     const currentVideoPath = activeVideoVersion?.path || '';
     const currentPosterPath = activeVersion?.path || '';
 

@@ -4,7 +4,23 @@ const { signal, throwResponse } = require('../http');
 const { providerRequestId, providerResult } = require('../result');
 
 function mime(file) { const ext = path.extname(file).toLowerCase(); return ['.jpg', '.jpeg'].includes(ext) ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : ext === '.gif' ? 'image/gif' : 'image/png'; }
-function geminiParts(prompt, references) { const parts = [{ text: prompt }]; for (const file of references) if (fs.existsSync(file)) parts.push({ text: 'Reference image' }, { inline_data: { mime_type: mime(file), data: fs.readFileSync(file).toString('base64') } }); return parts; }
+const GEMINI_REFERENCE_INSTRUCTIONS = Object.freeze({
+  character: 'CHARACTER IDENTITY. Preserve the character’s recognizable appearance, proportions, hair, face, and signature clothing; do not copy the background or pose unless requested.',
+  location: 'LOCATION IDENTITY. Preserve the recognizable setting, layout, architecture, materials, and palette; the camera angle may change.',
+  composition: 'COMPOSITION. Use the framing, camera angle, blocking, and pose as guidance; do not copy identity or art style unless the prompt requests it.',
+  continuity: 'PREVIOUS SHOT CONTINUITY. Maintain established character appearance, wardrobe, location details, palette, and lighting while creating the new shot.',
+});
+function referenceFile(reference) { return typeof reference === 'string' ? reference : reference?.path; }
+function geminiParts(prompt, references) {
+  const parts = [{ text: prompt }];
+  for (const [index, reference] of (references || []).entries()) {
+    const file = referenceFile(reference);
+    if (!file || !fs.existsSync(file)) continue;
+    const instruction = GEMINI_REFERENCE_INSTRUCTIONS[reference?.role] || 'REFERENCE IMAGE. Use only as relevant to the prompt.';
+    parts.push({ text: `REFERENCE ${index + 1} — ${instruction}` }, { inline_data: { mime_type: mime(file), data: fs.readFileSync(file).toString('base64') } });
+  }
+  return parts;
+}
 function createTextProviders(config, getCancellation, usageTracker) {
   async function openai(prompt) {
     if (!config.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY missing');
@@ -31,4 +47,4 @@ function createTextProviders(config, getCancellation, usageTracker) {
   }
   return { call, geminiParts };
 }
-module.exports = { createTextProviders };
+module.exports = { GEMINI_REFERENCE_INSTRUCTIONS, createTextProviders };

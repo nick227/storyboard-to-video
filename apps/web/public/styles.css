@@ -862,6 +862,8 @@ details > summary::marker { color: var(--muted); }
   font-size: 11px;
 }
 .scene-reference-item label span, .scene-reference-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene-reference-name { align-items: stretch; flex-direction: column; }
+.scene-reference-role { width: 100%; min-width: 0; font-size: 11px; }
 .scene-reference-item.is-disabled img { opacity: .3; filter: grayscale(1); }
 .scene-reference-item .ref-delete-btn { position: absolute; top: 5px; right: 5px; }
 .scene-reference-empty { padding: 16px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 12px; }
@@ -2213,4 +2215,3 @@ button.text-button {
   margin: 16px 0 8px 0;
   color: var(--muted);
 }
-

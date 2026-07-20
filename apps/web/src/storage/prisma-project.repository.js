@@ -4,11 +4,12 @@ const crypto = require('node:crypto');
 const { Prisma } = require('../../dist/generated/prisma/client.js');
 const { ProjectStore } = require('./project-store');
 const { AppError } = require('../errors');
+const { imageShot } = require('../shared/scene-shots');
 
 const SCENE_ASSET_FIELDS = Object.freeze({
-  image: { list: 'versions', activeIndex: 'activeVersionIndex', visualType: 'image' },
+  image: { list: 'versions', activeIndex: 'activeVersionIndex', visualType: 'image', owner: 'shot' },
   audio: { list: 'audioVersions', activeIndex: 'activeAudioVersionIndex', visualType: null },
-  video: { list: 'videoVersions', activeIndex: 'activeVideoVersionIndex', visualType: 'video' },
+  video: { list: 'videoVersions', activeIndex: 'activeVideoVersionIndex', visualType: 'video', owner: 'shot' },
   subtitle: { list: 'subtitleVersions', activeIndex: 'activeSubtitleVersionIndex', visualType: null },
 });
 
@@ -144,10 +145,11 @@ class PrismaProjectRepository extends ProjectStore {
       const document = await this.verifyLease(lease);
       const scene = document.scenes?.find((item) => item.id === sceneId);
       if (!scene) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
-      const list = Array.isArray(scene[fields.list]) ? scene[fields.list] : [];
+      const owner = fields.owner === 'shot' ? imageShot(scene) : scene;
+      const list = Array.isArray(owner[fields.list]) ? owner[fields.list] : [];
       if (jobId && list.some((entry) => entry?.jobId === jobId)) return { project: document, scene };
-      scene[fields.list] = [...list, { ...version, jobId }];
-      scene[fields.activeIndex] = scene[fields.list].length - 1;
+      owner[fields.list] = [...list, { ...version, jobId }];
+      owner[fields.activeIndex] = owner[fields.list].length - 1;
       if (fields.visualType) scene.activeVisualType = fields.visualType;
       try {
         const project = await this.write(lease.projectId, document, { expectedRevision: document.revision, ownerId: lease.ownerId });

@@ -2,6 +2,7 @@ import { api } from './api.js';
 import { batchStore, projectStore, sceneStore, voiceStore, generationStore, uiStore } from './store.js';
 import { getCurrentStoryboardRecord, queueSync, ensureProjectSynced } from './persistence.js';
 import { clampSplitCount, suggestSceneCount, suggestSceneCountFromNarration } from './scene-count.js';
+import { adaptSceneImageShot, imageShot, replaceImageState, replaceVideoState, setImagePrompt } from './scene-shots.js';
 
 export function getPayloadBase(els) {
   const isAuto = els.settingsSceneCountAutoCheckbox && els.settingsSceneCountAutoCheckbox.checked;
@@ -34,10 +35,11 @@ export function getPayloadBase(els) {
 
 export function normalizeScene(scene, index) {
   const projectPrefix = `/projects/${encodeURIComponent(projectStore.get().currentId || '')}/assets/`;
-  const versions = Array.isArray(scene?.versions)
-    ? scene.versions.filter((version) => typeof version?.path === 'string' && (version.path.startsWith(`${projectPrefix}images/`) || version.path.startsWith('/generated/')))
+  const sourceShot = imageShot(scene);
+  const versions = Array.isArray(sourceShot.versions)
+    ? sourceShot.versions.filter((version) => typeof version?.path === 'string' && (version.path.startsWith(`${projectPrefix}images/`) || version.path.startsWith('/generated/')))
     : [];
-  const requestedIndex = Number.isInteger(scene?.activeVersionIndex) ? scene.activeVersionIndex : 0;
+  const requestedIndex = Number.isInteger(sourceShot.activeVersionIndex) ? sourceShot.activeVersionIndex : 0;
   // Server-authoritative normalization (project-store.js) is what actually adapts legacy `lines`
   // into `narrationText`. This is only a trivial client-side fallback for stale local-cached data
   // that hasn't round-tripped through the server yet — not a reimplementation of that adapter.
@@ -48,10 +50,10 @@ export function normalizeScene(scene, index) {
     : [];
   const requestedAudioIndex = Number.isInteger(scene?.activeAudioVersionIndex) ? scene.activeAudioVersionIndex : 0;
   
-  const videoVersions = Array.isArray(scene?.videoVersions)
-    ? scene.videoVersions.filter((version) => typeof version?.path === 'string' && (version.path.startsWith(`${projectPrefix}videos/`) || version.path.startsWith('/videos/')))
+  const videoVersions = Array.isArray(sourceShot.videoVersions)
+    ? sourceShot.videoVersions.filter((version) => typeof version?.path === 'string' && (version.path.startsWith(`${projectPrefix}videos/`) || version.path.startsWith('/videos/')))
     : [];
-  const requestedVideoIndex = Number.isInteger(scene?.activeVideoVersionIndex) ? scene.activeVideoVersionIndex : (videoVersions.length ? videoVersions.length - 1 : 0);
+  const requestedVideoIndex = Number.isInteger(sourceShot.activeVideoVersionIndex) ? sourceShot.activeVideoVersionIndex : (videoVersions.length ? videoVersions.length - 1 : 0);
 
   const subtitleVersions = Array.isArray(scene?.subtitleVersions)
     ? scene.subtitleVersions.filter((version) => typeof version?.path === 'string' && version.path.startsWith(`${projectPrefix}subtitles/`))
@@ -64,30 +66,31 @@ export function normalizeScene(scene, index) {
   if (activeVisualType === 'video' && !videoVersions.length) activeVisualType = 'image';
   if (activeVisualType === 'image' && !versions.length && videoVersions.length) activeVisualType = 'video';
   
-  return {
+  return adaptSceneImageShot({
     id: typeof scene?.id === 'string' ? scene.id : crypto.randomUUID(),
     title: String(scene?.title || `Scene ${index + 1}`),
     beat: String(scene?.beat || ''),
-    prompt: String(scene?.prompt || ''),
+    shots: [{
+      ...sourceShot,
+      prompt: String(sourceShot.prompt || ''),
+      versions,
+      activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
+      videoVersions,
+      activeVideoVersionIndex: videoVersions.length ? Math.min(Math.max(requestedVideoIndex, 0), videoVersions.length - 1) : 0,
+    }, ...(Array.isArray(scene?.shots) ? scene.shots.slice(1) : [])],
     scriptFragment: typeof scene?.scriptFragment === 'string' ? scene.scriptFragment : '',
     // Both stamped server-side (prompt-generation.service.js), from what generation actually used as
     // source — never computed here from local state, so staleness survives reloads/concurrent tabs.
     promptGeneratedFromBeat: typeof scene?.promptGeneratedFromBeat === 'string' ? scene.promptGeneratedFromBeat : '',
     promptGeneratedFromNarration: typeof scene?.promptGeneratedFromNarration === 'string' ? scene.promptGeneratedFromNarration : null,
-    versions,
-    activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
     narrationText,
     narrationIsFallback,
     audioVersions,
     activeAudioVersionIndex: audioVersions.length ? Math.min(Math.max(requestedAudioIndex, 0), audioVersions.length - 1) : 0,
-    videoVersions,
-    activeVideoVersionIndex: videoVersions.length ? Math.min(Math.max(requestedVideoIndex, 0), videoVersions.length - 1) : 0,
     subtitleVersions,
     activeSubtitleVersionIndex: subtitleVersions.length ? Math.min(Math.max(requestedSubtitleIndex, 0), subtitleVersions.length - 1) : 0,
     activeVisualType,
-    referenceImages: Array.isArray(scene?.referenceImages) ? scene.referenceImages : [],
-    disabledProjectReferenceImages: Array.isArray(scene?.disabledProjectReferenceImages) ? scene.disabledProjectReferenceImages : [],
-  };
+  });
 }
 
 // `rebuildFromSource: true` is a separate, explicit operation from the default regenerate — it
@@ -127,23 +130,30 @@ export async function generatePrompts(els, setStatus, { rebuildFromSource = fals
     // promptGeneratedFromBeat/promptGeneratedFromNarration arrive already stamped by the server
     // (prompt-generation.service.js) — not recomputed here from local scene.beat, so provenance
     // reflects what generation actually used even across reloads/concurrent tabs.
-    const nextScenes = (data.scenes || []).map((nextScene, index) => normalizeScene({
-      ...nextScene,
-      id: reuseExistingScenes ? (previousScenes[index]?.id || nextScene.id) : nextScene.id,
-      versions: reuseExistingScenes ? (previousScenes[index]?.versions || []) : [],
-      activeVersionIndex: reuseExistingScenes ? (previousScenes[index]?.activeVersionIndex || 0) : 0,
-      videoVersions: reuseExistingScenes ? (previousScenes[index]?.videoVersions || []) : [],
-      activeVideoVersionIndex: reuseExistingScenes ? (previousScenes[index]?.activeVideoVersionIndex || 0) : 0,
-      activeVisualType: reuseExistingScenes ? previousScenes[index]?.activeVisualType : undefined,
-      narrationText: reuseExistingScenes ? (previousScenes[index]?.narrationText || '') : '',
-      narrationIsFallback: reuseExistingScenes ? Boolean(previousScenes[index]?.narrationIsFallback) : false,
-      audioVersions: reuseExistingScenes ? (previousScenes[index]?.audioVersions || []) : [],
-      activeAudioVersionIndex: reuseExistingScenes ? (previousScenes[index]?.activeAudioVersionIndex || 0) : 0,
-      subtitleVersions: reuseExistingScenes ? (previousScenes[index]?.subtitleVersions || []) : [],
-      activeSubtitleVersionIndex: reuseExistingScenes ? (previousScenes[index]?.activeSubtitleVersionIndex || 0) : 0,
-      referenceImages: reuseExistingScenes ? (previousScenes[index]?.referenceImages || []) : [],
-      disabledProjectReferenceImages: reuseExistingScenes ? (previousScenes[index]?.disabledProjectReferenceImages || []) : [],
-    }, index));
+    const nextScenes = (data.scenes || []).map((nextScene, index) => {
+      const previousScene = previousScenes[index];
+      const previousShot = imageShot(previousScene);
+      return normalizeScene({
+        ...nextScene,
+        id: reuseExistingScenes ? (previousScene?.id || nextScene.id) : nextScene.id,
+        shots: [{
+          prompt: nextScene.prompt || '',
+          versions: reuseExistingScenes ? (previousShot.versions || []) : [],
+          activeVersionIndex: reuseExistingScenes ? (previousShot.activeVersionIndex || 0) : 0,
+          videoVersions: reuseExistingScenes ? (previousShot.videoVersions || []) : [],
+          activeVideoVersionIndex: reuseExistingScenes ? (previousShot.activeVideoVersionIndex || 0) : 0,
+          referenceBindings: reuseExistingScenes ? (previousShot.referenceBindings || []) : [],
+          disabledStyleReferencePaths: reuseExistingScenes ? (previousShot.disabledStyleReferencePaths || []) : [],
+        }],
+        activeVisualType: reuseExistingScenes ? previousScene?.activeVisualType : undefined,
+        narrationText: reuseExistingScenes ? (previousScene?.narrationText || '') : '',
+        narrationIsFallback: reuseExistingScenes ? Boolean(previousScene?.narrationIsFallback) : false,
+        audioVersions: reuseExistingScenes ? (previousScene?.audioVersions || []) : [],
+        activeAudioVersionIndex: reuseExistingScenes ? (previousScene?.activeAudioVersionIndex || 0) : 0,
+        subtitleVersions: reuseExistingScenes ? (previousScene?.subtitleVersions || []) : [],
+        activeSubtitleVersionIndex: reuseExistingScenes ? (previousScene?.activeSubtitleVersionIndex || 0) : 0,
+      }, index);
+    });
     
     sceneStore.set({ 
       scenes: nextScenes,
@@ -203,7 +213,7 @@ export async function regeneratePrompt(index, els, setStatus, withinSerial = fal
       }),
     });
 
-    scene.prompt = data.prompt || scene.prompt;
+    setImagePrompt(scene, data.prompt || scene.prompt);
     // Provenance is server-authored (prompt-generation.service.js only includes these fields on a
     // real, non-fallback regeneration) — copy whatever the server sent rather than computing it from
     // local scene.beat; a fallback response omits them, so the scene keeps its prior provenance.
@@ -395,8 +405,7 @@ export async function regenerateImage(index, scene, els, setStatus) {
       }),
     });
 
-    activeScene.versions = data.scene.versions;
-    activeScene.activeVersionIndex = data.scene.activeVersionIndex;
+    replaceImageState(activeScene, data.scene);
     activeScene.activeVisualType = data.scene.activeVisualType;
 
     sceneStore.set({ scenes: [...scenes] });
@@ -585,7 +594,8 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
   const activeScene = scene || scenes[index];
   if (!activeScene || (!scene && uiStore.get().operation)) return false;
   
-  const sourceImage = activeScene.versions[activeScene.activeVersionIndex];
+  const shot = imageShot(activeScene);
+  const sourceImage = shot.versions[shot.activeVersionIndex];
   if (!sourceImage?.path) {
     if (withinSerial) return true; // skip this scene
     throw new Error('Scene has no generated reference image.');
@@ -617,8 +627,7 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
       }),
     });
 
-    activeScene.videoVersions = data.scene.videoVersions;
-    activeScene.activeVideoVersionIndex = data.scene.activeVideoVersionIndex;
+    replaceVideoState(activeScene, data.scene);
     activeScene.activeVisualType = data.scene.activeVisualType;
 
     sceneStore.set({ scenes: [...scenes] });

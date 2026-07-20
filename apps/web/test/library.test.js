@@ -97,9 +97,9 @@ test('Image Library Endpoints', async (t) => {
     .expect(200);
 
   assert.equal(sceneUploadRes.body.ok, true);
-  assert.equal(sceneUploadRes.body.scene.versions.length, 1);
-  assert.match(sceneUploadRes.body.scene.versions[0].path, /scene-image-/);
-  assert.equal(sceneUploadRes.body.scene.activeVersionIndex, 0);
+  assert.equal(sceneUploadRes.body.scene.shots[0].versions.length, 1);
+  assert.match(sceneUploadRes.body.scene.shots[0].versions[0].path, /scene-image-/);
+  assert.equal(sceneUploadRes.body.scene.shots[0].activeVersionIndex, 0);
 
   // 6. Retrieve past storyboards (create another project with a scene version first)
   const pastProjectId = id('past');
@@ -168,7 +168,7 @@ test('Cross-project asset reuse and deletion durability', async (t) => {
     .attach('file', fileContent, 'reused.png')
     .expect(200);
 
-  const assetBPath = uploadBRes.body.scene.versions[0].path;
+  const assetBPath = uploadBRes.body.scene.shots[0].versions[0].path;
 
   assert.match(assetBPath, /scene-images/);
   assert.notEqual(assetBPath, assetAPath);
@@ -186,4 +186,3 @@ test('Cross-project asset reuse and deletion durability', async (t) => {
   assert.ok(resolvedBAfter);
   assert.ok(fs.existsSync(resolvedBAfter.sourcePath));
 });
-

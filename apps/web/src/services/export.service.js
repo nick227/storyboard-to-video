@@ -3,6 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const archiver = require('archiver');
 const { slugify } = require('../shared/text');
+const { imageShot } = require('../shared/scene-shots');
 
 function createExportService({ config, projectStore }) {
   return {
@@ -22,11 +23,12 @@ function createExportService({ config, projectStore }) {
         try {
           for (let index = 0; index < scenes.length; index += 1) {
             const scene = scenes[index];
+            const shot = imageShot(scene);
             const number = String(index + 1).padStart(2, '0');
             const name = slugify(scene.title || 'scene');
             for (const item of [
-              [scene.versions, scene.activeVersionIndex, 'images', 'images', '.png'],
-              [scene.videoVersions, scene.activeVideoVersionIndex, 'videos', 'videos', '.mp4'],
+              [shot.versions, shot.activeVersionIndex, 'images', 'images', '.png'],
+              [shot.videoVersions, shot.activeVideoVersionIndex, 'videos', 'videos', '.mp4'],
               [scene.audioVersions, scene.activeAudioVersionIndex, 'audio', 'audio', '.wav'],
               [scene.subtitleVersions, scene.activeSubtitleVersionIndex, 'subtitles', 'subtitles', '.srt'],
             ]) {

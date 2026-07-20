@@ -1,6 +1,7 @@
 import { projectStore, sceneStore, generationStore, voiceStore, uiStore, batchStore } from './store.js';
 import { getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from './persistence.js';
 import { loadProtectedAsset } from './assets.js';
+import { adaptSceneImageShot, setActiveImageVersion } from './scene-shots.js';
 import { api } from './api.js';
 import { previewVoice, openVoiceLibraryModal } from './voices.js';
 import { computeStageStatus, getCachedJobs, getCachedSpend } from './stages.js';
@@ -121,17 +122,17 @@ function renderStyleReferenceList(container, items, type, els, setStatus) {
 }
 
 export async function loadStyleReferences(styleId, els, setStatus) {
-  generationStore.set({ styleReferences: { characters: [], world: [] } });
+  generationStore.set({ styleReferences: { characters: [], world: [] }, styleReferencesStyleId: null });
   renderStyleReferences(els, setStatus);
   els.styleReferencesPanel.setAttribute('aria-busy', 'true');
   try {
     const data = await api(`/api/styles/${encodeURIComponent(styleId)}/references`);
     if (els.styleSelect.value !== styleId) return;
-    generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
+    generationStore.set({ styleReferences: data.references || { characters: [], world: [] }, styleReferencesStyleId: styleId });
     renderStyleReferences(els, setStatus);
   } catch (error) {
     if (els.styleSelect.value !== styleId) return;
-    generationStore.set({ styleReferences: { characters: [], world: [] } });
+    generationStore.set({ styleReferences: { characters: [], world: [] }, styleReferencesStyleId: null });
     renderStyleReferences(els, setStatus);
     if (setStatus) setStatus(`Could not load references: ${error.message}`);
   } finally {
@@ -150,7 +151,7 @@ export async function uploadStyleReferences(type, files, els, setStatus) {
       method: 'POST',
       body: form,
     });
-    generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
+    generationStore.set({ styleReferences: data.references || { characters: [], world: [] }, styleReferencesStyleId: styleId });
     renderStyleReferences(els, setStatus);
     if (setStatus) setStatus(`${type} references uploaded.`);
   } catch (error) {
@@ -165,7 +166,7 @@ async function deleteStyleReference(type, fileName, els, setStatus) {
       method: 'DELETE',
       body: JSON.stringify({ type, fileName }),
     });
-    generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
+    generationStore.set({ styleReferences: data.references || { characters: [], world: [] }, styleReferencesStyleId: styleId });
     renderStyleReferences(els, setStatus);
     if (setStatus) setStatus('Reference removed.');
   } catch (error) {
@@ -816,7 +817,7 @@ async function addImageToActive(path, fileName) {
         method: 'POST',
         body: form
       });
-      generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
+      generationStore.set({ styleReferences: data.references || { characters: [], world: [] }, styleReferencesStyleId: styleId });
       renderStyleReferences(domEls, setStatus);
       renderActiveList();
       if (setStatus) setStatus(`Added to active ${type}.`);
@@ -836,7 +837,7 @@ async function removeImageFromActive(path, fileName) {
         method: 'DELETE',
         body: JSON.stringify({ type, fileName }),
       });
-      generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
+      generationStore.set({ styleReferences: data.references || { characters: [], world: [] }, styleReferencesStyleId: styleId });
       renderStyleReferences(domEls, setStatus);
       renderActiveList();
       if (setStatus) setStatus(`Removed from active ${type}.`);
@@ -859,7 +860,7 @@ async function selectLibraryImage(path, fileName) {
           method: 'POST',
           body: JSON.stringify({ type, fileName }),
         });
-        generationStore.set({ styleReferences: data.references || { characters: [], world: [] } });
+        generationStore.set({ styleReferences: data.references || { characters: [], world: [] }, styleReferencesStyleId: styleId });
         renderStyleReferences(domEls, setStatus);
         renderActiveList();
         if (setStatus) setStatus(`Activated ${type} reference.`);
@@ -884,7 +885,8 @@ async function selectLibraryImage(path, fileName) {
         body: form
       });
 
-      const scenes = sceneStore.get().scenes.map(s => s.id === data.scene.id ? data.scene : s);
+      const responseScene = adaptSceneImageShot(data.scene);
+      const scenes = sceneStore.get().scenes.map(s => s.id === responseScene.id ? responseScene : s);
       sceneStore.set({ scenes });
       const record = getCurrentStoryboardRecord();
       if (record) {
@@ -906,7 +908,7 @@ function selectSceneVersion(vIndex) {
   const scenes = sceneStore.get().scenes.map(s => {
     if (s.id !== sceneId) return s;
     const next = { ...s };
-    next.activeVersionIndex = vIndex;
+    setActiveImageVersion(next, vIndex);
     next.activeVisualType = 'image';
     return next;
   });
@@ -1076,4 +1078,3 @@ export function populateTokensInfoModal(els) {
     els.tokensPricingContainer.innerHTML = pricingHTML;
   }
 }
-

@@ -49,7 +49,7 @@ function createVideoProvider(config, getCancellation, usageTracker) {
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     if (config.videoProvider === 'stub') {
       fs.copyFileSync(stubVideo(config), outputPath);
-      return providerResult({ output: { outputPath }, provider: 'stub', model: 'stub-video-v1', usage: { videos: 1 }, measurementStatus: 'not_applicable' });
+      return providerResult({ output: { outputPath }, provider: 'stub', model: 'stub-video-v1', settings: { motionIntensity, renderer: 'stub-video-v1' }, usage: { videos: 1 }, measurementStatus: 'not_applicable' });
     }
 
     fs.mkdirSync(config.paths.ltxShared, { recursive: true });
@@ -66,25 +66,32 @@ function createVideoProvider(config, getCancellation, usageTracker) {
       // tested, and kept shorter since more motion degrades faster in every test run so far.
       const presetFrames = { subtle: 121, medium: 121, high: 97 }[motionIntensity] || 121;
       const frames = setting(config.env, 'VIDEO_FRAMES', presetFrames, 9, 297);
+      const width = setting(config.env, 'VIDEO_WIDTH', 640, 64, 2048);
+      const height = setting(config.env, 'VIDEO_HEIGHT', 480, 64, 2048);
+      const frameRate = setting(config.env, 'VIDEO_FRAME_RATE', 24, 1, 60);
+      const steps = setting(config.env, 'VIDEO_STEPS', 45, 5, 100);
+      const guidanceScale = decimalSetting(config.env, 'VIDEO_GUIDANCE_SCALE', 2.25, 1, 10);
+      const seed = setting(config.env, 'VIDEO_SEED', 42, 0, 2 ** 31 - 1);
+      const negativePrompt = cleanText(config.env.VIDEO_NEGATIVE_PROMPT || 'flicker, jitter, blurry, warped anatomy, extra limbs, duplicate characters, text, watermark, frozen frame, static pose', 20_000);
       const response = await fetch(url(config.env.LTX_VIDEO_GENERATE_PATH || '/generate'), {
         method: 'POST',
         headers: headers(true),
         body: JSON.stringify({
           prompt: cleanText(prompt, 20_000),
-          negative_prompt: cleanText(config.env.VIDEO_NEGATIVE_PROMPT || 'flicker, jitter, blurry, warped anatomy, extra limbs, duplicate characters, text, watermark, frozen frame, static pose', 20_000),
+          negative_prompt: negativePrompt,
           motion_intensity: ['subtle', 'medium', 'high'].includes(motionIntensity) ? motionIntensity : 'medium',
           image: stagedImage,
-          width: setting(config.env, 'VIDEO_WIDTH', 640, 64, 2048),
-          height: setting(config.env, 'VIDEO_HEIGHT', 480, 64, 2048),
+          width,
+          height,
           frames: (frames - 1) % 8 === 0 ? frames : presetFrames,
-          frame_rate: setting(config.env, 'VIDEO_FRAME_RATE', 24, 1, 60),
+          frame_rate: frameRate,
           // Defaults tuned against empirical testing: guidance_scale=4/steps=30 caused rapid
           // identity collapse on image-to-video (faces warping within ~1-2s). 45 steps / 2.25
           // guidance held identity cleanly through 5s on a moving-face scene (best of the tested
           // combos — more steps didn't help further, and guidance 2.0 reintroduced warping).
-          steps: setting(config.env, 'VIDEO_STEPS', 45, 5, 100),
-          guidance_scale: decimalSetting(config.env, 'VIDEO_GUIDANCE_SCALE', 2.25, 1, 10),
-          seed: setting(config.env, 'VIDEO_SEED', 42, 0, 2 ** 31 - 1),
+          steps,
+          guidance_scale: guidanceScale,
+          seed,
           output: stagedOutput,
         }),
         signal: signal(config.env.VIDEO_PROVIDER_TIMEOUT_MS || 600000, getCancellation),
@@ -101,8 +108,7 @@ function createVideoProvider(config, getCancellation, usageTracker) {
       }
       if (!fs.existsSync(stagedOutput)) throw new AppError('LTX_OUTPUT_MISSING', 'LTX-Video completed without creating output', { retryable: true });
       fs.copyFileSync(stagedOutput, outputPath);
-      const frameRate = setting(config.env, 'VIDEO_FRAME_RATE', 24, 1, 60);
-      return providerResult({ output: { outputPath }, provider: 'ltx', model: config.env.LTX_VIDEO_MODEL || 'ltx-video', providerRequestId: providerRequestId(response, body), usage: { videos: 1, frames, frameRate, seconds: frames / frameRate, steps: setting(config.env, 'VIDEO_STEPS', 45, 5, 100), width: setting(config.env, 'VIDEO_WIDTH', 640, 64, 2048), height: setting(config.env, 'VIDEO_HEIGHT', 480, 64, 2048) }, rawUsage: body?.usage || body || null, measurementStatus: 'observed' });
+      return providerResult({ output: { outputPath }, provider: 'ltx', model: config.env.LTX_VIDEO_MODEL || 'ltx-video', providerRequestId: providerRequestId(response, body), settings: { motionIntensity, negativePrompt, width, height, frames, frameRate, steps, guidanceScale, seed }, usage: { videos: 1, frames, frameRate, seconds: frames / frameRate, steps, width, height }, rawUsage: body?.usage || body || null, measurementStatus: 'observed' });
     } finally {
       fs.rmSync(stagedImage, { force: true });
       fs.rmSync(stagedOutput, { force: true });

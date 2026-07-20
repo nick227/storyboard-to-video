@@ -3,6 +3,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { detectImageExtension } = require('../media/image-format');
 const { AppError } = require('../errors');
+const { imageShot } = require('../shared/scene-shots');
+const { REFERENCE_ROLES, normalizeReferenceRole } = require('../shared/reference-roles');
 
 const MAX_SCENE_REFERENCES = 8;
 
@@ -37,7 +39,8 @@ function createSceneReferenceService({ config, projectStore }) {
       const document = await projectStore.verifyLease(lease);
       const scene = document.scenes?.find((item) => item.id === sceneId);
       if (!scene) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
-      const existing = Array.isArray(scene.referenceImages) ? scene.referenceImages : [];
+      const shot = imageShot(scene);
+      const existing = Array.isArray(shot.referenceBindings) ? shot.referenceBindings : [];
       if (existing.length + files.length > MAX_SCENE_REFERENCES) throw new AppError('REFERENCE_LIMIT', `A scene can have at most ${MAX_SCENE_REFERENCES} uploaded references`, { status: 400 });
 
       const prepared = files.map((file) => ({ file, extension: detectImageExtension(file.buffer) }));
@@ -57,9 +60,10 @@ function createSceneReferenceService({ config, projectStore }) {
           }
         }
         return await writeScene(lease, sceneId, (target) => {
-          target.referenceImages = [
-            ...(Array.isArray(target.referenceImages) ? target.referenceImages : []),
-            ...assets.map((asset, index) => ({ path: asset.path, fileName: prepared[index].file.originalname || asset.fileName, createdAt: new Date().toISOString() })),
+          const targetShot = imageShot(target);
+          targetShot.referenceBindings = [
+            ...(Array.isArray(targetShot.referenceBindings) ? targetShot.referenceBindings : []),
+            ...assets.map((asset, index) => ({ path: asset.path, fileName: prepared[index].file.originalname || asset.fileName, role: 'composition', createdAt: new Date().toISOString() })),
           ];
         });
       } catch (error) {
@@ -72,15 +76,30 @@ function createSceneReferenceService({ config, projectStore }) {
       const lease = await projectStore.acquireLease(projectId, { ownerId, userId });
       const document = await projectStore.verifyLease(lease);
       const scene = document.scenes?.find((item) => item.id === sceneId);
-      const reference = scene?.referenceImages?.find((item) => item?.path === assetPath);
+      const reference = imageShot(scene).referenceBindings?.find((item) => item?.path === assetPath);
       if (!reference) throw new AppError('REFERENCE_NOT_FOUND', 'Scene reference not found', { status: 404 });
       const result = await writeScene(lease, sceneId, (target) => {
-        target.referenceImages = (target.referenceImages || []).filter((item) => item?.path !== assetPath);
+        const targetShot = imageShot(target);
+        targetShot.referenceBindings = (targetShot.referenceBindings || []).filter((item) => item?.path !== assetPath);
       });
       let fileName;
       try { fileName = decodeURIComponent(String(assetPath).split('/').pop()); } catch (_) { fileName = ''; }
       if (fileName) await projectStore.deleteAsset(projectId, 'images', fileName, { ownerId });
       return result;
+    },
+
+    async setRole(projectId, sceneId, assetPath, role, { ownerId, userId } = {}) {
+      if (!REFERENCE_ROLES.includes(role)) throw new AppError('INVALID_REFERENCE_ROLE', 'Reference role must be character, location, composition, or continuity', { status: 400 });
+      const lease = await projectStore.acquireLease(projectId, { ownerId, userId });
+      const document = await projectStore.verifyLease(lease);
+      const scene = document.scenes?.find((item) => item.id === sceneId);
+      if (!imageShot(scene).referenceBindings?.some((item) => item?.path === assetPath)) throw new AppError('REFERENCE_NOT_FOUND', 'Scene reference not found', { status: 404 });
+      return writeScene(lease, sceneId, (target) => {
+        const targetShot = imageShot(target);
+        targetShot.referenceBindings = (targetShot.referenceBindings || []).map((reference) => (
+          reference?.path === assetPath ? { ...reference, role: normalizeReferenceRole(role) } : reference
+        ));
+      });
     },
 
     async uploadSceneImage(projectId, sceneId, file, { ownerId, userId } = {}) {
@@ -106,11 +125,12 @@ function createSceneReferenceService({ config, projectStore }) {
 
       try {
         return await writeScene(lease, sceneId, (target) => {
-          target.versions = [
-            ...(Array.isArray(target.versions) ? target.versions : []),
+          const shot = imageShot(target);
+          shot.versions = [
+            ...(Array.isArray(shot.versions) ? shot.versions : []),
             { path: asset.path, prompt: 'Uploaded scene image', createdAt: new Date().toISOString() },
           ];
-          target.activeVersionIndex = target.versions.length - 1;
+          shot.activeVersionIndex = shot.versions.length - 1;
           target.activeVisualType = 'image';
         });
       } catch (error) {

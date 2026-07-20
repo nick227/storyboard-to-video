@@ -1,5 +1,6 @@
 import { sceneStore } from './store.js';
 import { renderCaptionInto } from './subtitle-overlay.js';
+import { imageShot } from './scene-shots.js';
 
 const TIMELINE_PX_PER_SECOND = 60;
 const TIMELINE_DEFAULT_STILL_SECONDS = 3;
@@ -124,8 +125,9 @@ async function getWaveformPeaks(audioPath, sampleCount) {
 }
 
 function timelineSceneSignature(scene) {
-  const activeVersion = scene.versions[scene.activeVersionIndex];
-  const activeVideoVersion = scene.videoVersions[scene.activeVideoVersionIndex];
+  const shot = imageShot(scene);
+  const activeVersion = shot.versions[shot.activeVersionIndex];
+  const activeVideoVersion = shot.videoVersions[shot.activeVideoVersionIndex];
   const activeAudioVersion = scene.audioVersions[scene.activeAudioVersionIndex];
   const activeSubtitleVersion = scene.subtitleVersions?.[scene.activeSubtitleVersionIndex];
   const hasVideo = scene.activeVisualType === 'video' && Boolean(activeVideoVersion?.path);
@@ -134,8 +136,9 @@ function timelineSceneSignature(scene) {
 
 async function buildTimelineSegments() {
   const rawSegments = sceneStore.get().scenes.map((scene, index) => {
-    const activeVersion = scene.versions[scene.activeVersionIndex];
-    const activeVideoVersion = scene.videoVersions[scene.activeVideoVersionIndex];
+    const shot = imageShot(scene);
+    const activeVersion = shot.versions[shot.activeVersionIndex];
+    const activeVideoVersion = shot.videoVersions[shot.activeVideoVersionIndex];
     const activeAudioVersion = scene.audioVersions[scene.activeAudioVersionIndex];
     const activeSubtitleVersion = scene.subtitleVersions?.[scene.activeSubtitleVersionIndex];
     const hasVideo = scene.activeVisualType === 'video' && Boolean(activeVideoVersion?.path);

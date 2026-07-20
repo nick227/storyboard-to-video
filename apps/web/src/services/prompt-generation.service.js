@@ -2,6 +2,7 @@ const { AppError } = require('../errors');
 const { cleanText, extractJson, getAdditionalCommonPrompt, compactAction } = require('../shared/text');
 const { chunk } = require('../shared/batching');
 const { providerOutput } = require('../providers/result');
+const { imageShot } = require('../shared/scene-shots');
 
 const PROMPT_BATCH_SIZE = 5;
 const FRAGMENT_MAX_LENGTH = 20_000;
@@ -121,7 +122,8 @@ function createPromptGenerationService({ textProviders, limits, generationCache 
   }
 
   async function regeneratePrompt({ scene, sceneIndex, style, commonPromptText, provider, extraPromptText, fallbackPolicy = 'local', enrich = true, tenantId, bypassCache = false }) {
-    const fallbackPrompt = `${scene.prompt || ''} ${extraPromptText || ''}`.trim();
+    const scenePrompt = imageShot(scene).prompt || '';
+    const fallbackPrompt = `${scenePrompt} ${extraPromptText || ''}`.trim();
     const fallback = {
       prompt: fallbackPrompt,
       usedFallback: true,
@@ -143,7 +145,7 @@ function createPromptGenerationService({ textProviders, limits, generationCache 
       : `Scene script excerpt (use ONLY this text as source): ${source}`;
 
     const generateFn = async () => {
-      const request = `Return strict JSON only: {"prompt":"..."}. Rewrite the Visual Prompt. Show this physical action: ${scene.beat || ''}. State subject, pose, important object, location, and composition. No style wording. ${CONTINUITY_RULE} ${sourceBlock}. Existing Visual Prompt: ${scene.prompt || ''}. Note: ${extraPromptText || 'none'}. Selected style context: ${style.promptText}. Additional: ${getAdditionalCommonPrompt(style.promptText, commonPromptText) || 'none'}.`;
+      const request = `Return strict JSON only: {"prompt":"..."}. Rewrite the Visual Prompt. Show this physical action: ${scene.beat || ''}. State subject, pose, important object, location, and composition. No style wording. ${CONTINUITY_RULE} ${sourceBlock}. Existing Visual Prompt: ${scenePrompt}. Note: ${extraPromptText || 'none'}. Selected style context: ${style.promptText}. Additional: ${getAdditionalCommonPrompt(style.promptText, commonPromptText) || 'none'}.`;
       const value = cleanText(extractJson(providerOutput(await textProviders.call(provider, request)))?.prompt, limits.prompt);
       if (!value) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid prompt data', { status: 502 });
       return {
@@ -167,7 +169,7 @@ function createPromptGenerationService({ textProviders, limits, generationCache 
           sceneIndex,
           title: scene.title || '',
           beat: scene.beat || '',
-          existingPrompt: scene.prompt || '',
+          existingPrompt: scenePrompt,
           usedNarrationSource,
           narrationText: usedNarrationSource ? scene.narrationText : '',
           extraPromptText,

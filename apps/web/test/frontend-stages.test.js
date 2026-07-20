@@ -10,6 +10,7 @@ const path = require('node:path');
 const stagesPromise = import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
 const sceneCountPromise = import(path.join(__dirname, '..', 'public', 'modules', 'scene-count.js'));
 const storePromise = import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+const manifestPromise = import(path.join(__dirname, '..', 'public', 'modules', 'generation-manifest.js'));
 
 function scene(overrides = {}) {
   return {
@@ -112,6 +113,92 @@ test('computeStaleness: video is stale when its source image no longer matches t
     videoVersions: [{ path: '/a.mp4', sourceImagePath: '/a.png' }], activeVideoVersionIndex: 0,
   });
   assert.equal(computeStaleness(stale).videoStale, true);
+});
+
+test('computeStaleness: canonical shots[0] pairs video provenance with that shot active image', async () => {
+  const { computeStaleness } = await stagesPromise;
+  const canonical = scene({
+    prompt: undefined,
+    versions: undefined,
+    activeVersionIndex: undefined,
+    videoVersions: undefined,
+    activeVideoVersionIndex: undefined,
+    shots: [{
+      prompt: 'Mara opens the door, hallway beyond.',
+      versions: [{ path: '/active.png', scenePrompt: 'Mara opens the door, hallway beyond.' }],
+      activeVersionIndex: 0,
+      videoVersions: [{ path: '/active.mp4', sourceImagePath: '/active.png' }],
+      activeVideoVersionIndex: 0,
+    }],
+  });
+  assert.equal(computeStaleness(canonical).videoStale, false);
+  canonical.shots[0].activeVersionIndex = 1;
+  canonical.shots[0].versions.push({ path: '/new-active.png', scenePrompt: 'Mara opens the door, hallway beyond.' });
+  assert.equal(computeStaleness(canonical).videoStale, true);
+});
+
+test('computeStaleness: manifest hash detects image inputs beyond the legacy prompt/provider fields', async () => {
+  const { computeStaleness } = await stagesPromise;
+  const { projectStore, generationStore } = await storePromise;
+  const { hashCanonical } = await manifestPromise;
+  const inputs = {
+    modality: 'image', operation: 'image.generate',
+    prompt: { composed: 'Ink style.\n\nMara opens the door, hallway beyond.', scene: 'Mara opens the door, hallway beyond.', style: 'Ink style.', common: '', extra: '' },
+    provider: { name: 'gemini', model: 'gemini-test' },
+    references: [], settings: { temperature: 0.7 }, style: { id: 'ink' },
+  };
+  const imageVersion = {
+    path: '/active.png', scenePrompt: inputs.prompt.scene, provider: 'gemini',
+    manifest: { schemaVersion: 1, inputs, manifestHash: hashCanonical(inputs) },
+  };
+  const canonical = scene({ shots: [{
+    prompt: inputs.prompt.scene, versions: [imageVersion], activeVersionIndex: 0,
+    videoVersions: [], activeVideoVersionIndex: 0,
+  }] });
+  projectStore.set({ storyboards: [{ id: 'p1', styleId: 'ink', commonPromptText: 'Ink style.', imageProvider: 'gemini', videoMotionIntensity: 'medium' }], currentId: 'p1' });
+  generationStore.set({ styles: [{ id: 'ink', promptText: 'Ink style.' }], styleReferences: { characters: [], world: [] }, styleReferencesStyleId: 'ink' });
+  try {
+    assert.equal(computeStaleness(canonical).imageStale, false);
+    projectStore.set({ storyboards: [{ id: 'p1', styleId: 'ink', commonPromptText: 'Ink style. Add red accents.', imageProvider: 'gemini', videoMotionIntensity: 'medium' }], currentId: 'p1' });
+    assert.equal(computeStaleness(canonical).imageStale, true, 'common direction is part of the manifest hash');
+  } finally {
+    projectStore.set({ storyboards: [], currentId: null });
+    generationStore.set({ styles: [], styleReferences: { characters: [], world: [] }, styleReferencesStyleId: null });
+  }
+});
+
+test('computeStaleness: video manifest hash includes motion settings and the active start frame', async () => {
+  const { computeStaleness } = await stagesPromise;
+  const { projectStore, generationStore } = await storePromise;
+  const { hashCanonical } = await manifestPromise;
+  const videoInputs = {
+    modality: 'video', operation: 'video.generate',
+    prompt: { composed: 'Video prompt', scene: 'Mara at the door.', beat: 'Mara opens the door.', style: 'Ink style.', common: '', motion: '' },
+    provider: { name: 'ltx', model: 'ltx-test' },
+    settings: { motionIntensity: 'medium', seed: 42 }, style: { id: 'ink' },
+    sourceAssets: [{ role: 'start_frame', path: '/active.png' }],
+  };
+  const canonical = scene({
+    beat: 'Mara opens the door.',
+    shots: [{
+      prompt: 'Mara at the door.',
+      versions: [{ path: '/active.png', scenePrompt: 'Mara at the door.' }], activeVersionIndex: 0,
+      videoVersions: [{
+        path: '/active.mp4', sourceImagePath: '/active.png',
+        manifest: { schemaVersion: 1, inputs: videoInputs, manifestHash: hashCanonical(videoInputs) },
+      }], activeVideoVersionIndex: 0,
+    }],
+  });
+  projectStore.set({ storyboards: [{ id: 'p1', styleId: 'ink', commonPromptText: 'Ink style.', imageProvider: 'gemini', videoMotionIntensity: 'medium' }], currentId: 'p1' });
+  generationStore.set({ styles: [{ id: 'ink', promptText: 'Ink style.' }] });
+  try {
+    assert.equal(computeStaleness(canonical).videoStale, false);
+    projectStore.set({ storyboards: [{ id: 'p1', styleId: 'ink', commonPromptText: 'Ink style.', imageProvider: 'gemini', videoMotionIntensity: 'high' }], currentId: 'p1' });
+    assert.equal(computeStaleness(canonical).videoStale, true);
+  } finally {
+    projectStore.set({ storyboards: [], currentId: null });
+    generationStore.set({ styles: [] });
+  }
 });
 
 test('computeStageStatus: distinguishes missing, stale, done, and failed as separate counts, not one collapsed number', async () => {

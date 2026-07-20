@@ -2,11 +2,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { AppError } = require('../errors');
+const { attachLegacyImageProjection, hasLegacySceneImageState, imageShot, migrateSceneImageToImplicitShot } = require('../shared/scene-shots');
+const { normalizeReferenceImages, normalizeReferenceRole } = require('../shared/reference-roles');
 
 const SCENE_ASSET_FIELDS = Object.freeze({
-  image: { list: 'versions', activeIndex: 'activeVersionIndex', visualType: 'image' },
+  image: { list: 'versions', activeIndex: 'activeVersionIndex', visualType: 'image', owner: 'shot' },
   audio: { list: 'audioVersions', activeIndex: 'activeAudioVersionIndex', visualType: null },
-  video: { list: 'videoVersions', activeIndex: 'activeVideoVersionIndex', visualType: 'video' },
+  video: { list: 'videoVersions', activeIndex: 'activeVideoVersionIndex', visualType: 'video', owner: 'shot' },
   subtitle: { list: 'subtitleVersions', activeIndex: 'activeSubtitleVersionIndex', visualType: null },
 });
 
@@ -74,7 +76,7 @@ class ProjectStore {
     if (!fs.existsSync(file)) throw new AppError('PROJECT_NOT_FOUND', 'Project not found', { status: 404 });
     try {
       let document = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (!Number.isInteger(document.revision) || !document.tenantId || !document.incarnationId || this.hasLegacyContinuity(document) || this.hasLegacyAssets(document)) {
+      if (!Number.isInteger(document.revision) || !document.tenantId || !document.incarnationId || this.hasLegacyContinuity(document) || this.hasLegacyAssets(document) || this.hasLegacyImageShots(document) || this.hasLegacyReferenceRoles(document)) {
         const revision = Number.isInteger(document.revision) ? document.revision + 1 : 1;
         document = this.normalize({ ...document, id, revision, tenantId: document.tenantId || document.ownerId || 'local-user', createdByUserId: document.createdByUserId || document.ownerId || 'local-user', incarnationId: document.incarnationId || crypto.randomUUID() });
         this.atomicJson(file, document);
@@ -82,6 +84,7 @@ class ProjectStore {
       }
       if (!fs.existsSync(this.referencePath(id))) this.syncReferences(id, document.assetReferences || []);
       this.assertOwner(document, ownerId);
+      document.scenes = (document.scenes || []).map((scene) => attachLegacyImageProjection(scene));
       return document;
     } catch (cause) {
       if (cause instanceof AppError) throw cause;
@@ -101,7 +104,7 @@ class ProjectStore {
   }
 
   normalize(document) {
-    const copy = this.migrateLegacyAssets(structuredClone(document));
+    const copy = structuredClone(document);
     copy.tenantId = copy.tenantId || copy.ownerId || 'local-user';
     copy.createdByUserId = copy.createdByUserId || copy.ownerId || copy.tenantId;
     delete copy.ownerId;
@@ -122,8 +125,11 @@ class ProjectStore {
           .join('\n\n');
       }
       delete next.lines;
-      return next;
+      if (Array.isArray(next.referenceImages)) next.referenceImages = normalizeReferenceImages(next.referenceImages);
+      return migrateSceneImageToImplicitShot(next);
     }) : [];
+    this.migrateLegacyAssets(copy);
+    copy.scenes = copy.scenes.map((scene) => attachLegacyImageProjection(scene));
     delete copy.assetReferences;
     copy.assetReferences = this.collectReferences(copy, copy.id);
     return copy;
@@ -133,11 +139,22 @@ class ProjectStore {
     return Boolean(document.storyBible || document.schemaVersion === 4 || document.scenes?.some((scene) => scene.entityRefs || scene.continuity || Array.isArray(scene.lines)));
   }
 
+  hasLegacyImageShots(document) {
+    return Boolean(document.scenes?.some((scene) => hasLegacySceneImageState(scene)));
+  }
+
+  hasLegacyReferenceRoles(document) {
+    return Boolean(document.scenes?.some((scene) => {
+      const references = Array.isArray(scene.shots?.[0]?.referenceBindings) ? scene.shots[0].referenceBindings : scene.referenceImages;
+      return references?.some((reference) => reference?.role !== normalizeReferenceRole(reference?.role));
+    }));
+  }
+
   hasLegacyAssets(document) {
     return Boolean(document.scenes?.some((scene) => [
-      ...(scene.versions || []),
+      ...(imageShot(scene).versions || []),
       ...(scene.audioVersions || []),
-      ...(scene.videoVersions || []),
+      ...(imageShot(scene).videoVersions || []),
     ].some((version) => /^\/(generated|audio|videos)\//.test(version?.path || ''))));
   }
 
@@ -149,7 +166,8 @@ class ProjectStore {
     ];
     for (const scene of document.scenes || []) {
       for (const mapping of mappings) {
-        scene[mapping.field] = (scene[mapping.field] || []).map((version) => {
+        const owner = mapping.field === 'versions' || mapping.field === 'videoVersions' ? imageShot(scene) : scene;
+        owner[mapping.field] = (owner[mapping.field] || []).map((version) => {
           const match = String(version?.path || '').match(new RegExp(`^/${mapping.legacy}/([^/]+)$`));
           if (!match) return version;
           let fileName;
@@ -258,10 +276,11 @@ class ProjectStore {
       if (document.incarnationId !== lease.incarnationId) throw new AppError('PROJECT_LEASE_EXPIRED', 'Project generation lease is no longer valid', { status: 409 });
       const scene = document.scenes?.find((item) => item.id === sceneId);
       if (!scene) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
-      const list = Array.isArray(scene[fields.list]) ? scene[fields.list] : [];
+      const owner = fields.owner === 'shot' ? imageShot(scene) : scene;
+      const list = Array.isArray(owner[fields.list]) ? owner[fields.list] : [];
       if (jobId && list.some((entry) => entry?.jobId === jobId)) return { project: document, scene };
-      scene[fields.list] = [...list, { ...version, jobId }];
-      scene[fields.activeIndex] = scene[fields.list].length - 1;
+      owner[fields.list] = [...list, { ...version, jobId }];
+      owner[fields.activeIndex] = owner[fields.list].length - 1;
       if (fields.visualType) scene.activeVisualType = fields.visualType;
       try {
         const next = this.write(lease.projectId, document, { expectedRevision: document.revision, ownerId: lease.ownerId });
