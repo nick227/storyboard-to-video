@@ -248,6 +248,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
     let usedFallback = narration.usedFallback;
     const warnings = narration.warning ? [narration.warning] : [];
     const rawShots = [];
+    const chunkReport = [];
 
     for (let i = 0; i < chunks.length; i += 1) {
       const result = await planShotsForChunk({
@@ -257,15 +258,33 @@ function createShotPlanningService({ textProviders, generationCache }) {
       if (result.usedFallback) usedFallback = true;
       if (result.warning) warnings.push(result.warning);
       for (const shot of result.shots) rawShots.push({ ...shot, isFallback: result.usedFallback });
+      if (maxShots) chunkReport.push({ budget: chunkBudgets[i], returned: result.shots.length });
     }
 
     let finalShots = rawShots;
-    if (maxShots && rawShots.length > maxShots) {
-      const substantial = rawShots.length > maxShots * SUBSTANTIAL_OVERAGE_RATIO;
-      finalShots = trimShotsToCap(rawShots, maxShots);
-      warnings.push(substantial
-        ? `Shot budget: planning substantially exceeded the ${maxShots}-shot cap (${rawShots.length} planned) -- the per-chunk budgeting undershot the mark; the smallest shots were merged to fit.`
-        : `Shot budget: planning slightly exceeded the ${maxShots}-shot cap (${rawShots.length} planned); the smallest shots were merged to fit.`);
+    let budgetTelemetry;
+    if (maxShots) {
+      const merged = Math.max(0, rawShots.length - maxShots);
+      budgetTelemetry = {
+        cap: maxShots,
+        produced: rawShots.length,
+        merged,
+        overshootPercent: Math.round(((rawShots.length - maxShots) / maxShots) * 100),
+        chunks: chunkReport,
+      };
+      // Lightweight observability only, not a metrics store: this tells us whether the soft
+      // per-chunk budgets are actually steering the model (overshoot usually near 0-10%) or the
+      // merge fallback is doing most of the work (routinely 20%+), which would mean the planner
+      // guidance needs tuning rather than the merge heuristic needing to get smarter.
+      console.log('[shot-planning budget]', JSON.stringify(budgetTelemetry));
+
+      if (rawShots.length > maxShots) {
+        const substantial = rawShots.length > maxShots * SUBSTANTIAL_OVERAGE_RATIO;
+        finalShots = trimShotsToCap(rawShots, maxShots);
+        warnings.push(substantial
+          ? `Shot budget: planning substantially exceeded the ${maxShots}-shot cap (${rawShots.length} planned) -- the per-chunk budgeting undershot the mark; the smallest shots were merged to fit.`
+          : `Shot budget: planning slightly exceeded the ${maxShots}-shot cap (${rawShots.length} planned); the smallest shots were merged to fit.`);
+      }
     }
 
     const scenes = finalShots.map((shot, index) => ({
@@ -281,7 +300,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
       promptIsFallback: Boolean(shot.isFallback),
     }));
 
-    return { scenes, narrationText: narration.narrationText, usedFallback, warning: warnings.join(' ') };
+    return { scenes, narrationText: narration.narrationText, usedFallback, warning: warnings.join(' '), ...(budgetTelemetry ? { budgetTelemetry } : {}) };
   }
 
   return { plan };
