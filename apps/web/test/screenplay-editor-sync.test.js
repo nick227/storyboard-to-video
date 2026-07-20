@@ -72,5 +72,34 @@ test('PageManager exposes page count, page elements, and page query API', async 
   assert.equal(typeof pm.getPages, 'function');
   assert.equal(typeof pm.getPageCount, 'function');
   assert.equal(typeof pm.getCurrentPageNumber, 'function');
-  assert.equal(pm.getPageCount(), 1);
+  assert.equal(pm.getCurrentPageNumber(), 1);
+});
+
+test('FountainAdapter losslessly preserves custom mixed-case speakers and custom headers', async () => {
+  const { RawScriptAdapter, FountainAdapter } = await loadAdapters();
+
+  const lines = [
+    { format: 'header', content: 'COFFEE SHOP' },
+    { format: 'speaker', content: 'marcus' },
+    { format: 'directions', content: 'smiling' },
+    { format: 'dialog', content: 'Still using that ancient machine?' }
+  ];
+
+  const doc = RawScriptAdapter.fromArray(lines);
+  const serializedFountain = FountainAdapter.toFountain(doc);
+
+  assert.match(serializedFountain, /\.COFFEE SHOP/);
+  assert.match(serializedFountain, /@marcus/);
+  assert.match(serializedFountain, /\(smiling\)/);
+
+  const reloadedDoc = FountainAdapter.toDocument(serializedFountain);
+
+  assert.equal(reloadedDoc.lines[0].format, 'header');
+  assert.equal(reloadedDoc.lines[0].content, 'COFFEE SHOP');
+  assert.equal(reloadedDoc.lines[1].format, 'speaker');
+  assert.equal(reloadedDoc.lines[1].content, 'marcus');
+  assert.equal(reloadedDoc.lines[2].format, 'directions');
+  assert.equal(reloadedDoc.lines[2].content, 'smiling');
+  assert.equal(reloadedDoc.lines[3].format, 'dialog');
+  assert.equal(reloadedDoc.lines[3].content, 'Still using that ancient machine?');
 });

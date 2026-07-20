@@ -55,6 +55,7 @@ export class PageManager {
     }
 
     getActiveLine () {
+        if (typeof window === 'undefined' || !window.getSelection) return null;
         const sel = window.getSelection();
         if (!sel || !sel.anchorNode) return null;
         let node = sel.anchorNode;

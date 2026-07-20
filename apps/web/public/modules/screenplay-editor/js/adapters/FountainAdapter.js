@@ -27,16 +27,26 @@ export class FountainAdapter {
             }
 
             let format = VALID_FORMATS.ACTION;
+            let content = trimmed;
 
-            // 1. Scene Header detection
-            if (/^(INT\.|EXT\.|INT\/EXT\.|I\/E\.|EST\.)/i.test(trimmed) || trimmed.startsWith('.')) {
-                format = VALID_FORMATS.HEADER;
+            // 1. Forced Speaker detection starting with @
+            if (trimmed.startsWith('@')) {
+                format = VALID_FORMATS.SPEAKER;
+                content = trimmed.slice(1).trim();
             }
-            // 2. Directions / Parenthetical detection
+            // 2. Forced or Standard Scene Header detection
+            else if (/^(INT\.|EXT\.|INT\/EXT\.|I\/E\.|EST\.)/i.test(trimmed) || trimmed.startsWith('.')) {
+                format = VALID_FORMATS.HEADER;
+                if (trimmed.startsWith('.')) {
+                    content = trimmed.slice(1).trim();
+                }
+            }
+            // 3. Directions / Parenthetical detection
             else if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
                 format = VALID_FORMATS.DIRECTIONS;
+                content = trimmed.slice(1, -1).trim();
             }
-            // 3. Speaker detection (ALL CAPS, no lowercase, preceded by empty line/action/header)
+            // 4. Standard ALL CAPS Speaker detection
             else if (
                 trimmed === trimmed.toUpperCase() &&
                 !/[a-z]/.test(trimmed) &&
@@ -45,7 +55,7 @@ export class FountainAdapter {
             ) {
                 format = VALID_FORMATS.SPEAKER;
             }
-            // 4. Dialog detection (Follows Speaker or Directions)
+            // 5. Dialog detection (Follows Speaker or Directions)
             else if (prevFormat === VALID_FORMATS.SPEAKER || prevFormat === VALID_FORMATS.DIRECTIONS) {
                 format = VALID_FORMATS.DIALOG;
             }
@@ -53,7 +63,7 @@ export class FountainAdapter {
             scriptLines.push(new ScriptLine({
                 id: ScriptDocument.createLineId(),
                 format,
-                content: trimmed
+                content
             }));
 
             prevFormat = format;
@@ -76,10 +86,24 @@ export class FountainAdapter {
         let prevFormat = null;
 
         for (const line of document.lines) {
-            const content = line.content ? line.content.trim() : '';
+            let content = line.content ? line.content.trim() : '';
 
             if ((line.format === VALID_FORMATS.HEADER || line.format === VALID_FORMATS.SPEAKER || line.format === VALID_FORMATS.ACTION) && prevFormat !== null) {
                 fountainLines.push('');
+            }
+
+            if (line.format === VALID_FORMATS.HEADER) {
+                if (!/^(INT\.|EXT\.|INT\/EXT\.|I\/E\.|EST\.)/i.test(content) && !content.startsWith('.')) {
+                    content = `.${content}`;
+                }
+            } else if (line.format === VALID_FORMATS.SPEAKER) {
+                if ((/[a-z]/.test(content) || content !== content.toUpperCase()) && !content.startsWith('@')) {
+                    content = `@${content}`;
+                }
+            } else if (line.format === VALID_FORMATS.DIRECTIONS) {
+                if (!content.startsWith('(') || !content.endsWith(')')) {
+                    content = `(${content})`;
+                }
             }
 
             fountainLines.push(content);
