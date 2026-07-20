@@ -45,3 +45,11 @@ test('the platform default draft resolution tier does not immediately fail on Mi
   const hailuo = resolveVideoOutput({ provider: 'minimax', model: 'MiniMax-Hailuo-2', intent: draftIntent });
   assert.deepEqual(hailuo.resolved.providerSettings, { resolution: '768P', duration: 6 });
 });
+
+test('a video provider with no registered output resolver fails clearly instead of a generic dimension error', () => {
+  const intent = mergeMediaIntent({ modality: 'video', platform: PLATFORM_MEDIA_DEFAULTS });
+  assert.throws(
+    () => resolveVideoOutput({ provider: 'veo', model: 'veo-3.1', intent }),
+    (error) => error.code === 'UNSUPPORTED_MEDIA_OUTPUT' && /no video output resolver is registered/i.test(error.message)
+  );
+});

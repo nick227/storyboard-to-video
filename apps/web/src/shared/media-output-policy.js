@@ -1,4 +1,5 @@
 const { AppError } = require('../errors');
+const { VIDEO_PROVIDERS } = require('./video-provider-capabilities');
 
 const RESOLUTION_TIERS = Object.freeze(['draft', 'standard', 'high', 'ultra']);
 const IMAGE_QUALITY_LEVELS = Object.freeze(['low', 'medium', 'high']);
@@ -113,26 +114,41 @@ function minimaxResolution(model, tier) {
   return null;
 }
 
-function resolveVideoOutput({ provider, model, mode = 'image_to_video', intent }) {
-  const requested = Object.freeze({ ...intent });
-  let dimensions = null;
-  let providerSettings = null;
-  if (provider === 'ltx') {
+// Adding a new video provider means registering a resolver here, not adding another branch to a
+// growing if/else chain. Each resolver returns { dimensions, providerSettings } or null when the
+// requested settings are unsupported.
+const VIDEO_OUTPUT_RESOLVERS = Object.freeze({
+  ltx(model, intent) {
     const shortEdge = { draft: 480, standard: 720, high: 1080 }[intent.resolutionTier];
-    if (shortEdge && (!intent.durationSeconds || intent.durationSeconds <= 12)) {
-      dimensions = shortEdgeDimensions(intent.aspectRatio, shortEdge);
-      providerSettings = { width: dimensions.width, height: dimensions.height, ...(intent.durationSeconds ? { duration: intent.durationSeconds } : {}) };
-    }
-  } else if (provider === 'minimax') {
+    if (!shortEdge || (intent.durationSeconds && intent.durationSeconds > 12)) return null;
+    const dimensions = shortEdgeDimensions(intent.aspectRatio, shortEdge);
+    return { dimensions, providerSettings: { width: dimensions.width, height: dimensions.height, ...(intent.durationSeconds ? { duration: intent.durationSeconds } : {}) } };
+  },
+  minimax(model, intent) {
     const resolution = minimaxResolution(model, intent.resolutionTier);
     const duration = intent.durationSeconds || 6;
-    if (resolution && duration === 6) providerSettings = { resolution, duration };
-    else if (resolution === '768P' && duration === 10) providerSettings = { resolution, duration };
-  } else if (provider === 'stub') {
+    if (resolution && duration === 6) return { dimensions: null, providerSettings: { resolution, duration } };
+    if (resolution === '768P' && duration === 10) return { dimensions: null, providerSettings: { resolution, duration } };
+    return null;
+  },
+  stub(model, intent) {
     const shortEdge = { draft: 480, standard: 720, high: 1080, ultra: 2160 }[intent.resolutionTier];
-    dimensions = shortEdgeDimensions(intent.aspectRatio, shortEdge);
-    providerSettings = { width: dimensions.width, height: dimensions.height, duration: intent.durationSeconds || null };
-  }
+    const dimensions = shortEdgeDimensions(intent.aspectRatio, shortEdge);
+    return { dimensions, providerSettings: { width: dimensions.width, height: dimensions.height, duration: intent.durationSeconds || null } };
+  },
+});
+
+for (const provider of VIDEO_PROVIDERS) {
+  if (!VIDEO_OUTPUT_RESOLVERS[provider]) throw new Error(`Video provider "${provider}" is declared in capabilities but has no output resolver in media-output-policy.js`);
+}
+
+function resolveVideoOutput({ provider, model, mode = 'image_to_video', intent }) {
+  const requested = Object.freeze({ ...intent });
+  const resolver = VIDEO_OUTPUT_RESOLVERS[provider];
+  if (!resolver) throw outputPolicyError(`No video output resolver is registered for provider: ${provider}`, { modality: 'video', provider, model: model || null, mode, requested });
+  const resolved = resolver(model, intent);
+  const dimensions = resolved?.dimensions || null;
+  const providerSettings = resolved?.providerSettings || null;
   if (!providerSettings) {
     throw outputPolicyError(`${provider}/${model || 'default'}/${mode} cannot produce ${intent.resolutionTier} video at ${intent.aspectRatio}${intent.durationSeconds ? ` for ${intent.durationSeconds}s` : ''}`, { modality: 'video', provider, model: model || null, mode, requested });
   }
