@@ -432,11 +432,14 @@ test('hasPlanningChanges: detects changes when script or settings differ from la
   };
   assert.equal(hasPlanningChanges(scenes, recordStyleChanged), true, 'should detect style changes');
 
+  // Shot count is an output of planning now, not an input to compare — a sceneCount field drifting
+  // (e.g. stale leftover data, or a manual split changing the real count) must NOT by itself mark
+  // planning as needing a re-run.
   const recordCountChanged = {
     ...recordNoChanges,
     sceneCount: 5,
   };
-  assert.equal(hasPlanningChanges(scenes, recordCountChanged), true, 'should detect scene count changes');
+  assert.equal(hasPlanningChanges(scenes, recordCountChanged), false, 'sceneCount is no longer compared, so a differing value alone must not be seen as a change');
 
   assert.equal(hasPlanningChanges([], recordNoChanges), true, 'empty scenes should always indicate changes');
 });

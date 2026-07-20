@@ -1,7 +1,6 @@
 import { api, cancelActiveProjectJobs } from './api.js';
 import { sceneStore, uiStore, projectStore, batchStore, voiceStore, generationStore } from './store.js';
-import { generateDialogue, generatePrompts, regeneratePrompt, addRecommendedScenes, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles } from './workflows.js';
-import { suggestSceneCount, suggestSceneCountFromNarration } from './scene-count.js';
+import { generatePrompts, regeneratePrompt, planShots, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles } from './workflows.js';
 import { batchController } from './batch.js';
 import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
 import { imageShot } from './scene-shots.js';
@@ -166,6 +165,8 @@ function mediaTally(scenes, { hasVersion, isStale, jobType, recentJobs }) {
   return { total: scenes.length, done, stale, missing, failed };
 }
 
+// Shot count is never one of these comparisons -- it isn't a planning input anymore, it's an output
+// of planning (see planShots), so there is nothing here for it to drift against.
 export function hasPlanningChanges(scenes, record) {
   if (!scenes || scenes.length === 0) return true;
   if (!record) return false;
@@ -180,24 +181,7 @@ export function hasPlanningChanges(scenes, record) {
   const providerChanged = norm(last.textProvider) !== norm(record.textProvider);
   const enrichChanged = Boolean(last.enrich) !== Boolean(record.enrich);
 
-  // Compare sceneCount
-  const lastCount = Number(last.sceneCount) || 8;
-  const isAuto = record.sceneCountMode === 'auto';
-  const customVal = record.sceneCount ? Number(record.sceneCount) : null;
-  let currentCount = 8;
-  if (isAuto) {
-    if (scenes && scenes.length > 0) {
-      currentCount = suggestSceneCountFromNarration(scenes) || scenes.length;
-    } else {
-      currentCount = suggestSceneCount(record.scriptText) || 8;
-    }
-  } else {
-    currentCount = customVal || 8;
-  }
-
-  const countChanged = lastCount !== currentCount;
-
-  return scriptChanged || commonPromptChanged || styleChanged || providerChanged || enrichChanged || countChanged;
+  return scriptChanged || commonPromptChanged || styleChanged || providerChanged || enrichChanged;
 }
 
 // `recentJobs` is the project's job list from `GET /api/jobs?projectId=` (already durable and
@@ -224,7 +208,7 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
     stale: promptsStaleCount,
     missing: total ? total - Math.min(promptsReady, dialogueReady) : 0,
     failed: !total && lastPlanningJob?.status === 'failed' ? 1 : 0,
-    running: uiOperation != null && ['prompts', 'dialogueAll', 'prompt', 'dialogue', 'action', 'splitScene'].includes(uiOperation.type),
+    running: uiOperation != null && ['planShots', 'prompts', 'dialogueAll', 'prompt', 'dialogue', 'action', 'splitScene'].includes(uiOperation.type),
     paused: false,
     label: total ? `${total} scenes` : 'Not started',
     hasChanges: planningChanged,
@@ -314,58 +298,22 @@ export function getCachedSpend() {
 
 // --- Planning ------------------------------------------------------------
 //
-// Ordering is deliberate and matches the approved plan exactly: visual prompts must never be
-// generated until the final scene count is locked in, otherwise prompt work is wasted on a
-// structure about to be replaced. The granular steps below are exposed separately (rather than one
-// monolithic function) so the interactive Planning modal can drive them one at a time with a real
-// blocking UI prompt in between, while the one-shot Create Story flow (phase 6) can drive the exact
-// same steps with a supplied decision callback instead of a modal.
-
-// Steps 1-2: initial source segmentation (create-scenes, no LLM) + narration. Reuses
-// `generateDialogue`, which already creates the skeleton first if scenes don't exist yet.
-export async function startPlanning(els, setStatus) {
-  await generateDialogue(els, setStatus);
-  const scenes = sceneStore.get().scenes;
-  return { currentCount: scenes.length, recommended: suggestSceneCountFromNarration(scenes) };
-}
-
-// Step 5: reconcile scene count to `finalCount` — BEFORE any prompts exist. Only ever grows
-// in-place (via the existing non-destructive split primitives); a `finalCount` below the current
-// scene count has no safe merge primitive in this codebase and must go through `replanStory`
-// instead, so this returns `needsReplan: true` rather than attempting a silent shrink.
-export async function allocateFinalSceneCount(finalCount, els, setStatus) {
-  const current = sceneStore.get().scenes.length;
-  if (finalCount > current) {
-    await addRecommendedScenes(finalCount, els, setStatus);
-    return { needsReplan: false };
+// Narration is generated and locked first, then shots are planned from that immutable narration in
+// the same server request (see workflows.js: planShots, and shot-planning.service.js) — the
+// returned scene list IS the final structure. There is no separate scene-count guess beforehand, no
+// recount-and-reconcile decision afterward, and no auto-add-to-target behavior: shot count is
+// simply how many shots the planning call returned. Manual restructuring (splitting one scene,
+// replanning the whole project from source) remains separate and user-triggered — see
+// splitSceneInPlace (workflows.js) and replanStory below.
+export async function runPlanning(els, setStatus) {
+  try {
+    const count = await planShots(els, setStatus);
+    return { stoppedAt: null, finalCount: count };
+  } catch (_error) {
+    // planShots already reported the error via setStatus; report it as a normal stage stop here
+    // too, same as an images/audio/video batch failure, rather than an uncaught rejection.
+    return { stoppedAt: 'failed' };
   }
-  if (finalCount < current) return { needsReplan: true };
-  return { needsReplan: false };
-}
-
-// Step 6: only ever called once the scene count is final — generates physical actions/visual
-// prompts against the now-fixed scene structure, reusing existing scene boundaries.
-export async function finishPlanning(els, setStatus) {
-  await generatePrompts(els, setStatus, { rebuildFromSource: false });
-}
-
-// Convenience wrapper for callers that want the whole sequence driven programmatically (the
-// one-shot flow). `onSceneCountDecision({ recommended, currentCount })` must return the user's
-// chosen final count, or `null`/`undefined` to stop here without deciding (e.g. a modal was
-// dismissed). Interactive UI should prefer calling the granular steps above directly instead of this
-// wrapper, so the blocking scene-count prompt is real UI, not a callback contract.
-export async function runPlanning(els, setStatus, { onSceneCountDecision } = {}) {
-  const { currentCount, recommended } = await startPlanning(els, setStatus);
-  let finalCount = currentCount;
-  if (recommended !== currentCount) {
-    if (!onSceneCountDecision) return { stoppedAt: 'sceneCountDecision', recommended, currentCount };
-    finalCount = await onSceneCountDecision({ recommended, currentCount });
-    if (finalCount == null) return { stoppedAt: 'sceneCountDecision', recommended, currentCount };
-  }
-  const { needsReplan } = await allocateFinalSceneCount(finalCount, els, setStatus);
-  if (needsReplan) return { stoppedAt: 'needsReplanForShrink', recommended, currentCount, finalCount };
-  await finishPlanning(els, setStatus);
-  return { stoppedAt: null, finalCount };
 }
 
 // "Update stale only": regenerates prompts for scenes whose prompt provenance is stale, and NEVER
@@ -585,12 +533,9 @@ export function stopCreateStoryFlow() {
 // Sequences Planning -> Images -> Audio -> Video per preset. Pure orchestration over the functions
 // built in the earlier phases — no new execution engine, no parallel state machine.
 //
-// Stops at structural decisions instead of silently deciding them: if Planning's scene-count
-// recommendation differs from the current target, `runPlanning` halts and returns
-// `stoppedAt: 'sceneCountDecision'` unless `autoAcceptRecommendations` is explicitly true (off by
-// default) or the caller supplies its own `onSceneCountDecision` (e.g. to drive a real modal
-// instead of auto-accepting) — either way, no image/audio/video work starts until that decision is
-// resolved one way or another.
+// Planning no longer has a structural decision point to stop at: `runPlanning` always runs straight
+// through (narrate -> plan shots) and returns the final structure, so image/audio/video work can
+// proceed as soon as it resolves.
 // `range` scopes Images/Audio/Video to a slice of the project (default: everything — see
 // buildBatchFns) and scopes Planning's stale-only path the same way; Planning's full-sequence path
 // never accepts a range (see updateStalePlanning above). `forceStages` names stages that must
@@ -598,7 +543,7 @@ export function stopCreateStoryFlow() {
 // what makes checking a box that has nothing missing/stale in range (e.g. a fully-complete project)
 // actually regenerate something; see buildRunRowStatus for how the caller decides which stages
 // qualify.
-export async function runCreateStoryFlow(preset, els, setStatus, { autoAcceptRecommendations = false, stages: customStages, onSceneCountDecision, range, forceStages = [] } = {}) {
+export async function runCreateStoryFlow(preset, els, setStatus, { stages: customStages, range, forceStages = [] } = {}) {
   flowStopRequested = false;
   const stages = preset === 'custom' ? (customStages || []) : PRESET_STAGES[preset];
   if (!stages || !stages.length) return { stoppedAt: 'noStages' };
@@ -610,10 +555,9 @@ export async function runCreateStoryFlow(preset, els, setStatus, { autoAcceptRec
     // NOT the same as "already planned."
     if (planningStatus.missing > 0 || planningStatus.total === 0 || planningStatus.hasChanges) {
       // No plan yet, or an incomplete one, or script/settings changed: run the full sequence
-      // (segment -> narrate -> scene count -> prompts), same as a standalone Planning run. Never
-      // scoped by range — planning has no safe partial-segmentation mode.
-      const decision = onSceneCountDecision || (autoAcceptRecommendations ? async ({ recommended }) => recommended : undefined);
-      const planningResult = await runPlanning(els, setStatus, { onSceneCountDecision: decision });
+      // (narrate -> plan shots), same as a standalone Planning run. Never scoped by range —
+      // planning has no safe partial-segmentation mode.
+      const planningResult = await runPlanning(els, setStatus);
       if (planningResult.stoppedAt) return planningResult;
     } else if (planningStatus.stale > 0) {
       // A complete plan already exists — only its stale prompts need fixing, optionally scoped to

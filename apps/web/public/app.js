@@ -284,24 +284,6 @@ function getGenerationPreflight(kind, context = {}) {
         confirmLabel: 'Replan story structure',
       };
     })(),
-    // Planning owns the final scene count before prompts/images/audio/video lock in — this is the
-    // one point where a narration-derived recommendation (which only ever grows, never shrinks; see
-    // suggestSceneCountFromNarration) gets reconciled against what was actually requested, instead of
-    // silently overriding or silently ignoring it.
-    sceneCountReconcile: (() => {
-      const scenes = (n) => `${n} scene${n === 1 ? '' : 's'}`;
-      return {
-        title: 'Narration suggests more scenes',
-        paragraph: `You planned ${scenes(context.currentCount)}, but the generated narration comfortably fills ${context.recommended}. Splitting keeps each scene's visuals, audio, and video in sync with how much narration it actually carries.`,
-        bullets: [
-          `${scenes(context.currentCount)} planned`,
-          `${scenes(context.recommended)} recommended from narration pacing`,
-          `Existing prompts/images/audio for current scenes are kept, not discarded`,
-        ],
-        cancelLabel: `Keep ${context.currentCount}`,
-        confirmLabel: `Use ${context.recommended}`,
-      };
-    })(),
   };
   return configurations[kind];
 }
@@ -773,17 +755,6 @@ function attachEvents() {
     });
   }
 
-  // Called by runCreateStoryFlow only when Planning's narration-derived recommendation actually
-  // differs from the requested scene count. "Auto" policy means the user already opted into always
-  // following the recommendation, so it's applied silently. Otherwise this is planning's one point
-  // to reconcile a manually-requested count against what the narration turned out to need — the
-  // recommendation is never silently discarded and never silently applied, only offered.
-  const onSceneCountDecision = async ({ recommended, currentCount }) => {
-    if (els.settingsSceneCountAutoCheckbox && els.settingsSceneCountAutoCheckbox.checked) return recommended;
-    const useRecommended = await requestGenerationConfirmation('sceneCountReconcile', { currentCount, recommended });
-    return useRecommended ? recommended : currentCount;
-  };
-
   els.settingsReplanBtn.addEventListener('click', async () => {
     if (!(await requestGenerationConfirmation('planningReplan', {}))) return;
     await replanStory(els, setStatus);
@@ -837,9 +808,8 @@ function attachEvents() {
     const forceStages = computeForceStages(rowStatus, selection);
 
     setStatus('Starting...');
-    const result = await runCreateStoryFlow('custom', els, setStatus, { stages, range, forceStages, autoAcceptRecommendations: false, onSceneCountDecision });
-    if (result.stoppedAt === 'needsReplanForShrink') setStatus('Stopped — the chosen scene count is smaller than the current structure; use Settings > Replan story structure explicitly to continue.');
-    else if (result.stoppedAt) setStatus(`Stopped: ${result.stoppedAt}.`);
+    const result = await runCreateStoryFlow('custom', els, setStatus, { stages, range, forceStages });
+    if (result.stoppedAt) setStatus(`Stopped: ${result.stoppedAt}.`);
     else setStatus('Done.');
     await Promise.all([
       refreshRecentJobs(projectStore.get().currentId),

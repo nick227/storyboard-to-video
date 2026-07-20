@@ -337,6 +337,62 @@ export async function generateDialogue(els, setStatus) {
   }
 }
 
+// The planning entry point: narration is generated and locked first, then shots are planned from
+// that immutable narration server-side in the same request (see shot-planning.service.js) — the
+// returned scene list IS the final structure. There is no separate scene-count guess beforehand and
+// no recount-and-reconcile step afterward; shot count is simply how many shots came back.
+export async function planShots(els, setStatus) {
+  if (uiStore.get().operation) return;
+  if (!els.scriptText.value.trim()) {
+    if (setStatus) setStatus('Add a story before planning shots.');
+    return;
+  }
+
+  uiStore.set({ operation: { type: 'planShots' } });
+  try {
+    await ensureProjectSynced();
+    if (setStatus) setStatus('Narrating and planning shots...');
+    const base = getPayloadBase(els);
+    const data = await api('/api/storyboard/plan-shots', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: base.projectId,
+        scriptText: base.scriptText,
+        styleId: base.styleId,
+        commonPromptText: base.commonPromptText,
+        provider: base.textProvider,
+        fallbackPolicy: base.fallbackPolicy,
+        enrich: base.enrich,
+      }),
+    });
+
+    const nextScenes = (data.scenes || []).map((scene, index) => normalizeScene(scene, index));
+    const lastPromptInputs = {
+      scriptText: base.scriptText,
+      styleId: base.styleId,
+      commonPromptText: base.commonPromptText,
+      textProvider: base.textProvider,
+      enrich: base.enrich,
+    };
+    sceneStore.set({ scenes: nextScenes, lastPromptInputs });
+
+    const record = getCurrentStoryboardRecord();
+    if (record) {
+      record.scenes = nextScenes;
+      record.lastPromptInputs = lastPromptInputs;
+      queueSync(record, setStatus);
+    }
+
+    if (setStatus) setStatus(data.usedFallback ? data.warning : `Planned ${nextScenes.length} shots with ${base.textProvider}.`);
+    return nextScenes.length;
+  } catch (error) {
+    if (setStatus) setStatus(`Shot planning failed: ${error.message}`);
+    throw error;
+  } finally {
+    uiStore.set({ operation: null });
+  }
+}
+
 export async function regenerateDialogue(index, els, setStatus, instruction = '', withinSerial = false) {
   const scenes = sceneStore.get().scenes;
   const scene = scenes[index];
@@ -745,26 +801,4 @@ export async function splitSceneInPlace(index, rawCount, els, setStatus) {
   } finally {
     uiStore.set({ operation: null });
   }
-}
-
-// Repeatedly splits whichever existing scene carries the most narration (the best split candidate)
-// until the project reaches targetCount scenes — backs the Dialogue modal's "Add N scenes" action.
-// Never runs while another generation/batch is in flight; stops early if nothing is left to split.
-export async function addRecommendedScenes(targetCount, els, setStatus) {
-  if (anyGenerationInFlight()) return false;
-  while (sceneStore.get().scenes.length < targetCount) {
-    const scenes = sceneStore.get().scenes;
-    const remaining = targetCount - scenes.length;
-    let worstIndex = -1;
-    let worstWords = -1;
-    scenes.forEach((candidate, i) => {
-      if (!candidate.scriptFragment) return;
-      const words = String(candidate.narrationText || '').match(/\S+/g)?.length || 0;
-      if (words > worstWords) { worstWords = words; worstIndex = i; }
-    });
-    if (worstIndex === -1) break;
-    const splitCount = clampSplitCount(1 + remaining);
-    await splitSceneInPlace(worstIndex, splitCount, els, setStatus);
-  }
-  return true;
 }

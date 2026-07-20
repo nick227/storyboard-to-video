@@ -1,9 +1,12 @@
 // The single most important spend-safety test (per plan phase 9): running the Full Production
-// preset against narration that would recommend growing the scene count, with
-// autoAcceptRecommendations left off (the default), must halt at the scene-count decision with
-// ZERO image/audio/video provider calls having occurred. Exercises the real client modules
-// (stages.js -> workflows.js -> persistence.js/api.js) with global fetch/localStorage/crypto
-// shimmed instead of a browser, since none of this call path touches the DOM directly.
+// preset must never let an image/audio/video provider call fire before shot planning (narration +
+// shot list, now one atomic step — see shot-planning.service.js) has actually resolved. Planning no
+// longer pauses for a mid-flow user decision (there is nothing left to decide: shot count is just
+// how many shots planning returned), so the property this test protects is now "media generation
+// never starts while planning is still in flight or after it failed", not "the flow halts at a
+// specific named stop". Exercises the real client modules (stages.js -> workflows.js ->
+// persistence.js/api.js) with global fetch/localStorage/crypto shimmed instead of a browser, since
+// none of this call path touches the DOM directly.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -17,26 +20,20 @@ function installLocalStorageShim() {
   };
 }
 
-test('Full Production preset stops at the scene-count decision — no image/audio/video generate call ever fires before it is resolved', async () => {
+test('Full Production preset never starts image/audio/video generation when shot planning fails', async () => {
   installLocalStorageShim();
   const calledUrls = [];
   const originalFetch = global.fetch;
 
-  global.fetch = async (url, options) => {
+  global.fetch = async (url) => {
     calledUrls.push(String(url));
     const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
 
-    if (String(url).startsWith('/api/storyboard/create-scenes')) {
-      return json({ scenes: [{ sceneNumber: 1, title: 'Scene 1', scriptFragment: 'A short opening.', beat: 'Someone acts.', prompt: 'Someone acts, clear pose.' }] });
-    }
-    if (String(url).startsWith('/api/storyboard/generate-dialogue')) {
-      // Deliberately long narration so suggestSceneCountFromNarration recommends MORE scenes than
-      // the single-scene skeleton above — this is what must trigger the scene-count decision stop.
-      const longNarration = 'A long narrated passage full of pacing and detail. '.repeat(20);
-      return json({ scenesDialogue: [{ sceneNumber: 1, narrationText: longNarration, usedFallback: false }], usedFallback: false, warning: '' });
+    if (String(url).startsWith('/api/storyboard/plan-shots')) {
+      return json({ error: 'provider unavailable' }, 502);
     }
     if (String(url).startsWith('/api/images/generate') || String(url).startsWith('/api/audio/generate') || String(url).startsWith('/api/videos/generate')) {
-      throw new Error(`SPEND-SAFETY VIOLATION: ${url} must never be called before the scene-count decision is resolved`);
+      throw new Error(`SPEND-SAFETY VIOLATION: ${url} must never be called after shot planning failed`);
     }
     // Any other call (project sync/create, jobs listing, etc.) gets a permissive generic response —
     // this test is only asserting about the media-generation endpoints above.
@@ -54,20 +51,75 @@ test('Full Production preset stops at the scene-count decision — no image/audi
 
     const els = {
       scriptText: { value: 'A short opening for the story.' },
-      sceneCount: { value: '1' },
       styleSelect: { value: 'basic-cartoon' },
       commonPromptText: { value: '' },
       textProvider: { value: 'gemini' },
       imageProvider: { value: 'gemini' },
-      fallbackPolicy: { value: 'local' },
+      fallbackPolicy: { value: 'fail' },
       enrichNarration: { checked: true },
     };
 
-    const result = await runCreateStoryFlow('full-production', els, () => {}, { autoAcceptRecommendations: false });
+    const result = await runCreateStoryFlow('full-production', els, () => {});
 
-    assert.equal(result.stoppedAt, 'sceneCountDecision', 'the flow must stop exactly at the scene-count decision, not proceed past it');
+    assert.equal(result.stoppedAt, 'failed', 'the flow must report a stop, not silently proceed, when shot planning fails');
     const mediaCalls = calledUrls.filter((url) => /^\/api\/(images|audio|videos)\/generate/.test(url));
-    assert.equal(mediaCalls.length, 0, 'no image/audio/video generation call may occur before the user resolves the scene-count decision');
+    assert.equal(mediaCalls.length, 0, 'no image/audio/video generation call may occur after shot planning failed');
+  } finally {
+    global.fetch = originalFetch;
+    delete global.localStorage;
+  }
+});
+
+test('Planning stage lands on however many shots plan-shots actually returns, with no separate scene-count or reconciliation call', async () => {
+  installLocalStorageShim();
+  const calledUrls = [];
+  const originalFetch = global.fetch;
+
+  global.fetch = async (url) => {
+    calledUrls.push(String(url));
+    const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+
+    if (String(url).startsWith('/api/storyboard/plan-shots')) {
+      // Five shots back from one call -- nothing upstream requested five, and nothing downstream
+      // needs to reconcile that against a guess.
+      const scenes = Array.from({ length: 5 }, (_, i) => ({
+        sceneNumber: i + 1, title: `Scene ${i + 1}`, scriptFragment: `Shot ${i + 1} narration.`,
+        narrationText: `Shot ${i + 1} narration.`, beat: `Action ${i + 1}.`, prompt: `Prompt ${i + 1}.`,
+      }));
+      return json({ scenes, narrationText: 'Full narration.', usedFallback: false, warning: '' });
+    }
+    if (String(url).startsWith('/api/images/generate') || String(url).startsWith('/api/audio/generate') || String(url).startsWith('/api/videos/generate')) {
+      return json({ ok: true });
+    }
+    return json({ ok: true, project: { revision: 1, scenes: [] }, jobs: [], revision: 1 });
+  };
+
+  try {
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+    const { runPlanning } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+
+    const record = { id: 'plan-shots-test-project', title: 'Plan Shots Test', revision: 1, scenes: [], enrich: true };
+    projectStore.set({ currentId: record.id, storyboards: [record] });
+    sceneStore.set({ scenes: [] });
+    uiStore.set({ operation: null });
+
+    const els = {
+      scriptText: { value: 'A story with several distinct beats.' },
+      styleSelect: { value: 'basic-cartoon' },
+      commonPromptText: { value: '' },
+      textProvider: { value: 'gemini' },
+      imageProvider: { value: 'gemini' },
+      fallbackPolicy: { value: 'fail' },
+      enrichNarration: { checked: true },
+    };
+
+    const result = await runPlanning(els, () => {});
+
+    assert.equal(result.stoppedAt, null, 'planning should run straight through with nothing to decide');
+    assert.equal(result.finalCount, 5, 'the final count is simply how many shots the call returned');
+    assert.equal(sceneStore.get().scenes.length, 5);
+    assert.equal(calledUrls.filter((url) => url.startsWith('/api/storyboard/plan-shots')).length, 1, 'exactly one planning call, no follow-up recount/reconcile request');
+    assert.equal(calledUrls.some((url) => url.includes('create-scenes') || url.includes('generate-prompts') || url.includes('generate-dialogue')), false, 'the old multi-step scene-count flow must not be invoked');
   } finally {
     global.fetch = originalFetch;
     delete global.localStorage;
