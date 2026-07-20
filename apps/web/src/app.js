@@ -34,6 +34,7 @@ function registerMiddleware(app, { config, auth, payments }) {
   app.use(express.json({ limit: config.limits.json }));
   app.use(requestId);
   app.use(pageGuard(auth));
+  app.get('/favicon.ico', (req, res) => res.redirect('/images/favicon.png'));
   app.use(express.static(config.paths.public, { extensions: ['html'] }));
 }
 
