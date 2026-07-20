@@ -31,7 +31,6 @@ export function createStoryboardRecord(storyboard = {}, title = 'Untitled') {
     ...storyboard,
     id: typeof storyboard.id === 'string' && storyboard.id ? storyboard.id : crypto.randomUUID(),
     title: String(storyboard.title || title),
-    sceneCountMode: storyboard.sceneCountMode === 'manual' || (storyboard.sceneCountMode == null && storyboard.sceneCount != null) ? 'manual' : 'auto',
     updatedAt: storyboard.updatedAt || new Date().toISOString(),
   };
   record.scenes = adaptSceneImageShots(record.scenes);
@@ -207,12 +206,6 @@ function restoreStoryboardFields(els) {
   els.enrichNarration.checked = record.enrich === true;
   if (record.styleId) els.styleSelect.value = record.styleId;
   if (record.commonPromptText != null) els.commonPromptText.value = record.commonPromptText;
-  if (els.settingsSceneCountInput) {
-    els.settingsSceneCountInput.value = record.settingsSceneCountInput != null ? record.settingsSceneCountInput : '';
-  }
-  if (els.settingsSceneCountAutoCheckbox) {
-    els.settingsSceneCountAutoCheckbox.checked = record.settingsSceneCountAutoCheckbox === true;
-  }
 
   const audioProvider = optionValues(els.audioProvider).includes(record.audioProvider) ? record.audioProvider : 'stub';
   els.audioProvider.value = audioProvider;
@@ -265,8 +258,6 @@ export function createStoryboard(els) {
   els.videoMotionIntensity.value = 'medium';
   if (els.subtitleStyleSelect) els.subtitleStyleSelect.value = 'classic';
   els.enrichNarration.checked = false;
-  if (els.settingsSceneCountInput) els.settingsSceneCountInput.value = '';
-  if (els.settingsSceneCountAutoCheckbox) els.settingsSceneCountAutoCheckbox.checked = false;
 }
 
 export function saveStoryboard(els, immediate = false) {
@@ -276,8 +267,6 @@ export function saveStoryboard(els, immediate = false) {
   Object.assign(record, {
     title: String(els.storyboardTitle?.value || '').trim() || 'Untitled',
     scriptText: els.scriptText.value,
-    sceneCount: els.settingsSceneCountInput ? (Number(els.settingsSceneCountInput.value) || null) : null,
-    sceneCountMode: (els.settingsSceneCountAutoCheckbox && els.settingsSceneCountAutoCheckbox.checked) ? 'auto' : 'manual',
     styleId: els.styleSelect.value,
     commonPromptText: els.commonPromptText.value,
     textProvider: els.textProvider.value,

@@ -5,7 +5,6 @@ import { adaptSceneImageShot, setActiveImageVersion } from './scene-shots.js';
 import { api } from './api.js';
 import { previewVoice, openVoiceLibraryModal } from './voices.js';
 import { computeStageStatus, getCachedJobs, getCachedSpend } from './stages.js';
-import { suggestSceneCount, suggestSceneCountFromNarration } from './scene-count.js';
 
 const NO_MAPPING_AUDIO_PROVIDERS = ['stub'];
 const PREVIEWABLE_AUDIO_PROVIDERS = ['elevenlabs', 'spark', 'piper'];
@@ -332,28 +331,6 @@ export function renderStageBar(els) {
     els.startPauseBtn.disabled = busy && !running;
   }
 
-  if (els.settingsSceneCountInput) {
-    const isAutoChecked = els.settingsSceneCountAutoCheckbox && els.settingsSceneCountAutoCheckbox.checked;
-    els.settingsSceneCountInput.disabled = busy || isAutoChecked;
-  }
-  if (els.settingsSceneCountAutoCheckbox) {
-    els.settingsSceneCountAutoCheckbox.disabled = busy;
-  }
-  if (els.settingsSceneCountAutoBtn) {
-    const isAutoChecked = els.settingsSceneCountAutoCheckbox && els.settingsSceneCountAutoCheckbox.checked;
-    let estimate = null;
-    const scenes = sceneStore.get().scenes;
-    if (scenes && scenes.length > 0) {
-      estimate = suggestSceneCountFromNarration(scenes);
-    }
-    if (!estimate || estimate <= 0) {
-      const scriptText = String(els.scriptText?.value || '').trim();
-      if (scriptText) {
-        estimate = suggestSceneCount(scriptText);
-      }
-    }
-    els.settingsSceneCountAutoBtn.disabled = busy || !estimate || isAutoChecked;
-  }
   els.newStoryboardBtn.disabled = busy;
   els.storyboardPickerToggle.disabled = busy;
   els.saveStateBtn.disabled = busy || els.saveStateBtn.textContent !== 'Retry save';

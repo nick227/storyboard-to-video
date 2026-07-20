@@ -210,7 +210,7 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
     failed: !total && lastPlanningJob?.status === 'failed' ? 1 : 0,
     running: uiOperation != null && ['planShots', 'prompts', 'dialogueAll', 'prompt', 'dialogue', 'action', 'splitScene'].includes(uiOperation.type),
     paused: false,
-    label: total ? `${total} scenes` : 'Not started',
+    label: total ? `${total} shot${total === 1 ? '' : 's'}` : 'Not started',
     hasChanges: planningChanged,
   };
   planning.done = Math.max(0, planning.done);

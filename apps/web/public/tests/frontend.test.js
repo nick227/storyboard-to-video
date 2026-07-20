@@ -203,16 +203,18 @@ async function runTests() {
     addResult('Regenerate-All And Replan Require Confirmation', true);
 
     // Test 20: The Planning modal and the shared Images/Audio/Video stage dialog are gone entirely —
-    // "must have run options" (visual planning mode, scene-count recommendation policy) live in the
-    // existing Settings modal instead, and destructive/spend-heavy actions (Replan, Regenerate all)
-    // moved to a Danger zone there rather than a per-stage dialog.
+    // "must have run options" (visual planning mode) live in the existing Settings modal instead,
+    // and destructive/spend-heavy actions (Replan, Regenerate all) moved to a Danger zone there
+    // rather than a per-stage dialog. Shot count is no longer a run option at all — it's an output
+    // of planning, shown read-only in Settings for visibility, not something to configure beforehand.
     assert(!indexSource.includes('id="planningModal"'), 'The separate Planning modal should be gone');
     assert(!indexSource.includes('id="stageDialog"'), 'The shared Images/Audio/Video stage dialog should be gone');
     assert(!indexSource.includes('id="runPlanningBtn"') && !indexSource.includes('id="updateStalePlanningBtn"'), 'Manual Run Planning / Update stale only buttons should be gone — Start already does this automatically');
     assert(!indexSource.includes('id="stageDialogGenerateBtn"') && !indexSource.includes('id="stageDialogRetryBtn"'), 'Per-stage Generate/Retry buttons should be gone — redundant with the box + Start');
     assert(!indexSource.includes('ManageBtn"'), 'Stage boxes should have no separate manage control — there is no modal left to open');
     assert(indexSource.includes('id="planningModeSelect"'), 'Visual planning mode should now live in Settings');
-    assert(indexSource.includes('id="settingsSceneCountInput"') && indexSource.includes('id="settingsSceneCountAutoCheckbox"') && indexSource.includes('id="settingsSceneCountAutoBtn"'), 'The scene-count recommendation policy should be a pre-configured Settings choice, not a mid-run popup');
+    assert(!indexSource.includes('id="settingsSceneCountInput"') && !indexSource.includes('id="settingsSceneCountAutoCheckbox"') && !indexSource.includes('id="settingsSceneCountAutoBtn"'), 'The old editable scene-count target/auto controls should be gone — shot count is an output of planning, not an input');
+    assert(indexSource.includes('id="settingsShotCountDisplay"'), 'Shot count should be a read-only, informational display in Settings');
     assert(indexSource.includes('id="settingsReplanBtn"') && indexSource.includes('id="settingsRegenerateImagesBtn"') && indexSource.includes('id="settingsRegenerateAudioBtn"') && indexSource.includes('id="settingsRegenerateVideoBtn"'), 'Settings should expose a Danger zone with Replan and per-stage Regenerate-all actions');
     assert(appSource.includes('will rebuild the storyboard structure and retire media'), 'Reducing scene count should still name the destructive consequence explicitly, not hide it behind "Replan"');
     addResult('Planning Modal And Stage Dialog Removed In Favor Of Settings', true);

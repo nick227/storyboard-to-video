@@ -4,7 +4,6 @@ import { initRendering, renderScenes } from './modules/rendering.js';
 import { initTimeline } from './modules/timeline.js';
 import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, renderStageBar, initImageLibraryModal, populateTokensInfoModal } from './modules/ui.js';
 import { downloadZip } from './modules/workflows.js';
-import { suggestSceneCount, suggestSceneCountFromNarration } from './modules/scene-count.js';
 import { initializeAuth } from './modules/auth.js';
 import {
   refreshRecentJobs, getCachedJobs, getStageSelection, toggleStageSelection,
@@ -84,11 +83,9 @@ const els = {
   tokensPricingContainer: document.getElementById('tokensPricingContainer'),
   startPauseBtn: document.getElementById('startPauseBtn'),
 
-  // Settings modal: visual planning mode, scene-count recommendation policy, danger zone
+  // Settings modal: visual planning mode, read-only shot count, danger zone
   planningModeSelect: document.getElementById('planningModeSelect'),
-  settingsSceneCountInput: document.getElementById('settingsSceneCountInput'),
-  settingsSceneCountAutoCheckbox: document.getElementById('settingsSceneCountAutoCheckbox'),
-  settingsSceneCountAutoBtn: document.getElementById('settingsSceneCountAutoBtn'),
+  settingsShotCountDisplay: document.getElementById('settingsShotCountDisplay'),
   settingsReplanBtn: document.getElementById('settingsReplanBtn'),
   settingsRegenerateImagesBtn: document.getElementById('settingsRegenerateImagesBtn'),
   settingsRegenerateAudioBtn: document.getElementById('settingsRegenerateAudioBtn'),
@@ -254,8 +251,8 @@ function getGenerationPreflight(kind, context = {}) {
   // a question), one sentence of essential context, then bullets for specifics. No boilerplate.
   const mediaConfig = (label, versionsKey, providerSelect, extra = '') => {
     const stats = versionStats(versionsKey);
-    const bullets = [`${total} scenes · ${selectedLabel(providerSelect)}${extra}`];
-    if (stats.versions) bullets.push(`${stats.scenes}/${total} scenes already have a version — those are replaced too`);
+    const bullets = [`${total} shots · ${selectedLabel(providerSelect)}${extra}`];
+    if (stats.versions) bullets.push(`${stats.scenes}/${total} shots already have a version — those are replaced too`);
     bullets.push(`Prefer "Generate missing/stale" unless you want to redo everything`);
     return {
       title: `Regenerate all ${label.toLowerCase()}`,
@@ -273,12 +270,12 @@ function getGenerationPreflight(kind, context = {}) {
     planningReplan: (() => {
       const shrinking = context.fromCount != null && context.toCount != null && context.fromCount !== context.toCount;
       return {
-        title: shrinking ? `Reduce to ${context.toCount} scenes` : 'Replan story structure',
+        title: shrinking ? `Reduce to ${context.toCount} shots` : 'Replan story structure',
         paragraph: shrinking
-          ? `Reducing from ${context.fromCount} to ${context.toCount} scenes will rebuild the storyboard structure and retire media.`
+          ? `Reducing from ${context.fromCount} to ${context.toCount} shots will rebuild the storyboard structure and retire media.`
           : 'This re-segments the story from the original script, discarding the current scene structure.',
         bullets: [
-          `${context.toCount ?? total} scenes, rebuilt from the original script`,
+          `${context.toCount ?? total} shots, rebuilt from the original script`,
           `Prompts, images, audio, and video tied to replaced scenes are retired, not orphaned`,
         ],
         confirmLabel: 'Replan story structure',
@@ -449,39 +446,12 @@ function requestGenerationConfirmation(kind, context = {}) {
 
 
 
-function getSceneCountEstimate() {
-  const scenes = sceneStore.get().scenes;
-  if (scenes && scenes.length > 0) {
-    const recommended = suggestSceneCountFromNarration(scenes);
-    if (recommended > 0) return recommended;
-  }
-  const scriptText = String(els.scriptText?.value || '').trim();
-  if (scriptText) {
-    const scriptEstimate = suggestSceneCount(scriptText);
-    if (scriptEstimate > 0) return scriptEstimate;
-  }
-  return null;
-}
-
-function refreshSceneCountPolicy() {
-  if (!els.settingsSceneCountInput || !els.settingsSceneCountAutoCheckbox || !els.settingsSceneCountAutoBtn) return;
-  const estimate = getSceneCountEstimate();
-  
-  if (els.settingsSceneCountAutoCheckbox.checked) {
-    els.settingsSceneCountInput.disabled = true;
-    els.settingsSceneCountAutoBtn.disabled = true;
-  } else {
-    els.settingsSceneCountInput.disabled = false;
-    
-    if (estimate && estimate > 0) {
-      els.settingsSceneCountAutoBtn.disabled = false;
-      if (!els.settingsSceneCountInput.value || Number(els.settingsSceneCountInput.value) === 0) {
-        els.settingsSceneCountInput.value = estimate;
-      }
-    } else {
-      els.settingsSceneCountAutoBtn.disabled = true;
-    }
-  }
+// Read-only and informational: shot count is an output of planning now, not a target the user
+// sets beforehand, so this just reflects however many shots the storyboard currently has.
+function refreshShotCountDisplay() {
+  if (!els.settingsShotCountDisplay) return;
+  const count = sceneStore.get().scenes.length;
+  els.settingsShotCountDisplay.textContent = count ? `${count} shot${count === 1 ? '' : 's'}` : 'Not planned yet';
 }
 
 let screenplayEditorInstance = null;
@@ -545,7 +515,7 @@ async function loadStoryboardIntoUI() {
   renderVoicesPanel(els);
   renderStageBar(els);
   renderScenes();
-  refreshSceneCountPolicy();
+  refreshShotCountDisplay();
   if (screenplayEditorInstance && els.scriptModeSelect?.value === 'screenplay') {
     screenplayEditorInstance.loadScript(els.scriptText.value || '', 'fountain');
   }
@@ -693,7 +663,6 @@ function attachEvents() {
   });
 
   els.scriptText.addEventListener('input', () => {
-    refreshSceneCountPolicy();
     saveStoryboard(els, false);
     renderStageBar(els);
   });
@@ -711,11 +680,12 @@ function attachEvents() {
     }
   });
 
-  // --- Settings: visual planning mode, scene-count policy, danger zone --------
+  // --- Settings: visual planning mode, read-only shot count, danger zone ------
   //
   // These replace the removed Planning modal and per-stage dialog. What used to be interactive
   // mid-run decisions are now pre-configured once in Settings (existing modal, existing pattern)
-  // and read synchronously when Start needs them — no extra dialog appears mid-flow.
+  // and read synchronously when Start needs them — no extra dialog appears mid-flow. Shot count
+  // itself is no longer a setting: it's an output of planning, shown read-only for visibility.
 
   const syncPlanningModeFromEnrich = () => {
     if (els.planningModeSelect) {
@@ -724,34 +694,13 @@ function attachEvents() {
   };
   els.settingsBtn.addEventListener('click', () => {
     syncPlanningModeFromEnrich();
-    refreshSceneCountPolicy();
+    refreshShotCountDisplay();
   });
 
   if (els.planningModeSelect) {
     els.planningModeSelect.addEventListener('change', () => {
       els.enrichNarration.checked = els.planningModeSelect.value === 'auto';
       saveStoryboard(els, false);
-    });
-  }
-
-  if (els.settingsSceneCountAutoCheckbox) {
-    els.settingsSceneCountAutoCheckbox.addEventListener('change', () => {
-      refreshSceneCountPolicy();
-      saveStoryboard(els, false);
-    });
-  }
-  if (els.settingsSceneCountInput) {
-    els.settingsSceneCountInput.addEventListener('input', () => {
-      saveStoryboard(els, false);
-    });
-  }
-  if (els.settingsSceneCountAutoBtn) {
-    els.settingsSceneCountAutoBtn.addEventListener('click', () => {
-      const estimate = getSceneCountEstimate();
-      if (estimate && estimate > 0) {
-        els.settingsSceneCountInput.value = estimate;
-        saveStoryboard(els, false);
-      }
     });
   }
 

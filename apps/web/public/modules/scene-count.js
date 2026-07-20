@@ -1,22 +1,7 @@
-export function suggestSceneCount(scriptText) {
-  const script = String(scriptText || '').trim();
-  if (!script) return 1;
-
-  const words = script.match(/\S+/g)?.length || 0;
-  const sentences = script.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g)?.length || 1;
-  const paragraphs = script.split(/\n\s*\n/).filter((part) => part.trim()).length;
-  const screenplayHeadings = script.match(/^\s*(?:INT\.?|EXT\.?|INT\.?\/EXT\.?|I\/E)\s+/gim)?.length || 0;
-
-  const pacingEstimate = Math.max(1, Math.round(words / 40));
-  const actionEstimate = Math.max(1, Math.round(sentences / 2));
-  const paragraphEstimate = screenplayHeadings ? 1 : Math.min(paragraphs, Math.max(1, Math.ceil(words / 15)));
-
-  return Math.min(50, Math.max(pacingEstimate, actionEstimate, paragraphEstimate, screenplayHeadings));
-}
-
 // Target spoken-word count per slide for comfortable pacing (~45 words ≈ 15-20s at a natural spoken
-// rate). Unlike suggestSceneCount (script-based, runs before any generation), this runs on the
-// AI's actual narration output — so it reflects real content richness, not an input-length guess.
+// rate). Runs on the AI's actual narration output, so it reflects real content richness rather than
+// guessing from input length -- the upfront, pre-narration guess this module used to also provide
+// (suggestSceneCount) was removed once planning stopped needing a target count at all.
 const TARGET_WORDS_PER_SLIDE = 45;
 
 // Never suggests fewer slides than currently exist — this only ever proposes growing the storyboard

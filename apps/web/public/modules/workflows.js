@@ -1,29 +1,17 @@
 import { api } from './api.js';
 import { batchStore, projectStore, sceneStore, voiceStore, generationStore, uiStore } from './store.js';
 import { getCurrentStoryboardRecord, queueSync, ensureProjectSynced } from './persistence.js';
-import { clampSplitCount, suggestSceneCount, suggestSceneCountFromNarration } from './scene-count.js';
+import { clampSplitCount } from './scene-count.js';
 import { adaptSceneImageShot, imageShot, replaceImageState, replaceVideoState, setImagePrompt } from './scene-shots.js';
 
+// sceneCount is a fixed fallback now, not a computed target -- planShots (below) doesn't use this
+// field at all, and the only remaining reader is generatePrompts' rebuildFromSource path
+// (replanStory), which has no UI-configurable target anymore either.
 export function getPayloadBase(els) {
-  const isAuto = els.settingsSceneCountAutoCheckbox && els.settingsSceneCountAutoCheckbox.checked;
-  const customVal = els.settingsSceneCountInput ? Number(els.settingsSceneCountInput.value) : null;
-  
-  let sceneCount = 8;
-  if (isAuto) {
-    const scenes = sceneStore.get().scenes;
-    if (scenes && scenes.length > 0) {
-      sceneCount = suggestSceneCountFromNarration(scenes) || scenes.length;
-    } else {
-      sceneCount = suggestSceneCount(els.scriptText.value) || 8;
-    }
-  } else {
-    sceneCount = customVal || 8;
-  }
-
   return {
     projectId: projectStore.get().currentId,
     scriptText: els.scriptText.value,
-    sceneCount: sceneCount,
+    sceneCount: 8,
     styleId: els.styleSelect.value,
     commonPromptText: els.commonPromptText.value,
     textProvider: els.textProvider.value,
@@ -174,7 +162,7 @@ export async function generatePrompts(els, setStatus, { rebuildFromSource = fals
       queueSync(record, setStatus);
     }
     
-    if (setStatus) setStatus(data.usedFallback ? data.warning : `Generated ${nextScenes.length} scene prompts with ${base.textProvider}.`);
+    if (setStatus) setStatus(data.usedFallback ? data.warning : `Generated ${nextScenes.length} shot prompts with ${base.textProvider}.`);
   } catch (error) {
     if (setStatus) setStatus(`Prompt generation failed: ${error.message}`);
   } finally {
@@ -329,7 +317,7 @@ export async function generateDialogue(els, setStatus) {
       queueSync(record, setStatus);
     }
 
-    if (setStatus) setStatus(data.usedFallback ? data.warning : `Wrote spoken narration for ${scenes.length} scenes with ${base.textProvider}.`);
+    if (setStatus) setStatus(data.usedFallback ? data.warning : `Wrote spoken narration for ${scenes.length} shots with ${base.textProvider}.`);
   } catch (error) {
     if (setStatus) setStatus(`Narration generation failed: ${error.message}`);
   } finally {
