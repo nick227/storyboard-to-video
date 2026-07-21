@@ -10,8 +10,8 @@ import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVe
 import { REFERENCE_ROLES, REFERENCE_ROLE_LABELS, normalizeReferenceRole } from './reference-roles.js';
 import { textValue } from './text-values.js';
 import {
-  calibrateSceneAudioNoiseGate, closeSceneAudioRecorder, openSceneAudioRecorder, previewSceneAudioRecording,
-  retakeSceneAudioRecording, setSceneAudioMonitoring, setSceneAudioNoiseGate, setSceneAudioNoiseSuppression,
+  closeSceneAudioRecorder, openSceneAudioRecorder, previewSceneAudioRecording,
+  retakeSceneAudioRecording, setSceneAudioMonitoring, setSceneAudioNoiseSuppression,
   submitSceneAudioRecording, switchSceneAudioMicrophone,
   toggleSceneAudioRecording,
 } from './scene-audio-recorder.js';
@@ -789,8 +789,6 @@ function setupEntityModal() {
   els.sceneAudioMicSelect.addEventListener('change', () => switchSceneAudioMicrophone(els.sceneAudioMicSelect.value, els));
   els.sceneAudioMonitorMic.addEventListener('change', () => setSceneAudioMonitoring(els.sceneAudioMonitorMic.checked));
   els.sceneAudioReduceNoise.addEventListener('change', () => setSceneAudioNoiseSuppression(els.sceneAudioReduceNoise.checked, els));
-  els.sceneAudioCalibrateBtn.addEventListener('click', () => calibrateSceneAudioNoiseGate(els));
-  els.sceneAudioNoiseGate.addEventListener('change', () => setSceneAudioNoiseGate(els.sceneAudioNoiseGate.checked));
   els.sceneAudioRecordToggle.addEventListener('click', () => toggleSceneAudioRecording(els).catch((error) => { els.sceneAudioRecordStatus.textContent = `Recording could not start: ${error.message}`; }));
   els.sceneAudioPreviewBtn.addEventListener('click', () => previewSceneAudioRecording(els).catch((error) => { els.sceneAudioRecordStatus.textContent = `Preview failed: ${error.message}`; }));
   els.sceneAudioRetakeBtn.addEventListener('click', () => retakeSceneAudioRecording(els));

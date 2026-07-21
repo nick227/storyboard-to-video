@@ -675,9 +675,6 @@ body.script-focus-active { overflow: hidden; }
 .scene-audio-monitor { display: inline-flex; align-items: center; gap: 8px; width: fit-content; color: var(--muted); font-size: 13px; }
 .scene-audio-monitor input { margin: 0; }
 .scene-audio-monitor-note { margin-top: -8px; }
-.scene-audio-level { display: grid; grid-template-columns: auto minmax(140px, 1fr) 72px; align-items: center; gap: 10px; font-size: 13px; }
-.scene-audio-level meter { width: 100%; height: 12px; }
-.scene-audio-gate-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .scene-audio-record-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .scene-audio-record-actions button[hidden] { display: none; }
 .scene-audio-recorder[aria-busy="true"] { opacity: .7; pointer-events: none; }

@@ -391,16 +391,6 @@
       <label class="entity-modal-field"><span>Microphone</span><select id="sceneAudioMicSelect"></select></label>
       <label class="scene-audio-monitor"><input type="checkbox" id="sceneAudioMonitorMic" /> <span>Hear microphone in headphones</span></label>
       <label class="scene-audio-monitor"><input type="checkbox" id="sceneAudioReduceNoise" checked /> <span>Reduce background noise</span></label>
-      <div class="scene-audio-level" aria-label="Microphone input level">
-        <span>Input level</span>
-        <meter id="sceneAudioInputLevel" min="-60" max="0" low="-36" high="-6" optimum="-18" value="-60"></meter>
-        <span id="sceneAudioInputLevelText" class="field-note">Quiet</span>
-      </div>
-      <div class="scene-audio-gate-controls">
-        <label class="scene-audio-monitor"><input type="checkbox" id="sceneAudioNoiseGate" checked disabled /> <span>Noise gate</span></label>
-        <button type="button" id="sceneAudioCalibrateBtn" class="secondary" disabled>Calibrate room</button>
-        <span id="sceneAudioGateStatus" class="field-note">Calibrate while staying quiet.</span>
-      </div>
       <span class="field-note scene-audio-monitor-note">Use wired headphones for the clearest, lowest-latency monitoring.</span>
       <canvas id="sceneAudioWaveform" class="voice-waveform-canvas" width="640" height="64"></canvas>
       <span id="sceneAudioRecordStatus" class="field-note" role="status" aria-live="polite"></span>

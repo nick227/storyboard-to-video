@@ -53,16 +53,11 @@ function drawWaveform(els) {
   const data = new Float32Array(analyser.fftSize);
   analyser.getFloatTimeDomainData(data);
   const rms = Math.sqrt(data.reduce((sum, sample) => sum + sample ** 2, 0) / data.length);
-  const db = Math.max(-60, 20 * Math.log10(Math.max(rms, 0.001)));
-  if (els.sceneAudioInputLevel) els.sceneAudioInputLevel.value = db;
-  if (els.sceneAudioInputLevelText) {
-    els.sceneAudioInputLevelText.textContent = db > -3 ? 'Clipping' : db > -24 ? 'Good' : db > -42 ? 'Low' : 'Quiet';
-  }
   const state = sceneAudioRecordingState;
   if (state.calibration) {
     state.calibration.samples.push(rms);
     if (performance.now() - state.calibration.startedAt >= 2000) finishNoiseGateCalibration(els);
-  } else if (state.gateGain && state.gateThreshold && els.sceneAudioNoiseGate?.checked) {
+  } else if (state.gateGain && state.gateThreshold && els.sceneAudioReduceNoise?.checked) {
     const shouldOpen = state.gateOpen ? rms >= state.gateThreshold : rms >= state.gateThreshold * 1.25;
     if (shouldOpen !== state.gateOpen) {
       state.gateOpen = shouldOpen;
@@ -106,12 +101,10 @@ async function attachStream(stream, els) {
     state.animationFrame = requestAnimationFrame(() => drawWaveform(els));
   }
   const track = stream.getAudioTracks()[0];
-  const noiseSuppression = track?.getSettings?.().noiseSuppression;
-  if (typeof noiseSuppression === 'boolean') els.sceneAudioReduceNoise.checked = noiseSuppression;
   resetNoiseGateCalibration(els);
-  els.sceneAudioCalibrateBtn.disabled = false;
   setRecorderStatus(els, `Ready: ${track?.label || 'microphone'}`);
   els.sceneAudioRecordToggle.disabled = false;
+  if (els.sceneAudioReduceNoise.checked) startNoiseGateCalibration(els);
 }
 
 async function populateMicrophones(els, activeDeviceId) {
@@ -151,7 +144,6 @@ function resetTake(els) {
   els.sceneAudioSubmitBtn.hidden = true; els.sceneAudioSubmitBtn.disabled = false;
   els.sceneAudioRetakeBtn.hidden = true; els.sceneAudioRecordToggle.hidden = false; els.sceneAudioRecordToggle.textContent = 'Start recording';
   els.sceneAudioMicSelect.disabled = false; els.sceneAudioReduceNoise.disabled = false;
-  els.sceneAudioCalibrateBtn.disabled = !sceneAudioRecordingState.stream;
 }
 
 function visualForScene(scene) {
@@ -183,7 +175,6 @@ export async function openSceneAudioRecorder(scene, els) {
   sceneAudioRecordingState.sceneId = scene.id;
   els.sceneAudioRecorder.hidden = false; resetTake(els);
   els.sceneAudioMonitorMic.checked = false;
-  els.sceneAudioInputLevel.value = -60; els.sceneAudioInputLevelText.textContent = 'Quiet';
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     setRecorderStatus(els, 'Audio recording is not supported by this browser.');
     return;
@@ -242,11 +233,9 @@ export async function toggleSceneAudioRecording(els) {
     els.sceneAudioPreviewBtn.hidden = false; els.sceneAudioSubmitBtn.hidden = false;
     els.sceneAudioRetakeBtn.hidden = false; els.sceneAudioRecordToggle.hidden = true;
     els.sceneAudioMicSelect.disabled = false; els.sceneAudioReduceNoise.disabled = false;
-    els.sceneAudioCalibrateBtn.disabled = false;
   };
   recorder.start(); els.sceneAudioRecordToggle.textContent = 'Stop recording';
   els.sceneAudioMicSelect.disabled = true; els.sceneAudioReduceNoise.disabled = true;
-  els.sceneAudioCalibrateBtn.disabled = true;
   setRecorderStatus(els, 'Recording…');
 }
 
@@ -263,26 +252,31 @@ export function setSceneAudioMonitoring(enabled) {
 
 export async function setSceneAudioNoiseSuppression(enabled, els) {
   const track = sceneAudioRecordingState.stream?.getAudioTracks?.()[0];
-  if (!track?.applyConstraints) return;
+  resetNoiseGateCalibration(els);
+  if (!track?.applyConstraints) {
+    if (enabled) startNoiseGateCalibration(els);
+    return;
+  }
   try {
     await track.applyConstraints({ noiseSuppression: enabled, echoCancellation: false, autoGainControl: false });
-    const applied = track.getSettings?.().noiseSuppression;
-    setRecorderStatus(els, applied === undefined
-      ? `Background noise reduction ${enabled ? 'requested' : 'disabled'}.`
-      : `Background noise reduction ${applied ? 'on' : 'off'}.`);
-    resetNoiseGateCalibration(els);
+    if (els.sceneAudioReduceNoise.checked !== enabled) return;
+    if (enabled) startNoiseGateCalibration(els);
+    else setRecorderStatus(els, 'Background noise reduction off.');
   } catch (error) {
-    els.sceneAudioReduceNoise.checked = !enabled;
-    setRecorderStatus(els, `This microphone cannot change noise reduction: ${error.message}`);
+    if (els.sceneAudioReduceNoise.checked !== enabled) return;
+    if (enabled) startNoiseGateCalibration(els);
+    else setRecorderStatus(els, 'Background noise reduction off.');
   }
 }
 
 function resetNoiseGateCalibration(els) {
   const state = sceneAudioRecordingState;
   state.calibration = null; state.gateThreshold = null; state.gateOpen = true;
-  if (state.gateGain && state.audioContext) state.gateGain.gain.setValueAtTime(1, state.audioContext.currentTime);
-  if (els?.sceneAudioNoiseGate) els.sceneAudioNoiseGate.disabled = true;
-  if (els?.sceneAudioGateStatus) els.sceneAudioGateStatus.textContent = 'Calibrate while staying quiet.';
+  if (state.gateGain && state.audioContext) {
+    state.gateGain.gain.cancelScheduledValues(state.audioContext.currentTime);
+    state.gateGain.gain.setValueAtTime(1, state.audioContext.currentTime);
+  }
+  if (els?.sceneAudioRecordToggle && state.stream) els.sceneAudioRecordToggle.disabled = false;
 }
 
 function finishNoiseGateCalibration(els) {
@@ -294,29 +288,19 @@ function finishNoiseGateCalibration(els) {
   const noiseFloor = ordered[Math.floor((ordered.length - 1) * 0.8)];
   state.gateThreshold = Math.min(0.035, Math.max(0.006, noiseFloor * 1.6));
   state.gateOpen = true;
-  els.sceneAudioNoiseGate.disabled = false;
-  els.sceneAudioCalibrateBtn.disabled = false;
+  els.sceneAudioRecordToggle.disabled = false;
   const floorDb = Math.round(20 * Math.log10(Math.max(noiseFloor, 0.001)));
-  els.sceneAudioGateStatus.textContent = `Calibrated at ${floorDb} dB. The gate only reduces sound between phrases.`;
+  setRecorderStatus(els, `Noise reduction ready (room floor ${floorDb} dB).`);
 }
 
-export function calibrateSceneAudioNoiseGate(els) {
+function startNoiseGateCalibration(els) {
   const state = sceneAudioRecordingState;
   if (!state.analyser || state.recorder?.state === 'recording') return;
   state.gateThreshold = null; state.gateOpen = true;
   if (state.gateGain && state.audioContext) state.gateGain.gain.setValueAtTime(1, state.audioContext.currentTime);
   state.calibration = { startedAt: performance.now(), samples: [] };
-  els.sceneAudioCalibrateBtn.disabled = true;
-  els.sceneAudioNoiseGate.disabled = true;
-  els.sceneAudioGateStatus.textContent = 'Stay quiet for 2 seconds…';
-}
-
-export function setSceneAudioNoiseGate(enabled) {
-  const state = sceneAudioRecordingState;
-  if (!state.gateGain || !state.audioContext) return;
-  state.gateOpen = true;
-  state.gateGain.gain.setTargetAtTime(1, state.audioContext.currentTime, 0.01);
-  if (!enabled) state.calibration = null;
+  els.sceneAudioRecordToggle.disabled = true;
+  setRecorderStatus(els, 'Measuring room noise—stay quiet for 2 seconds…');
 }
 
 export async function previewSceneAudioRecording(els) {
