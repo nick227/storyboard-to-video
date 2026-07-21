@@ -56,7 +56,7 @@ async function submit(event) {
       }),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error?.message || 'Authentication request failed');
+    if (!response.ok) throw new Error(data.error?.message || data.message || 'Authentication request failed');
     window.location.href = safeRedirectTarget();
   } catch (error) {
     els.authError.textContent = error.message;

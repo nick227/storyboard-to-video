@@ -8,7 +8,7 @@ async function request(path, body) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.error?.message || 'Authentication request failed');
+    const error = new Error(data.error?.message || data.message || 'Authentication request failed');
     error.code = data.error?.code;
     throw error;
   }
