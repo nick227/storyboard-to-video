@@ -1,4 +1,8 @@
-# Monorepo-root build for Railway when Root Directory is unset (repo root).
+# TEMPORARY monorepo-root build for Railway while Root Directory is unset.
+# This week: set service Root Directory to apps/web in the Railway dashboard, then
+# delete this file and root railway.toml so apps/web/Dockerfile is the only image def.
+# Editing apps/web/Dockerfile alone does nothing until that switch happens.
+#
 # Context is the repo root; app sources live under apps/web/.
 
 FROM node:20-slim AS build

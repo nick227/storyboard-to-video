@@ -1,6 +1,7 @@
+# TEMPORARY — delete after setting dashboard Root Directory to apps/web.
+# Until then this file (not apps/web/railway.toml) drives the live Railway service.
 # Repo-root Railway config for the web service when Root Directory is the monorepo
-# root (default for GitHub-linked services). Prefer setting dashboard Root Directory
-# to apps/web later so apps/web/railway.toml is the single source of truth.
+# root (default for GitHub-linked services).
 
 [build]
 builder = "dockerfile"
