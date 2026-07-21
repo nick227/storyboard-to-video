@@ -127,7 +127,9 @@ If you need to fine-tune character limits or prompt lengths, update:
 
 ### Local TTS (Zero-API-Key)
 - **Local Fallback**: Rudimentary offline voice synthesis.
-- **Piper TTS**: High-quality natural neural TTS. Setup: `npm run setup:piper` (downloads engine/voice files into `apps/web/vendor/piper/`).
+- **Piper TTS**: High-quality natural neural TTS.
+  - Local: `npm run setup:piper` (downloads into `apps/web/vendor/piper/`).
+  - Production: `apps/piper-service` on Modal; set `PIPER_SERVICE_URL` + `PIPER_SERVICE_TOKEN` on the web app.
 
 ### Voice Cloning (Spark-TTS)
 A zero-shot, commercial-safe cloning daemon located in `apps/voice-service/`. Requires an NVIDIA GPU (tested on RTX 3060, 12GB VRAM).
