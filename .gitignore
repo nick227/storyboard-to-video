@@ -18,6 +18,9 @@
 /apps/voice-service/pretrained_models/
 /apps/voice-service/spark_tts_src/
 /apps/voice-service/voices/
+/apps/piper-service/venv/
+/apps/piper-service/.venv/
+/apps/piper-service/vendor/
 /apps/alignment-service/venv/
 /apps/alignment-service/.venv/
 **/__pycache__/

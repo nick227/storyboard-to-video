@@ -1,14 +1,12 @@
-name: Deploy voice-service to Modal
+name: Deploy Modal TTS services
 
-# Manual only -- no push/pull_request trigger. Nothing in this repo running this workflow
-# automatically. Also requires MODAL_TOKEN_ID/MODAL_TOKEN_SECRET repo secrets, which aren't
-# configured yet, so even a manual run will fail until those are added and you're ready to
-# actually deploy.
+# Manual only until secrets + Railway wiring are ready. Deploys Spark voice cloning
+# and Piper neural TTS. Requires MODAL_TOKEN_ID / MODAL_TOKEN_SECRET repo secrets.
 on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  deploy-voice:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,8 +14,23 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install modal
-      - name: Deploy to Modal
+      - name: Deploy voice-service to Modal
         working-directory: apps/voice-service
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: modal deploy modal_app.py
+
+  deploy-piper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install modal
+      - name: Deploy piper-service to Modal
+        working-directory: apps/piper-service
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}

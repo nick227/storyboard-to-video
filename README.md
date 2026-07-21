@@ -34,10 +34,12 @@ An online tool that translates raw stories into playable storyboards and produce
 
 ## Repo Layout & Architecture
 
-This is a monorepo containing two independently run applications:
+This is a monorepo containing independently run applications:
 
-- **[apps/web/](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/)**: Node.js/Express storyboard platform (deploys to Railway).
-- **[apps/voice-service/](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/voice-service/)**: Python/FastAPI + Spark-TTS voice cloning daemon (deploys to Modal).
+- **[apps/web/](apps/web/)**: Node.js/Express storyboard platform (deploys to Railway).
+- **[apps/voice-service/](apps/voice-service/)**: Python/FastAPI + Spark-TTS voice cloning (deploys to Modal).
+- **[apps/piper-service/](apps/piper-service/)**: Python/FastAPI + Piper neural TTS free tier (deploys to Modal).
+- **[apps/alignment-service/](apps/alignment-service/)**: Python/FastAPI WhisperX alignment (local only for now).
 
 ### Code Organization & Composition
 All business logic is modular and covered by unit tests under `apps/web/test/`:
@@ -187,13 +189,13 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 - **`apps/web` (Railway)**: Dockerfile and `railway.toml` are configured. Set the **Root Directory** to `apps/web` in the Railway dashboard.
   - **Postgres**: Provision a Railway Postgres plugin (or external DB) and set `DATABASE_URL`. Migrations run automatically via `preDeployCommand` (`npm run prisma:migrate:deploy`) before each deploy goes live.
   - **Persistent media (required)**: Volumes are not configurable in `railway.toml`. In the Railway dashboard (or `railway volume add --mount-path /app/data`), attach **one** volume to the web service with mount path **`/app/data`**. That path is where the app stores projects, generated images/audio/video, jobs, and caches (`config.paths` under `data/`). Without it, every redeploy wipes user media. Railway sets `RAILWAY_VOLUME_MOUNT_PATH=/app/data` automatically when attached.
-  - **Voice services**: After the voice-service is deployed to Modal, set `SPARK_TTS_URL` (and `SPARK_SERVICE_TOKEN`) as Railway env vars pointing at its `*.modal.run` URL — these default to `localhost` and won't work in production otherwise. Piper will follow the same pattern once it is on Modal (not available inside the web container today).
-- **`apps/voice-service` (Modal)**: The image build is self-contained — it git-clones `spark_tts_src` from upstream (pinned commit) and downloads model weights from Hugging Face during the build itself, so it does **not** depend on `setup.sh` having been run locally. Deploys using `modal deploy apps/voice-service/modal_app.py`, or via the `Deploy voice-service to Modal` GitHub Actions workflow (`workflow_dispatch`).
-  - One-time setup before the first deploy:
+  - **Voice services**: After voice-service and piper-service are deployed to Modal, set `SPARK_TTS_URL` + `SPARK_SERVICE_TOKEN` and `PIPER_SERVICE_URL` + `PIPER_SERVICE_TOKEN` on Railway to the respective `*.modal.run` URLs. Defaults point at localhost and will not work in production. Create Modal secrets once:
     ```bash
     modal secret create voice-service-secrets SPARK_SERVICE_TOKEN=... SPARK_TEMPERATURE=0.8 SPARK_TOP_K=50 SPARK_TOP_P=0.95
+    modal secret create piper-service-secrets PIPER_SERVICE_TOKEN=...
     ```
-    (the `voice-service-voices` Volume is created automatically on first deploy via `create_if_missing=True`)
+- **`apps/voice-service` (Modal)**: The image build is self-contained — it git-clones `spark_tts_src` from upstream (pinned commit) and downloads model weights from Hugging Face during the build itself, so it does **not** depend on `setup.sh` having been run locally. Deploys using `modal deploy apps/voice-service/modal_app.py`, or via the `Deploy Modal TTS services` GitHub Actions workflow (`workflow_dispatch`). Cloned voices persist on the `voice-service-voices` Volume (commit/reload hooks in `main.py`).
   - CI deploy requires `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` repo secrets (not yet configured).
+- **`apps/piper-service` (Modal)**: CPU TTS for the free-tier provider. Image downloads the Piper binary + curated voices at build time. Deploy with `modal deploy apps/piper-service/modal_app.py` (same workflow as voice-service). Web uses remote Piper when `PIPER_SERVICE_URL` is set; otherwise local `vendor/piper` via `npm run setup:piper`.
 - **`apps/alignment-service`**: no deployment target configured yet (no Dockerfile/Railway/Modal config).
-- **CI**: GitHub Actions run code checks and mock voice inference (`SPARK_SKIP_MODEL_LOAD=1`) — it does not exercise the real model or the Modal build.
+- **CI**: GitHub Actions run web checks, mock Spark inference (`SPARK_SKIP_MODEL_LOAD=1`), and piper-service unit tests — it does not exercise the real Spark model or the Modal image builds.

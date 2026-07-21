@@ -52,6 +52,27 @@ if not SERVICE_TOKEN:
     print("WARNING: SPARK_SERVICE_TOKEN is not set. Every endpoint except /health is unauthenticated. "
           "Fine for local dev, never acceptable for a real deployment.", flush=True)
 
+# Modal injects these so Volume writes survive container recycle (commit) and so this
+# container sees clones from other containers (reload). Local uvicorn leaves them None.
+_voices_volume_commit = None
+_voices_volume_reload = None
+
+
+def set_voices_volume_hooks(*, commit=None, reload=None):
+    global _voices_volume_commit, _voices_volume_reload
+    _voices_volume_commit = commit
+    _voices_volume_reload = reload
+
+
+def commit_voices_volume():
+    if _voices_volume_commit:
+        _voices_volume_commit()
+
+
+def reload_voices_volume():
+    if _voices_volume_reload:
+        _voices_volume_reload()
+
 
 def require_service_token(authorization: str = Header(default="")):
     """Applied to every route except /health. Skipped entirely (no-op) when SPARK_SERVICE_TOKEN
@@ -130,6 +151,7 @@ def health():
 
 @app.get("/voices", dependencies=[Depends(require_service_token)])
 def get_voices():
+    reload_voices_volume()
     return {"voices": list_voices()}
 
 
@@ -156,11 +178,13 @@ async def create_voice(audio: UploadFile = File(...), name: str = Form(...)):
         "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     (target_dir / "meta.json").write_text(json.dumps(meta))
+    commit_voices_volume()
     return meta
 
 
 @app.get("/voices/{voice_id}/reference", dependencies=[Depends(require_service_token)])
 def get_voice_reference(voice_id: str):
+    reload_voices_volume()
     reference_path = voice_dir(voice_id) / "reference.wav"
     if not load_voice_meta(voice_id) or not reference_path.exists():
         raise HTTPException(404, f"Unknown voiceId: {voice_id}")
@@ -169,10 +193,12 @@ def get_voice_reference(voice_id: str):
 
 @app.delete("/voices/{voice_id}", dependencies=[Depends(require_service_token)])
 def delete_voice(voice_id: str):
+    reload_voices_volume()
     target_dir = voice_dir(voice_id)
     if not load_voice_meta(voice_id):
         raise HTTPException(404, f"Unknown voiceId: {voice_id}")
     shutil.rmtree(target_dir)
+    commit_voices_volume()
     return {"ok": True, "voiceId": voice_id}
 
 
@@ -184,6 +210,7 @@ def synthesize(payload: SynthesizeRequest):
     if model is None:
         raise HTTPException(503, "Model is not loaded")
 
+    reload_voices_volume()
     meta = load_voice_meta(payload.voiceId)
     reference_path = voice_dir(payload.voiceId) / "reference.wav"
     if not meta or not reference_path.exists():

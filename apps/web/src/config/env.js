@@ -49,6 +49,7 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
       stripeWebhookSecret: String(env.STRIPE_WEBHOOK_SECRET || ''),
     },
     sparkUrl: String(env.SPARK_TTS_URL || 'http://localhost:8001').replace(/\/+$/, ''), sparkTimeout: integer(env.SPARK_TTS_TIMEOUT_MS, 120_000, 1, 600_000), sparkServiceToken: String(env.SPARK_SERVICE_TOKEN || ''),
+    piperUrl: String(env.PIPER_SERVICE_URL || '').replace(/\/+$/, ''), piperServiceToken: String(env.PIPER_SERVICE_TOKEN || ''),
     alignUrl: String(env.ALIGNMENT_SERVICE_URL || 'http://localhost:8002').replace(/\/+$/, ''), alignTimeout: integer(env.ALIGNMENT_SERVICE_TIMEOUT_MS, 60_000, 1, 600_000), alignServiceToken: String(env.ALIGNMENT_SERVICE_TOKEN || ''),
     ltxUrl: String(env.LTX_VIDEO_URL || 'http://localhost:8000').replace(/\/+$/, ''), videoProvider: VIDEO_PROVIDERS.includes(env.VIDEO_PROVIDER) ? env.VIDEO_PROVIDER : 'ltx',
     videoReconcileIntervalMs: integer(env.VIDEO_RECONCILE_INTERVAL_MS, 30_000, 1_000, 600_000),

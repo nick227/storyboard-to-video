@@ -53,12 +53,13 @@ image = (
 )
 
 app = modal.App("voice-service", image=image)
+voices_volume = modal.Volume.from_name("voice-service-voices", create_if_missing=True)
 
 
 @app.function(
     gpu="A10G",  # cheap starting point for a 0.5B-parameter model; revisit before a real deploy
     secrets=[modal.Secret.from_name("voice-service-secrets")],
-    volumes={"/root/voices": modal.Volume.from_name("voice-service-voices", create_if_missing=True)},
+    volumes={"/root/voices": voices_volume},
     timeout=600,
     min_containers=0,
 )
@@ -67,6 +68,7 @@ def fastapi_app():
     import sys
 
     sys.path.insert(0, "/root")
-    from main import app as web_app
+    from main import app as web_app, set_voices_volume_hooks
 
+    set_voices_volume_hooks(commit=voices_volume.commit, reload=voices_volume.reload)
     return web_app
