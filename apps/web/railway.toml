@@ -1,6 +1,7 @@
-# Lives inside apps/web/ deliberately: Railway resolves this file and its watchPatterns
-# relative to the service's configured Root Directory. That Root Directory (apps/web) is a
-# dashboard/project setting this file cannot set on its own -- see README's Deployment section.
+# Lives inside apps/web/ deliberately: Railway resolves this file relative to the
+# service's configured Root Directory (dashboard setting: apps/web). watchPatterns
+# resolve from the *repo* root regardless of Root Directory — keep them prefixed
+# with apps/web/ so unrelated monorepo changes do not rebuild this service.
 
 [build]
 builder = "dockerfile"
@@ -8,6 +9,10 @@ dockerfilePath = "Dockerfile"
 watchPatterns = ["apps/web/**"]
 
 [deploy]
+# Apply schema before traffic cuts over. prisma stays in dependencies so this
+# works after `npm prune --omit=dev` in the image.
+preDeployCommand = ["npm run prisma:migrate:deploy"]
+startCommand = "node server.js"
 # NOT /api/styles or any /api/* path -- those sit behind AuthService (src/app.js mounts
 # `authenticate` on ['/api', '/projects', '/style-references']), and Railway's health
 # checker can't attach a bearer token. "/" is served by express.static before the auth
@@ -15,3 +20,7 @@ watchPatterns = ["apps/web/**"]
 healthcheckPath = "/"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
+
+# Volumes cannot be declared in railway.toml (dashboard/CLI only). Attach one volume
+# to this service with mount path /app/data so projects, generated media, jobs, and
+# caches survive redeploys. Railway exposes RAILWAY_VOLUME_MOUNT_PATH=/app/data.

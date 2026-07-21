@@ -184,7 +184,10 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 
 ## Deployment Configuration
 
-- **`apps/web` (Railway)**: Dockerfile and `railway.toml` are configured. Set the **Root Directory** to `apps/web` in the Railway dashboard. After the voice-service is deployed to Modal, set `SPARK_TTS_URL` (and `SPARK_SERVICE_TOKEN`) as Railway env vars pointing at its `*.modal.run` URL — these default to `localhost` and won't work in production otherwise.
+- **`apps/web` (Railway)**: Dockerfile and `railway.toml` are configured. Set the **Root Directory** to `apps/web` in the Railway dashboard.
+  - **Postgres**: Provision a Railway Postgres plugin (or external DB) and set `DATABASE_URL`. Migrations run automatically via `preDeployCommand` (`npm run prisma:migrate:deploy`) before each deploy goes live.
+  - **Persistent media (required)**: Volumes are not configurable in `railway.toml`. In the Railway dashboard (or `railway volume add --mount-path /app/data`), attach **one** volume to the web service with mount path **`/app/data`**. That path is where the app stores projects, generated images/audio/video, jobs, and caches (`config.paths` under `data/`). Without it, every redeploy wipes user media. Railway sets `RAILWAY_VOLUME_MOUNT_PATH=/app/data` automatically when attached.
+  - **Voice services**: After the voice-service is deployed to Modal, set `SPARK_TTS_URL` (and `SPARK_SERVICE_TOKEN`) as Railway env vars pointing at its `*.modal.run` URL — these default to `localhost` and won't work in production otherwise. Piper will follow the same pattern once it is on Modal (not available inside the web container today).
 - **`apps/voice-service` (Modal)**: The image build is self-contained — it git-clones `spark_tts_src` from upstream (pinned commit) and downloads model weights from Hugging Face during the build itself, so it does **not** depend on `setup.sh` having been run locally. Deploys using `modal deploy apps/voice-service/modal_app.py`, or via the `Deploy voice-service to Modal` GitHub Actions workflow (`workflow_dispatch`).
   - One-time setup before the first deploy:
     ```bash
