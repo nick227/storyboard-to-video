@@ -45,6 +45,7 @@ function pageGuard(auth) {
   const GUARDED_APP_PATHS = new Set(['/studio', '/studio.html']);
   const ADMIN_PATHS = new Set(['/admin', '/admin.html']);
   const CUSTOMER_PATHS = new Set(['/credits', '/credits.html']);
+  const TOOL_PATHS = new Set(['/text-to-speech', '/text-to-speech.html']);
   const LOGIN_PATH = '/login.html';
   const safeRedirectTarget = (value) => (typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') ? value : '/');
 
@@ -53,8 +54,9 @@ function pageGuard(auth) {
     const isAppPage = GUARDED_APP_PATHS.has(req.path);
     const isAdminPage = ADMIN_PATHS.has(req.path);
     const isCustomerPage = CUSTOMER_PATHS.has(req.path);
+    const isToolPage = TOOL_PATHS.has(req.path);
     const isLoginPage = req.path === LOGIN_PATH;
-    if (!isAppPage && !isLoginPage && !isAdminPage && !isCustomerPage) return next();
+    if (!isAppPage && !isLoginPage && !isAdminPage && !isCustomerPage && !isToolPage) return next();
 
     let identity = null;
     try { identity = await auth.resolve(req); } catch { identity = null; }
@@ -73,6 +75,11 @@ function pageGuard(auth) {
     if (isCustomerPage) {
       if (!identity) return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || '/credits.html')}`);
       if (req.path === '/credits.html') return res.redirect('/credits');
+      return next();
+    }
+    if (isToolPage) {
+      if (!identity) return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || '/text-to-speech.html')}`);
+      if (req.path === '/text-to-speech.html') return res.redirect('/text-to-speech');
       return next();
     }
     if (identity) {

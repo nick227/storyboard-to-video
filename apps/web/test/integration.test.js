@@ -45,6 +45,19 @@ test('credit purchase pages require login and Stripe webhooks bypass user auth',
   await request(app).post('/api/webhooks/stripe').set('Content-Type', 'application/json').send('{"id":"evt_test"}').expect(503).expect((response) => assert.equal(response.body.error.code, 'PAYMENTS_UNAVAILABLE'));
 });
 
+test('text-to-speech page requires login and the speech endpoint generates a downloadable clip with no project', async () => {
+  await request(app).get('/text-to-speech').expect(302).expect('Location', /login\.html/);
+  await request(app).get('/text-to-speech.html').set(auth('bob-token')).expect(302).expect('Location', '/text-to-speech');
+  await request(app).get('/text-to-speech').set(auth('bob-token')).expect(200).expect(/Text to speech/).expect(/<storyframe-topbar>/);
+
+  await request(app).post('/api/audio/speech').send({ text: 'Hello there' }).expect(401);
+
+  const response = await request(app).post('/api/audio/speech').set(auth('bob-token')).send({ text: 'Hello there', provider: 'stub' }).expect(200);
+  assert.equal(response.headers['content-type'], 'audio/wav');
+  assert.match(response.headers['content-disposition'], /attachment; filename="speech-\d+\.wav"/);
+  assert.ok(response.body.length > 0);
+});
+
 test('concurrent project saves reject stale revisions', async (t) => {
   const projectId = id('revision'); t.after(() => cleanupProject(projectId));
   const created = await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Revision' }).expect(201);

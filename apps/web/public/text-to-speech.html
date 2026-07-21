@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Storyframe Text to Speech</title>
+  <link rel="icon" type="image/png" href="/images/favicon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/text-to-speech.css" />
+  <link rel="stylesheet" href="/topbar.css" />
+  <script src="/modules/topbar.js"></script>
+</head>
+<body>
+  <storyframe-topbar></storyframe-topbar>
+  <main class="tts-shell">
+    <header class="tts-heading">
+      <div class="eyebrow">Voice tools</div>
+      <h1>Text to speech</h1>
+      <p>Enter text, pick a voice, and download the generated audio. No project required.</p>
+    </header>
+
+    <form id="ttsForm" class="tts-form">
+      <label>
+        <span>Text</span>
+        <textarea id="ttsText" rows="8" maxlength="6000" placeholder="Type or paste what you want spoken..." required></textarea>
+      </label>
+
+      <div class="tts-fields">
+        <label>
+          <span>Voice provider</span>
+          <select id="ttsProvider">
+            <option value="stub">Local voice (TTS)</option>
+            <option value="piper">Piper</option>
+            <option value="spark">Voice cloning</option>
+            <option value="elevenlabs">ElevenLabs</option>
+          </select>
+        </label>
+        <label id="ttsVoiceField" class="tts-voice-field" hidden>
+          <span>Voice</span>
+          <select id="ttsVoice"></select>
+        </label>
+      </div>
+
+      <div class="tts-actions">
+        <button type="submit" id="ttsGenerateBtn" class="primary">Generate audio</button>
+        <span id="ttsStatus" class="tts-status" role="status"></span>
+      </div>
+    </form>
+
+    <section id="ttsResult" class="tts-result" hidden>
+      <h2>Result</h2>
+      <audio id="ttsPlayer" controls></audio>
+      <a id="ttsDownloadLink" class="tts-download" download>Download audio</a>
+    </section>
+  </main>
+  <script type="module" src="/modules/text-to-speech.js"></script>
+</body>
+</html>

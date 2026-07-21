@@ -15,6 +15,7 @@
             <nav class="sf-nav" aria-label="Primary navigation">
               <a class="sf-nav-link" href="/"${current('/')}>Home</a>
               <a class="sf-nav-link" href="/studio"${current('/studio')}>Studio</a>
+              <a class="sf-nav-link" href="/text-to-speech"${current('/text-to-speech')}>Text to Speech</a>
               <a class="sf-nav-link" href="/credits"${current('/credits')}>Credits</a>
               <a id="adminConsoleLink" class="sf-nav-link sf-admin-link" href="/admin"${current('/admin')} hidden>Admin</a>
             </nav>
