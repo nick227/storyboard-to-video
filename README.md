@@ -184,6 +184,13 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 
 ## Deployment Configuration
 
-- **`apps/web` (Railway)**: Dockerfile and `railway.toml` are configured. Set the **Root Directory** to `apps/web` in the Railway dashboard.
-- **`apps/voice-service` (Modal)**: Deploys using `modal deploy apps/voice-service/modal_app.py`. Set secrets on Modal: `SPARK_SERVICE_TOKEN`, `SPARK_TEMPERATURE`.
-- **CI**: GitHub actions run code checks and mock voice inference. Production deployment requires `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` secrets.
+- **`apps/web` (Railway)**: Dockerfile and `railway.toml` are configured. Set the **Root Directory** to `apps/web` in the Railway dashboard. After the voice-service is deployed to Modal, set `SPARK_TTS_URL` (and `SPARK_SERVICE_TOKEN`) as Railway env vars pointing at its `*.modal.run` URL — these default to `localhost` and won't work in production otherwise.
+- **`apps/voice-service` (Modal)**: The image build is self-contained — it git-clones `spark_tts_src` from upstream (pinned commit) and downloads model weights from Hugging Face during the build itself, so it does **not** depend on `setup.sh` having been run locally. Deploys using `modal deploy apps/voice-service/modal_app.py`, or via the `Deploy voice-service to Modal` GitHub Actions workflow (`workflow_dispatch`).
+  - One-time setup before the first deploy:
+    ```bash
+    modal secret create voice-service-secrets SPARK_SERVICE_TOKEN=... SPARK_TEMPERATURE=0.8 SPARK_TOP_K=50 SPARK_TOP_P=0.95
+    ```
+    (the `voice-service-voices` Volume is created automatically on first deploy via `create_if_missing=True`)
+  - CI deploy requires `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` repo secrets (not yet configured).
+- **`apps/alignment-service`**: no deployment target configured yet (no Dockerfile/Railway/Modal config).
+- **CI**: GitHub Actions run code checks and mock voice inference (`SPARK_SKIP_MODEL_LOAD=1`) — it does not exercise the real model or the Modal build.
