@@ -163,6 +163,12 @@ const audioGeneration = z.object({
   voice: narratorVoice,
 });
 
+const speechGeneration = z.object({
+  text: z.string().trim().min(1).max(6_000),
+  provider: z.enum(['elevenlabs', 'piper', 'spark', 'stub']).default('stub'),
+  voice: narratorVoice,
+});
+
 const regenerateDialogue = z.object({
   projectId,
   scene: z.record(z.any()),
@@ -174,4 +180,4 @@ const regenerateDialogue = z.object({
   bypassCache: z.boolean().default(false),
 });
 
-module.exports = { MAX_PROJECT_SCENES, audioGeneration, createProject, exportProject, fallbackPolicy, imageGeneration, mediaSettings, planShots, projectDocument, projectId, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, subtitleGeneration, videoGeneration };
+module.exports = { MAX_PROJECT_SCENES, audioGeneration, createProject, exportProject, fallbackPolicy, imageGeneration, mediaSettings, planShots, projectDocument, projectId, regenerateAction, regenerateDialogue, regeneratePrompt, speechGeneration, splitScene, subtitleGeneration, videoGeneration };

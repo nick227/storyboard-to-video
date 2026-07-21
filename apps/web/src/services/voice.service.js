@@ -1,6 +1,7 @@
 const { signal, throwResponse } = require('../providers/http');
 const { AppError } = require('../errors');
 const { PIPER_VOICE_CATALOG } = require('../config/piper-voices');
+const { providerOutput } = require('../providers/result');
 
 function createVoiceService(config, getCancellation, audioProvider = {}, providerAdmission) {
   const spark = (name) => `${config.sparkUrl}${name}`;
@@ -58,6 +59,9 @@ function createVoiceService(config, getCancellation, audioProvider = {}, provide
         const response = await fetch(spark(`/voices/${encodeURIComponent(voiceId)}`), { method: 'DELETE', headers: authHeaders(), signal: signal(config.env.SPARK_PREFLIGHT_TIMEOUT_MS || 10_000, getCancellation) });
         if (!response.ok) throw new Error(`Voice deletion failed (${response.status})`);
       });
+    },
+    async speak({ provider, text, voice }) {
+      return providerOutput(await audioProvider.generate({ provider, narrationText: text, voice }));
     },
     reference(voiceId) {
       return admit('spark', async () => {
