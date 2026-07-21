@@ -20,8 +20,6 @@ ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
 sys.path.insert(0, str(ROOT / "spark_tts_src"))
 
-from cli.SparkTTS import SparkTTS  # noqa: E402
-
 MODEL_DIR = ROOT / "pretrained_models" / "Spark-TTS-0.5B"
 VOICES_DIR = ROOT / "voices"
 VOICES_DIR.mkdir(parents=True, exist_ok=True)
@@ -30,6 +28,10 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def load_model():
+    # Import here so CI with SPARK_SKIP_MODEL_LOAD=1 can import this module without
+    # a local spark_tts_src checkout (Modal image build still clones it into the image).
+    from cli.SparkTTS import SparkTTS
+
     print(f"Loading Spark-TTS model onto {device} ...", flush=True)
     loaded = SparkTTS(MODEL_DIR, device=device)
     print("Spark-TTS model loaded and ready.", flush=True)

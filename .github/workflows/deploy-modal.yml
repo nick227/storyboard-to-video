@@ -1,7 +1,9 @@
 name: Deploy Modal TTS services
 
-# Manual only until secrets + Railway wiring are ready. Deploys Spark voice cloning
-# and Piper neural TTS. Requires MODAL_TOKEN_ID / MODAL_TOKEN_SECRET repo secrets.
+# Manual deploy only. Automatic deploys run from ci.yml (deploy-voice / deploy-piper)
+# after the matching TTS job passes on main — not after the full CI workflow, because
+# unrelated web test failures must not block Modal updates.
+# Requires repo secrets: MODAL_TOKEN_ID, MODAL_TOKEN_SECRET.
 on:
   workflow_dispatch:
 

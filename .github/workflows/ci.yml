@@ -49,3 +49,38 @@ jobs:
         working-directory: apps/piper-service
       - run: pytest test_main.py -v
         working-directory: apps/piper-service
+
+  # Modal deploys gate on their own TTS job only (not web). Requires MODAL_* secrets.
+  deploy-voice:
+    needs: voice-service
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install modal
+      - name: Deploy voice-service to Modal
+        working-directory: apps/voice-service
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: modal deploy modal_app.py
+
+  deploy-piper:
+    needs: piper-service
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install modal
+      - name: Deploy piper-service to Modal
+        working-directory: apps/piper-service
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: modal deploy modal_app.py
