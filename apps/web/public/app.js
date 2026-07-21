@@ -78,12 +78,7 @@ const els = {
   downloadConfirmRunBtn: document.getElementById('downloadConfirmRunBtn'),
   downloadConfirmWarning: document.getElementById('downloadConfirmWarning'),
   downloadConfirmBullets: document.getElementById('downloadConfirmBullets'),
-  authLoggedIn: document.getElementById('authLoggedIn'),
-  adminConsoleLink: document.getElementById('adminConsoleLink'),
-  authUserAvatar: document.getElementById('authUserAvatar'),
-  authUserLabel: document.getElementById('authUserLabel'),
-  logoutBtn: document.getElementById('logoutBtn'),
-  
+
   // Stage bar
   stagePlanningBtn: document.getElementById('stagePlanningBtn'),
   stagePlanningStatus: document.getElementById('stagePlanningStatus'),
@@ -1279,7 +1274,7 @@ async function init() {
   initImageLibraryModal(els, setStatus);
   attachEvents();
 
-  const session = await initializeAuth(els);
+  const session = await initializeAuth();
   if (!session) {
     setStatus('Log in to open your storyboards.');
     return;

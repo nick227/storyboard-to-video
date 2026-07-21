@@ -26,7 +26,7 @@ test('public home introduces the product while the studio remains authenticated'
   await request(app).get('/').expect(200).expect(/Turn a script into a narrated video sequence/).expect(/<storyframe-topbar>/);
   await request(app).get('/studio').expect(302).expect('Location', /login\.html\?redirect=%2Fstudio/);
   await request(app).get('/studio.html').set(auth('bob-token')).expect(302).expect('Location', '/studio');
-  await request(app).get('/studio').set(auth('bob-token')).expect(200).expect(/id="storyboardTitle"/).expect(/<storyframe-topbar auth-mode="external">/);
+  await request(app).get('/studio').set(auth('bob-token')).expect(200).expect(/id="storyboardTitle"/).expect(/<storyframe-topbar>/);
 });
 
 test('admin console and API require a platform administrator', async () => {

@@ -19,7 +19,7 @@
               <a class="sf-nav-link" href="/credits"${current('/credits')}>Credits</a>
               <a id="adminConsoleLink" class="sf-nav-link sf-admin-link" href="/admin"${current('/admin')} hidden>Admin</a>
             </nav>
-            <div id="authLoggedOut" class="sf-account"${this.getAttribute('auth-mode') === 'external' ? ' hidden' : ''}>
+            <div id="authLoggedOut" class="sf-account" hidden>
               <a class="sf-auth-link" href="/login.html?redirect=%2Fstudio">Sign in</a>
               <a class="sf-auth-link primary" href="/login.html?mode=register&amp;redirect=%2Fstudio">Create account</a>
             </div>
@@ -32,16 +32,23 @@
             </div>
           </div>
         </header>`;
-      if (this.getAttribute('auth-mode') !== 'external') this.loadSession();
+      // Exposed so pages that need the session payload itself (not just the rendered topbar,
+      // e.g. studio needs session.tenant.id) can await this instead of fetching /api/auth/session
+      // a second time and re-implementing this same render/logout logic.
+      this.sessionReady = this.loadSession();
     }
 
     async loadSession() {
       try {
         const response = await fetch('/api/auth/session');
         const data = await response.json();
-        if (!response.ok || !data.authenticated) return;
-        this.showSession(data.session);
-      } catch (_) {}
+        if (response.ok && data.authenticated) this.showSession(data.session);
+        else this.querySelector('#authLoggedOut').hidden = false;
+        return data;
+      } catch (_) {
+        this.querySelector('#authLoggedOut').hidden = false;
+        return { authenticated: false };
+      }
     }
 
     showSession(session) {
