@@ -1,7 +1,7 @@
 import { projectStore, sceneStore, generationStore, voiceStore, uiStore, batchStore } from './store.js';
 import { getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from './persistence.js';
 import { loadProtectedAsset } from './assets.js';
-import { adaptSceneImageShot, setActiveImageVersion } from './scene-shots.js';
+import { adaptSceneImageShot, imageShot, setActiveImageVersion } from './scene-shots.js';
 import { api } from './api.js';
 import { previewVoice, openVoiceLibraryModal } from './voices.js';
 import { computeStageStatus, getCachedJobs, getCachedSpend } from './stages.js';
@@ -340,7 +340,7 @@ export function renderStageBar(els) {
   els.newStoryboardBtn.disabled = busy;
   els.storyboardPickerToggle.disabled = busy;
   els.saveStateBtn.disabled = busy || els.saveStateBtn.textContent !== 'Retry save';
-  els.downloadZipBtn.disabled = busy || !sceneState.scenes.some((scene) => scene.versions.length);
+  els.downloadZipBtn.disabled = busy || !sceneState.scenes.some((scene) => imageShot(scene).versions.length);
   els.characterRefInput.disabled = busy;
   els.worldRefInput.disabled = busy;
   els.audioProvider.disabled = busy;
@@ -906,7 +906,7 @@ function selectSceneVersion(vIndex) {
 
 export function populateTokensInfoModal(els) {
   const spend = getCachedSpend() || {};
-  const { totalCostUSD = 0, totalTokens = 0, providers = {}, activePrices = [], estimatedPrices = [] } = spend;
+  const { totalCostUSD = 0, totalTokens = 0, providers = {}, activePrices = [], estimatedPrices = [], videoModels = [] } = spend;
 
   // 1. Render Active Project Spend Breakdown
   let spendHTML = '';
@@ -1052,6 +1052,24 @@ export function populateTokensInfoModal(els) {
       <td style="text-transform: capitalize;">${est.modality}</td>
       <td><code>${est.model}</code></td>
       <td>${est.rate}</td>
+    </tr>`;
+  }
+
+  // The usage cards above show video models that have actually run. Also list every supported
+  // video model here so Token Details remains useful before the first video generation and so a
+  // configured model without a rate card is visible instead of silently omitted.
+  const pricedModels = new Set([
+    ...activePrices.map((price) => `${price.provider}:${price.modality}:${price.model}`),
+    ...estimatedPrices.map((price) => `${price.provider}:${price.modality}:${price.model}`),
+  ]);
+  for (const video of videoModels) {
+    if (pricedModels.has(`${video.provider}:video:${video.model}`)) continue;
+    const modeLabels = (video.modes || []).map((mode) => mode.replaceAll('_', ' ')).join(', ');
+    pricingHTML += `<tr>
+      <td><strong>${video.provider}</strong></td>
+      <td style="text-transform: capitalize;">video</td>
+      <td><code>${video.model}</code>${video.isDefault ? ' <span style="color: var(--muted);">(default)</span>' : ''}</td>
+      <td>Rate not configured${modeLabels ? ` · ${modeLabels}` : ''}</td>
     </tr>`;
   }
 

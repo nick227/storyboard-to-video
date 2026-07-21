@@ -63,7 +63,15 @@ function createGenerationCacheService({ store }) {
     } : null;
     if (fingerprintInput && !bypassCache) {
       const cached = await lookup(fingerprintInput);
-      if (cached) return { ...cached.result, cacheHit: true };
+      if (cached) {
+        // Planned narration is cached as a string and sequence/shot plans are cached as arrays.
+        // Spreading either into an object destroys its type (and later turns a narration string
+        // into "[object Object]"). Only object-shaped API responses can carry this diagnostic flag.
+        if (cached.result && typeof cached.result === 'object' && !Array.isArray(cached.result)) {
+          return { ...cached.result, cacheHit: true };
+        }
+        return cached.result;
+      }
     }
     const result = await generateFn();
     if (fingerprintInput) {

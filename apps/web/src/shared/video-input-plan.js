@@ -54,7 +54,8 @@ function resolveVideoInputPlan({ provider, model, mode = 'image_to_video', input
   return { provider, model: capabilities.model, mode, capabilities, included, excluded, output: outputIntent(output) };
 }
 
-function snapshotVideoPlan(plan) {
+function snapshotVideoPlan(plan, { retainSourcePaths = false } = {}) {
+  if (retainSourcePaths) return structuredClone(plan);
   const stripRuntime = ({ sourcePath, ...input }) => input;
   return { ...plan, included: plan.included.map(stripRuntime), excluded: plan.excluded.map(stripRuntime) };
 }

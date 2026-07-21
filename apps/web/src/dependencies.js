@@ -14,6 +14,7 @@ const { GenerationCacheStore } = require('./storage/generation-cache-store');
 const { PrismaGenerationCacheRepository } = require('./storage/prisma-generation-cache.repository');
 const { createGenerationCacheService } = require('./services/generation-cache.service');
 const { GenerationQueue } = require('./services/generation-queue');
+const { ProviderAdmissionQueue } = require('./services/provider-admission-queue');
 const { createProviderUsageService } = require('./services/provider-usage.service');
 const { createBillingService } = require('./services/billing.service');
 const { createPaymentService } = require('./services/payment.service');
@@ -65,6 +66,7 @@ function createDependencies(config, overrides = {}) {
   const generationCache = createGenerationCacheService({ store: generationCacheStore });
   const generationContext = new AsyncLocalStorage();
   const cancellation = () => generationContext.getStore()?.signal || generationContext.getStore();
+  const providerAdmission = overrides.providerAdmission || new ProviderAdmissionQueue({ env: config.env });
   const usageRepository = overrides.usageRepository || (prisma ? new PrismaUsageRepository(prisma) : null);
   const billingRepository = overrides.billingRepository || (prisma ? new PrismaBillingRepository(prisma) : null);
   const adminRepository = overrides.adminRepository || (prisma ? new PrismaAdminRepository(prisma) : null);
@@ -74,18 +76,18 @@ function createDependencies(config, overrides = {}) {
     ? (config.payments?.stripeSecretKey ? new Stripe(config.payments.stripeSecretKey, { maxNetworkRetries: 2 }) : null)
     : overrides.stripe;
   const payments = overrides.payments || createPaymentService({
-    repository: paymentRepository, stripe, webhookSecret: config.payments?.stripeWebhookSecret, publicAppUrl: config.payments?.publicAppUrl,
+    repository: paymentRepository, stripe, webhookSecret: config.payments?.stripeWebhookSecret, publicAppUrl: config.payments?.publicAppUrl, providerAdmission,
   });
   const usageTracker = createProviderUsageService({ repository: usageRepository, generationContext, billing });
   const videoAttemptRepository = overrides.videoAttemptRepository || (prisma ? new PrismaVideoGenerationAttemptRepository(prisma) : new VideoGenerationAttemptStore(config.paths.videoAttempts));
 
   const styles = createStylesService(config);
-  const textProviders = createTextProviders(config, cancellation, usageTracker);
-  const imageProvider = createImageProviders(config, textProviders, cancellation, usageTracker);
-  const audioProvider = createAudioProviders(config, cancellation, usageTracker);
-  const alignmentProvider = createAlignmentProvider(config, cancellation);
-  const videoProviders = createVideoProviders(config, cancellation, usageTracker, overrides.videoProviderAdapters);
-  const videoExecution = createVideoExecutionService({ providers: videoProviders, attempts: videoAttemptRepository, usageTracker, assetTransport: overrides.videoAssetTransport || createLocalVideoAssetTransport(), attemptTimeoutMs: config.videoAttemptTimeoutMs });
+  const textProviders = createTextProviders(config, cancellation, usageTracker, providerAdmission);
+  const imageProvider = createImageProviders(config, textProviders, cancellation, usageTracker, providerAdmission);
+  const audioProvider = createAudioProviders(config, cancellation, usageTracker, providerAdmission);
+  const alignmentProvider = createAlignmentProvider(config, cancellation, providerAdmission);
+  const videoProviders = createVideoProviders(config, cancellation, usageTracker, overrides.videoProviderAdapters, providerAdmission);
+  const videoExecution = createVideoExecutionService({ providers: videoProviders, attempts: videoAttemptRepository, usageTracker, assetTransport: overrides.videoAssetTransport || createLocalVideoAssetTransport(), attemptTimeoutMs: config.videoAttemptTimeoutMs, providerAdmission });
   const prompts = createPromptGenerationService({ textProviders, styles, limits: config.limits, generationCache });
   const referenceGeneration = createReferenceGenerationService({ textProviders });
   const dialogue = createDialogueService({ textProviders, generationCache });
@@ -98,14 +100,14 @@ function createDependencies(config, overrides = {}) {
   const subtitles = createSubtitleGenerationService({ config, projectStore });
   const shotReferences = createShotReferenceService({ config, projectStore });
   const exports = createExportService({ config, projectStore });
-  const voices = createVoiceService(config, cancellation, audioProvider);
+  const voices = createVoiceService(config, cancellation, audioProvider, providerAdmission);
   const media = createMediaController({ images, audio, videos, subtitles, exports });
 
   const identityStore = overrides.identityStore || new PrismaIdentityRepository(prisma);
   const auth = new AuthService({ identityStore });
 
   return {
-    config, prisma, projectStore, queue, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, generationContext, identityStore,
+    config, prisma, projectStore, queue, providerAdmission, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, generationContext, identityStore,
     styles, prompts, referenceGeneration, dialogue, sceneSplit, shotPlanning, images, audio, videos, subtitles, shotReferences, exports, voices, imageProvider, mediaOutput,
     upload: createUpload(config),
     auth,

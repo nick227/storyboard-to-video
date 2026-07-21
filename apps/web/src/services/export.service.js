@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const archiver = require('archiver');
+const { MAX_PROJECT_SCENES } = require('../schemas');
 const { slugify } = require('../shared/text');
 const { imageShot } = require('../shared/scene-shots');
 
@@ -16,7 +17,7 @@ function createExportService({ config, projectStore }) {
   return {
     async generate(projectId, { ownerId, userId } = {}) {
       const project = await projectStore.read(projectId, { ownerId });
-      const scenes = Array.isArray(project.scenes) ? project.scenes.slice(0, 50) : [];
+      const scenes = Array.isArray(project.scenes) ? project.scenes.slice(0, MAX_PROJECT_SCENES) : [];
       fs.mkdirSync(config.paths.zips, { recursive: true });
       const file = `storyboard-images-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.zip`;
       const staged = path.join(config.paths.zips, file);

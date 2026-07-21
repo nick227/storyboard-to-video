@@ -12,6 +12,13 @@ const SCENE_ASSET_FIELDS = Object.freeze({
   subtitle: { list: 'subtitleVersions', activeIndex: 'activeSubtitleVersionIndex', visualType: null },
 });
 
+function wrappedText(value, preferredKey) {
+  if (typeof value === 'string') return value;
+  if (!value || typeof value !== 'object') return '';
+  return [value[preferredKey], value.text, value.value, value.content, value.output]
+    .find((item) => typeof item === 'string') || '';
+}
+
 class ProjectStore {
   constructor(root, options = {}) {
     this.root = path.resolve(root);
@@ -76,7 +83,7 @@ class ProjectStore {
     if (!fs.existsSync(file)) throw new AppError('PROJECT_NOT_FOUND', 'Project not found', { status: 404 });
     try {
       let document = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (!Number.isInteger(document.revision) || !document.tenantId || !document.incarnationId || this.hasLegacyContinuity(document) || this.hasLegacyAssets(document) || this.hasLegacyImageShots(document) || this.hasLegacyReferenceRoles(document)) {
+      if (!Number.isInteger(document.revision) || !document.tenantId || !document.incarnationId || this.hasLegacyContinuity(document) || this.hasLegacyAssets(document) || this.hasLegacyImageShots(document) || this.hasLegacyReferenceRoles(document) || this.hasMalformedSceneText(document)) {
         const revision = Number.isInteger(document.revision) ? document.revision + 1 : 1;
         document = this.normalize({ ...document, id, revision, tenantId: document.tenantId || document.ownerId || 'local-user', createdByUserId: document.createdByUserId || document.ownerId || 'local-user', incarnationId: document.incarnationId || crypto.randomUUID() });
         this.atomicJson(file, document);
@@ -124,6 +131,11 @@ class ProjectStore {
           .filter(Boolean)
           .join('\n\n');
       }
+      // Some older clients persisted provider-shaped wrappers rather than the contained string.
+      // Recover recognizable text, but never stringify an arbitrary object to "[object Object]".
+      if (typeof next.narrationText !== 'string') {
+        next.narrationText = wrappedText(next.narrationText, 'narrationText');
+      }
       delete next.lines;
       if (Array.isArray(next.referenceImages)) next.referenceImages = normalizeReferenceImages(next.referenceImages);
       return migrateSceneImageToImplicitShot(next);
@@ -148,6 +160,13 @@ class ProjectStore {
       const references = Array.isArray(scene.shots?.[0]?.referenceBindings) ? scene.shots[0].referenceBindings : scene.referenceImages;
       return references?.some((reference) => reference?.role !== normalizeReferenceRole(reference?.role));
     }));
+  }
+
+  hasMalformedSceneText(document) {
+    return Boolean(document.scenes?.some((scene) =>
+      (scene.narrationText != null && typeof scene.narrationText !== 'string')
+      || (scene.prompt != null && typeof scene.prompt !== 'string')
+      || (scene.shots?.[0]?.prompt != null && typeof scene.shots[0].prompt !== 'string')));
   }
 
   hasLegacyAssets(document) {

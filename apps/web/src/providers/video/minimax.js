@@ -11,6 +11,46 @@ function createMiniMaxAdapter(config, getCancellation) {
   const apiKey = env.MINIMAX_API_KEY || '';
   const defaultModel = env.MINIMAX_VIDEO_MODEL || 'MiniMax-Hailuo-02';
 
+  function positiveInteger(value, fallback) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  async function waitForRetry(delayMs) {
+    if (typeof config?.sleep === 'function') return config.sleep(delayMs);
+    const cancellation = getCancellation?.();
+    if (cancellation?.aborted) throw cancellation.reason || new DOMException('The operation was aborted', 'AbortError');
+    await new Promise((resolve, reject) => {
+      let onAbort;
+      const timer = setTimeout(() => {
+        if (onAbort) cancellation.removeEventListener('abort', onAbort);
+        resolve();
+      }, delayMs);
+      if (!cancellation) return;
+      onAbort = () => {
+        clearTimeout(timer);
+        reject(cancellation.reason || new DOMException('The operation was aborted', 'AbortError'));
+      };
+      cancellation.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
+  function internalApiError(body) {
+    const providerCode = Number(body?.base_resp?.status_code);
+    const providerMessage = body?.base_resp?.status_msg || 'Unknown error';
+    if (providerCode === 1002) {
+      return new AppError('MINIMAX_RATE_LIMITED', `MiniMax temporarily rate limited video submissions (${providerMessage}). Please retry shortly.`, {
+        status: 429,
+        retryable: true,
+        details: { providerCode },
+      });
+    }
+    return new AppError('MINIMAX_ERROR', `MiniMax API error (${providerCode}): ${providerMessage}`, {
+      status: 400,
+      retryable: false,
+    });
+  }
+
   function headers(includeJson = true) {
     if (!apiKey) {
       throw new AppError('AUTHENTICATION_REQUIRED', 'MINIMAX_API_KEY is not configured', { status: 401, retryable: false });
@@ -96,29 +136,42 @@ function createMiniMaxAdapter(config, getCancellation) {
     };
 
     const timeoutMs = config?.env?.VIDEO_PROVIDER_TIMEOUT_MS || 60_000;
-    const response = await fetchImpl(`${baseUrl}/v1/video_generation`, {
-      method: 'POST',
-      headers: headers(true),
-      body: JSON.stringify(payload),
-      signal: signal(timeoutMs, getCancellation),
-    });
-
-    const rawText = await response.text();
+    const maxAttempts = positiveInteger(env.MINIMAX_RATE_LIMIT_MAX_ATTEMPTS, 4);
+    const retryBaseMs = positiveInteger(env.MINIMAX_RATE_LIMIT_RETRY_MS, 5_000);
+    let response;
+    let rawText = '';
     let body = {};
-    try {
-      body = rawText ? JSON.parse(rawText) : {};
-    } catch (_) {}
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      response = await fetchImpl(`${baseUrl}/v1/video_generation`, {
+        method: 'POST',
+        headers: headers(true),
+        body: JSON.stringify(payload),
+        signal: signal(timeoutMs, getCancellation),
+      });
+
+      rawText = await response.text();
+      body = {};
+      try {
+        body = rawText ? JSON.parse(rawText) : {};
+      } catch (_) {}
+
+      const providerRateLimited = response.ok && Number(body?.base_resp?.status_code) === 1002;
+      if (attempt === maxAttempts || (response.status !== 429 && !providerRateLimited)) break;
+      const retryAfterSeconds = Number(response.headers?.get('retry-after'));
+      const delayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? retryAfterSeconds * 1_000
+        : retryBaseMs * (2 ** (attempt - 1));
+      await waitForRetry(delayMs);
+    }
 
     if (!response.ok) {
       const msg = body?.base_resp?.status_msg || body?.error || rawText || `HTTP ${response.status}`;
+      if (response.status === 429) throw internalApiError({ base_resp: { status_code: 1002, status_msg: msg } });
       throw providerError('minimax', response.status, msg, response.headers?.get('retry-after') || '');
     }
 
     if (body?.base_resp?.status_code !== undefined && body?.base_resp?.status_code !== 0) {
-      throw new AppError('MINIMAX_ERROR', `MiniMax API error (${body.base_resp.status_code}): ${body.base_resp.status_msg || 'Unknown error'}`, {
-        status: 400,
-        retryable: false,
-      });
+      throw internalApiError(body);
     }
 
     const taskId = body.task_id || body.id;
@@ -165,10 +218,7 @@ function createMiniMaxAdapter(config, getCancellation) {
 
     const rawStatus = String(body.status || body.task_status || '').toLowerCase();
     if (body?.base_resp?.status_code !== undefined && body?.base_resp?.status_code !== 0 && !['fail', 'failed', 'error'].includes(rawStatus)) {
-      throw new AppError('MINIMAX_ERROR', `MiniMax query error (${body.base_resp.status_code}): ${body.base_resp.status_msg || 'Unknown error'}`, {
-        status: 400,
-        retryable: false,
-      });
+      throw internalApiError(body);
     }
 
     const fileId = body.file_id || body.file?.file_id || body.output_file_id || null;
@@ -262,6 +312,10 @@ function createMiniMaxAdapter(config, getCancellation) {
   return {
     name: 'minimax',
     model: defaultModel,
+    // MiniMax work is intentionally admitted through the durable attempt FIFO one full provider
+    // lifecycle at a time. Serializing only submit() calls is insufficient: submit returns a task
+    // id immediately while the paid remote render continues running.
+    serializesLifecycle: true,
     verify,
     prepareAssets,
     submit,

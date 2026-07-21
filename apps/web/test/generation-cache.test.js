@@ -194,3 +194,27 @@ test('a cache hit writes its own audit row (servedFromEntryId) without creating 
     cleanup();
   }
 });
+
+test('cache hits preserve scalar and array result types', async () => {
+  const { generationCache, cleanup } = makeCache();
+  try {
+    const base = { tenantId: 'tenant-a', provider: 'openai', promptTemplateVersion: 1 };
+    let narrationCalls = 0;
+    const narration = { ...base, operation: 'narration.plan', source: 'long script' };
+    const generateNarration = async () => { narrationCalls += 1; return 'Full planned narration.'; };
+    assert.equal(await generationCache.runCached({ ...narration, generateFn: generateNarration }), 'Full planned narration.');
+    assert.equal(await generationCache.runCached({ ...narration, generateFn: generateNarration }), 'Full planned narration.');
+    assert.equal(narrationCalls, 1);
+
+    let shotCalls = 0;
+    const shotPlan = { ...base, operation: 'shot.plan', source: 'full narration' };
+    const generateShots = async () => { shotCalls += 1; return [{ narrationText: 'One.' }, { narrationText: 'Two.' }]; };
+    await generationCache.runCached({ ...shotPlan, generateFn: generateShots });
+    const cachedShots = await generationCache.runCached({ ...shotPlan, generateFn: generateShots });
+    assert.equal(Array.isArray(cachedShots), true);
+    assert.deepEqual(cachedShots, [{ narrationText: 'One.' }, { narrationText: 'Two.' }]);
+    assert.equal(shotCalls, 1);
+  } finally {
+    cleanup();
+  }
+});

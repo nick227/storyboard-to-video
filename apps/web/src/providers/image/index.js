@@ -12,7 +12,7 @@ function fileBlob(file) {
   return new Blob([fs.readFileSync(file)], { type: mimeType });
 }
 
-function createImageProviders(config, textProviders, getCancellation, usageTracker) {
+function createImageProviders(config, textProviders, getCancellation, usageTracker, providerAdmission) {
   async function openai(prompt, references = [], output) {
     if (!config.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY missing');
     const { size, quality } = output.resolved.providerSettings;
@@ -66,7 +66,10 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
       ? Promise.resolve(providerResult({ output: { buffer: stubImage(prompt, title, output.resolved), mimeType: 'image/svg+xml', extension: 'svg' }, provider: 'stub', model: models.stub, settings: { output, renderer: 'stub-svg-v1' }, usage: { images: 1, ...estimatedUsage(output) }, measurementStatus: 'not_applicable' }))
       : provider === 'openai' ? openai(prompt, references, output) : provider === 'dezgo' ? dezgo(prompt, references, output) : gemini(prompt, referenceBindings.length ? referenceBindings : references, output);
     const reservationUsage = { images: 1, ...estimatedUsage(output), ...(provider === 'dezgo' ? { steps: Number(config.env.DEZGO_STEPS || 25) } : {}) };
-    return usageTracker ? usageTracker.execute({ modality: 'image', provider, model: models[provider], estimatedUsage: reservationUsage, estimatedUsageComplete: provider !== 'stub', inputMetadata: { promptCharacters: String(prompt).length, referenceCount: references.length, output } }, operation) : operation();
+    const tracked = () => usageTracker ? usageTracker.execute({ modality: 'image', provider, model: models[provider], estimatedUsage: reservationUsage, estimatedUsageComplete: provider !== 'stub', inputMetadata: { promptCharacters: String(prompt).length, referenceCount: references.length, output } }, operation) : operation();
+    return provider !== 'stub' && providerAdmission
+      ? providerAdmission.run(provider, tracked, { signal: getCancellation?.() })
+      : tracked();
   }
   return { capabilities: IMAGE_PROVIDER_CAPABILITIES, generate, getCapabilities: imageProviderCapabilities };
 }

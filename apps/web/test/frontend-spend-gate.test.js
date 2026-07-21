@@ -126,6 +126,57 @@ test('Planning stage lands on however many shots plan-shots actually returns, wi
   }
 });
 
+test('explicitly selecting an up-to-date Planning row forces a complete replan', async () => {
+  installLocalStorageShim();
+  const originalFetch = global.fetch;
+  let planningCalls = 0;
+  const plannedScenes = [1, 2].map((number) => ({
+    id: `new-${number}`, sceneNumber: number, title: `Scene ${number}`,
+    scriptFragment: `Narration ${number}.`, narrationText: `Narration ${number}.`,
+    beat: `Action ${number}.`, prompt: `Prompt ${number}.`,
+  }));
+
+  global.fetch = async (url) => {
+    const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+    if (String(url).startsWith('/api/storyboard/plan-shots')) {
+      planningCalls += 1;
+      return json({ scenes: plannedScenes, narrationText: 'Narration 1. Narration 2.', usedFallback: false, warning: '' });
+    }
+    return json({ project: { revision: 2, scenes: [] }, jobs: [] });
+  };
+
+  try {
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+    const { runCreateStoryFlow } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+    const oldScene = {
+      id: 'bad-scene', title: 'Scene 1', scriptFragment: '[object Object]', narrationText: '[object Object]',
+      narrationIsFallback: true, beat: 'Fallback action.', prompt: 'Fallback prompt.',
+    };
+    const record = {
+      id: 'force-replan-project', title: 'Force Replan', revision: 1, scenes: [oldScene],
+      scriptText: 'A complete source script.', styleId: 'basic-cartoon', textProvider: 'openai',
+      commonPromptText: '', enrich: false,
+      lastPromptInputs: { scriptText: 'A complete source script.', styleId: 'basic-cartoon', textProvider: 'openai', commonPromptText: '', enrich: false, maxShots: null },
+    };
+    projectStore.set({ currentId: record.id, storyboards: [record] });
+    sceneStore.set({ scenes: [oldScene] });
+    uiStore.set({ operation: null });
+    const els = {
+      scriptText: { value: record.scriptText }, styleSelect: { value: record.styleId },
+      commonPromptText: { value: '' }, textProvider: { value: 'openai' }, imageProvider: { value: 'stub' },
+      fallbackPolicy: { value: 'local' }, enrichNarration: { checked: false }, settingsShotLimitSelect: { value: '' },
+    };
+
+    const result = await runCreateStoryFlow('custom', els, () => {}, { stages: ['planning'], forceStages: ['planning'] });
+    assert.equal(result.stoppedAt, null);
+    assert.equal(planningCalls, 1, 'explicit Planning selection must call plan-shots even when status looked up to date');
+    assert.equal(sceneStore.get().scenes.length, 2);
+  } finally {
+    global.fetch = originalFetch;
+    delete global.localStorage;
+  }
+});
+
 test('replanStory reuses plan-shots and requests no target count -- the fresh plan\'s own shot count is authoritative', async () => {
   installLocalStorageShim();
   const calledUrls = [];

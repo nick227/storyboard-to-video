@@ -7,6 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { imageShot } = require('../shared/scene-shots');
 const { mergeMediaIntent, resolveImageOutput } = require('../shared/media-output-policy');
+const { VIDEO_PROVIDER_CAPABILITIES } = require('../shared/video-provider-capabilities');
 
 function createProjectRouter({ store, queue, upload, shotReferences, styles, prompts, referenceGeneration, imageProvider, identityStore, prisma, config }) {
   const router = express.Router();
@@ -222,11 +223,19 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
   router.get('/:projectId', asyncRoute(async (req, res) => res.json({ ok: true, project: await store.read(req.params.projectId, { ownerId: req.auth.tenantId }) })));
   router.get('/:projectId/tokens', asyncRoute(async (req, res) => {
     const { projectId } = req.params;
+    const videoModels = Object.entries(VIDEO_PROVIDER_CAPABILITIES).flatMap(([provider, capabilities]) =>
+      Object.entries(capabilities.models).map(([model, modelCapabilities]) => ({
+        provider,
+        model,
+        isDefault: model === capabilities.defaultModel,
+        modes: Object.keys(modelCapabilities.modes).filter((mode) => modelCapabilities.modes[mode]?.implemented),
+      }))
+    );
     // Verify tenancy
     await store.read(projectId, { ownerId: req.auth.tenantId });
     
     if (!prisma) {
-      return res.json({ ok: true, totalCostUSD: 0, totalTokens: 0, providers: {}, activePrices: [], estimatedPrices: [] });
+      return res.json({ ok: true, totalCostUSD: 0, totalTokens: 0, providers: {}, activePrices: [], estimatedPrices: [], videoModels });
     }
 
     const [events, activePrices] = await Promise.all([
@@ -449,6 +458,7 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
       providers,
       activePrices: localJsonSafe(activePrices),
       estimatedPrices,
+      videoModels,
     });
   }));
   router.put('/:projectId', validate(projectDocument), asyncRoute(async (req, res) => {

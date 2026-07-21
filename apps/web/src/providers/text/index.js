@@ -21,7 +21,7 @@ function geminiParts(prompt, references) {
   }
   return parts;
 }
-function createTextProviders(config, getCancellation, usageTracker) {
+function createTextProviders(config, getCancellation, usageTracker, providerAdmission) {
   async function openai(prompt) {
     if (!config.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY missing');
     const model = config.env.OPENAI_TEXT_MODEL || 'gpt-4.1-mini';
@@ -43,7 +43,10 @@ function createTextProviders(config, getCancellation, usageTracker) {
     const operation = () => provider === 'stub'
       ? Promise.resolve(providerResult({ output: '', provider: 'stub', model, usage: { inputCharacters: String(prompt).length }, measurementStatus: 'not_applicable' }))
       : provider === 'openai' ? openai(prompt) : gemini(prompt, references);
-    return usageTracker ? usageTracker.execute({ modality: 'text', provider, model, inputMetadata: { promptCharacters: String(prompt).length, referenceCount: references.length } }, operation) : operation();
+    const tracked = () => usageTracker ? usageTracker.execute({ modality: 'text', provider, model, inputMetadata: { promptCharacters: String(prompt).length, referenceCount: references.length } }, operation) : operation();
+    return provider !== 'stub' && providerAdmission
+      ? providerAdmission.run(provider, tracked, { signal: getCancellation?.() })
+      : tracked();
   }
   return { call, geminiParts };
 }

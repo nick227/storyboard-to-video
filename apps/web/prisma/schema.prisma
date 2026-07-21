@@ -157,6 +157,7 @@ model VideoGenerationAttempt {
   generationMode        String         @map("generation_mode")
   requestSnapshot       Json           @map("request_snapshot")
   providerTaskId        String?        @map("provider_task_id")
+  providerSubmittedAt   DateTime?      @map("provider_submitted_at") @db.Timestamptz(3)
   lifecycleState        String         @map("lifecycle_state")
   pollAfter             DateTime?      @map("poll_after") @db.Timestamptz(3)
   retryCount            Int            @default(0) @map("retry_count")

@@ -43,6 +43,18 @@ export const generationStore = new Store({
   styleReferencesStyleId: null
 });
 
+// Project usage is server-authored, but keeping the latest snapshot in a Store makes spend as
+// reactive as scene and batch progress. Generation workflows explicitly refresh this snapshot
+// after each entity settles; renderers never issue network requests themselves.
+export const spendStore = new Store({
+  totalCostUSD: 0,
+  totalTokens: 0,
+  providers: {},
+  activePrices: [],
+  estimatedPrices: [],
+  videoModels: [],
+});
+
 export const voiceStore = new Store({
   audioProvider: 'stub',
   narratorVoice: { elevenlabs: null, piper: null, spark: null, stub: null },

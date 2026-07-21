@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const RECOVERABLE_STATES = Object.freeze(['submitted', 'provider_running', 'downloading', 'validating']);
+const RECOVERABLE_STATES = Object.freeze(['queued', 'submitted', 'provider_running', 'downloading', 'validating']);
 
 function clone(value) { return structuredClone(value); }
 
@@ -32,7 +32,7 @@ class VideoGenerationAttemptStore {
         const attempt = JSON.parse(fs.readFileSync(path.join(this.root, name), 'utf8'));
         return RECOVERABLE_STATES.includes(attempt.lifecycleState) && (!attempt.pollAfter || new Date(attempt.pollAfter) <= now) ? [attempt] : [];
       } catch (_) { return []; }
-    });
+    }).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt) || a.id.localeCompare(b.id));
   }
 }
 

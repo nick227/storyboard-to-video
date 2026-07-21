@@ -66,6 +66,29 @@ test('legacy scene image fields migrate intact to the implicit shot and persist 
   }
 });
 
+test('wrapped prompt and narration values migrate to text instead of object Object', () => {
+  const f = fixture();
+  try {
+    const created = f.store.create({
+      id: 'wrapped-text',
+      project: { scenes: [{ id: 'scene-1', narrationText: 'Initial narration', shots: [{ prompt: 'Initial prompt' }] }] },
+    });
+    const raw = JSON.parse(JSON.stringify(created));
+    raw.scenes[0].narrationText = { narrationText: 'Recovered narration' };
+    raw.scenes[0].shots[0].prompt = { prompt: { text: 'Recovered prompt' } };
+    fs.writeFileSync(f.store.documentPath('wrapped-text'), JSON.stringify(raw));
+
+    const loaded = f.store.read('wrapped-text');
+    assert.equal(loaded.scenes[0].narrationText, 'Recovered narration');
+    assert.equal(loaded.scenes[0].prompt, 'Recovered prompt');
+    const persisted = persistedProject(f.store, 'wrapped-text');
+    assert.equal(persisted.scenes[0].narrationText, 'Recovered narration');
+    assert.equal(persisted.scenes[0].shots[0].prompt, 'Recovered prompt');
+  } finally {
+    f.cleanup();
+  }
+});
+
 test('new writes and regenerated image versions use shots[0] as the sole persisted owner', () => {
   const f = fixture();
   try {

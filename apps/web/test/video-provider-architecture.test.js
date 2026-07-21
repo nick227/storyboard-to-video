@@ -7,6 +7,7 @@ const path = require('node:path');
 const { createVideoProviders } = require('../src/providers/video');
 const { createLocalVideoAssetTransport } = require('../src/providers/video/asset-transport');
 const { createVideoExecutionService } = require('../src/services/video-execution.service');
+const { ProviderAdmissionQueue } = require('../src/services/provider-admission-queue');
 const { VideoGenerationAttemptStore } = require('../src/storage/video-generation-attempt-store');
 const { resolveVideoInputPlan } = require('../src/shared/video-input-plan');
 const { videoProviderCapabilities } = require('../src/shared/video-provider-capabilities');
@@ -113,6 +114,57 @@ test('a reconstructed execution service reconciles a submitted provider task wit
     assert.equal(outcome.pending, false);
     assert.equal(outcome.result.output.outputPath, '/recovered.mp4');
     assert.equal(outcome.attempt.downloadState, 'downloaded');
+  } finally { f.cleanup(); }
+});
+
+test('a lifecycle-serialized provider admits durable queued attempts one at a time in global FIFO order', async () => {
+  const f = fixture();
+  try {
+    const sourcePath = path.join(f.root, 'source.png');
+    fs.writeFileSync(sourcePath, 'image');
+    const events = [];
+    const serializedAdapter = {
+      name: 'stub', model: 'stub-video-v1',
+      async verify() { return { ok: true }; },
+      async prepareAssets(request) {
+        assert.equal(request.inputPlan.included[0].sourcePath, sourcePath, 'queued recovery retains the source path needed after restart');
+        return request;
+      },
+      async submit(request) {
+        events.push(`submit:${request.prompt}`);
+        return { state: 'submitted', providerTaskId: `remote-${request.prompt}`, pollAfter: new Date(Date.now() - 1).toISOString(), requestSnapshot: request };
+      },
+      async inspect(task) {
+        events.push(`inspect:${task.requestSnapshot.prompt}`);
+        return { ...task, state: 'completed', response: providerResult({ output: { outputPath: task.requestSnapshot.outputPath }, provider: 'stub', model: 'stub-video-v1', usage: { videos: 1 }, measurementStatus: 'not_applicable' }) };
+      },
+      async cancel(task) { return { ...task, state: 'cancelled' }; },
+      async fetchResult(task) { return task.response; },
+      normalizeUsage(value) { return value; },
+    };
+    const providerAdmission = new ProviderAdmissionQueue({ defaultMinIntervalMs: 0, policies: { stub: { lifecycle: 'serial' } } });
+    const providers = createVideoProviders(f.config, () => null, null, { stub: serializedAdapter }, providerAdmission);
+    const execution = createVideoExecutionService({ providers, attempts: f.attempts, assetTransport: createLocalVideoAssetTransport(), providerAdmission });
+    const inputPlan = resolveVideoInputPlan({ provider: 'stub', mode: 'image_to_video', inputs: [{ role: 'start_frame', assetPath: '/start.png', sourcePath, sha256: 'a'.repeat(64) }] });
+
+    const first = await execution.create({ provider: 'stub', generationMode: 'image_to_video', prompt: 'first', inputPlan, outputPath: path.join(f.root, 'first.mp4') });
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    const second = await execution.create({ provider: 'stub', generationMode: 'image_to_video', prompt: 'second', inputPlan, outputPath: path.join(f.root, 'second.mp4') });
+    assert.equal(first.attempt.lifecycleState, 'queued');
+    assert.equal(second.attempt.lifecycleState, 'queued');
+    assert.deepEqual(events, [], 'HTTP admission does not submit either remote task directly');
+    const reconcile = () => execution.reconcile(({ attempt }) => execution.markCommitted(attempt.id));
+
+    await reconcile();
+    assert.deepEqual(events, ['submit:first'], 'the first pass admits only the oldest queued attempt');
+    assert.equal(f.attempts.get(second.attempt.id).lifecycleState, 'queued');
+
+    await reconcile();
+    assert.deepEqual(events, ['submit:first', 'inspect:first'], 'the next attempt stays queued during the pass that completes the active task');
+
+    await reconcile();
+    assert.deepEqual(events, ['submit:first', 'inspect:first', 'submit:second'], 'the second task starts only after a pass observes no active task');
+    assert.ok(f.attempts.get(second.attempt.id).providerSubmittedAt);
   } finally { f.cleanup(); }
 });
 

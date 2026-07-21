@@ -1,4 +1,4 @@
-import { projectStore, sceneStore, voiceStore, uiStore, batchStore } from './modules/store.js';
+import { projectStore, sceneStore, voiceStore, uiStore, batchStore, spendStore } from './modules/store.js';
 import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope } from './modules/persistence.js';
 import { initRendering, renderScenes } from './modules/rendering.js';
 import { initTimeline } from './modules/timeline.js';
@@ -398,7 +398,7 @@ let downloadConfirmResolve = null;
 
 export function getZipSummary() {
   const allScenes = sceneStore.get().scenes || [];
-  const exportScenes = allScenes.slice(0, 50);
+  const exportScenes = allScenes.slice(0, 200);
   
   let imageCount = 0;
   let videoCount = 0;
@@ -450,8 +450,8 @@ export function renderDownloadConfirmModal() {
     els.downloadConfirmBullets.appendChild(li);
   });
   
-  if (summary.totalScenes > 50) {
-    els.downloadConfirmWarning.textContent = `Warning: Your storyboard has ${summary.totalScenes} scenes. The export tool packages only the first 50 scenes.`;
+  if (summary.totalScenes > 200) {
+    els.downloadConfirmWarning.textContent = `Warning: Your storyboard has ${summary.totalScenes} scenes. The export tool packages only the first 200 scenes.`;
     els.downloadConfirmWarning.hidden = false;
   } else {
     els.downloadConfirmWarning.replaceChildren();
@@ -1249,6 +1249,11 @@ function attachEvents() {
   sceneStore.subscribe(() => renderStageBar(els));
   uiStore.subscribe(() => renderStageBar(els));
   batchStore.subscribe(() => renderStageBar(els));
+  spendStore.subscribe(() => {
+    renderStageBar(els);
+    // Keep an already-open details modal live too; opening it is not required to trigger a fetch.
+    if (els.tokensInfoModal?.open) populateTokensInfoModal(els);
+  });
 }
 
 async function init() {

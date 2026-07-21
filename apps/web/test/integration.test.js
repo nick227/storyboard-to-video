@@ -290,9 +290,47 @@ test('GET /api/projects/:projectId/tokens retrieves and aggregates project token
   assert.equal(populatedRes.body.providers.openai.outputTokens, 500);
   assert.ok(Array.isArray(populatedRes.body.activePrices));
   assert.ok(Array.isArray(populatedRes.body.estimatedPrices));
+  assert.ok(Array.isArray(populatedRes.body.videoModels));
+  assert.ok(populatedRes.body.videoModels.some((entry) => entry.provider === 'ltx' && entry.model === 'ltx-video'));
+  assert.ok(populatedRes.body.videoModels.some((entry) => entry.provider === 'minimax' && entry.model === 'MiniMax-Hailuo-02'));
   assert.ok(populatedRes.body.providers.openai.modalities);
   assert.ok(populatedRes.body.providers.openai.modalities.text);
   assert.equal(populatedRes.body.providers.openai.modalities.text.costUSD, 0.05);
   assert.equal(populatedRes.body.providers.openai.modalities.text.tokens, 1500);
   assert.ok(populatedRes.body.providers.openai.modalities.text.models['gpt-4o']);
+
+  // Video usage is generation-based rather than token-based, but it must still appear in the same
+  // project-spend breakdown with its provider and model.
+  const videoRequestId = crypto.randomUUID();
+  await prisma.generationRequest.create({
+    data: {
+      id: videoRequestId,
+      tenantId,
+      projectId,
+      sequence: 2,
+      modality: 'video',
+      provider: 'ltx',
+      model: 'ltx-video',
+      status: 'completed',
+    }
+  });
+  await prisma.usageEvent.create({
+    data: {
+      id: crypto.randomUUID(),
+      generationRequestId: videoRequestId,
+      tenantId,
+      projectId,
+      modality: 'video',
+      provider: 'ltx',
+      model: 'ltx-video',
+      usage: { videos: 1, frames: 121, seconds: 5 },
+      measurementStatus: 'observed',
+    }
+  });
+
+  const videoRes = await request(app).get(`/api/projects/${projectId}/tokens`).set(auth()).expect(200);
+  assert.equal(videoRes.body.totalCostUSD, 0.065);
+  assert.equal(videoRes.body.providers.ltx.modalities.video.count, 1);
+  assert.equal(videoRes.body.providers.ltx.modalities.video.models['ltx-video'].count, 1);
+  assert.equal(videoRes.body.providers.ltx.modalities.video.models['ltx-video'].extra.frames, 121);
 });

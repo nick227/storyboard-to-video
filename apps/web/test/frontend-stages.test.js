@@ -313,7 +313,7 @@ test('buildRunRowStatus: images/audio/video are scoped to the selected range, bu
   assert.deepEqual(rowStatus.planning.ranged, rowStatus.planning.full, 'planning has no range-scoped mode');
 });
 
-test('computeForceStages: only flags a stage the user checked despite it having no actionable work in range — never planning, never an auto-selected stage', async () => {
+test('computeForceStages: flags explicitly checked up-to-date stages, including Planning', async () => {
   const { computeForceStages } = await stagesPromise;
   const rowStatus = {
     // images: nothing to do in range (already complete there) but the user checked it anyway.
@@ -323,12 +323,12 @@ test('computeForceStages: only flags a stage the user checked despite it having 
     audio: { ranged: { total: 2, missing: 1, stale: 0, failed: 0 } },
     // video: has no work in range AND is unchecked — force is irrelevant, must not appear.
     video: { ranged: { total: 2, missing: 0, stale: 0, failed: 0 } },
-    // planning: no work in range but checked — must still never be force-scoped (no such mode).
+    // planning: no work in range but checked — this explicitly requests a complete replan.
     planning: { ranged: { total: 2, missing: 0, stale: 0, failed: 0, hasChanges: false } },
   };
   const selection = { planning: true, images: true, audio: true, video: false };
   const forced = computeForceStages(rowStatus, selection);
-  assert.deepEqual(forced.sort(), ['images']);
+  assert.deepEqual(forced.sort(), ['images', 'planning']);
 });
 
 test('suggestSceneCountFromNarration: deterministic for identical input', async () => {

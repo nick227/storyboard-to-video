@@ -1,5 +1,5 @@
 import { api, cancelActiveProjectJobs } from './api.js';
-import { sceneStore, uiStore, projectStore, batchStore, voiceStore, generationStore } from './store.js';
+import { sceneStore, uiStore, projectStore, batchStore, voiceStore, generationStore, spendStore } from './store.js';
 import { regeneratePrompt, planShots, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles } from './workflows.js';
 import { batchController } from './batch.js';
 import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
@@ -317,24 +317,26 @@ export function getCachedJobs() {
   return cachedJobs;
 }
 
-let cachedSpend = { totalCostUSD: 0, totalTokens: 0, providers: {} };
+const EMPTY_SPEND = Object.freeze({ totalCostUSD: 0, totalTokens: 0, providers: {}, activePrices: [], estimatedPrices: [], videoModels: [] });
 
 export async function refreshSpend(projectId) {
   if (!projectId) {
-    cachedSpend = { totalCostUSD: 0, totalTokens: 0, providers: {} };
-    return cachedSpend;
+    spendStore.set(EMPTY_SPEND);
+    return spendStore.get();
   }
   try {
     const data = await api(`/api/projects/${encodeURIComponent(projectId)}/tokens`);
-    cachedSpend = data || { totalCostUSD: 0, totalTokens: 0, providers: {} };
+    // Do not let a response for a project the user has since navigated away from overwrite the
+    // current project's indicator.
+    if (projectStore.get().currentId === projectId) spendStore.set(data || EMPTY_SPEND);
   } catch (_) {
-    cachedSpend = { totalCostUSD: 0, totalTokens: 0, providers: {} };
+    if (projectStore.get().currentId === projectId) spendStore.set(EMPTY_SPEND);
   }
-  return cachedSpend;
+  return spendStore.get();
 }
 
 export function getCachedSpend() {
-  return cachedSpend;
+  return spendStore.get();
 }
 
 // --- Planning ------------------------------------------------------------
@@ -460,7 +462,13 @@ function buildBatchFns(stage, els, setStatus, onlyMissingOrStale, range) {
     // right scene's data (attachment is keyed by sceneId, not this index) but incorrectly label it
     // "scene 1" everywhere the label is shown — looking exactly like the run had restarted from the
     // beginning even though it hadn't. `startIndex + index` restores the real position.
-    return config.regenerate(startIndex + index, scene, els, setStatus, true);
+    try {
+      return await config.regenerate(startIndex + index, scene, els, setStatus, true);
+    } finally {
+      // Failed provider calls can still have measured/reserved usage, so refresh on every settled
+      // attempt, not only successful media creation.
+      await refreshSpend(projectStore.get().currentId);
+    }
   };
   // batch.js reads `.length`, `scenes[i].id` (for the operation/spinner), and passes `scenes[i]`
   // positionally into generateFn — which ignores that value and re-resolves the live scene by id
@@ -594,7 +602,7 @@ export async function runCreateStoryFlow(preset, els, setStatus, { stages: custo
     // A brand-new project (no scenes at all yet) always needs the full sequence — computeStageStatus
     // reports `missing: 0` for an empty scene list (there's nothing to divide a ratio by), which is
     // NOT the same as "already planned."
-    if (planningStatus.missing > 0 || planningStatus.total === 0 || planningStatus.hasChanges) {
+    if (planningStatus.missing > 0 || planningStatus.total === 0 || planningStatus.hasChanges || forceStages.includes('planning')) {
       // No plan yet, or an incomplete one, or script/settings changed: run the full sequence
       // (narrate -> plan shots), same as a standalone Planning run. Never scoped by range —
       // planning has no safe partial-segmentation mode.
@@ -701,10 +709,10 @@ export function buildRunRowStatus(scenes, range, batchState, uiOperation, recent
 // Stages whose box is checked despite having no actionable work in the selected range — i.e. the
 // user explicitly overrode a default of "nothing to do here". There's nothing for the normal
 // skip-fresh run to skip *to* in that case, so these stages must process their entire range
-// unconditionally instead (see runCreateStoryFlow's `forceStages`). Planning is never included:
-// it has its own full-vs-stale-only branching and no "force a complete plan" mode.
+// unconditionally instead (see runCreateStoryFlow's `forceStages`). For Planning, explicitly
+// checking an otherwise-up-to-date row requests a complete replan.
 export function computeForceStages(rowStatus, selection) {
   return ALL_STAGES.filter((stage) => (
-    stage !== 'planning' && selection[stage] && !stageHasActionableWork(stage, rowStatus[stage].ranged)
+    selection[stage] && !stageHasActionableWork(stage, rowStatus[stage].ranged)
   ));
 }

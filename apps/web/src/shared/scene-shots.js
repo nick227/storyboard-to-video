@@ -3,13 +3,24 @@ const VIDEO_FIELDS = Object.freeze(['videoVersions', 'activeVideoVersionIndex'])
 const SHOT_FIELDS = Object.freeze([...IMAGE_FIELDS, ...VIDEO_FIELDS]);
 const { normalizeReferenceImages } = require('./reference-roles');
 
+function textValue(value, preferredKey) {
+  if (typeof value === 'string') return value;
+  if (!value || typeof value !== 'object') return '';
+  for (const key of [preferredKey, 'text', 'value', 'content', 'output']) {
+    if (!key || !Object.prototype.hasOwnProperty.call(value, key)) continue;
+    const nested = textValue(value[key], preferredKey);
+    if (nested) return nested;
+  }
+  return '';
+}
+
 function legacyShot(scene = {}) {
   const versions = Array.isArray(scene.versions) ? scene.versions : [];
   const requestedIndex = Number.isInteger(scene.activeVersionIndex) ? scene.activeVersionIndex : 0;
   const videoVersions = Array.isArray(scene.videoVersions) ? scene.videoVersions : [];
   const requestedVideoIndex = Number.isInteger(scene.activeVideoVersionIndex) ? scene.activeVideoVersionIndex : 0;
   return {
-    prompt: typeof scene.prompt === 'string' ? scene.prompt : '',
+    prompt: textValue(scene.prompt, 'prompt'),
     versions,
     activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
     videoVersions,
@@ -52,7 +63,7 @@ function migrateSceneImageToImplicitShot(scene = {}) {
     : null;
   const shot = {
     ...(existing || {}),
-    prompt: typeof existing?.prompt === 'string' ? existing.prompt : legacy.prompt,
+    prompt: textValue(existing?.prompt, 'prompt') || legacy.prompt,
     versions,
     activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
     videoVersions,

@@ -86,6 +86,75 @@ test('MiniMax submit task constructs correct JSON payload with base64 image', as
   }
 });
 
+test('MiniMax retries provider rate-limit code 1002 before accepting a video task', async () => {
+  const f = fixture();
+  try {
+    let calls = 0;
+    const delays = [];
+    const mockFetch = async () => {
+      calls++;
+      if (calls < 3) {
+        return new Response(JSON.stringify({ base_resp: { status_code: 1002, status_msg: 'rate limit exceeded(RPM)' } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ task_id: 'task-after-throttle', base_resp: { status_code: 0, status_msg: 'success' } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    const adapter = createMiniMaxAdapter({
+      env: { MINIMAX_API_KEY: 'test-key', MINIMAX_RATE_LIMIT_RETRY_MS: '25' },
+      fetch: mockFetch,
+      sleep: async (delayMs) => delays.push(delayMs),
+    });
+
+    const task = await adapter.submit({
+      model: 'MiniMax-Hailuo-02',
+      prompt: 'A ship crosses a stormy sea.',
+      preparedInputs: [{ role: 'start_frame', assetPath: f.startFrame }],
+      outputPath: path.join(f.root, 'output.mp4'),
+      outputSelection: outputSelection(),
+    });
+
+    assert.equal(task.providerTaskId, 'task-after-throttle');
+    assert.equal(calls, 3);
+    assert.deepEqual(delays, [25, 50]);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('MiniMax exposes exhausted provider rate limits as retryable HTTP 429 errors', async () => {
+  const f = fixture();
+  try {
+    const mockFetch = async () => new Response(JSON.stringify({ base_resp: { status_code: 1002, status_msg: 'rate limit exceeded(RPM)' } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const adapter = createMiniMaxAdapter({
+      env: { MINIMAX_API_KEY: 'test-key', MINIMAX_RATE_LIMIT_MAX_ATTEMPTS: '1' },
+      fetch: mockFetch,
+    });
+
+    await assert.rejects(adapter.submit({
+      model: 'MiniMax-Hailuo-02',
+      prompt: 'A ship crosses a stormy sea.',
+      preparedInputs: [{ role: 'start_frame', assetPath: f.startFrame }],
+      outputPath: path.join(f.root, 'output.mp4'),
+      outputSelection: outputSelection(),
+    }), (error) => {
+      assert.equal(error.code, 'MINIMAX_RATE_LIMITED');
+      assert.equal(error.statusCode, 429);
+      assert.equal(error.retryable, true);
+      return true;
+    });
+  } finally {
+    f.cleanup();
+  }
+});
+
 // Regression test: video-execution.service.js's real create() calls prepareAssets(request,
 // assetTransport) with the actual shared createLocalVideoAssetTransport() (dependencies.js has no
 // override), not with bare { assetPath } items as the tests above use. That transport's

@@ -2,6 +2,7 @@ import { projectStore, sceneStore, voiceStore } from './store.js';
 import { api } from './api.js';
 import { revokeAllAssets } from './assets.js';
 import { adaptSceneImageShot, adaptSceneImageShots, imageShot } from './scene-shots.js';
+import { textValue } from './text-values.js';
 
 // Valid provider/intensity values live in index.html's <select> options — the single
 // source of truth. Reading them here avoids a second, driftable copy of that enumeration.
@@ -33,7 +34,10 @@ export function createStoryboardRecord(storyboard = {}, title = 'Untitled') {
     title: String(storyboard.title || title),
     updatedAt: storyboard.updatedAt || new Date().toISOString(),
   };
-  record.scenes = adaptSceneImageShots(record.scenes);
+  record.scenes = adaptSceneImageShots(record.scenes).map((scene) => {
+    scene.narrationText = textValue(scene.narrationText, ['narrationText']);
+    return scene;
+  });
   return record;
 }
 

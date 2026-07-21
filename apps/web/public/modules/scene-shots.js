@@ -1,4 +1,5 @@
 import { normalizeReferenceImages } from './reference-roles.js';
+import { textValue } from './text-values.js';
 
 const IMAGE_FIELDS = ['prompt', 'versions', 'activeVersionIndex'];
 const VIDEO_FIELDS = ['videoVersions', 'activeVideoVersionIndex'];
@@ -10,7 +11,7 @@ function legacyShot(scene = {}) {
   const videoVersions = Array.isArray(scene.videoVersions) ? scene.videoVersions : [];
   const requestedVideoIndex = Number.isInteger(scene.activeVideoVersionIndex) ? scene.activeVideoVersionIndex : 0;
   return {
-    prompt: typeof scene.prompt === 'string' ? scene.prompt : '',
+    prompt: textValue(scene.prompt, ['prompt']),
     versions,
     activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
     videoVersions,
@@ -52,7 +53,7 @@ export function adaptSceneImageShot(scene = {}) {
     : null;
   scene.shots = [{
     ...(existing || {}),
-    prompt: typeof existing?.prompt === 'string' ? existing.prompt : legacy.prompt,
+    prompt: textValue(existing?.prompt, ['prompt']) || legacy.prompt,
     versions,
     activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
     videoVersions,
@@ -89,7 +90,7 @@ export function adaptSceneImageShots(scenes) {
 
 export function setImagePrompt(scene, prompt) {
   adaptSceneImageShot(scene);
-  scene.shots[0].prompt = String(prompt || '');
+  scene.shots[0].prompt = textValue(prompt, ['prompt']);
 }
 
 export function replaceImageState(scene, sourceScene) {

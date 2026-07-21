@@ -128,7 +128,7 @@ const VIDEO_ADAPTER_FACTORIES = {
   stub: (config) => createStubAdapter(config),
 };
 
-function createVideoProviders(config, getCancellation, usageTracker, overrides = {}) {
+function createVideoProviders(config, getCancellation, usageTracker, overrides = {}, providerAdmission) {
   const adapters = new Map(VIDEO_PROVIDERS.map((name) => {
     const factory = VIDEO_ADAPTER_FACTORIES[name];
     if (!overrides[name] && !factory) throw new AppError('UNSUPPORTED_VIDEO_PROVIDER', `Video provider "${name}" is declared in capabilities but has no adapter factory`, { status: 500 });
@@ -152,8 +152,14 @@ function createVideoProviders(config, getCancellation, usageTracker, overrides =
     get,
     resolve,
     getCapabilities: (provider, model, mode) => videoProviderCapabilities(provider, model, mode),
-    async verify({ provider, model, mode }) { const resolved = resolve({ provider, model, mode }); return { ...(await resolved.adapter.verify({ model: resolved.model, mode: resolved.mode })), capabilities: resolved.capabilities }; },
+    async verify({ provider, model, mode }) {
+      const resolved = resolve({ provider, model, mode });
+      const operation = () => resolved.adapter.verify({ model: resolved.model, mode: resolved.mode });
+      const verified = providerAdmission ? await providerAdmission.run(provider, operation, { signal: getCancellation?.() }) : await operation();
+      return { ...verified, capabilities: resolved.capabilities };
+    },
     usageTracker,
+    providerAdmission,
   };
 }
 

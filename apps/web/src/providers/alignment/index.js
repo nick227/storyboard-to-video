@@ -14,19 +14,22 @@ function isUsableWord(word) {
 // network-error handling -- they only need to treat an empty words array as "no karaoke data yet".
 // Swallowed failures are still logged, since this is otherwise the only signal an operator gets
 // that the alignment service is unreachable or misbehaving.
-function createAlignmentProvider(config, getCancellation) {
+function createAlignmentProvider(config, getCancellation, providerAdmission) {
   async function align({ audioBuffer, transcript, mimeType }) {
     try {
-      const form = new FormData();
-      form.append('audio', new Blob([audioBuffer], { type: mimeType || 'audio/wav' }), 'audio.wav');
-      form.append('transcript', transcript || '');
-      const headers = {};
-      if (config.alignServiceToken) headers.Authorization = `Bearer ${config.alignServiceToken}`;
-      const response = await fetch(`${config.alignUrl}/align`, { method: 'POST', headers, body: form, signal: signal(config.alignTimeout, getCancellation) });
-      if (!response.ok) await throwResponse('alignment', response);
-      const body = await response.json();
-      const words = Array.isArray(body.words) ? body.words.filter(isUsableWord) : [];
-      return { words };
+      const operation = async () => {
+        const form = new FormData();
+        form.append('audio', new Blob([audioBuffer], { type: mimeType || 'audio/wav' }), 'audio.wav');
+        form.append('transcript', transcript || '');
+        const headers = {};
+        if (config.alignServiceToken) headers.Authorization = `Bearer ${config.alignServiceToken}`;
+        const response = await fetch(`${config.alignUrl}/align`, { method: 'POST', headers, body: form, signal: signal(config.alignTimeout, getCancellation) });
+        if (!response.ok) await throwResponse('alignment', response);
+        const body = await response.json();
+        const words = Array.isArray(body.words) ? body.words.filter(isUsableWord) : [];
+        return { words };
+      };
+      return providerAdmission ? await providerAdmission.run('alignment', operation, { signal: getCancellation?.() }) : await operation();
     } catch (error) {
       console.warn(`Alignment request failed, continuing without karaoke data: ${error.message}`);
       return { words: [] };

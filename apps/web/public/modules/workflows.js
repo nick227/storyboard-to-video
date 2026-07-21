@@ -3,6 +3,7 @@ import { batchStore, projectStore, sceneStore, voiceStore, generationStore, uiSt
 import { getCurrentStoryboardRecord, queueSync, ensureProjectSynced, hydrateCurrentProjectFromServer } from './persistence.js';
 import { clampSplitCount } from './scene-count.js';
 import { adaptSceneImageShot, imageShot, replaceImageState, replaceVideoState, setImagePrompt } from './scene-shots.js';
+import { textValue } from './text-values.js';
 
 export function getPayloadBase(els) {
   return {
@@ -27,7 +28,7 @@ export function normalizeScene(scene, index) {
   // Server-authoritative normalization (project-store.js) is what actually adapts legacy `lines`
   // into `narrationText`. This is only a trivial client-side fallback for stale local-cached data
   // that hasn't round-tripped through the server yet — not a reimplementation of that adapter.
-  const narrationText = typeof scene?.narrationText === 'string' ? scene.narrationText : '';
+  const narrationText = textValue(scene?.narrationText, ['narrationText']);
   const narrationIsFallback = Boolean(scene?.narrationIsFallback);
   const audioVersions = Array.isArray(scene?.audioVersions)
     ? scene.audioVersions.filter((version) => typeof version?.path === 'string' && (version.path.startsWith(`${projectPrefix}audio/`) || version.path.startsWith('/audio/')))
@@ -56,7 +57,7 @@ export function normalizeScene(scene, index) {
     beat: String(scene?.beat || ''),
     shots: [{
       ...sourceShot,
-      prompt: String(sourceShot.prompt || ''),
+      prompt: textValue(sourceShot.prompt, ['prompt']),
       versions,
       activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
       videoVersions,
@@ -108,7 +109,7 @@ export async function regeneratePrompt(index, els, setStatus, withinSerial = fal
       }),
     });
 
-    setImagePrompt(scene, data.prompt || scene.prompt);
+    setImagePrompt(scene, textValue(data.prompt, ['prompt']) || scene.prompt);
     // Provenance is server-authored (prompt-generation.service.js only includes these fields on a
     // real, non-fallback regeneration) — copy whatever the server sent rather than computing it from
     // local scene.beat; a fallback response omits them, so the scene keeps its prior provenance.
@@ -258,7 +259,7 @@ export async function regenerateDialogue(index, els, setStatus, instruction = ''
       }),
     });
 
-    scene.narrationText = data.narrationText || scene.narrationText;
+    scene.narrationText = textValue(data.narrationText, ['narrationText']) || textValue(scene.narrationText, ['narrationText']);
     scene.narrationIsFallback = Boolean(data.usedFallback);
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();

@@ -1,12 +1,14 @@
 const { z } = require('zod');
 const { VIDEO_PROVIDERS } = require('./shared/video-provider-capabilities');
 
+const MAX_PROJECT_SCENES = 200;
+
 const projectId = z.string().trim().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/);
 const fallbackPolicy = z.enum(['fail', 'local']).default('local');
 const projectDocument = z.object({
   id: projectId.optional(),
   title: z.string().trim().max(200).default('Untitled'),
-  scenes: z.array(z.record(z.any())).max(50).default([]),
+  scenes: z.array(z.record(z.any())).max(MAX_PROJECT_SCENES).default([]),
 }).passthrough();
 
 const createProject = z.object({
@@ -18,7 +20,7 @@ const createProject = z.object({
 const regeneratePrompt = z.object({
   projectId,
   scene: z.record(z.any()),
-  sceneIndex: z.coerce.number().int().min(0).max(49).default(0),
+  sceneIndex: z.coerce.number().int().min(0).max(MAX_PROJECT_SCENES - 1).default(0),
   previousBeat: z.string().max(2_000).default(''),
   nextBeat: z.string().max(2_000).default(''),
   styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
@@ -68,7 +70,7 @@ const splitScene = z.object({
 const regenerateAction = z.object({
   projectId,
   scene: z.record(z.any()),
-  sceneIndex: z.coerce.number().int().min(0).max(49).default(0),
+  sceneIndex: z.coerce.number().int().min(0).max(MAX_PROJECT_SCENES - 1).default(0),
   previousBeat: z.string().max(2_000).default(''),
   nextBeat: z.string().max(2_000).default(''),
   provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
@@ -100,7 +102,7 @@ const mediaSettings = z.object({
 const imageGeneration = z.object({
   projectId,
   sceneId,
-  sceneNumber: z.coerce.number().int().min(1).max(50).default(1),
+  sceneNumber: z.coerce.number().int().min(1).max(MAX_PROJECT_SCENES).default(1),
   sceneTitle: z.string().max(200).default(''),
   scenePrompt: z.string().trim().min(1).max(20_000),
   styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
@@ -118,7 +120,7 @@ const imageGeneration = z.object({
 const videoGeneration = z.object({
   projectId,
   sceneId,
-  sceneNumber: z.coerce.number().int().min(1).max(50).default(1),
+  sceneNumber: z.coerce.number().int().min(1).max(MAX_PROJECT_SCENES).default(1),
   sceneTitle: z.string().max(200).default(''),
   scenePrompt: z.string().max(20_000).default(''),
   sceneBeat: z.string().max(20_000).default(''),
@@ -143,7 +145,7 @@ const videoGeneration = z.object({
 const subtitleGeneration = z.object({
   projectId,
   sceneId,
-  sceneNumber: z.coerce.number().int().min(1).max(50).default(1),
+  sceneNumber: z.coerce.number().int().min(1).max(MAX_PROJECT_SCENES).default(1),
   sceneTitle: z.string().max(200).default(''),
   // Cosmetic overlay preset only -- unrelated to `styleId` (the visual art style used for
   // image/video generation elsewhere). Never affects alignment/cue-grouping logic.
@@ -154,7 +156,7 @@ const narratorVoice = z.object({ voiceId: z.string(), label: z.string().optional
 const audioGeneration = z.object({
   projectId,
   sceneId,
-  sceneNumber: z.coerce.number().int().min(1).max(50).default(1),
+  sceneNumber: z.coerce.number().int().min(1).max(MAX_PROJECT_SCENES).default(1),
   sceneTitle: z.string().max(200).default(''),
   narrationText: z.string().trim().min(1).max(6_000),
   provider: z.enum(['elevenlabs', 'piper', 'spark', 'stub']).default('stub'),
@@ -164,7 +166,7 @@ const audioGeneration = z.object({
 const regenerateDialogue = z.object({
   projectId,
   scene: z.record(z.any()),
-  sceneIndex: z.coerce.number().int().min(0).max(49).default(0),
+  sceneIndex: z.coerce.number().int().min(0).max(MAX_PROJECT_SCENES - 1).default(0),
   instruction: z.string().max(500).default(''),
   provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
   fallbackPolicy,
@@ -172,4 +174,4 @@ const regenerateDialogue = z.object({
   bypassCache: z.boolean().default(false),
 });
 
-module.exports = { audioGeneration, createProject, exportProject, fallbackPolicy, imageGeneration, mediaSettings, planShots, projectDocument, projectId, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, subtitleGeneration, videoGeneration };
+module.exports = { MAX_PROJECT_SCENES, audioGeneration, createProject, exportProject, fallbackPolicy, imageGeneration, mediaSettings, planShots, projectDocument, projectId, regenerateAction, regenerateDialogue, regeneratePrompt, splitScene, subtitleGeneration, videoGeneration };

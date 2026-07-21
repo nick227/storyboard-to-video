@@ -5,9 +5,10 @@ import { ensureProjectSynced, getCurrentStoryboardRecord, persistStoryboardLibra
 import { loadProtectedAsset } from './assets.js';
 import { api } from './api.js';
 import { suggestSceneCountFromNarration } from './scene-count.js';
-import { computeStaleness, resolveSelectedSceneIndex, getCachedJobs, refreshRecentJobs, buildLatestJobsByScene } from './stages.js';
+import { computeStaleness, resolveSelectedSceneIndex, getCachedJobs, refreshRecentJobs, refreshSpend, buildLatestJobsByScene } from './stages.js';
 import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVersion, setImagePrompt, setVideoKeyframes } from './scene-shots.js';
 import { REFERENCE_ROLES, REFERENCE_ROLE_LABELS, normalizeReferenceRole } from './reference-roles.js';
+import { textValue } from './text-values.js';
 
 let els = {};
 let activeScenePlayback = null;
@@ -69,7 +70,7 @@ const ENTITY_CONFIG = {
     title: 'Image Prompt',
     kind: 'text',
     fieldLabel: 'Visual prompt',
-    getValue: (scene) => scene.prompt || '',
+    getValue: (scene) => textValue(scene.prompt, ['prompt']),
     setValue: (scene, value) => { setImagePrompt(scene, value); },
     regen: (index, els, cb) => regeneratePrompt(index, els, cb),
     regenBeat: (index, els, cb) => regenerateAction(index, els, cb),
@@ -78,7 +79,7 @@ const ENTITY_CONFIG = {
     title: 'Spoken Narration',
     kind: 'text',
     fieldLabel: 'Spoken Narration',
-    getValue: (scene) => scene.narrationText || '',
+    getValue: (scene) => textValue(scene.narrationText, ['narrationText']),
     setValue: (scene, value) => { scene.narrationText = value; scene.narrationIsFallback = false; },
     regen: (index, els, cb) => regenerateDialogue(index, els, cb, els.entityModalInstruction?.value.trim() || ''),
   },
@@ -281,7 +282,8 @@ function confirmRegeneration(message, confirmLabel = 'Regenerate', options = {})
 // jobs refresh + re-render here, a failed generation leaves the status icon looking exactly like
 // "never attempted" until something unrelated happens to trigger a later refresh.
 function refreshJobsAndRerenderScenes() {
-  return refreshRecentJobs(projectStore.get().currentId).then(() => renderScenes());
+  const projectId = projectStore.get().currentId;
+  return Promise.all([refreshRecentJobs(projectId), refreshSpend(projectId)]).then(() => renderScenes());
 }
 
 function currentEntityModalSceneIndex() {

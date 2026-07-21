@@ -2,17 +2,18 @@ const { AppError } = require('../errors');
 
 function objectId(value) { return typeof value === 'string' ? value : value?.id || null; }
 
-function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl }) {
+function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl, providerAdmission }) {
   function requireStripe() {
     if (!stripe || !webhookSecret) throw new AppError('PAYMENTS_UNAVAILABLE', 'Stripe payments and webhook verification must both be configured', { status: 503 });
   }
+  function stripeCall(operation) { return providerAdmission ? providerAdmission.run('stripe', operation) : operation(); }
 
   return {
     enabled: Boolean(stripe && webhookSecret),
 
     async publishCreditPack({ packId, stripePriceId, activeFrom }) {
       requireStripe();
-      const [pack, price] = await Promise.all([repository.findPack(packId), stripe.prices.retrieve(stripePriceId)]);
+      const [pack, price] = await Promise.all([repository.findPack(packId), stripeCall(() => stripe.prices.retrieve(stripePriceId))]);
       if (!pack || pack.status !== 'draft') throw new AppError('CREDIT_PACK_NOT_DRAFT', 'Only a draft credit pack can be published', { status: 409 });
       if (!price.active || price.recurring || BigInt(price.unit_amount ?? -1) !== pack.unitAmount || String(price.currency || '').toUpperCase() !== pack.currency || String(price.tax_behavior || 'unspecified') !== pack.taxBehavior) {
         throw new AppError('STRIPE_PRICE_MISMATCH', 'Stripe Price currency, amount, tax behavior, or one-time status does not match this pack', { status: 409 });
@@ -30,7 +31,7 @@ function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl 
       if (!/^https?:\/\//.test(base)) throw new AppError('PAYMENT_URL_NOT_CONFIGURED', 'PUBLIC_APP_URL must be an absolute HTTP(S) URL', { status: 503 });
       try {
         const customer = prepared.paymentCustomer?.processorCustomerId;
-        const session = await stripe.checkout.sessions.create({
+        const session = await stripeCall(() => stripe.checkout.sessions.create({
           mode: 'payment',
           client_reference_id: prepared.sale.id,
           line_items: [{ price: prepared.pack.stripePriceId, quantity: 1 }],
@@ -40,7 +41,7 @@ function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl 
           cancel_url: `${base}/credits.html?checkout=canceled&saleId=${prepared.sale.id}`,
           metadata: { saleId: prepared.sale.id, tenantId, userId, creditPackId: prepared.pack.id },
           payment_intent_data: { metadata: { saleId: prepared.sale.id, tenantId, userId, creditPackId: prepared.pack.id } },
-        }, { idempotencyKey: `checkout:${prepared.attempt.id}` });
+        }, { idempotencyKey: `checkout:${prepared.attempt.id}` }));
         await repository.markCheckoutCreated({ attemptId: prepared.attempt.id, session });
         return { saleId: prepared.sale.id, checkoutSessionId: session.id, url: session.url, reused: prepared.reused };
       } catch (error) {
@@ -82,12 +83,12 @@ function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl 
       requireStripe();
       const checked = await repository.assertRefundable(saleId, amount);
       if (checked.amount > BigInt(Number.MAX_SAFE_INTEGER)) throw new AppError('REFUND_AMOUNT_TOO_LARGE', 'Refund amount exceeds the supported processor range', { status: 400 });
-      const refund = await stripe.refunds.create({
+      const refund = await stripeCall(() => stripe.refunds.create({
         payment_intent: checked.sale.processorPaymentIntentId,
         amount: Number(checked.amount),
         reason: reason || 'requested_by_customer',
         metadata: { saleId: checked.sale.id, tenantId: checked.sale.tenantId },
-      }, { idempotencyKey: `refund:${idempotencyKey}` });
+      }, { idempotencyKey: `refund:${idempotencyKey}` }));
       const received = await repository.receiveEvent({
         processorEventId: `admin:${refund.id}`, processorObjectId: refund.id, type: 'refund.created', payload: refund,
       });
