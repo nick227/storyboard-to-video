@@ -379,6 +379,41 @@
       <div id="entityModalMediaEmpty" class="entity-modal-media-empty">No version yet</div>
     </div>
 
+    <section id="sceneAudioRecorder" class="scene-audio-recorder" hidden aria-label="Record scene audio">
+      <div class="scene-audio-recorder-heading">
+        <div><strong>Record scene audio</strong><p class="field-note">Watch the current scene visual while you perform the take.</p></div>
+      </div>
+      <div class="scene-audio-record-visual">
+        <img id="sceneAudioRecordImage" alt="Current scene visual" hidden />
+        <video id="sceneAudioRecordVideo" controls muted playsinline hidden></video>
+        <div id="sceneAudioRecordEmpty" class="entity-modal-media-empty">No scene visual available</div>
+      </div>
+      <label class="entity-modal-field"><span>Microphone</span><select id="sceneAudioMicSelect"></select></label>
+      <label class="scene-audio-monitor"><input type="checkbox" id="sceneAudioMonitorMic" /> <span>Hear microphone in headphones</span></label>
+      <label class="scene-audio-monitor"><input type="checkbox" id="sceneAudioReduceNoise" checked /> <span>Reduce background noise</span></label>
+      <div class="scene-audio-level" aria-label="Microphone input level">
+        <span>Input level</span>
+        <meter id="sceneAudioInputLevel" min="-60" max="0" low="-36" high="-6" optimum="-18" value="-60"></meter>
+        <span id="sceneAudioInputLevelText" class="field-note">Quiet</span>
+      </div>
+      <div class="scene-audio-gate-controls">
+        <label class="scene-audio-monitor"><input type="checkbox" id="sceneAudioNoiseGate" checked disabled /> <span>Noise gate</span></label>
+        <button type="button" id="sceneAudioCalibrateBtn" class="secondary" disabled>Calibrate room</button>
+        <span id="sceneAudioGateStatus" class="field-note">Calibrate while staying quiet.</span>
+      </div>
+      <span class="field-note scene-audio-monitor-note">Use wired headphones for the clearest, lowest-latency monitoring.</span>
+      <canvas id="sceneAudioWaveform" class="voice-waveform-canvas" width="640" height="64"></canvas>
+      <span id="sceneAudioRecordStatus" class="field-note" role="status" aria-live="polite"></span>
+      <audio id="sceneAudioRecordPreview" controls hidden></audio>
+      <div class="scene-audio-record-actions">
+        <button type="button" id="sceneAudioRecordToggle" class="primary" disabled>Start recording</button>
+        <button type="button" id="sceneAudioPreviewBtn" class="secondary" hidden>Play</button>
+        <button type="button" id="sceneAudioRetakeBtn" class="secondary" hidden>Retake</button>
+        <button type="button" id="sceneAudioSubmitBtn" class="primary positive" hidden>Use recording</button>
+        <button type="button" id="sceneAudioCancelBtn" class="secondary">Cancel</button>
+      </div>
+    </section>
+
     <div class="entity-modal-actions">
       <span id="entityModalStatus" class="field-note"></span>
       <div class="entity-modal-action-buttons" style="display: flex; gap: 8px; align-items: center;">
@@ -396,6 +431,7 @@
           </svg>
           <span>References</span>
         </button>
+        <button type="button" id="entityModalRecordAudioBtn" class="secondary" hidden>Record</button>
         <button type="button" id="entityModalRegenBtn" class="primary">Regenerate</button>
       </div>
     </div>

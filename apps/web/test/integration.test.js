@@ -112,6 +112,22 @@ test('duplicate generation requests reuse the completed project-scoped result', 
   assert.equal(await prisma.usageEvent.count({ where: { projectId, modality: 'image' } }), 1);
 });
 
+test('scene audio recordings upload through the generation queue and reuse a completed idempotency key', async (t) => {
+  const projectId = id('recording'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Recording', project: { scenes: [{ id: 'sc1', narrationText: '' }] } }).expect(201);
+  const upload = () => request(app).post('/api/audio/recordings').set(auth()).set('Idempotency-Key', 'recording-request-001')
+    .field('projectId', projectId).field('sceneId', 'sc1').field('sceneNumber', '1').field('sceneTitle', 'Opening')
+    .attach('audio', Buffer.from('recorded-audio'), { filename: 'take.webm', contentType: 'audio/webm' });
+  const first = await upload().expect(200);
+  const second = await upload().expect(200);
+  assert.equal(first.body.audio.provider, 'recorded');
+  assert.equal(second.body.audio.path, first.body.audio.path);
+  assert.equal(fs.readdirSync(projectStore.assetDir(projectId, 'audio')).length, 1);
+  const saved = await request(app).get(`/api/projects/${projectId}`).set(auth()).expect(200);
+  assert.equal(saved.body.project.scenes[0].audioVersions.length, 1);
+  assert.equal(saved.body.project.scenes[0].audioVersions[0].provider, 'recorded');
+});
+
 test('duplicate active generation requests reuse the active job', async (t) => {
   const projectId = id('active-idem'); t.after(() => cleanupProject(projectId));
   await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Active idempotency', project: { scenes: [{ id: 'sc1' }] } }).expect(201);

@@ -101,6 +101,20 @@ test('computeStaleness: audio is stale when its stored provider no longer matche
   }
 });
 
+test('computeStaleness: a user recording remains fresh when the selected TTS provider changes', async () => {
+  const { computeStaleness } = await stagesPromise;
+  const { voiceStore } = await storePromise;
+  const recording = scene({ narrationText: 'Mara steps in.', audioVersions: [{ path: '/recording.webm', narrationText: 'Mara steps in.', provider: 'recorded' }], activeAudioVersionIndex: 0 });
+  voiceStore.set({ audioProvider: 'spark' });
+  try {
+    assert.equal(computeStaleness(recording).audioStale, false);
+    recording.narrationText = 'Mara bursts in.';
+    assert.equal(computeStaleness(recording).audioStale, true);
+  } finally {
+    voiceStore.set({ audioProvider: 'stub' });
+  }
+});
+
 test('computeStaleness: video is stale when its source image no longer matches the active image version', async () => {
   const { computeStaleness } = await stagesPromise;
   const fresh = scene({

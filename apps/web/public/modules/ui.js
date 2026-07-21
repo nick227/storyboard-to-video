@@ -271,6 +271,9 @@ function renderGenerationSummary(els, status) {
   const summary = [line('Planning', status.planning), line('Images', status.images), line('Audio', status.audio), line('Video', status.video), line('Subtitles', status.subtitles)].join(' · ');
   els.generationSummaryText.textContent = summary;
   els.generationSummaryText.title = summary;
+  const downloading = uiStore.get().operation?.type === 'downloadZip';
+  els.generationSummaryText.classList.toggle('is-loading', downloading);
+  els.generationSummaryText.setAttribute('aria-busy', String(downloading));
 }
 
 // Replaces the old flat 5-button `updateButtons` — the top-level UX is now Planning/Images/Audio/Video

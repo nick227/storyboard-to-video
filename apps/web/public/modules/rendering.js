@@ -9,6 +9,12 @@ import { computeStaleness, resolveSelectedSceneIndex, getCachedJobs, refreshRece
 import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVersion, setImagePrompt, setVideoKeyframes } from './scene-shots.js';
 import { REFERENCE_ROLES, REFERENCE_ROLE_LABELS, normalizeReferenceRole } from './reference-roles.js';
 import { textValue } from './text-values.js';
+import {
+  calibrateSceneAudioNoiseGate, closeSceneAudioRecorder, openSceneAudioRecorder, previewSceneAudioRecording,
+  retakeSceneAudioRecording, setSceneAudioMonitoring, setSceneAudioNoiseGate, setSceneAudioNoiseSuppression,
+  submitSceneAudioRecording, switchSceneAudioMicrophone,
+  toggleSceneAudioRecording,
+} from './scene-audio-recorder.js';
 
 let els = {};
 let activeScenePlayback = null;
@@ -297,6 +303,7 @@ function openEntityModal(index, type) {
   modalState.sceneId = scene.id;
   modalState.type = type;
   modalState.mediaPath = undefined;
+  closeSceneAudioRecorder(els);
   els.entityModal.showModal();
   renderEntityModal();
 }
@@ -644,6 +651,8 @@ function renderEntityModal() {
   const config = ENTITY_CONFIG[type];
   const operation = uiStore.get().operation;
   const busy = operation != null;
+  const recorderOpen = !els.sceneAudioRecorder.hidden;
+  const controlsBusy = busy || recorderOpen;
   const isLoading = isEntityLoading(type, scene, operation);
 
   els.entityModalSceneLabel.textContent = `Scene ${index + 1}`;
@@ -677,7 +686,7 @@ function renderEntityModal() {
     els.entityModalExpandBtn.disabled = busy;
   }
 
-  els.entityModalMedia.hidden = isText;
+  els.entityModalMedia.hidden = isText || recorderOpen;
   if (!isText) renderEntityModalMedia(scene, type, config);
 
   const beatLoading = isEntityLoading('action', scene, operation);
@@ -700,9 +709,12 @@ function renderEntityModal() {
   els.entityModalStaleWarning.hidden = !stale;
 
   els.entityModalRegenBtn.hidden = isText;
-  els.entityModalRegenBtn.disabled = busy;
+  els.entityModalRegenBtn.disabled = controlsBusy;
   els.entityModalRegenBtn.classList.toggle('is-loading', isLoading);
   els.entityModalRegenBtn.textContent = isLoading ? (hasExisting ? 'Regenerating' : 'Generating') : (hasExisting ? 'Regenerate' : 'Generate');
+
+  els.entityModalRecordAudioBtn.hidden = type !== 'audio' || recorderOpen;
+  els.entityModalRecordAudioBtn.disabled = controlsBusy;
 
   const modalLibraryBtn = document.getElementById('entityModalLibraryBtn');
   if (modalLibraryBtn) {
@@ -725,7 +737,7 @@ function renderEntityModal() {
 
   els.entityModalStatus.textContent = isLoading ? 'Regeneration in progress…' : (busy ? 'Another operation is running…' : '');
 
-  renderEntityModalHistory(scene, type, config, busy);
+  renderEntityModalHistory(scene, type, config, controlsBusy);
 }
 
 function setupEntityModal() {
@@ -751,6 +763,7 @@ function setupEntityModal() {
   els.closeEntityModalBtn.addEventListener('click', () => modal.close());
   modal.addEventListener('click', (event) => { if (event.target === modal) modal.close(); });
   modal.addEventListener('close', () => {
+    closeSceneAudioRecorder(els);
     modalState.historyAbortController?.abort();
     modalState.mediaAbortController?.abort();
     modalState.sceneId = null;
@@ -763,6 +776,34 @@ function setupEntityModal() {
     els.entityModalAudio.removeAttribute('src');
     els.entityModalAudio.load();
     els.entityModalImage.removeAttribute('src');
+  });
+
+  els.entityModalRecordAudioBtn.addEventListener('click', async () => {
+    const index = currentEntityModalSceneIndex();
+    if (index === -1) return;
+    const scene = sceneStore.get().scenes[index];
+    const opening = openSceneAudioRecorder(scene, els);
+    renderEntityModal();
+    await opening;
+  });
+  els.sceneAudioMicSelect.addEventListener('change', () => switchSceneAudioMicrophone(els.sceneAudioMicSelect.value, els));
+  els.sceneAudioMonitorMic.addEventListener('change', () => setSceneAudioMonitoring(els.sceneAudioMonitorMic.checked));
+  els.sceneAudioReduceNoise.addEventListener('change', () => setSceneAudioNoiseSuppression(els.sceneAudioReduceNoise.checked, els));
+  els.sceneAudioCalibrateBtn.addEventListener('click', () => calibrateSceneAudioNoiseGate(els));
+  els.sceneAudioNoiseGate.addEventListener('change', () => setSceneAudioNoiseGate(els.sceneAudioNoiseGate.checked));
+  els.sceneAudioRecordToggle.addEventListener('click', () => toggleSceneAudioRecording(els).catch((error) => { els.sceneAudioRecordStatus.textContent = `Recording could not start: ${error.message}`; }));
+  els.sceneAudioPreviewBtn.addEventListener('click', () => previewSceneAudioRecording(els).catch((error) => { els.sceneAudioRecordStatus.textContent = `Preview failed: ${error.message}`; }));
+  els.sceneAudioRetakeBtn.addEventListener('click', () => retakeSceneAudioRecording(els));
+  els.sceneAudioCancelBtn.addEventListener('click', () => { closeSceneAudioRecorder(els); renderEntityModal(); });
+  els.sceneAudioSubmitBtn.addEventListener('click', async () => {
+    const index = currentEntityModalSceneIndex();
+    if (index === -1) return;
+    const scene = sceneStore.get().scenes[index];
+    try {
+      await submitSceneAudioRecording(scene, index, els, (message) => { els.statusText.textContent = message; });
+      await refreshJobsAndRerenderScenes();
+      renderEntityModal();
+    } catch (_) { /* recorder displays the actionable upload error */ }
   });
 
   const libraryBtn = document.getElementById('entityModalLibraryBtn');

@@ -482,7 +482,20 @@ export async function preflightSparkProvider(setStatus) {
   }
 }
 
+export function zipDownloadFilename(title, now = new Date()) {
+  const safeTitle = String(title || 'storyboard').normalize('NFKC').trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001F]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[.\s-]+|[.\s-]+$/g, '')
+    .slice(0, 100) || 'storyboard';
+  const timestamp = now.toISOString().slice(0, 19).replace('T', '_').replaceAll(':', '-');
+  return `${safeTitle}-${timestamp}.zip`;
+}
+
 export async function downloadZip(setStatus) {
+  if (uiStore.get().operation) return;
+  uiStore.set({ operation: { type: 'downloadZip' } });
   try {
     await ensureProjectSynced();
     if (setStatus) setStatus('Building zip...');
@@ -491,10 +504,13 @@ export async function downloadZip(setStatus) {
       body: JSON.stringify({ projectId: projectStore.get().currentId }),
     });
     const { downloadProtectedUrl } = await import('./assets.js');
-    await downloadProtectedUrl(data.zipPath, 'storyboard.zip');
+    const title = getCurrentStoryboardRecord()?.title || 'storyboard';
+    await downloadProtectedUrl(data.zipPath, zipDownloadFilename(title));
     if (setStatus) setStatus('ZIP ready.');
   } catch (error) {
     if (setStatus) setStatus(`ZIP failed: ${error.message}`);
+  } finally {
+    if (uiStore.get().operation?.type === 'downloadZip') uiStore.set({ operation: null });
   }
 }
 

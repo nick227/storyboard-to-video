@@ -352,3 +352,9 @@ test('logical generation idempotency keys are stable for retries and change with
   assert.notEqual(first, nextVersion, 'an intentional later regeneration must be a new logical operation');
   assert.match(first, /^[a-zA-Z0-9_.:-]{8,200}$/);
 });
+
+test('ZIP downloads use a safe project title and timestamp filename', async () => {
+  const { zipDownloadFilename } = await import(path.join(__dirname, '..', 'public', 'modules', 'workflows.js'));
+  assert.equal(zipDownloadFilename('The Odyssey', new Date('2026-07-21T17:42:09.000Z')), 'The-Odyssey-2026-07-21_17-42-09.zip');
+  assert.equal(zipDownloadFilename('  Story: One / Two?  ', new Date('2026-01-02T03:04:05.000Z')), 'Story-One-Two-2026-01-02_03-04-05.zip');
+});

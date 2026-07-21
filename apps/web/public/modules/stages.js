@@ -156,7 +156,7 @@ export function computeStaleness(scene) {
   ));
   const audioStale = Boolean(activeAudio?.path) && (
     String(activeAudio.narrationText || '') !== String(scene.narrationText || '') ||
-    String(activeAudio.provider || '') !== String(voiceStore.get().audioProvider || '')
+    (activeAudio.provider !== 'recorded' && String(activeAudio.provider || '') !== String(voiceStore.get().audioProvider || ''))
   );
   const videoManifestStale = videoManifestStaleness(scene, shot, activeImage, activeVideo);
   const selectedStartFrame = shot.startFrame || activeImage?.path || '';
