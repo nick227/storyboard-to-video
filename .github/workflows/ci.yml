@@ -46,6 +46,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # main.py's clone endpoint shells out to ffmpeg to normalize uploaded reference
+      # audio; ubuntu-latest doesn't guarantee it's preinstalled, and without it every
+      # run fails test_clone_synthesize_reference_delete_lifecycle, which blocks
+      # deploy-voice (gated on this job) from ever redeploying to Modal.
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       # CPU-only wheels: GitHub-hosted runners have no GPU, so the CUDA build in
       # requirements.txt (used by setup.sh / the Modal image) would just waste
       # bandwidth and time here.
