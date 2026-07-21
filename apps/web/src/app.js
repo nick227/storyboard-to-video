@@ -90,7 +90,7 @@ function registerRoutes(app, d) {
     store: d.projectStore, queue: d.queue, upload: d.upload, shotReferences: d.shotReferences,
     styles: d.styles, prompts: d.prompts, referenceGeneration: d.referenceGeneration, imageProvider: d.imageProvider, identityStore: d.identityStore, prisma: d.prisma, config: d.config
   }));
-  app.use('/api/jobs', createJobRouter({ queue: d.queue, store: d.projectStore }));
+  app.use('/api/jobs', createJobRouter({ queue: d.queue, store: d.projectStore, videoAttempts: d.videoAttemptRepository, videoExecution: d.videoExecution }));
   app.use('/api/admin/usage', usageRoutes(d.usageRepository));
   app.use('/api/admin/billing', billingRoutes(d.billingRepository, d.billing, d.adminRepository));
   app.use('/api/admin', adminRoutes(d.adminRepository, d.queue, d.paymentRepository, d.payments));

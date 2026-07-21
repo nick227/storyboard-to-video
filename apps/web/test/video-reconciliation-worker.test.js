@@ -44,3 +44,12 @@ test('stop() halts further polling', async () => {
   await wait(40);
   assert.equal(calls, callsAtStop, 'no further reconcile calls should happen after stop()');
 });
+
+test('a replica skips reconciliation when another replica owns the database lifecycle lock', async () => {
+  let reconciles = 0;
+  const distributedLock = { async tryRun() { return { acquired: false }; } };
+  const worker = startVideoReconciliationWorker({ async reconcileAttempts() { reconciles += 1; return []; } }, { intervalMs: 10, distributedLock });
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  worker.stop();
+  assert.equal(reconciles, 0);
+});

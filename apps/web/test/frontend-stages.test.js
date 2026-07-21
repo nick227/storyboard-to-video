@@ -265,6 +265,21 @@ test('buildLatestJobsByScene: exposes the same per-scene job lookup mediaTally u
   assert.equal(byImage.get('b'), undefined, 'jobs for a different scene never leak across scenes');
 });
 
+test('computeStageStatus: durable video attempts are queued work, not missing work', async () => {
+  const { computeStageStatus, buildLatestJobsByScene } = await stagesPromise;
+  const scenes = [scene({ id: 'queued-video' })];
+  const jobs = [
+    { type: 'video', sceneId: 'queued-video', status: 'queued', createdAt: '2026-01-01T00:00:00.000Z' },
+    { type: 'video', sceneId: 'queued-video', status: 'succeeded', createdAt: '2026-01-02T00:00:00.000Z' },
+  ];
+  const latest = buildLatestJobsByScene(jobs, 'video');
+  assert.equal(latest.get('queued-video').status, 'queued', 'the durable attempt outranks its short-lived HTTP admission job');
+  const status = computeStageStatus(scenes, { videos: { state: 'idle', generating: false } }, null, jobs, {});
+  assert.equal(status.video.pending, 1);
+  assert.equal(status.video.missing, 0);
+  assert.match(status.video.label, /1 queued/);
+});
+
 test('computeStageStatus: paused stage status survives a simulated reload via persisted stageRuns, not just in-memory batchState', async () => {
   const { computeStageStatus } = await stagesPromise;
   const scenes = [scene({ id: 'a' })];

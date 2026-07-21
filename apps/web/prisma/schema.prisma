@@ -156,6 +156,7 @@ model VideoGenerationAttempt {
   model                 String
   generationMode        String         @map("generation_mode")
   requestSnapshot       Json           @map("request_snapshot")
+  requestFingerprint    String?        @map("request_fingerprint") @db.VarChar(64)
   providerTaskId        String?        @map("provider_task_id")
   providerSubmittedAt   DateTime?      @map("provider_submitted_at") @db.Timestamptz(3)
   lifecycleState        String         @map("lifecycle_state")

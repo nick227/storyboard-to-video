@@ -326,3 +326,29 @@ test('planShots sends a valid Idempotency-Key header on every request, matching 
     delete global.localStorage;
   }
 });
+
+test('subtitle generation receives the idempotency key required by its server route', async () => {
+  const originalFetch = global.fetch;
+  let seenHeaders;
+  global.fetch = async (_url, options) => {
+    seenHeaders = options.headers;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true }) };
+  };
+  try {
+    const { api } = await import(path.join(__dirname, '..', 'public', 'modules', 'api.js'));
+    await api('/api/subtitles/generate', { method: 'POST', body: JSON.stringify({}) });
+    assert.match(String(seenHeaders['Idempotency-Key'] || ''), /^[a-zA-Z0-9_.:-]{8,200}$/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('logical generation idempotency keys are stable for retries and change with logical input', async () => {
+  const { logicalIdempotencyKey } = await import(path.join(__dirname, '..', 'public', 'modules', 'api.js'));
+  const first = await logicalIdempotencyKey('subtitle', { projectId: 'p', sceneId: 's', versionCount: 2, style: 'classic' });
+  const reordered = await logicalIdempotencyKey('subtitle', { style: 'classic', versionCount: 2, sceneId: 's', projectId: 'p' });
+  const nextVersion = await logicalIdempotencyKey('subtitle', { projectId: 'p', sceneId: 's', versionCount: 3, style: 'classic' });
+  assert.equal(first, reordered, 'object key order must not change the retry key');
+  assert.notEqual(first, nextVersion, 'an intentional later regeneration must be a new logical operation');
+  assert.match(first, /^[a-zA-Z0-9_.:-]{8,200}$/);
+});

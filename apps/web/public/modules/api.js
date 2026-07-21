@@ -1,7 +1,7 @@
 export async function api(url, options = {}) {
   const headers = { ...(options.headers || {}) };
   
-  if (options.method === 'POST' && /^\/api\/(storyboard\/(generate|regenerate|plan-shots|split-scene)|images\/generate|videos\/generate|audio\/generate)/.test(url)) {
+  if (options.method === 'POST' && /^\/api\/(storyboard\/(generate|regenerate|plan-shots|split-scene)|images\/generate|videos\/generate|audio\/generate|subtitles\/generate)/.test(url)) {
     headers['Idempotency-Key'] ||= options.idempotencyKey || crypto.randomUUID();
   }
   
@@ -32,6 +32,21 @@ export async function api(url, options = {}) {
   }
   
   return data;
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().flatMap((key) => value[key] === undefined ? [] : [[key, canonicalize(value[key])]]));
+  return value;
+}
+
+// A logical operation keeps the same key when a batch resumes after a lost HTTP response, while
+// the caller's version counter makes an intentional later regeneration a new operation.
+export async function logicalIdempotencyKey(namespace, value) {
+  const bytes = new TextEncoder().encode(JSON.stringify(canonicalize(value)));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `generation:${String(namespace).replace(/[^a-zA-Z0-9_.:-]/g, '_')}:${hex}`;
 }
 
 export async function cancelActiveProjectJobs(projectId) {

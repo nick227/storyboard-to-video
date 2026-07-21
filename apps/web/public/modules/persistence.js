@@ -71,7 +71,7 @@ export async function ensureProjectSynced() {
   if (!record) return;
   clearTimeout(serverSyncTimer);
   serverSyncTimer = null;
-  await syncProjectRecord(record);
+  await syncProjectRecord(record, undefined, { throwOnError: true });
 }
 
 function assetKey(version) {
@@ -153,9 +153,9 @@ export async function hydrateCurrentProjectFromServer() {
   }
 }
 
-export async function syncProjectRecord(record, setStatus) {
+export async function syncProjectRecord(record, setStatus, { throwOnError = false } = {}) {
   record.scenes = adaptSceneImageShots(record.scenes);
-  const project = { ...record, id: record.id, title: record.title };
+  const projectPayload = () => ({ ...record, id: record.id, title: record.title, scenes: adaptSceneImageShots(record.scenes) });
   try {
     if (!Number.isInteger(record.revision)) {
       try {
@@ -163,14 +163,25 @@ export async function syncProjectRecord(record, setStatus) {
         record.revision = existing.project.revision;
       } catch (error) {
         if (error.code !== 'PROJECT_NOT_FOUND') throw error;
-        const created = await api('/api/projects', { method: 'POST', body: JSON.stringify({ id: record.id, title: record.title, project }) });
+        const created = await api('/api/projects', { method: 'POST', body: JSON.stringify({ id: record.id, title: record.title, project: projectPayload() }) });
         Object.assign(record, created.project);
         record.scenes = adaptSceneImageShots(record.scenes);
         persistStoryboardLibrary();
         return;
       }
     }
-    const saved = await api(`/api/projects/${encodeURIComponent(record.id)}`, { method: 'PUT', headers: { 'If-Match': `"${record.revision}"` }, body: JSON.stringify(project) });
+    let saved;
+    try {
+      saved = await api(`/api/projects/${encodeURIComponent(record.id)}`, { method: 'PUT', headers: { 'If-Match': `"${record.revision}"` }, body: JSON.stringify(projectPayload()) });
+    } catch (error) {
+      if (error.code !== 'REVISION_CONFLICT') throw error;
+      // Provider workers legitimately advance the project revision when media commits. Merge that
+      // server-owned media into the live local edits and retry once against the new revision.
+      const latest = (await api(`/api/projects/${encodeURIComponent(record.id)}`)).project;
+      record.scenes = mergeScenes(latest.scenes, record.scenes);
+      record.revision = latest.revision;
+      saved = await api(`/api/projects/${encodeURIComponent(record.id)}`, { method: 'PUT', headers: { 'If-Match': `"${record.revision}"` }, body: JSON.stringify(projectPayload()) });
+    }
     Object.assign(record, saved.project);
     record.scenes = adaptSceneImageShots(record.scenes);
     
@@ -185,6 +196,7 @@ export async function syncProjectRecord(record, setStatus) {
     } else {
       if (setStatus) setStatus(`Project sync failed: ${error.message}`);
     }
+    if (throwOnError) throw error;
   }
 }
 

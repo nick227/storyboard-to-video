@@ -2,7 +2,7 @@ import { api, cancelActiveProjectJobs } from './api.js';
 import { sceneStore, uiStore, projectStore, batchStore, voiceStore, generationStore, spendStore } from './store.js';
 import { regeneratePrompt, planShots, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles } from './workflows.js';
 import { batchController } from './batch.js';
-import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
+import { ensureProjectSynced, getCurrentStoryboardRecord, queueSync } from './persistence.js';
 import { imageShot } from './scene-shots.js';
 import { hashCanonical } from './generation-manifest.js';
 import { normalizeReferenceRole } from './reference-roles.js';
@@ -184,13 +184,17 @@ export function buildLatestJobsByScene(recentJobs, jobType) {
   for (const job of recentJobs || []) {
     if (job.type !== jobType || !job.sceneId) continue;
     const existing = jobsByScene.get(job.sceneId);
-    if (!existing || new Date(job.createdAt) > new Date(existing.createdAt)) jobsByScene.set(job.sceneId, job);
+    const active = ['queued', 'running'].includes(job.status);
+    const existingActive = ['queued', 'running'].includes(existing?.status);
+    // A queued video attempt outlives the short HTTP job that created it. Prefer that durable
+    // active state even when a later duplicate HTTP job already appears as "succeeded".
+    if (!existing || (active && !existingActive) || (active === existingActive && new Date(job.createdAt) > new Date(existing.createdAt))) jobsByScene.set(job.sceneId, job);
   }
   return jobsByScene;
 }
 
 function mediaTally(scenes, { hasVersion, isStale, jobType, recentJobs }) {
-  let done = 0, stale = 0, missing = 0, failed = 0;
+  let done = 0, stale = 0, missing = 0, failed = 0, pending = 0;
   const jobsByScene = buildLatestJobsByScene(recentJobs, jobType);
   for (const scene of scenes) {
     if (hasVersion(scene)) {
@@ -198,9 +202,11 @@ function mediaTally(scenes, { hasVersion, isStale, jobType, recentJobs }) {
       continue;
     }
     const lastJob = jobsByScene.get(scene.id);
-    if (lastJob?.status === 'failed') failed += 1; else missing += 1;
+    if (lastJob?.status === 'failed') failed += 1;
+    else if (['queued', 'running'].includes(lastJob?.status)) pending += 1;
+    else missing += 1;
   }
-  return { total: scenes.length, done, stale, missing, failed };
+  return { total: scenes.length, done, stale, missing, failed, pending };
 }
 
 // Shot count is never one of these comparisons -- it isn't a planning input anymore, it's an output
@@ -289,6 +295,7 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
     tally.paused = batch?.state === 'paused' || stageRuns?.[key] === 'paused';
     tally.label = tally.total
       ? `${tally.done}/${tally.total}${tally.stale ? ` (${tally.stale} stale)` : ''}${tally.failed ? ` (${tally.failed} failed)` : ''}`
+        + `${tally.pending ? ` (${tally.pending} queued)` : ''}`
       : 'Not started';
   }
 
@@ -450,9 +457,11 @@ function buildBatchFns(stage, els, setStatus, onlyMissingOrStale, range) {
   // (default: the whole project) is the entire mechanism for scoping a run to a scene range —
   // batchController itself is plain index-based and needs no knowledge of ranges at all.
   const frozenScenes = allScenes.slice(startIndex, endIndex).map((scene) => ({ id: scene.id }));
+  const activeJobsByScene = buildLatestJobsByScene(cachedJobs, MEDIA_JOB_TYPE[stage]);
   const generateFn = async (index) => {
     const scene = resolveLiveScene(frozenScenes[index]?.id);
     if (!scene) return true; // removed mid-batch: skip, don't fail the whole batch
+    if (['queued', 'running'].includes(activeJobsByScene.get(scene.id)?.status)) return true;
     if (onlyMissingOrStale && config.hasVersion(scene) && !config.isStale(scene)) return true; // already fresh: skip
     // `index` here is relative to the frozen/sliced range (0 at the range's start), not the scene's
     // real position in the storyboard — regenerate* uses this index for user-facing scene numbers
@@ -503,6 +512,11 @@ function syncPauseIntent(stage, finalState, setStatus) {
 // "skip this one, keep going" shape regenerateAudio/regenerateVideo already use for missing
 // prerequisites (workflows.js).
 async function runStageBatch(stage, els, setStatus, { onlyMissingOrStale, range }) {
+  // Persist local edits once before the run. Every media endpoint commits its own scene update, so
+  // PUTting the whole project again before every scene only creates revision conflicts with those
+  // successful commits (and with asynchronous video completion).
+  await ensureProjectSynced();
+  await refreshRecentJobs(projectStore.get().currentId);
   const { generateFn, getScenes } = buildBatchFns(stage, els, setStatus, onlyMissingOrStale, range);
   if (!getScenes().length) return;
   const finalState = await batchController.start(BATCH_STORE_KEY[stage], generateFn, getScenes);

@@ -1,4 +1,4 @@
-function startVideoReconciliationWorker(videos, { intervalMs = 30_000, onError, onTick } = {}) {
+function startVideoReconciliationWorker(videos, { intervalMs = 30_000, onError, onTick, distributedLock } = {}) {
   const logError = onError || ((error) => console.error('[video-reconciliation] reconcile pass failed:', error));
   let running = false;
 
@@ -6,7 +6,10 @@ function startVideoReconciliationWorker(videos, { intervalMs = 30_000, onError, 
     if (running) return;
     running = true;
     try {
-      const outcomes = await videos.reconcileAttempts();
+      const reconcile = () => videos.reconcileAttempts();
+      const locked = distributedLock ? await distributedLock.tryRun('video-provider-lifecycle-reconciliation', reconcile) : { acquired: true, value: await reconcile() };
+      if (!locked.acquired) return;
+      const outcomes = locked.value;
       if (outcomes.length) {
         const pending = outcomes.filter((o) => o.pending).length;
         const failed = outcomes.filter((o) => o.failed).length;

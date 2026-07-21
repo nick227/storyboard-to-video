@@ -168,6 +168,33 @@ test('a lifecycle-serialized provider admits durable queued attempts one at a ti
   } finally { f.cleanup(); }
 });
 
+test('a lifecycle-serialized provider reuses active work for the same tenant project and scene', async () => {
+  const f = fixture();
+  try {
+    const adapter = {
+      name: 'stub', model: 'stub-video-v1', serializesLifecycle: true,
+      async verify() { return { ok: true }; }, async prepareAssets(request) { return request; },
+      async submit() { throw new Error('queued work must not submit during HTTP admission'); },
+      async inspect(task) { return task; }, async cancel(task) { return { ...task, state: 'cancelled' }; },
+      async fetchResult(task) { return task; }, normalizeUsage(value) { return value; },
+    };
+    const providerAdmission = new ProviderAdmissionQueue({ defaultMinIntervalMs: 0, policies: { stub: { lifecycle: 'serial' } } });
+    const providers = createVideoProviders(f.config, () => null, null, { stub: adapter }, providerAdmission);
+    const execution = createVideoExecutionService({ providers, attempts: f.attempts, assetTransport: createLocalVideoAssetTransport(), providerAdmission });
+    const inputPlan = resolveVideoInputPlan({ provider: 'stub', mode: 'image_to_video', inputs: [{ role: 'start_frame', assetPath: '/start.png', sourcePath: '/start.png', sha256: 'a'.repeat(64) }] });
+    const trace = { tenantId: 'tenant-1', projectId: 'project-1', sceneId: 'scene-1' };
+    const first = await execution.create({ provider: 'stub', generationMode: 'image_to_video', prompt: 'first', inputPlan, outputPath: '/first.mp4' }, trace);
+    const second = await execution.create({ provider: 'stub', generationMode: 'image_to_video', prompt: 'first', inputPlan, outputPath: '/duplicate-path.mp4' }, trace);
+    assert.equal(second.reused, true);
+    assert.equal(second.attempt.id, first.attempt.id);
+    assert.equal(f.attempts.listActive(trace).length, 1);
+    await assert.rejects(
+      execution.create({ provider: 'stub', generationMode: 'image_to_video', prompt: 'different request', inputPlan, outputPath: '/different.mp4' }, trace),
+      (error) => error.code === 'VIDEO_ATTEMPT_ACTIVE' && error.statusCode === 409,
+    );
+  } finally { f.cleanup(); }
+});
+
 test('provider task cancellation is persisted independently of an HTTP request', async () => {
   const f = fixture();
   try {

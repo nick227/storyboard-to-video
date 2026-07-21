@@ -1,4 +1,4 @@
-import { api } from './api.js';
+import { api, logicalIdempotencyKey } from './api.js';
 import { batchStore, projectStore, sceneStore, voiceStore, generationStore, uiStore } from './store.js';
 import { getCurrentStoryboardRecord, queueSync, ensureProjectSynced, hydrateCurrentProjectFromServer } from './persistence.js';
 import { clampSplitCount } from './scene-count.js';
@@ -276,7 +276,7 @@ export async function regenerateDialogue(index, els, setStatus, instruction = ''
   }
 }
 
-export async function regenerateImage(index, scene, els, setStatus) {
+export async function regenerateImage(index, scene, els, setStatus, withinSerial = false) {
   const scenes = sceneStore.get().scenes;
   // If scene wasn't passed directly (from batch), we take it from index
   const activeScene = scene || scenes[index];
@@ -287,7 +287,7 @@ export async function regenerateImage(index, scene, els, setStatus) {
   }
   
   try {
-    await ensureProjectSynced();
+    if (!withinSerial) await ensureProjectSynced();
     const base = getPayloadBase(els);
     const payload = {
       sceneNumber: index + 1,
@@ -308,8 +308,10 @@ export async function regenerateImage(index, scene, els, setStatus) {
       payload.confirmedReferencePlanHash = preflight.referencePlanHash;
     }
     if (setStatus) setStatus(`Generating image for scene ${index + 1}...`);
+    const idempotencyKey = await logicalIdempotencyKey('image', { versionCount: imageShot(activeScene).versions?.length || 0, payload });
     const data = await api('/api/images/generate', {
       method: 'POST',
+      idempotencyKey,
       body: JSON.stringify(payload),
     });
 
@@ -372,19 +374,22 @@ export async function regenerateAudio(index, scene, els, setStatus, withinSerial
   }
 
   try {
-    await ensureProjectSynced();
+    if (!withinSerial) await ensureProjectSynced();
     if (setStatus) setStatus(`Generating audio for scene ${index + 1}...`);
+    const payload = {
+      sceneNumber: index + 1,
+      sceneId: activeScene.id,
+      sceneTitle: activeScene.title,
+      narrationText: activeScene.narrationText,
+      provider: audioProvider,
+      voice: voiceStore.get().narratorVoice[audioProvider] || null,
+      projectId: projectStore.get().currentId,
+    };
+    const idempotencyKey = await logicalIdempotencyKey('audio', { versionCount: activeScene.audioVersions?.length || 0, payload });
     const data = await api('/api/audio/generate', {
       method: 'POST',
-      body: JSON.stringify({
-        sceneNumber: index + 1,
-        sceneId: activeScene.id,
-        sceneTitle: activeScene.title,
-        narrationText: activeScene.narrationText,
-        provider: audioProvider,
-        voice: voiceStore.get().narratorVoice[audioProvider] || null,
-        projectId: projectStore.get().currentId,
-      }),
+      idempotencyKey,
+      body: JSON.stringify(payload),
     });
 
     activeScene.audioVersions = data.scene.audioVersions;
@@ -429,17 +434,20 @@ export async function regenerateSubtitles(index, scene, els, setStatus, withinSe
   }
 
   try {
-    await ensureProjectSynced();
+    if (!withinSerial) await ensureProjectSynced();
     if (setStatus) setStatus(`Generating subtitles for scene ${index + 1}...`);
+    const payload = {
+      sceneNumber: index + 1,
+      sceneId: activeScene.id,
+      sceneTitle: activeScene.title,
+      captionStyle: els.subtitleStyleSelect ? els.subtitleStyleSelect.value : 'classic',
+      projectId: projectStore.get().currentId,
+    };
+    const idempotencyKey = await logicalIdempotencyKey('subtitle', { versionCount: activeScene.subtitleVersions?.length || 0, sourceAudioPath: activeAudio.path, payload });
     const data = await api('/api/subtitles/generate', {
       method: 'POST',
-      body: JSON.stringify({
-        sceneNumber: index + 1,
-        sceneId: activeScene.id,
-        sceneTitle: activeScene.title,
-        captionStyle: els.subtitleStyleSelect ? els.subtitleStyleSelect.value : 'classic',
-        projectId: projectStore.get().currentId,
-      }),
+      idempotencyKey,
+      body: JSON.stringify(payload),
     });
 
     activeScene.subtitleVersions = data.scene.subtitleVersions;
@@ -558,24 +566,27 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
   }
 
   try {
-    await ensureProjectSynced();
+    if (!withinSerial) await ensureProjectSynced();
     if (setStatus) setStatus(`Generating video for scene ${index + 1}...`);
     const base = getPayloadBase(els);
+    const payload = {
+      sceneNumber: index + 1,
+      sceneId: activeScene.id,
+      sceneTitle: activeScene.title,
+      scenePrompt: activeScene.prompt,
+      sceneBeat: activeScene.beat,
+      styleId: base.styleId,
+      commonPromptText: base.commonPromptText,
+      motionIntensity: els.videoMotionIntensity.value,
+      projectId: base.projectId,
+      ...(selectedProvider ? { provider: selectedProvider } : {}),
+      ...(generationMode ? { generationMode } : {}),
+    };
+    const idempotencyKey = await logicalIdempotencyKey('video', { versionCount: shot.videoVersions?.length || 0, payload });
     const data = await api('/api/videos/generate', {
       method: 'POST',
-      body: JSON.stringify({
-        sceneNumber: index + 1,
-        sceneId: activeScene.id,
-        sceneTitle: activeScene.title,
-        scenePrompt: activeScene.prompt,
-        sceneBeat: activeScene.beat,
-        styleId: base.styleId,
-        commonPromptText: base.commonPromptText,
-        motionIntensity: els.videoMotionIntensity.value,
-        projectId: base.projectId,
-        ...(selectedProvider ? { provider: selectedProvider } : {}),
-        ...(generationMode ? { generationMode } : {}),
-      }),
+      idempotencyKey,
+      body: JSON.stringify(payload),
     });
 
     if (data.pending) {

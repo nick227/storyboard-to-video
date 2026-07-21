@@ -5,6 +5,7 @@ const { createDependencies } = require('./src/dependencies');
 const { createApp } = require('./src/app');
 const { startServer } = require('./src/server');
 const { startVideoReconciliationWorker } = require('./src/workers/video-reconciliation-worker');
+const { PostgresAdvisoryLock } = require('./src/storage/postgres-advisory-lock');
 const { createAssetResolver } = require('./src/media/assets');
 const { buildWavBuffer, concatenatePcmLines } = require('./src/media/wav');
 const { clampSceneCount, getAdditionalCommonPrompt } = require('./src/shared/text');
@@ -16,7 +17,8 @@ const app = createApp(dependencies);
 
 if (require.main === module) {
   startServer(app, config);
-  startVideoReconciliationWorker(dependencies.videos, { intervalMs: config.videoReconcileIntervalMs });
+  const videoLifecycleLock = dependencies.prisma && config.env.DATABASE_URL ? new PostgresAdvisoryLock(config.env.DATABASE_URL) : null;
+  startVideoReconciliationWorker(dependencies.videos, { intervalMs: config.videoReconcileIntervalMs, distributedLock: videoLifecycleLock });
 }
 
 module.exports = {

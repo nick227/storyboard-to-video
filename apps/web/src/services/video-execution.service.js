@@ -1,4 +1,7 @@
 const { snapshotVideoPlan } = require('../shared/video-input-plan');
+const { AppError } = require('../errors');
+const { canonicalJson } = require('../shared/generation-manifest');
+const crypto = require('node:crypto');
 
 const PROVIDER_PENDING_STATES = new Set(['submitted', 'queued', 'running', 'provider_running']);
 const DEFAULT_ATTEMPT_TIMEOUT_MS = 15 * 60_000;
@@ -8,6 +11,9 @@ function errorSnapshot(error) { return { code: error.code || 'VIDEO_PROVIDER_FAI
 function elapsedMs(attempt) { return Date.now() - new Date(attempt.createdAt).getTime(); }
 function providerElapsedMs(attempt) { return Date.now() - new Date(attempt.providerSubmittedAt || attempt.createdAt).getTime(); }
 function tag(attempt) { return `attempt=${attempt.id} scene=${attempt.sceneId || 'n/a'} provider=${attempt.provider} taskId=${attempt.providerTaskId || 'n/a'}`; }
+function attemptKey(attempt) {
+  return { tenantId: attempt.tenantId, projectId: attempt.projectId, sceneId: attempt.sceneId, provider: attempt.provider };
+}
 
 function immutableSnapshot(request) {
   return structuredClone({
@@ -24,6 +30,13 @@ function immutableSnapshot(request) {
     inputPlan: snapshotVideoPlan(request.inputPlan, { retainSourcePaths: true }),
     finalization: request.finalization || null,
   });
+}
+
+function requestFingerprint(snapshot) {
+  const logical = { ...snapshot };
+  delete logical.outputPath;
+  delete logical.finalization;
+  return crypto.createHash('sha256').update(canonicalJson(logical)).digest('hex');
 }
 
 function createVideoExecutionService({ providers, attempts, usageTracker, assetTransport, attemptTimeoutMs = DEFAULT_ATTEMPT_TIMEOUT_MS, providerAdmission = providers.providerAdmission }) {
@@ -51,12 +64,29 @@ function createVideoExecutionService({ providers, attempts, usageTracker, assetT
   async function create(request, trace = {}) {
     const { adapter, capabilities, model, mode } = providers.resolve({ provider: request.provider, model: request.model, mode: request.generationMode });
     const snapshot = immutableSnapshot({ ...request, model, generationMode: mode });
-    const attempt = await attempts.create({
+    const fingerprint = requestFingerprint(snapshot);
+    const key = { tenantId: trace.tenantId || null, projectId: trace.projectId || null, sceneId: trace.sceneId || null, provider: request.provider };
+    const reuse = (existing) => {
+      const existingFingerprint = existing.requestFingerprint || requestFingerprint(existing.requestSnapshot);
+      if (existingFingerprint !== fingerprint) throw new AppError('VIDEO_ATTEMPT_ACTIVE', 'A different video generation request is already active for this scene and provider.', { status: 409, retryable: true, details: { attemptId: existing.id, lifecycleState: existing.lifecycleState } });
+      console.log(`[video] reused ${tag(existing)} state=${existing.lifecycleState}`);
+      return { pending: true, reused: true, attempt: existing, capabilities };
+    };
+    if (key.tenantId && key.projectId && key.sceneId && serializesLifecycle(adapter, request.provider) && attempts.findActive) {
+      const existing = await attempts.findActive(key);
+      if (existing) return reuse(existing);
+    }
+    const attemptData = {
       generationJobId: trace.jobId || null, tenantId: trace.tenantId || null, userId: trace.userId || null,
       projectId: trace.projectId || null, sceneId: trace.sceneId || null,
-      provider: request.provider, model, generationMode: mode, requestSnapshot: snapshot,
+      provider: request.provider, model, generationMode: mode, requestSnapshot: snapshot, requestFingerprint: fingerprint,
       lifecycleState: 'preparing_assets', inputHashes: request.inputPlan.included.map(({ role, assetId, assetPath, sha256 }) => ({ role, assetId, assetPath, sha256 })),
-    });
+    };
+    const claimed = key.tenantId && key.projectId && key.sceneId && serializesLifecycle(adapter, request.provider) && attempts.createActive
+      ? await attempts.createActive(attemptData)
+      : { attempt: await attempts.create(attemptData), created: true };
+    if (!claimed.created) return reuse(claimed.attempt);
+    const attempt = claimed.attempt;
     let usageHandle = null;
     let currentAttempt = attempt;
     try {
@@ -142,9 +172,38 @@ function createVideoExecutionService({ providers, attempts, usageTracker, assetT
   async function markCommitFailed(id, error) { return attempts.update(id, { lifecycleState: 'failed', commitState: 'failed', error: errorSnapshot(error), completedAt: new Date().toISOString() }); }
   async function recoverable() { return attempts.listRecoverable(); }
 
+  async function abandonQueued(attempt, reason) {
+    const error = Object.assign(new Error(reason), { code: 'DUPLICATE_VIDEO_ATTEMPT' });
+    await usageTracker?.fail(attempt.generationRequestId, error);
+    const updated = await attempts.update(attempt.id, { lifecycleState: 'cancelled', cancellationState: 'cancelled', error: errorSnapshot(error), completedAt: new Date().toISOString() });
+    console.log(`[video] deduplicated ${tag(updated)} reason=${reason}`);
+    return { pending: false, cancelled: true, deduplicated: true, attempt: updated };
+  }
+
   async function reconcile(onCompleted) {
     const results = [];
-    const recoverableAttempts = await recoverable();
+    let recoverableAttempts = await recoverable();
+    // Older clients could submit the same scene repeatedly while its durable provider attempt was
+    // queued. Collapse that backlog without making a provider cancellation call: queued work has
+    // never left this process, and releasing its reservation is sufficient.
+    const activeByKey = new Map();
+    const deduplicated = new Set();
+    for (const attempt of recoverableAttempts) {
+      if (!attempt.tenantId || !attempt.projectId || !attempt.sceneId) continue;
+      if (attempt.lifecycleState !== 'queued') {
+        activeByKey.set(JSON.stringify(attemptKey(attempt)), attempt);
+        continue;
+      }
+      const key = JSON.stringify(attemptKey(attempt));
+      const committed = attempts.findCommittedAfter ? await attempts.findCommittedAfter(attemptKey(attempt), attempt.createdAt) : null;
+      if (committed || activeByKey.has(key)) {
+        results.push(await abandonQueued(attempt, committed ? 'A render requested at the same time already completed.' : 'A render for this scene is already active.'));
+        deduplicated.add(attempt.id);
+      } else {
+        activeByKey.set(key, attempt);
+      }
+    }
+    recoverableAttempts = recoverableAttempts.filter((attempt) => !deduplicated.has(attempt.id));
     // A provider with serializesLifecycle may have multiple legacy in-flight attempts from before
     // the queue was introduced; continue polling all of those, but do not admit any queued work
     // until a later pass observes zero active attempts. When no work is active, only the oldest
