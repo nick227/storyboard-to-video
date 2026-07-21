@@ -49,6 +49,28 @@ test('cookie sessions isolate projects by tenant and logout revokes access', asy
   } finally { f.cleanup(); }
 });
 
+test('session CSRF accepts https Origin when X-Forwarded-Proto is set (Railway TLS)', async () => {
+  const f = fixture();
+  try {
+    const agent = request.agent(f.app);
+    await agent.post('/api/auth/register').send({ email: 'csrf@example.com', displayName: 'Csrf', password: 'a-secure-password' }).expect(201);
+    const host = 'storyboard-to-video.up.railway.app';
+    const rejected = await agent.post('/api/projects')
+      .set('Host', host)
+      .set('Origin', `https://${host}`)
+      .send({ id: 'csrf-reject', title: 'Reject' })
+      .expect(403);
+    assert.equal(rejected.body.error.code, 'CSRF_REJECTED');
+    const allowed = await agent.post('/api/projects')
+      .set('Host', host)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Origin', `https://${host}`)
+      .send({ id: 'csrf-allow', title: 'Allow' })
+      .expect(201);
+    assert.equal(allowed.body.project.id, 'csrf-allow');
+  } finally { f.cleanup(); }
+});
+
 test('login rejects invalid credentials without exposing account existence', async () => {
   const f = fixture();
   try {

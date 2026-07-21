@@ -22,6 +22,9 @@ const { isPlatformAdmin } = require('./middleware/style-admin');
 
 function createApp(dependencies) {
   const app = express();
+  // Railway (and most PaaS) terminate TLS at the edge. Without this, req.protocol is "http" while
+  // the browser Origin is "https://...", so session CSRF checks reject every authenticated POST.
+  app.set('trust proxy', 1);
   registerMiddleware(app, dependencies);
   app.use('/api/auth', authRoutes(dependencies.auth));
   app.use(['/api', '/projects', '/style-references', '/user-style-references'], dependencies.authenticate);

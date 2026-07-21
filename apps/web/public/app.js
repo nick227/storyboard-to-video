@@ -1185,8 +1185,9 @@ function attachEvents() {
 
     setStatus('Starting...');
     const result = await runCreateStoryFlow('custom', els, setStatus, { stages, range, forceStages });
-    if (result.stoppedAt) setStatus(`Stopped: ${result.stoppedAt}.`);
-    else setStatus('Done.');
+    // On failure the stage already set a specific message (e.g. Shot planning failed: ...); keep it.
+    if (!result.stoppedAt) setStatus('Done.');
+    else if (result.stoppedAt !== 'failed') setStatus(`Stopped: ${result.stoppedAt}.`);
     await Promise.all([
       refreshRecentJobs(projectStore.get().currentId),
       refreshSpend(projectStore.get().currentId)
