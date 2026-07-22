@@ -53,8 +53,14 @@ export const spendStore = new Store({
   totalCreditMicros: '0',
   providers: {},
   activePrices: [],
-  estimatedPrices: [],
+  unpriced: [],
   videoModels: [],
+});
+
+export const creditStore = new Store({
+  availableCreditMicros: '0',
+  reservedCreditMicros: '0',
+  loaded: false,
 });
 
 export const voiceStore = new Store({

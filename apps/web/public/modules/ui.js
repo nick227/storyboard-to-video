@@ -910,7 +910,7 @@ function selectSceneVersion(vIndex) {
 
 export function populateTokensInfoModal(els) {
   const spend = getCachedSpend() || {};
-  const { totalCostUSD = 0, totalTokens = 0, totalCredits = 0, providers = {}, activePrices = [], estimatedPrices = [], videoModels = [] } = spend;
+  const { totalCostUSD = 0, totalTokens = 0, totalCredits = 0, providers = {}, activePrices = [], unpriced = [], videoModels = [] } = spend;
 
   // 1. Render Active Project Spend Breakdown
   let spendHTML = '';
@@ -954,6 +954,11 @@ export function populateTokensInfoModal(els) {
       <span>Total Storyboard Spend: <strong>$${totalCostUSD.toFixed(5)} USD</strong></span>
       <span>Total Tokens: <strong>${totalTokens.toLocaleString()}</strong></span>
     </div>`;
+    if (unpriced.length) {
+      spendHTML += `<div style="margin-bottom: 12px; font-size: 12px; color: var(--muted); padding: 8px 16px; border-radius: 8px; border: 1px dashed var(--line);">
+        ⚠ ${unpriced.reduce((sum, item) => sum + item.count, 0)} generation(s) from ${unpriced.map((item) => `${item.provider}/${item.model}`).join(', ')} have no configured price yet and are <strong>not included</strong> in the totals above.
+      </div>`;
+    }
 
     spendHTML += `<div class="tokens-spend-grid">`;
     for (const [modality, group] of Object.entries(modalityGroups)) {
@@ -982,7 +987,7 @@ export function populateTokensInfoModal(els) {
         spendHTML += `<div class="tokens-spend-provider-row">
           <div class="tokens-spend-provider-header">
             <strong>${item.provider} <span style="font-weight: normal; color: var(--muted); font-size: 11px;">(${item.model})</span></strong>
-            <span>$${item.costUSD.toFixed(5)}</span>
+            <span>${item.unpriced ? '<span style="color: var(--muted);">Unpriced</span>' : `$${item.costUSD.toFixed(5)}`}</span>
           </div>
           <div class="tokens-spend-model-list">
             <div class="tokens-spend-model-row">
@@ -1024,23 +1029,10 @@ export function populateTokensInfoModal(els) {
     </tr>`;
   }
 
-  // Render Fallback / Estimated Prices
-  for (const est of estimatedPrices) {
-    pricingHTML += `<tr>
-      <td><strong>${est.provider}</strong></td>
-      <td style="text-transform: capitalize;">${est.modality}</td>
-      <td><code>${est.model}</code></td>
-      <td>${est.rate}</td>
-    </tr>`;
-  }
-
   // The usage cards above show video models that have actually run. Also list every supported
   // video model here so Token Details remains useful before the first video generation and so a
   // configured model without a rate card is visible instead of silently omitted.
-  const pricedModels = new Set([
-    ...activePrices.map((price) => `${price.provider}:${price.modality}:${price.model}`),
-    ...estimatedPrices.map((price) => `${price.provider}:${price.modality}:${price.model}`),
-  ]);
+  const pricedModels = new Set(activePrices.map((price) => `${price.provider}:${price.modality}:${price.model}`));
   for (const video of videoModels) {
     if (pricedModels.has(`${video.provider}:video:${video.model}`)) continue;
     const modeLabels = (video.modes || []).map((mode) => mode.replaceAll('_', ' ')).join(', ');

@@ -1,14 +1,15 @@
 const { signal, throwResponse } = require('../providers/http');
 const { AppError } = require('../errors');
 const { PIPER_VOICE_CATALOG } = require('../config/piper-voices');
-const { providerOutput } = require('../providers/result');
+const { providerOutput, providerResult } = require('../providers/result');
 
-function createVoiceService(config, getCancellation, audioProvider = {}, providerAdmission) {
+function createVoiceService(config, getCancellation, audioProvider = {}, usageTracker, providerAdmission) {
   const spark = (name) => `${config.sparkUrl}${name}`;
   const authHeaders = () => config.sparkServiceToken ? { Authorization: `Bearer ${config.sparkServiceToken}` } : {};
   const admit = (provider, operation) => providerAdmission
     ? providerAdmission.run(provider, operation, { signal: getCancellation?.() })
     : operation();
+  const tracked = (metadata, operation) => usageTracker ? usageTracker.execute(metadata, operation) : operation();
 
   return {
     elevenLabsVoices() {
@@ -24,14 +25,15 @@ function createVoiceService(config, getCancellation, audioProvider = {}, provide
     },
     async piperPreview(voiceId) {
       if (!config.piperVoices.includes(voiceId)) throw new AppError('UNKNOWN_VOICE', 'Unknown Piper voice', { status: 404 });
-      return audioProvider.piperPreview(voiceId);
+      return providerOutput(await audioProvider.piperPreview(voiceId));
     },
-    sparkPreflight() {
-      return admit('spark', async () => {
+    async sparkPreflight() {
+      const result = await admit('spark', () => tracked({ modality: 'audio', provider: 'spark', model: 'spark-preflight' }, async () => {
         const response = await fetch(spark('/health'), { signal: signal(config.env.SPARK_PREFLIGHT_TIMEOUT_MS || 3_000, getCancellation) });
         if (!response.ok) throw new Error(`health check returned HTTP ${response.status}`);
-        return { ok: true, provider: 'spark' };
-      });
+        return providerResult({ output: { ok: true, provider: 'spark' }, provider: 'spark', model: 'spark-preflight', usage: {}, measurementStatus: 'not_applicable' });
+      }));
+      return providerOutput(result);
     },
     sparkVoices() {
       return admit('spark', async () => {
@@ -40,8 +42,8 @@ function createVoiceService(config, getCancellation, audioProvider = {}, provide
         return (await response.json()).voices?.map((voice) => ({ voiceId: voice.voiceId, label: voice.name })) || [];
       });
     },
-    clone(file, name) {
-      return admit('spark', async () => {
+    async clone(file, name) {
+      const result = await admit('spark', () => tracked({ modality: 'audio', provider: 'spark', model: 'spark-voice-clone', inputMetadata: { fileBytes: file.buffer.length } }, async () => {
         const form = new FormData();
         form.append('audio', new Blob([file.buffer]), file.originalname || 'recording.webm');
         form.append('name', name);
@@ -51,8 +53,9 @@ function createVoiceService(config, getCancellation, audioProvider = {}, provide
           throw new Error(detail.detail || `Voice cloning failed (${response.status})`);
         }
         const data = await response.json();
-        return { voiceId: data.voiceId, label: data.name };
-      });
+        return providerResult({ output: { voiceId: data.voiceId, label: data.name }, provider: 'spark', model: 'spark-voice-clone', usage: { clones: 1, fileBytes: file.buffer.length }, measurementStatus: 'observed' });
+      }));
+      return providerOutput(result);
     },
     remove(voiceId) {
       return admit('spark', async () => {
@@ -63,12 +66,14 @@ function createVoiceService(config, getCancellation, audioProvider = {}, provide
     async speak({ provider, text, voice }) {
       return providerOutput(await audioProvider.generate({ provider, narrationText: text, voice }));
     },
-    reference(voiceId) {
-      return admit('spark', async () => {
+    async reference(voiceId) {
+      const result = await admit('spark', () => tracked({ modality: 'audio', provider: 'spark', model: 'spark-reference' }, async () => {
         const response = await fetch(spark(`/voices/${encodeURIComponent(voiceId)}/reference`), { headers: authHeaders(), signal: signal(config.env.SPARK_PREFLIGHT_TIMEOUT_MS || 10_000, getCancellation) });
         if (!response.ok) throw new Error(`Reference audio failed (${response.status})`);
-        return { buffer: Buffer.from(await response.arrayBuffer()), contentType: response.headers.get('content-type') || 'audio/wav' };
-      });
+        const buffer = Buffer.from(await response.arrayBuffer());
+        return providerResult({ output: { buffer, contentType: response.headers.get('content-type') || 'audio/wav' }, provider: 'spark', model: 'spark-reference', usage: {}, measurementStatus: 'observed' });
+      }));
+      return providerOutput(result);
     },
   };
 }

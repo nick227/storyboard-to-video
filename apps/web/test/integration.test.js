@@ -41,7 +41,10 @@ test('credit purchase pages require login and Stripe webhooks bypass user auth',
   await request(app).get('/credits').expect(302).expect('Location', /login\.html/);
   await request(app).get('/credits.html').set(auth('bob-token')).expect(302).expect('Location', '/credits');
   await request(app).get('/credits').set(auth('bob-token')).expect(200).expect(/Site credits/).expect(/<storyframe-topbar>/);
-  await request(app).get('/api/billing/credit-packs').set(auth('bob-token')).expect(200).expect((response) => assert.ok(Array.isArray(response.body.packs)));
+  await request(app).get('/api/billing/purchase-options').set(auth('bob-token')).expect(200).expect((response) => {
+    assert.equal(response.body.minimumAmount, 100);
+    assert.equal(response.body.defaultAmount, 1000);
+  });
   await request(app).post('/api/webhooks/stripe').set('Content-Type', 'application/json').send('{"id":"evt_test"}').expect(503).expect((response) => assert.equal(response.body.error.code, 'PAYMENTS_UNAVAILABLE'));
 });
 
@@ -318,7 +321,8 @@ test('GET /api/projects/:projectId/tokens retrieves and aggregates project token
   assert.equal(populatedRes.body.providers.openai.inputTokens, 1000);
   assert.equal(populatedRes.body.providers.openai.outputTokens, 500);
   assert.ok(Array.isArray(populatedRes.body.activePrices));
-  assert.ok(Array.isArray(populatedRes.body.estimatedPrices));
+  assert.ok(Array.isArray(populatedRes.body.unpriced));
+  assert.deepEqual(populatedRes.body.unpriced, []);
   assert.ok(Array.isArray(populatedRes.body.videoModels));
   assert.ok(populatedRes.body.videoModels.some((entry) => entry.provider === 'ltx' && entry.model === 'ltx-video'));
   assert.ok(populatedRes.body.videoModels.some((entry) => entry.provider === 'minimax' && entry.model === 'MiniMax-Hailuo-02'));
@@ -362,4 +366,49 @@ test('GET /api/projects/:projectId/tokens retrieves and aggregates project token
   assert.equal(videoRes.body.providers.ltx.modalities.video.count, 1);
   assert.equal(videoRes.body.providers.ltx.modalities.video.models['ltx-video'].count, 1);
   assert.equal(videoRes.body.providers.ltx.modalities.video.models['ltx-video'].extra.frames, 121);
+});
+
+// The exact provider/modality/model combinations this task seeded non-billable observability
+// prices for (scripts/seed-observability-prices.js) plus the ones that already existed. Checked
+// against a curated list rather than every distinct (provider, modality, model) that has ever
+// appeared in GenerationRequest: this integration test itself (and others) leave behind
+// `test-version-*` ProviderPriceVersion/GenerationRequest rows in the shared dev DB across runs
+// (e.g. a stray `gpt-4o` model from earlier test runs, never a real production model), which
+// would make a blanket "every model in history" assertion flaky/misleading.
+const REQUIRED_PRICED_MODELS = [
+  { provider: 'openai', modality: 'text', model: 'gpt-4.1-mini' },
+  { provider: 'openai', modality: 'image', model: 'gpt-image-1' },
+  { provider: 'gemini', modality: 'text', model: 'gemini-3.5-flash' },
+  { provider: 'gemini', modality: 'image', model: 'gemini-3.1-flash-image' },
+  { provider: 'dezgo', modality: 'image', model: 'text2image' },
+  { provider: 'minimax', modality: 'video', model: 'MiniMax-Hailuo-02' },
+  { provider: 'ltx', modality: 'video', model: 'ltx-video' },
+  { provider: 'piper', modality: 'audio', model: 'piper-local' },
+  { provider: 'piper', modality: 'audio', model: 'piper-modal' },
+  { provider: 'spark', modality: 'audio', model: 'spark-tts' },
+  { provider: 'spark', modality: 'audio', model: 'spark-voice-clone' },
+  { provider: 'spark', modality: 'audio', model: 'spark-preflight' },
+  { provider: 'spark', modality: 'audio', model: 'spark-reference' },
+  { provider: 'whisperx', modality: 'alignment', model: 'whisperx-forced-alignment' },
+];
+
+test('every provider/model this task priced for observability has a non-billable active price row, and only the reconciled OpenAI text price is billable', async () => {
+  const activePrices = await prisma.providerPriceVersion.findMany({ where: { active: true }, select: { provider: true, modality: true, model: true, billable: true, versionKey: true } });
+  const priceKeys = new Set(activePrices.map((price) => `${price.provider}::${price.modality}::${price.model}`));
+  const missing = REQUIRED_PRICED_MODELS.filter((row) => !priceKeys.has(`${row.provider}::${row.modality}::${row.model}`));
+  assert.deepEqual(missing, [], `expected an active price row for each of: ${JSON.stringify(missing)}`);
+
+  const billable = activePrices.filter((price) => price.billable);
+  assert.equal(billable.length, 1);
+  assert.equal(billable[0].versionKey, 'openai-gpt-4.1-mini-2026-07-17');
+});
+
+test('GET /api/billing/pricing reads real ProviderPriceVersion rows, not a static duplicate array', async () => {
+  const response = await request(app).get('/api/billing/pricing').set(auth()).expect(200);
+  assert.equal(response.body.ok, true);
+  assert.ok(Array.isArray(response.body.prices));
+  assert.ok(response.body.prices.length > 0);
+  assert.equal(response.body.estimatedPrices, undefined);
+  assert.ok(response.body.prices.some((price) => price.provider === 'minimax' && price.model === 'MiniMax-Hailuo-02'));
+  assert.ok(response.body.prices.some((price) => price.provider === 'whisperx' && price.modality === 'alignment'));
 });

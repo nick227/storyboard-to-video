@@ -43,10 +43,10 @@ test('text, image, audio, alignment, and voice API calls share provider admissio
     const audio = createAudioProviders(config, () => null, null, providerAdmission);
     await audio.generate({ provider: 'elevenlabs', narrationText: 'Speak.', voice: { voiceId: 'voice-1' } });
 
-    const alignment = createAlignmentProvider(config, () => null, providerAdmission);
+    const alignment = createAlignmentProvider(config, () => null, null, providerAdmission);
     await alignment.align({ audioBuffer: Buffer.from('audio'), transcript: 'Speak.', mimeType: 'audio/wav' });
 
-    const voices = createVoiceService(config, () => null, audio, providerAdmission);
+    const voices = createVoiceService(config, () => null, audio, null, providerAdmission);
     await voices.sparkVoices();
 
     assert.deepEqual(admitted, ['openai', 'dezgo', 'elevenlabs', 'alignment', 'spark']);

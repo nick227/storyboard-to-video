@@ -1,105 +1,4 @@
-const { convertNanoUsdToCreditMicros } = require('../billing/calculator');
-
-function estimateUsageCost(event) {
-  const provider = event.provider || 'unknown';
-  const modality = event.modality || 'unknown';
-  const usage = event.usage || {};
-
-  if (provider === 'stub') {
-    return 0;
-  }
-
-  if (modality === 'text') {
-    if (provider === 'openai') {
-      const input = Number(usage.inputTokens || 0);
-      const cached = Number(usage.cachedInputTokens || 0);
-      const output = Number(usage.outputTokens || 0);
-      const nonCached = Math.max(0, input - cached);
-      return (nonCached * 400 + cached * 100 + output * 1600) / 1e9;
-    }
-    if (provider === 'gemini') {
-      const input = Number(usage.inputTokens || 0);
-      const output = Number(usage.outputTokens || 0);
-      return (input * 1500 + output * 9000) / 1e9;
-    }
-  }
-
-  if (modality === 'image') {
-    if (provider === 'openai') {
-      const input = Number(usage.inputTokens || usage.inputTextTokens || 0);
-      const output = Number(usage.outputTokens || usage.outputImageTokens || 0);
-      return (input * 5000 + output * 40000) / 1e9;
-    }
-    if (provider === 'gemini') {
-      const input = Number(usage.inputTokens || 0);
-      const text = Number(usage.outputTextOrThinkingTokens || 0);
-      const img = Number(usage.outputImageTokens || 0);
-      return (input * 500 + text * 3000 + img * 60000) / 1e9;
-    }
-    if (provider === 'dezgo') {
-      const steps = Number(usage.steps || 25);
-      const images = Number(usage.images || 1);
-      return (0.0181 * steps / 30) * images;
-    }
-  }
-
-  if (modality === 'audio') {
-    if (provider === 'elevenlabs') {
-      const chars = Number(usage.characters || 0);
-      return (chars / 1000) * 0.15;
-    }
-    if (provider === 'piper') {
-      const bytes = Number(usage.outputBytes || 0);
-      const seconds = bytes / 44100;
-      return (seconds / 100) * 0.01;
-    }
-    if (provider === 'spark') {
-      const bytes = Number(usage.outputBytes || 0);
-      const seconds = bytes / 48000;
-      return (seconds / 100) * 0.05;
-    }
-  }
-
-  if (modality === 'video') {
-    if (provider === 'ltx') {
-      const videos = Number(usage.videos || 1);
-      return videos * 0.015;
-    }
-  }
-
-  return 0;
-}
-
-const estimatedPrices = [
-  {
-    provider: 'elevenlabs',
-    modality: 'audio',
-    model: 'eleven_turbo_v2_5',
-    rate: '$0.15 per 1,000 characters',
-    notes: 'Runs via ElevenLabs API (Starter/Creator tier average)',
-  },
-  {
-    provider: 'piper',
-    modality: 'audio',
-    model: 'piper-local',
-    rate: '$0.01 per 100 seconds of audio ($0.0001/sec)',
-    notes: 'Runs locally or via Modal.com CPU/GPU container',
-  },
-  {
-    provider: 'spark',
-    modality: 'audio',
-    model: 'spark-tts',
-    rate: '$0.05 per 100 seconds of audio ($0.0005/sec)',
-    notes: 'Runs locally or via Modal.com container',
-  },
-  {
-    provider: 'ltx',
-    modality: 'video',
-    model: 'ltx-video',
-    rate: '$0.015 per generation (approx. 5s at 24fps)',
-    notes: 'Runs locally or via Modal.com A100 GPU instance',
-  },
-];
+const { calculateProviderCost, convertNanoUsdToCreditMicros } = require('../billing/calculator');
 
 function localJsonSafe(value) {
   if (typeof value === 'bigint') return value.toString();
@@ -113,15 +12,49 @@ function localJsonSafe(value) {
   return value;
 }
 
-function aggregateEvents(events) {
+function priceKey(provider, modality, model) { return `${provider}::${modality}::${model}`; }
+
+function buildPriceIndex(prices) {
+  const index = new Map();
+  for (const price of prices) index.set(priceKey(price.provider, price.modality, price.model), price);
+  return index;
+}
+
+// Single source of cost truth: a persisted ProviderCostSnapshot (real, from the moment the
+// generation settled) if one exists, otherwise the same formal ProviderPriceVersion rate card
+// computed live (for events that predate the price row, or ran while it was momentarily
+// inactive) -- never a second, hand-maintained cost formula. `stub` is genuinely free, not
+// unknown. Anything with no matching price at all is `unpriced`, not silently $0.
+function resolveEventCost(event, priceIndex) {
+  const provider = event.provider || 'unknown';
+  const modality = event.modality || 'unknown';
+  const model = event.model || 'unknown';
+  if (provider === 'stub') return { costUSD: 0, unpriced: false };
+  if (event.costSnapshot) return { costUSD: Number(event.costSnapshot.providerCostNanoUsd) / 1e9, unpriced: false };
+  const price = priceIndex.get(priceKey(provider, modality, model));
+  if (!price) return { costUSD: 0, unpriced: true };
+  const cost = calculateProviderCost(price.rateCard, event.usage || {});
+  return { costUSD: Number(cost.nanoUsd) / 1e9, unpriced: false };
+}
+
+function aggregateEvents(events, prices = []) {
+  const priceIndex = buildPriceIndex(prices);
   const providers = {};
   let totalCostUSD = 0;
   let totalTokens = 0;
+  const unpricedByKey = new Map();
 
   for (const event of events) {
     const provider = event.provider || 'unknown';
     const modality = event.modality || 'unknown';
     const model = event.model || 'unknown';
+    const { costUSD, unpriced } = resolveEventCost(event, priceIndex);
+
+    if (unpriced) {
+      const key = priceKey(provider, modality, model);
+      if (!unpricedByKey.has(key)) unpricedByKey.set(key, { provider, modality, model, count: 0 });
+      unpricedByKey.get(key).count += 1;
+    }
 
     if (!providers[provider]) {
       providers[provider] = {
@@ -137,13 +70,6 @@ function aggregateEvents(events) {
     const input = Number(usage.inputTokens || usage.inputTextTokens || 0);
     const output = Number(usage.outputTokens || usage.candidatesTokenCount || usage.thoughtsTokenCount || usage.outputImageTokens || 0);
     const tokens = Number(usage.totalTokens || usage.totalTokenCount || 0) || (input + output);
-
-    let costUSD = 0;
-    if (event.costSnapshot) {
-      costUSD = Number(event.costSnapshot.providerCostNanoUsd) / 1e9;
-    } else {
-      costUSD = estimateUsageCost(event);
-    }
 
     providers[provider].costUSD += costUSD;
     providers[provider].tokens += tokens;
@@ -171,6 +97,7 @@ function aggregateEvents(events) {
         inputTokens: 0,
         outputTokens: 0,
         extra: {},
+        unpriced: false,
       };
     }
 
@@ -179,6 +106,7 @@ function aggregateEvents(events) {
     modelGroup.tokens += tokens;
     modelGroup.inputTokens += input;
     modelGroup.outputTokens += output;
+    if (unpriced) modelGroup.unpriced = true;
 
     if (modality === 'text') {
       modalityGroup.count += 1;
@@ -198,16 +126,23 @@ function aggregateEvents(events) {
       modelGroup.count += count;
       const frames = Number(usage.frames || 0);
       modelGroup.extra.frames = (modelGroup.extra.frames || 0) + frames;
+    } else {
+      modalityGroup.count += 1;
+      modelGroup.count += 1;
     }
 
     totalCostUSD += costUSD;
     totalTokens += tokens;
   }
 
-  return { providers, totalCostUSD, totalTokens };
+  return { providers, totalCostUSD, totalTokens, unpriced: [...unpricedByKey.values()] };
 }
 
 function createSpendSummaryService({ prisma, billingRepository }) {
+  async function activePrices() {
+    return prisma.providerPriceVersion.findMany({ where: { active: true } });
+  }
+
   async function withCredits(totalCostUSD) {
     const rate = billingRepository ? await billingRepository.activeCreditRate() : null;
     if (!rate) return { creditMicros: 0n, credits: 0 };
@@ -217,17 +152,18 @@ function createSpendSummaryService({ prisma, billingRepository }) {
   }
 
   async function getProjectSpend(projectId) {
-    const events = await prisma.usageEvent.findMany({
-      where: { projectId },
-      include: { costSnapshot: true },
-    });
-    return aggregateEvents(events);
+    const [events, prices] = await Promise.all([
+      prisma.usageEvent.findMany({ where: { projectId }, include: { costSnapshot: true } }),
+      activePrices(),
+    ]);
+    return aggregateEvents(events, prices);
   }
 
   async function getTenantSpend(tenantId) {
-    const [events, projects] = await Promise.all([
+    const [events, projects, prices] = await Promise.all([
       prisma.usageEvent.findMany({ where: { tenantId }, include: { costSnapshot: true } }),
       prisma.project.findMany({ where: { tenantId }, select: { id: true, title: true } }),
+      activePrices(),
     ]);
 
     const eventsByProject = new Map();
@@ -240,7 +176,7 @@ function createSpendSummaryService({ prisma, billingRepository }) {
     const titleById = new Map(projects.map((project) => [project.id, project.title]));
     const projectSummaries = [];
     for (const [projectId, projectEvents] of eventsByProject) {
-      const { totalCostUSD, totalTokens } = aggregateEvents(projectEvents);
+      const { totalCostUSD, totalTokens, unpriced } = aggregateEvents(projectEvents, prices);
       const { credits, creditMicros } = await withCredits(totalCostUSD);
       projectSummaries.push({
         projectId,
@@ -249,14 +185,15 @@ function createSpendSummaryService({ prisma, billingRepository }) {
         tokens: totalTokens,
         credits,
         creditMicros: creditMicros.toString(),
+        unpriced,
       });
     }
     projectSummaries.sort((a, b) => b.costUSD - a.costUSD);
 
-    const { providers, totalCostUSD, totalTokens } = aggregateEvents(events);
+    const { providers, totalCostUSD, totalTokens, unpriced } = aggregateEvents(events, prices);
     const { credits, creditMicros } = await withCredits(totalCostUSD);
 
-    return { totalCostUSD, totalTokens, totalCredits: credits, totalCreditMicros: creditMicros.toString(), providers, projects: projectSummaries };
+    return { totalCostUSD, totalTokens, totalCredits: credits, totalCreditMicros: creditMicros.toString(), providers, projects: projectSummaries, unpriced };
   }
 
   async function getActivePricing() {
@@ -265,10 +202,10 @@ function createSpendSummaryService({ prisma, billingRepository }) {
       billingRepository ? billingRepository.activeMarkup() : null,
       billingRepository ? billingRepository.activeCreditRate() : null,
     ]);
-    return { prices: localJsonSafe(prices), markup: localJsonSafe(markup), creditRate: localJsonSafe(creditRate), estimatedPrices };
+    return { prices: localJsonSafe(prices), markup: localJsonSafe(markup), creditRate: localJsonSafe(creditRate) };
   }
 
-  return { estimateUsageCost, estimatedPrices, localJsonSafe, aggregateEvents, withCredits, getProjectSpend, getTenantSpend, getActivePricing };
+  return { localJsonSafe, aggregateEvents, withCredits, getProjectSpend, getTenantSpend, getActivePricing };
 }
 
-module.exports = { createSpendSummaryService, estimateUsageCost, estimatedPrices, aggregateEvents, localJsonSafe };
+module.exports = { createSpendSummaryService, aggregateEvents, localJsonSafe };

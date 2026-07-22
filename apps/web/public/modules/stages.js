@@ -1,5 +1,6 @@
 import { api, cancelActiveProjectJobs } from './api.js';
 import { sceneStore, uiStore, projectStore, batchStore, voiceStore, generationStore, spendStore } from './store.js';
+import { refreshCreditBalance } from './credit-balance.js';
 import { regeneratePrompt, planShots, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles } from './workflows.js';
 import { batchController } from './batch.js';
 import { ensureProjectSynced, getCurrentStoryboardRecord, queueSync } from './persistence.js';
@@ -324,7 +325,7 @@ export function getCachedJobs() {
   return cachedJobs;
 }
 
-const EMPTY_SPEND = Object.freeze({ totalCostUSD: 0, totalTokens: 0, totalCredits: 0, totalCreditMicros: '0', providers: {}, activePrices: [], estimatedPrices: [], videoModels: [] });
+const EMPTY_SPEND = Object.freeze({ totalCostUSD: 0, totalTokens: 0, totalCredits: 0, totalCreditMicros: '0', providers: {}, activePrices: [], unpriced: [], videoModels: [] });
 
 export async function refreshSpend(projectId) {
   if (!projectId) {
@@ -339,6 +340,7 @@ export async function refreshSpend(projectId) {
   } catch (_) {
     if (projectStore.get().currentId === projectId) spendStore.set(EMPTY_SPEND);
   }
+  refreshCreditBalance().catch(() => {});
   return spendStore.get();
 }
 

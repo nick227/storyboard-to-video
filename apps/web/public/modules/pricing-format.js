@@ -20,7 +20,8 @@ export function formatRateCard(card) {
   }
   if (card.type === 'linear_steps') {
     const baseUSD = card.baseNanoUsd / 1e9;
-    return `$${baseUSD.toFixed(4)} per ${card.baseUnits} steps (scaled linearly)`;
+    const unit = card.usageKey === 'seconds' ? 'seconds of audio' : `${card.usageKey || 'steps'}`;
+    return `$${baseUSD.toFixed(4)} per ${card.baseUnits} ${unit} (scaled linearly)`;
   }
   if (card.type === 'flat') {
     const rate = card.nanoUsdPerUnit / 1e9;

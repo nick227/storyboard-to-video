@@ -235,10 +235,10 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
     await store.read(projectId, { ownerId: req.auth.tenantId });
 
     if (!prisma || !spendSummary) {
-      return res.json({ ok: true, totalCostUSD: 0, totalTokens: 0, totalCredits: 0, totalCreditMicros: '0', providers: {}, activePrices: [], estimatedPrices: [], videoModels });
+      return res.json({ ok: true, totalCostUSD: 0, totalTokens: 0, totalCredits: 0, totalCreditMicros: '0', providers: {}, activePrices: [], unpriced: [], videoModels });
     }
 
-    const [{ providers, totalCostUSD, totalTokens }, pricing] = await Promise.all([
+    const [{ providers, totalCostUSD, totalTokens, unpriced }, pricing] = await Promise.all([
       spendSummary.getProjectSpend(projectId),
       spendSummary.getActivePricing(),
     ]);
@@ -252,7 +252,7 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
       totalCreditMicros: totalCreditMicros.toString(),
       providers,
       activePrices: pricing.prices,
-      estimatedPrices: pricing.estimatedPrices,
+      unpriced,
       videoModels,
     });
   }));

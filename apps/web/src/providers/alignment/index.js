@@ -1,4 +1,5 @@
 const { signal, throwResponse } = require('../http');
+const { providerResult, providerOutput } = require('../result');
 
 // A word is only usable for karaoke highlighting if it has real, ordered timing -- filters out
 // anything malformed regardless of whether the service itself already should have (defense in
@@ -14,7 +15,7 @@ function isUsableWord(word) {
 // network-error handling -- they only need to treat an empty words array as "no karaoke data yet".
 // Swallowed failures are still logged, since this is otherwise the only signal an operator gets
 // that the alignment service is unreachable or misbehaving.
-function createAlignmentProvider(config, getCancellation, providerAdmission) {
+function createAlignmentProvider(config, getCancellation, usageTracker, providerAdmission) {
   async function align({ audioBuffer, transcript, mimeType }) {
     try {
       const operation = async () => {
@@ -27,9 +28,15 @@ function createAlignmentProvider(config, getCancellation, providerAdmission) {
         if (!response.ok) await throwResponse('alignment', response);
         const body = await response.json();
         const words = Array.isArray(body.words) ? body.words.filter(isUsableWord) : [];
-        return { words };
+        return providerResult({
+          output: { words }, provider: 'whisperx', model: 'whisperx-forced-alignment',
+          usage: { characters: String(transcript || '').length, audioBytes: audioBuffer.length },
+          rawUsage: { wordCount: words.length }, measurementStatus: 'observed',
+        });
       };
-      return providerAdmission ? await providerAdmission.run('alignment', operation, { signal: getCancellation?.() }) : await operation();
+      const tracked = () => usageTracker ? usageTracker.execute({ modality: 'alignment', provider: 'whisperx', model: 'whisperx-forced-alignment', inputMetadata: { transcriptCharacters: String(transcript || '').length } }, operation) : operation();
+      const result = providerAdmission ? await providerAdmission.run('alignment', tracked, { signal: getCancellation?.() }) : await tracked();
+      return providerOutput(result);
     } catch (error) {
       console.warn(`Alignment request failed, continuing without karaoke data: ${error.message}`);
       return { words: [] };

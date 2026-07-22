@@ -87,7 +87,7 @@ function createDependencies(config, overrides = {}) {
   const textProviders = createTextProviders(config, cancellation, usageTracker, providerAdmission);
   const imageProvider = createImageProviders(config, textProviders, cancellation, usageTracker, providerAdmission);
   const audioProvider = createAudioProviders(config, cancellation, usageTracker, providerAdmission);
-  const alignmentProvider = createAlignmentProvider(config, cancellation, providerAdmission);
+  const alignmentProvider = createAlignmentProvider(config, cancellation, usageTracker, providerAdmission);
   const videoProviders = createVideoProviders(config, cancellation, usageTracker, overrides.videoProviderAdapters, providerAdmission);
   const videoExecution = createVideoExecutionService({ providers: videoProviders, attempts: videoAttemptRepository, usageTracker, assetTransport: overrides.videoAssetTransport || createLocalVideoAssetTransport(), attemptTimeoutMs: config.videoAttemptTimeoutMs, providerAdmission });
   const prompts = createPromptGenerationService({ textProviders, styles, limits: config.limits, generationCache });
@@ -102,7 +102,7 @@ function createDependencies(config, overrides = {}) {
   const subtitles = createSubtitleGenerationService({ config, projectStore });
   const shotReferences = createShotReferenceService({ config, projectStore });
   const exports = createExportService({ config, projectStore });
-  const voices = createVoiceService(config, cancellation, audioProvider, providerAdmission);
+  const voices = createVoiceService(config, cancellation, audioProvider, usageTracker, providerAdmission);
   const media = createMediaController({ images, audio, videos, subtitles, exports });
 
   const identityStore = overrides.identityStore || new PrismaIdentityRepository(prisma);
