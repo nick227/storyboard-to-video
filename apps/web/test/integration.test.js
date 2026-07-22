@@ -392,15 +392,23 @@ const REQUIRED_PRICED_MODELS = [
   { provider: 'whisperx', modality: 'alignment', model: 'whisperx-forced-alignment' },
 ];
 
-test('every provider/model this task priced for observability has a non-billable active price row, and only the reconciled OpenAI text price is billable', async () => {
-  const activePrices = await prisma.providerPriceVersion.findMany({ where: { active: true }, select: { provider: true, modality: true, model: true, billable: true, versionKey: true } });
+test('every provider/model this task priced for observability has an active price row, and nothing is billable without recorded dashboard-reconciled evidence', async () => {
+  const activePrices = await prisma.providerPriceVersion.findMany({ where: { active: true }, select: { provider: true, modality: true, model: true, billable: true, versionKey: true, evidenceStatus: true, reconciledAt: true } });
   const priceKeys = new Set(activePrices.map((price) => `${price.provider}::${price.modality}::${price.model}`));
   const missing = REQUIRED_PRICED_MODELS.filter((row) => !priceKeys.has(`${row.provider}::${row.modality}::${row.model}`));
   assert.deepEqual(missing, [], `expected an active price row for each of: ${JSON.stringify(missing)}`);
 
+  // Billable coverage is expected to grow over time as real reconciliation happens (tracked
+  // outside this repo) -- this test doesn't hardcode which/how many prices are billable. It only
+  // guards the one invariant that must never be violated: nothing can be billable without a
+  // recorded dashboard-reconciled attestation (configurePrice's own guard already enforces this
+  // at write time; this is a regression check against any path that bypasses it).
   const billable = activePrices.filter((price) => price.billable);
-  assert.equal(billable.length, 1);
-  assert.equal(billable[0].versionKey, 'openai-gpt-4.1-mini-2026-07-17');
+  for (const price of billable) {
+    assert.equal(price.evidenceStatus, 'dashboard_reconciled', `${price.versionKey} is billable without dashboard-reconciled evidence`);
+    assert.ok(price.reconciledAt, `${price.versionKey} is billable without a reconciledAt date`);
+  }
+  assert.ok(billable.some((price) => price.versionKey === 'openai-gpt-4.1-mini-2026-07-17'), 'the reconciled OpenAI text price should still be billable');
 });
 
 test('GET /api/billing/pricing reads real ProviderPriceVersion rows, not a static duplicate array', async () => {

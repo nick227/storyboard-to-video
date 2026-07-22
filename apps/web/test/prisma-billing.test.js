@@ -33,15 +33,21 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
   let testProvider;
   let welcomePolicyId;
   let testCreditRateId;
+  let testMarkupId;
   const previouslyActiveRate = await billing.activeCreditRate();
+  const previouslyActiveMarkup = await billing.activeMarkup();
   try {
     // This test's dollar-figure assertions below are all written against a fixed 1-credit=$0.01
-    // conversion. Rather than depend on whatever SiteCreditRateVersion happens to be globally
-    // active (which is real business config other work in this repo changes over time), pin a
-    // dedicated one for the test's duration and restore whatever was active before in `finally`.
+    // conversion and 0% markup. Rather than depend on whatever SiteCreditRateVersion/
+    // MarkupPolicyVersion happens to be globally active (real business config other work in this
+    // repo changes over time -- both are "only one active" singletons), pin dedicated ones for
+    // the test's duration and restore whatever was active before in `finally`.
     const testCreditRate = await billing.createCreditRateVersion({ versionKey: `test-credit-rate-${crypto.randomUUID()}`, nanoUsdPerSiteCredit: 10_000_000n, active: false });
     testCreditRateId = testCreditRate.id;
     await billing.activateCreditRate(testCreditRateId);
+    const testMarkup = await billing.createMarkupVersion({ versionKey: `test-markup-${crypto.randomUUID()}`, name: 'Test zero markup', markupBasisPoints: 0, fixedNanoUsd: 0n, active: false });
+    testMarkupId = testMarkup.id;
+    await billing.activateMarkup(testMarkupId);
 
     const welcomePolicy = await billing.createWelcomeCreditPolicyVersion({ versionKey: `welcome-test-${crypto.randomUUID()}`, name: 'Future registration test', creditMicros: 123000000n, active: false, createdByAdminId: account.user.id });
     welcomePolicyId = welcomePolicy.id;
@@ -55,11 +61,18 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
     const disabled = trackerFor(usage, billing, false);
     const disabledJob = crypto.randomUUID();
     await disabled.generationContext.run({ trace: trace(disabledJob), providerSequence: 0 }, () => disabled.tracker.execute({ modality: 'text', provider: 'openai', model: 'gpt-4.1-mini' }, async () => providerResult({ output: 'ok', provider: 'openai', model: 'gpt-4.1-mini-2025-04-14', providerRequestId: `disabled-${crypto.randomUUID()}`, usage: { inputTokens: 13, cachedInputTokens: 0, outputTokens: 3 }, measurementStatus: 'observed' })));
-    const disabledRequest = await prisma.generationRequest.findUnique({ where: { jobId_sequence: { jobId: disabledJob, sequence: 1 } }, include: { creditReservation: true, costSnapshot: true } });
+    const disabledRequest = await prisma.generationRequest.findUnique({ where: { jobId_sequence: { jobId: disabledJob, sequence: 1 } }, include: { creditReservation: true, costSnapshot: true, usageEvent: true } });
     assert.equal(disabledRequest.creditReservation.chargingMode, 'charging_disabled');
     assert.equal(disabledRequest.creditReservation.status, 'settled_not_charged');
     assert.equal(disabledRequest.costSnapshot.providerCostNanoUsd, 10000n);
     assert.equal(await prisma.creditLedgerEntry.count({ where: { generationRequestId: disabledRequest.id } }), 0);
+    // The provider returned a dated/versioned model string ("gpt-4.1-mini-2025-04-14") different
+    // from the tracked canonical key ("gpt-4.1-mini"). Pricing must always resolve against the
+    // canonical key -- proven above by the real costSnapshot -- and UsageEvent must store that
+    // same canonical key, not the raw provider string, while still preserving it for audit.
+    assert.equal(disabledRequest.model, 'gpt-4.1-mini');
+    assert.equal(disabledRequest.usageEvent.model, 'gpt-4.1-mini');
+    assert.equal(disabledRequest.usageEvent.providerModel, 'gpt-4.1-mini-2025-04-14');
 
     const suffix = crypto.randomUUID();
     const provider = `billing-test-${suffix}`;
@@ -183,6 +196,7 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
       await db.$executeRawUnsafe('ALTER TABLE welcome_credit_policy_versions ENABLE TRIGGER USER');
     });
     if (previouslyActiveRate) await billing.activateCreditRate(previouslyActiveRate.id);
+    if (previouslyActiveMarkup) await billing.activateMarkup(previouslyActiveMarkup.id);
     await prisma.$disconnect();
   }
 });

@@ -314,6 +314,11 @@ model UsageEvent {
   modality            String
   provider            String
   model               String
+  // The canonical configured model key (matches GenerationRequest.model, e.g. "gpt-4.1-mini") --
+  // pricing/spend always match on this, never on the raw string a provider's API response
+  // returns (which can be a dated/versioned variant). That raw value is preserved separately in
+  // providerModel for audit/debugging.
+  providerModel       String?           @map("provider_model")
   providerRequestId   String?           @map("provider_request_id")
   usage               Json
   rawUsage            Json?             @map("raw_usage")

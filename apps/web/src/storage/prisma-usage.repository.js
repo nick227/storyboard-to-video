@@ -37,7 +37,13 @@ class PrismaUsageRepository {
       return db.usageEvent.create({ data: {
         id: crypto.randomUUID(), generationRequestId: request.id, tenantId: request.tenantId,
         userId: request.userId, projectId: request.projectId, sceneId: request.sceneId, jobId: request.jobId,
-        modality: request.modality, provider: result.provider, model: result.model,
+        // Pricing/spend always match on the canonical configured provider+modality+model key, so
+        // UsageEvent.model must equal GenerationRequest.model here -- never result.model, which
+        // can be a dated/versioned string a provider's own API response returns (e.g. OpenAI
+        // returning "gpt-4.1-mini-2025-04-14" for a request tracked as "gpt-4.1-mini"). That raw
+        // value is preserved separately for audit/debugging.
+        modality: request.modality, provider: request.provider, model: request.model,
+        providerModel: result.model && result.model !== request.model ? result.model : null,
         providerRequestId: result.providerRequestId || null, usage: json(result.usage) || {},
         ...(result.rawUsage == null ? {} : { rawUsage: json(result.rawUsage) }), measurementStatus: result.measurementStatus,
       } });
