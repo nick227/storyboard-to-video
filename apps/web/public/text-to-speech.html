@@ -38,7 +38,10 @@
         </label>
         <label id="ttsVoiceField" class="tts-voice-field" hidden>
           <span>Voice</span>
-          <select id="ttsVoice"></select>
+          <div class="tts-voice-row">
+            <select id="ttsVoice"></select>
+            <button type="button" id="ttsPreviewBtn" class="secondary text-button voice-preview-btn" title="Preview this voice" aria-label="Preview selected voice" disabled>▶</button>
+          </div>
         </label>
       </div>
 
@@ -54,6 +57,43 @@
       <a id="ttsDownloadLink" class="tts-download" download>Download audio</a>
     </section>
   </main>
+
+  <dialog id="cloneVoiceModal" class="voice-library-modal">
+    <div class="modal-header">
+      <h2>Voice Library</h2>
+      <button type="button" id="closeCloneModalBtn" class="secondary text-button" aria-label="Close">✕</button>
+    </div>
+    <p class="field-note">Cloned voices are saved here and can be reused for text to speech and any storyboard.</p>
+
+    <div id="cloneVoiceList" class="voice-library-list"></div>
+
+    <div class="voice-library-record">
+      <div class="group-heading">
+        <h3>Record a new voice</h3>
+      </div>
+      <label>
+        <span>Microphone</span>
+        <select id="cloneMicSelect"></select>
+      </label>
+      <div class="voice-mic-status">
+        <span id="cloneMicStatus" class="field-note">Requesting microphone access...</span>
+      </div>
+      <canvas id="cloneWaveformCanvas" class="voice-waveform-canvas" width="480" height="60"></canvas>
+      <small class="field-note">The wave above reacts live to your selected microphone, even before you hit record —
+        speak now to confirm you picked the right one. For best cloning quality, read naturally for at least 10-15
+        seconds.</small>
+      <div class="voice-record-controls">
+        <button type="button" id="cloneRecordBtn" class="secondary" disabled>Record</button>
+      </div>
+      <audio id="cloneRecordPreview" class="voice-recorder-preview" controls hidden></audio>
+      <small id="cloneDurationNote" class="field-note voice-duration-note" hidden></small>
+      <div class="voice-record-save">
+        <input type="text" id="cloneNameInput" placeholder="Voice name" />
+        <button type="button" id="cloneSaveBtn" class="primary" disabled>Save as voice</button>
+      </div>
+    </div>
+  </dialog>
+
   <script type="module" src="/modules/text-to-speech.js"></script>
 </body>
 </html>
