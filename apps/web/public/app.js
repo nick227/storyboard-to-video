@@ -19,6 +19,7 @@ import {
 
 import { ScreenplayEditor } from './modules/screenplay-editor/js/ScreenplayEditor.js';
 import { toFinalDraftXml, toPlainScript, toPrintableScriptHtml, toRichTextScript, toStructuredScriptJson } from './modules/script-export.js';
+import { initMediaSettings } from './modules/media-settings.js';
 
 const els = {
   // Elements
@@ -757,6 +758,24 @@ async function loadStoryboardIntoUI() {
 
 function attachEvents() {
   initPageTabs();
+  const mediaSettings = initMediaSettings({
+    aspectRatio: els.mediaAspectRatio,
+    imageProvider: els.imageProvider,
+    imageResolutionTier: els.imageResolutionTier,
+    imageQuality: els.imageQuality,
+    videoProvider: els.videoProvider,
+    videoResolutionTier: els.videoResolutionTier,
+    videoDurationSeconds: els.videoDurationSeconds,
+    costPreview: els.mediaCostPreview,
+    saveDefaultsBtn: els.saveMediaDefaultsBtn,
+  }, {
+    saveProject: () => saveStoryboard(els, false),
+    getQuantity: () => sceneStore.get().scenes.length,
+    getProjectScope: () => {
+      const record = getCurrentStoryboardRecord();
+      return Number.isInteger(record?.revision) ? { projectId: projectStore.get().currentId } : {};
+    },
+  });
   const savedMode = (typeof localStorage !== 'undefined' && localStorage.getItem('scriptEditorMode')) || 'raw';
   setScriptEditorMode(savedMode);
 
@@ -797,6 +816,7 @@ function attachEvents() {
     [els.settingsBtn, els.settingsModal],
   ];
   settingsModalPairs.forEach(([trigger, modal]) => {
+    if (!trigger || !modal) return;
     trigger.addEventListener('click', async () => {
       await refreshVoicesForCurrentProvider(setStatus);
       renderVoicesPanel(els);
@@ -810,46 +830,46 @@ function attachEvents() {
     });
   });
 
-  els.generationConfirmCancelBtn.addEventListener('click', () => els.generationConfirmModal.close());
-  els.generationConfirmCloseBtn.addEventListener('click', () => els.generationConfirmModal.close());
-  els.generationConfirmRunBtn.addEventListener('click', () => els.generationConfirmModal.close('confirm'));
-  els.generationConfirmModal.addEventListener('click', (event) => {
+  els.generationConfirmCancelBtn?.addEventListener('click', () => els.generationConfirmModal?.close());
+  els.generationConfirmCloseBtn?.addEventListener('click', () => els.generationConfirmModal?.close());
+  els.generationConfirmRunBtn?.addEventListener('click', () => els.generationConfirmModal?.close('confirm'));
+  els.generationConfirmModal?.addEventListener('click', (event) => {
     if (event.target === els.generationConfirmModal) els.generationConfirmModal.close();
   });
-  els.generationConfirmModal.addEventListener('close', () => {
+  els.generationConfirmModal?.addEventListener('close', () => {
     const resolve = generationConfirmResolve;
     generationConfirmResolve = null;
     if (resolve) resolve(els.generationConfirmModal.returnValue === 'confirm');
   });
 
-  els.startRunCancelBtn.addEventListener('click', () => els.startRunModal.close());
-  els.startRunCloseBtn.addEventListener('click', () => els.startRunModal.close());
-  els.startRunConfirmBtn.addEventListener('click', () => els.startRunModal.close('confirm'));
-  els.startRunModal.addEventListener('click', (event) => {
+  els.startRunCancelBtn?.addEventListener('click', () => els.startRunModal?.close());
+  els.startRunCloseBtn?.addEventListener('click', () => els.startRunModal?.close());
+  els.startRunConfirmBtn?.addEventListener('click', () => els.startRunModal?.close('confirm'));
+  els.startRunModal?.addEventListener('click', (event) => {
     if (event.target === els.startRunModal) els.startRunModal.close();
   });
-  els.startRunModal.addEventListener('close', () => {
+  els.startRunModal?.addEventListener('close', () => {
     const resolve = startRunResolve;
     startRunResolve = null;
     if (resolve) resolve(els.startRunModal.returnValue === 'confirm');
   });
 
-  els.downloadConfirmCancelBtn.addEventListener('click', () => els.downloadConfirmModal.close());
-  els.downloadConfirmCloseBtn.addEventListener('click', () => els.downloadConfirmModal.close());
-  els.downloadConfirmRunBtn.addEventListener('click', () => els.downloadConfirmModal.close('confirm'));
-  els.downloadConfirmModal.addEventListener('click', (event) => {
+  els.downloadConfirmCancelBtn?.addEventListener('click', () => els.downloadConfirmModal?.close());
+  els.downloadConfirmCloseBtn?.addEventListener('click', () => els.downloadConfirmModal?.close());
+  els.downloadConfirmRunBtn?.addEventListener('click', () => els.downloadConfirmModal?.close('confirm'));
+  els.downloadConfirmModal?.addEventListener('click', (event) => {
     if (event.target === els.downloadConfirmModal) els.downloadConfirmModal.close();
   });
-  els.downloadConfirmModal.addEventListener('close', () => {
+  els.downloadConfirmModal?.addEventListener('close', () => {
     const resolve = downloadConfirmResolve;
     downloadConfirmResolve = null;
     if (resolve) resolve(els.downloadConfirmModal.returnValue === 'confirm');
   });
   [els.startRunRangeAll, els.startRunRangeNext, els.startRunNextCount].forEach((input) => {
-    input.addEventListener('input', () => renderStartRunModal());
+    input?.addEventListener('input', () => renderStartRunModal());
   });
   [els.startRunPlanningCheck, els.startRunImagesCheck, els.startRunAudioCheck, els.startRunVideoCheck].forEach((checkbox) => {
-    checkbox.addEventListener('change', () => {
+    checkbox?.addEventListener('change', () => {
       // The click already flipped checkbox.checked — toggleStageSelection just needs to record
       // that override against the range-scoped status so it survives a later re-render (e.g. the
       // user then adjusts the range picker).
@@ -859,7 +879,7 @@ function attachEvents() {
     });
   });
 
-  els.newStoryboardBtn.addEventListener('click', async () => {
+  els.newStoryboardBtn?.addEventListener('click', async () => {
     createStoryboard(els);
     renderStoryboardPicker(els);
     saveStoryboard(els, true);
@@ -875,12 +895,12 @@ function attachEvents() {
     els.storyboardPickerToggle.setAttribute('aria-expanded', 'true');
   };
 
-  els.storyboardPickerToggle.addEventListener('click', () => {
+  els.storyboardPickerToggle?.addEventListener('click', () => {
     if (els.storyboardPickerList.hidden) openStoryboardPicker();
     else closeStoryboardPicker();
   });
 
-  els.storyboardPickerList.addEventListener('click', async (event) => {
+  els.storyboardPickerList?.addEventListener('click', async (event) => {
     const item = event.target.closest('li[data-id]');
     if (!item) return;
     closeStoryboardPicker();
@@ -899,20 +919,20 @@ function attachEvents() {
     if (event.key === 'Escape' && !els.storyboardPickerList.hidden) closeStoryboardPicker();
   });
 
-  els.storyboardTitle.addEventListener('input', () => {
+  els.storyboardTitle?.addEventListener('input', () => {
     saveStoryboard(els, false);
     const current = getCurrentStoryboardRecord();
     const selectedItem = els.storyboardPickerList.querySelector('li[aria-selected="true"]');
     if (selectedItem) selectedItem.textContent = current.title;
   });
-  els.storyboardTitle.addEventListener('blur', () => {
+  els.storyboardTitle?.addEventListener('blur', () => {
     els.storyboardTitle.value = getCurrentStoryboardRecord().title;
   });
-  els.storyboardTitle.addEventListener('keydown', (event) => {
+  els.storyboardTitle?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') els.storyboardTitle.blur();
   });
 
-  els.saveStateBtn.addEventListener('click', () => saveStoryboard(els, true));
+  els.saveStateBtn?.addEventListener('click', () => saveStoryboard(els, true));
 
   els.resizeSceneList?.addEventListener('click', (event) => {
     const button = event.target.closest('.resize-scenes');
@@ -930,169 +950,16 @@ function attachEvents() {
     });
   });
 
-  els.scriptText.addEventListener('input', () => {
+  els.scriptText?.addEventListener('input', () => {
     saveStoryboard(els, false);
     renderStageBar(els);
   });
-  els.commonPromptText.addEventListener('input', () => { saveStoryboard(els, false); renderStageBar(els); });
-  [els.textProvider, els.imageProvider].forEach((el) => {
-    el.addEventListener('change', () => saveStoryboard(els, false));
-  });
-  const selectedMediaSettings = ({ clearInheritedDuration = false } = {}) => ({
-    version: 1,
-    ...(els.mediaAspectRatio.value ? { aspectRatio: els.mediaAspectRatio.value } : {}),
-    image: { resolutionTier: els.imageResolutionTier.value, quality: els.imageQuality.value },
-    video: {
-      resolutionTier: els.videoResolutionTier.value,
-      ...(els.videoDurationSeconds?.value
-        ? { durationSeconds: Number(els.videoDurationSeconds.value) }
-        : (clearInheritedDuration ? { durationSeconds: null } : {})),
-      ...(els.videoProvider?.value ? { provider: els.videoProvider.value } : {}),
-    },
-  });
-  let mediaQuoteSequence = 0;
-  let videoDurationOptionsSequence = 0;
-  let imageOutputOptionsSequence = 0;
-  let imageOutputCombinations = [];
-  const currentProjectScope = () => {
-    const currentRecord = getCurrentStoryboardRecord();
-    return Number.isInteger(currentRecord?.revision) ? { projectId: projectStore.get().currentId } : {};
-  };
-  const refreshVideoDurationOptions = async () => {
-    if (!els.videoDurationSeconds) return;
-    const sequence = ++videoDurationOptionsSequence;
-    const outputIntent = selectedMediaSettings({ clearInheritedDuration: true });
-    try {
-      const response = await fetch('/api/media-output/video-duration-options', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(els.videoProvider?.value ? { provider: els.videoProvider.value } : {}),
-          ...currentProjectScope(),
-          outputIntent,
-        }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message || 'Could not resolve video lengths');
-      if (sequence !== videoDurationOptionsSequence) return;
-      const results = new Map((body.options || []).map((item) => [String(item.durationSeconds), item]));
-      for (const option of els.videoDurationSeconds.options) {
-        const result = option.value ? results.get(option.value) : body.providerDefault;
-        const baseLabel = option.dataset.baseLabel || option.textContent;
-        option.disabled = result?.supported === false;
-        option.title = result?.reason || '';
-        if (!option.value && result?.supported) {
-          const seconds = result.output?.resolved?.durationSeconds;
-          option.textContent = seconds ? `${baseLabel} · ${seconds}s` : `${baseLabel} · Automatic`;
-        } else {
-          option.textContent = `${baseLabel}${result?.supported === false ? ' · Unsupported' : ''}`;
-        }
-      }
-    } catch (error) {
-      if (sequence !== videoDurationOptionsSequence) return;
-      for (const option of els.videoDurationSeconds.options) {
-        option.disabled = Boolean(option.value);
-        option.textContent = `${option.dataset.baseLabel || option.textContent}${option.value ? ' · Unavailable' : ' · Automatic'}`;
-        option.title = option.value ? 'Could not verify this duration against the server media policy.' : '';
-      }
-    }
-  };
-  const applyImageOutputOptions = () => {
-    if (!els.imageResolutionTier || !els.imageQuality) return;
-    const resolutionTier = els.imageResolutionTier.value;
-    const quality = els.imageQuality.value;
-    for (const option of els.imageResolutionTier.options) {
-      const result = imageOutputCombinations.find((item) => item.resolutionTier === option.value && item.quality === quality);
-      const baseLabel = option.dataset.baseLabel || option.textContent;
-      option.disabled = result?.supported === false;
-      option.textContent = `${baseLabel}${result?.supported === false ? ' · Unsupported' : ''}`;
-      option.title = result?.reason || '';
-    }
-    for (const option of els.imageQuality.options) {
-      const result = imageOutputCombinations.find((item) => item.resolutionTier === resolutionTier && item.quality === option.value);
-      const baseLabel = option.dataset.baseLabel || option.textContent;
-      option.disabled = result?.supported === false;
-      option.textContent = `${baseLabel}${result?.supported === false ? ' · Unsupported' : ''}`;
-      option.title = result?.reason || '';
-    }
-  };
-  const refreshImageOutputOptions = async () => {
-    if (!els.imageResolutionTier || !els.imageQuality) return;
-    const sequence = ++imageOutputOptionsSequence;
-    try {
-      const response = await fetch('/api/media-output/image-output-options', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: els.imageProvider.value,
-          ...currentProjectScope(),
-          outputIntent: selectedMediaSettings({ clearInheritedDuration: true }),
-        }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message || 'Could not resolve image settings');
-      if (sequence !== imageOutputOptionsSequence) return;
-      imageOutputCombinations = body.combinations || [];
-      applyImageOutputOptions();
-    } catch (error) {
-      if (sequence !== imageOutputOptionsSequence) return;
-      imageOutputCombinations = [];
-      for (const select of [els.imageResolutionTier, els.imageQuality]) {
-        for (const option of select.options) {
-          option.disabled = option.value !== select.value;
-          option.textContent = `${option.dataset.baseLabel || option.textContent}${option.disabled ? ' · Unavailable' : ''}`;
-          option.title = option.disabled ? 'Could not verify this setting against the server media policy.' : '';
-        }
-      }
-    }
-  };
-  const refreshMediaCostPreview = async () => {
-    if (!els.mediaCostPreview) return;
-    const sequence = ++mediaQuoteSequence;
-    const quantity = Math.max(1, sceneStore.get().scenes.length || 1);
-    const outputIntent = selectedMediaSettings({ clearInheritedDuration: true });
-    const projectScope = currentProjectScope();
-    try {
-      const [imageQuote, videoQuote] = await Promise.all([
-        fetch('/api/media-output/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modality: 'image', provider: els.imageProvider.value, ...projectScope, outputIntent, quantity }) }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Image output is unsupported'); return body; }),
-        fetch('/api/media-output/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modality: 'video', ...(els.videoProvider?.value ? { provider: els.videoProvider.value } : {}), ...projectScope, outputIntent, quantity }) }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Video output is unsupported'); return body; }),
-      ]);
-      if (sequence !== mediaQuoteSequence) return;
-      const describe = (result, label) => {
-        const resolved = result.output.resolved;
-        const dimensions = resolved.width && resolved.height ? `${resolved.width}×${resolved.height}` : resolved.providerSettings.resolution;
-        const cost = result.estimate.available ? `${(Number(result.estimate.totalCreditMicros) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 3 })} tokens for ${quantity}` : 'price unavailable';
-        const duration = resolved.durationSeconds ? `, ${resolved.durationSeconds}s` : '';
-        return `${label}: ${dimensions}${duration}, ${cost}`;
-      };
-      els.mediaCostPreview.textContent = `${describe(imageQuote, 'Images')} · ${describe(videoQuote, 'Videos')}`;
-    } catch (error) {
-      if (sequence === mediaQuoteSequence) els.mediaCostPreview.textContent = error.message;
-    }
-  };
-  [els.mediaAspectRatio, els.imageResolutionTier, els.imageQuality, els.videoResolutionTier, els.videoDurationSeconds, els.videoProvider].forEach((el) => el?.addEventListener('change', () => {
-    saveStoryboard(els, false);
-    refreshMediaCostPreview();
-  }));
-  [els.mediaAspectRatio, els.videoResolutionTier, els.videoProvider].forEach((el) => el?.addEventListener('change', refreshVideoDurationOptions));
-  [els.mediaAspectRatio, els.imageProvider].forEach((el) => el?.addEventListener('change', refreshImageOutputOptions));
-  [els.imageResolutionTier, els.imageQuality].forEach((el) => el?.addEventListener('change', applyImageOutputOptions));
-  els.imageProvider.addEventListener('change', refreshMediaCostPreview);
-  els.saveMediaDefaultsBtn?.addEventListener('click', async () => {
-    if (!els.mediaAspectRatio.value) { els.mediaCostPreview.textContent = 'Choose a shared aspect ratio before saving defaults for new projects.'; return; }
-    if (els.imageResolutionTier?.selectedOptions[0]?.disabled || els.imageQuality?.selectedOptions[0]?.disabled) { els.mediaCostPreview.textContent = 'Choose image resolution and quality settings supported by the selected provider.'; return; }
-    if (els.videoDurationSeconds?.selectedOptions[0]?.disabled) { els.mediaCostPreview.textContent = 'Choose a video length supported by the selected provider and resolution.'; return; }
-    try {
-      const response = await fetch('/api/auth/preferences/media', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(selectedMediaSettings()) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message || 'Could not save media defaults');
-      els.mediaCostPreview.textContent = 'Saved as your defaults for new projects. Existing projects are unchanged.';
-    } catch (error) { els.mediaCostPreview.textContent = error.message; }
-  });
-  els.videoMotionIntensity.addEventListener('change', () => saveStoryboard(els, false));
-  els.enrichNarration.addEventListener('change', () => saveStoryboard(els, false));
+  els.commonPromptText?.addEventListener('input', () => { saveStoryboard(els, false); renderStageBar(els); });
+  els.textProvider?.addEventListener('change', () => saveStoryboard(els, false));
+  els.videoMotionIntensity?.addEventListener('change', () => saveStoryboard(els, false));
+  els.enrichNarration?.addEventListener('change', () => saveStoryboard(els, false));
 
-  els.downloadZipBtn.addEventListener('click', async () => {
+  els.downloadZipBtn?.addEventListener('click', async () => {
     const confirmed = await openDownloadConfirmModal();
     if (confirmed) {
       await downloadZip(setStatus);
@@ -1111,12 +978,10 @@ function attachEvents() {
       els.planningModeSelect.value = els.enrichNarration.checked ? 'auto' : 'script';
     }
   };
-  els.settingsBtn.addEventListener('click', () => {
+  els.settingsBtn?.addEventListener('click', () => {
     syncPlanningModeFromEnrich();
     refreshShotCountDisplay();
-    refreshImageOutputOptions();
-    refreshVideoDurationOptions();
-    refreshMediaCostPreview();
+    mediaSettings.refreshAll();
   });
 
   if (els.planningModeSelect) {
@@ -1133,7 +998,7 @@ function attachEvents() {
     });
   }
 
-  els.settingsReplanBtn.addEventListener('click', async () => {
+  els.settingsReplanBtn?.addEventListener('click', async () => {
     if (!(await requestGenerationConfirmation('planningReplan', {}))) return;
     await replanStory(els, setStatus);
     await Promise.all([
@@ -1144,7 +1009,7 @@ function attachEvents() {
     renderScenes();
   });
   const wireRegenerateAll = (button, stage, kind) => {
-    button.addEventListener('click', async () => {
+    button?.addEventListener('click', async () => {
       if (!(await requestGenerationConfirmation(kind))) return;
       setStatus(`Regenerating all ${stage}...`);
       await regenerateAllStage(stage, els, setStatus);
@@ -1167,7 +1032,7 @@ function attachEvents() {
   // rows, the only place selection happens now); running -> Stop, always resumable, no separate
   // harder-stop control. "Regenerate all" on an existing project is still Settings' job.
 
-  els.startPauseBtn.addEventListener('click', async () => {
+  els.startPauseBtn?.addEventListener('click', async () => {
     if (els.startPauseBtn.dataset.running === 'true') {
       const result = stopActiveWork(projectStore.get().currentId);
       setStatus(result.kind === 'cancelled' ? 'Cancelling planning...' : result.kind === 'paused' ? 'Stopping...' : 'Nothing to stop.');
@@ -1198,7 +1063,7 @@ function attachEvents() {
     renderScenes();
   });
 
-  els.styleSelect.addEventListener('change', async () => {
+  els.styleSelect?.addEventListener('change', async () => {
     if (els.stageStyleSelect && els.stageStyleSelect.value !== els.styleSelect.value) {
       els.stageStyleSelect.value = els.styleSelect.value;
     }
@@ -1216,26 +1081,26 @@ function attachEvents() {
       }
     });
   }
-  els.characterRefInput.addEventListener('change', (e) => uploadStyleReferences('characters', e.target.files, els, setStatus));
-  els.worldRefInput.addEventListener('change', (e) => uploadStyleReferences('world', e.target.files, els, setStatus));
+  els.characterRefInput?.addEventListener('change', (e) => uploadStyleReferences('characters', e.target.files, els, setStatus));
+  els.worldRefInput?.addEventListener('change', (e) => uploadStyleReferences('world', e.target.files, els, setStatus));
 
-  els.audioProvider.addEventListener('change', async (e) => {
+  els.audioProvider?.addEventListener('change', async (e) => {
     voiceStore.set({ audioProvider: e.target.value });
     await refreshVoicesForCurrentProvider(setStatus);
     renderVoicesPanel(els);
     saveStoryboard(els, false);
   });
-  els.closeVoiceLibraryBtn.addEventListener('click', () => els.voiceLibraryModal.close());
-  els.voiceLibraryModal.addEventListener('click', (event) => {
+  els.closeVoiceLibraryBtn?.addEventListener('click', () => els.voiceLibraryModal?.close());
+  els.voiceLibraryModal?.addEventListener('click', (event) => {
     if (event.target === els.voiceLibraryModal) els.voiceLibraryModal.close();
   });
-  els.voiceLibraryModal.addEventListener('close', () => {
+  els.voiceLibraryModal?.addEventListener('close', () => {
     closeVoiceLibraryCleanup(els);
     renderVoicesPanel(els);
   });
-  els.voiceMicSelect.addEventListener('change', () => switchMicrophone(els.voiceMicSelect.value, els));
-  els.voiceRecordBtn.addEventListener('click', () => toggleVoiceRecording(els));
-  els.voiceSaveBtn.addEventListener('click', async () => {
+  els.voiceMicSelect?.addEventListener('change', () => switchMicrophone(els.voiceMicSelect.value, els));
+  els.voiceRecordBtn?.addEventListener('click', () => toggleVoiceRecording(els));
+  els.voiceSaveBtn?.addEventListener('click', async () => {
     const blob = voiceRecordingState.recordedBlob;
     if (!blob) return;
     const name = els.voiceNameInput.value.trim();
@@ -1254,13 +1119,13 @@ function attachEvents() {
     }
   });
 
-  els.tokensInfoBtn.addEventListener('click', () => {
+  els.tokensInfoBtn?.addEventListener('click', () => {
     populateTokensInfoModal(els);
     els.tokensInfoModal.showModal();
   });
-  els.tokensInfoModalCloseBtn.addEventListener('click', () => els.tokensInfoModal.close());
-  els.tokensInfoModalDoneBtn.addEventListener('click', () => els.tokensInfoModal.close());
-  els.tokensInfoModal.addEventListener('click', (event) => {
+  els.tokensInfoModalCloseBtn?.addEventListener('click', () => els.tokensInfoModal?.close());
+  els.tokensInfoModalDoneBtn?.addEventListener('click', () => els.tokensInfoModal?.close());
+  els.tokensInfoModal?.addEventListener('click', (event) => {
     if (event.target === els.tokensInfoModal) els.tokensInfoModal.close();
   });
 
