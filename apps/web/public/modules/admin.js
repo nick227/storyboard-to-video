@@ -86,7 +86,11 @@ function overviewQuery(period) {
 }
 
 async function loadOverview() {
-  const o = (await api(`/api/admin/overview?${overviewQuery(overviewPeriod)}`)).overview;
+  const query = overviewQuery(overviewPeriod);
+  const [o, sanity] = await Promise.all([
+    api(`/api/admin/overview?${query}`).then((r) => r.overview),
+    api(`/api/admin/billing/sanity-report?${query}`),
+  ]);
   $('overviewPeriodLabel').textContent = overviewPeriodLabel(overviewPeriod);
 
   const purchaseCount = o.sales._count || 0;
@@ -117,6 +121,15 @@ async function loadOverview() {
     .sort((a, b) => b._count - a._count);
   const statusTotal = statuses.reduce((sum, row) => sum + row._count, 0) || total;
   $('overviewStatuses').innerHTML = breakdownRows(statuses, statusTotal, (row) => STATUS_LABELS[row.status]?.label || row.status);
+
+  $('overviewBillingSanity').innerHTML = [
+    overviewCard('Customer billable spend', money(Math.round(sanity.customerBillableSpendUSD * 1e9)), 'External provider calls actually metered to customers'),
+    overviewCard('Platform included spend', money(Math.round(sanity.platformIncludedSpendUSD * 1e9)), 'Local/Modal cost tracked but not charged, by design'),
+    overviewCard('Unpriced usage', sanity.unpricedUsageCount.toLocaleString(), sanity.unpricedUsageCount ? 'Generations with no configured price -- a real gap' : 'Every generation resolved to a price'),
+    overviewCard('Reservations still held', sanity.reservationsHeld.toLocaleString(), sanity.reservationsHeld ? 'Live reservations not yet settled or released' : 'Nothing stuck mid-flight'),
+    overviewCard('Failed settlements', sanity.failedSettlements.toLocaleString(), 'Reservations tied to a provider failure (released or failed_not_charged)'),
+    overviewCard('Refunds issued', `${sanity.refundsIssued.count.toLocaleString()}`, `${credit(sanity.refundsIssued.creditMicros)} credits refunded to customers`),
+  ].join('');
 }
 
 async function loadUsers() {
@@ -153,11 +166,36 @@ function renderEconomics(billing) {
   else $('welcomeCreditForm').credits.value = '10';
 }
 
+let cachedPrices = [];
+
+const TIER_LABELS = { customer_metered: 'Customer-metered', platform_overhead: 'Platform-overhead' };
+
+function tierPill(billingTier) {
+  if (billingTier === 'customer_metered') return pill(TIER_LABELS.customer_metered, 'good');
+  if (billingTier === 'platform_overhead') return pill(TIER_LABELS.platform_overhead, '');
+  return pill('Untagged', 'warn');
+}
+
+function renderPrices() {
+  const tierFilter = $('priceTierFilter').value;
+  const billableFilter = $('priceBillableFilter').value;
+  const activePrices = cachedPrices
+    .filter((price) => price.active)
+    .filter((price) => {
+      if (!tierFilter) return true;
+      if (tierFilter === 'untagged') return !price.billingTier;
+      return price.billingTier === tierFilter;
+    })
+    .filter((price) => !billableFilter || String(price.billable) === billableFilter)
+    .sort((a, b) => `${a.provider}${a.modality}${a.model}`.localeCompare(`${b.provider}${b.modality}${b.model}`));
+  $('pricesBody').innerHTML = activePrices.map((price) => `<tr data-price-id="${price.id}"><td>${esc(price.provider)}</td><td><code>${esc(price.model)}</code></td><td>${esc(price.modality)}</td><td>${esc(formatRateCard(price.rateCard))}</td><td>${usd(price.reservationNanoUsd)}</td><td>${tierPill(price.billingTier)}</td><td>${price.billable ? pill('Yes', 'good') : pill('No', 'warn')}</td><td><button data-toggle-billable="${price.id}" data-billable="${price.billable ? '1' : '0'}">${price.billable ? 'Disable billing' : 'Enable billing'}</button></td></tr>`).join('') || '<tr><td colspan="8">No provider prices match this filter.</td></tr>';
+}
+
 async function loadCommerce() {
   const [billing, sales, packs] = await Promise.all([api('/api/admin/billing'), api('/api/admin/sales?limit=100'), api('/api/admin/credit-packs')]);
   renderEconomics(billing);
-  const activePrices = billing.prices.filter((price) => price.active).sort((a, b) => `${a.provider}${a.modality}${a.model}`.localeCompare(`${b.provider}${b.modality}${b.model}`));
-  $('pricesBody').innerHTML = activePrices.map((price) => `<tr data-price-id="${price.id}"><td>${esc(price.provider)}</td><td><code>${esc(price.model)}</code></td><td>${esc(price.modality)}</td><td>${esc(formatRateCard(price.rateCard))}</td><td>${usd(price.reservationNanoUsd)}</td><td>${price.billable ? pill('Yes', 'good') : pill('No', 'warn')}</td><td><button data-toggle-billable="${price.id}" data-billable="${price.billable ? '1' : '0'}">${price.billable ? 'Disable billing' : 'Enable billing'}</button></td></tr>`).join('') || '<tr><td colspan="7">No active provider prices. Run scripts/seed-canonical-pricing.js --apply.</td></tr>';
+  cachedPrices = billing.prices;
+  renderPrices();
   $('creditPacksBody').innerHTML = packs.packs.map((pack) => `<tr><td>${esc(pack.name)}<small>${esc(pack.code)} v${pack.version}</small></td><td>$${(Number(pack.unitAmount) / 100).toFixed(2)}</td><td>${credit(pack.creditsGrantedMicros)}</td><td>${esc(pack.taxBehavior)}</td><td>${pill(pack.status, pack.status === 'active' ? 'good' : 'warn')}</td><td><small class="break">${esc(pack.stripePriceId || 'not configured')}</small></td><td>${pack.status === 'draft' ? `<button data-publish-pack="${pack.id}">Publish</button>` : pack.status === 'active' ? `<button data-retire-pack="${pack.id}">Retire</button>` : '—'}</td></tr>`).join('');
   $('salesBody').innerHTML = sales.sales.map((sale) => { const refundable = sale.processor === 'stripe' && ['credits_funded','partially_refunded'].includes(sale.status); const cash = sale.processor === 'stripe' ? `${minorUsd(BigInt(sale.totalAmount) - BigInt(sale.refundedAmount))}<small>${minorUsd(sale.refundedAmount)} refunded</small>` : usd(sale.cashAmountNanoUsd); return `<tr><td>${when(sale.occurredAt)}</td><td>${esc(sale.customerUser.displayName)}<small>${esc(sale.customerUser.email)}</small></td><td>${cash}</td><td>${credit(sale.creditsPurchasedMicros)}<small>${credit(sale.creditsReversed)} reversed</small></td><td>${esc(sale.paymentProvider)}<small>${esc(sale.processorCheckoutSessionId || sale.externalPaymentId || 'manual')}</small></td><td>${pill(sale.status, sale.status === 'credits_funded' ? 'good' : sale.refundResolutionRequired ? 'bad' : 'warn')}</td><td>${esc(sale.recordedByAdmin?.displayName || 'Stripe webhook')}</td><td>${refundable ? `<button data-refund-sale="${sale.id}">Refund</button>` : '—'}</td></tr>`; }).join('');
 }
@@ -181,6 +219,7 @@ document.querySelector('.period-picker')?.addEventListener('click', (event) => {
   loadOverview().catch((error) => message(error.message, true));
 });
 $('usersApply').addEventListener('click', loadUsers); $('generationsApply').addEventListener('click', loadGenerations);
+$('pricesApply').addEventListener('click', renderPrices);
 $('usersBody').addEventListener('click', (event) => { const button = event.target.closest('button[data-action]'); if (button) userAction(button).catch((error) => message(error.message, true)); });
 $('generationsBody').addEventListener('click', async (event) => { const button = event.target.closest('button[data-cancel-job]'); if (!button || !confirm('Cancel this running job?')) return; try { await api(`/api/admin/jobs/${button.dataset.cancelJob}`, { method: 'DELETE', body: { reason: 'Cancelled from admin console' } }); await loadGenerations(); } catch (error) { message(error.message, true); } });
 $('creditPacksBody').addEventListener('click', async (event) => { const publish = event.target.closest('button[data-publish-pack]'); const retire = event.target.closest('button[data-retire-pack]'); try { if (publish) { const stripePriceId = prompt('Stripe Price ID (price_…):'); if (!stripePriceId) return; await api(`/api/admin/credit-packs/${publish.dataset.publishPack}/publish`, { method: 'PATCH', body: { stripePriceId } }); } if (retire && confirm('Retire this pack immediately? Existing sales remain unchanged.')) await api(`/api/admin/credit-packs/${retire.dataset.retirePack}/retire`, { method: 'PATCH', body: {} }); await loadCommerce(); } catch (error) { message(error.message, true); } });

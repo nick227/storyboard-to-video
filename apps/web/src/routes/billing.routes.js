@@ -30,8 +30,9 @@ function jsonSafe(value) {
 }
 
 function tenantFilter(value) { return value == null || value === '' ? undefined : uuid.parse(String(value)); }
+function date(value) { return value ? new Date(String(value)) : undefined; }
 
-function billingRoutes(repository, billing, adminRepository = null) {
+function billingRoutes(repository, billing, adminRepository = null, spendSummary = null) {
   const router = express.Router();
   const audit = (req, event) => adminRepository?.recordAudit({ actorUserId: req.auth.userId, requestId: req.id, ...event });
   router.use(styleAdmin);
@@ -48,6 +49,26 @@ function billingRoutes(repository, billing, adminRepository = null) {
       marginNanoUsd: row.finalCustomerNanoUsd == null || !row.providerCostSnapshot ? null : row.finalCustomerNanoUsd - row.providerCostSnapshot.providerCostNanoUsd,
     }));
     res.json(jsonSafe({ ok: true, margins }));
+  }));
+  router.get('/sanity-report', asyncRoute(async (req, res) => {
+    if (!repository) throw new AppError('BILLING_UNAVAILABLE', 'Billing persistence is unavailable', { status: 503 });
+    const startAt = date(req.query.startAt);
+    const endAt = date(req.query.endAt);
+    const [spend, health] = await Promise.all([
+      spendSummary ? spendSummary.getPlatformSpend({ startAt, endAt }) : { totalCostUSD: 0, platformCostUSD: 0, unpriced: [] },
+      repository.sanityReport({ startAt, endAt }),
+    ]);
+    const unpricedUsageCount = spend.unpriced.reduce((sum, item) => sum + item.count, 0);
+    res.json(jsonSafe({
+      ok: true,
+      customerBillableSpendUSD: spend.totalCostUSD,
+      platformIncludedSpendUSD: spend.platformCostUSD,
+      unpricedUsageCount,
+      unpriced: spend.unpriced,
+      reservationsHeld: health.reservationsHeld,
+      failedSettlements: health.failedSettlements,
+      refundsIssued: health.purchaseRefundsIssued,
+    }));
   }));
   router.post('/credits/grant', express.json(), asyncRoute(async (req, res) => {
     const input = z.object({ tenantId: uuid, creditMicros: unsignedInteger, idempotencyKey: z.string().min(1).max(200), notes: z.string().max(1000).optional() }).parse(req.body);

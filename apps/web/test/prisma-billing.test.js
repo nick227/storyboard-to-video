@@ -221,3 +221,89 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
     await prisma.$disconnect();
   }
 });
+
+test('flipping a customer_metered price to billable:false blocks new customer settlement while usage keeps tracking', { skip: !enabled }, async () => {
+  const prisma = createPrismaClient(process.env.DATABASE_URL);
+  const identity = new PrismaIdentityRepository(prisma);
+  const usage = new PrismaUsageRepository(prisma);
+  const billing = new PrismaBillingRepository(prisma);
+  const account = await identity.createUserWithPersonalWorkspace({ email: `billable-gate-${crypto.randomUUID()}@example.com`, displayName: 'Billable Gate Test', passwordHash: 'test-only' });
+  const trace = (jobId) => ({ tenantId: account.tenant.id, userId: account.user.id, projectId: 'billable-gate-test', jobId, idempotencyKey: `billable-gate:${jobId}` });
+  const suffix = crypto.randomUUID();
+  const provider = `billable-gate-test-${suffix}`;
+  const model = `flat-${suffix}`;
+  try {
+    await billing.grant({ tenantId: account.tenant.id, userId: account.user.id, creditMicros: 10_000_000n, idempotencyKey: `billable-gate-grant:${suffix}` });
+    await billing.setChargingEnabled({ tenantId: account.tenant.id, enabled: true, actorUserId: account.user.id, idempotencyKey: `billable-gate-enable:${suffix}` });
+
+    const price = await billing.createPriceVersion({
+      versionKey: `billable-gate-price-${suffix}`, provider, modality: 'image', model, currency: 'USD',
+      rateCard: { type: 'flat', quantityKey: 'images', nanoUsdPerUnit: 15_000_000 }, reservationNanoUsd: 20_000_000n,
+      evidenceStatus: 'documented', reconciledAt: new Date(), billingTier: 'customer_metered', billable: true, active: true,
+    });
+
+    const live = trackerFor(usage, billing, true);
+
+    // First, prove the price is genuinely live-chargeable while billable:true (the control case).
+    const beforeFlip = crypto.randomUUID();
+    const resultOk = providerResult({ output: 'image', provider, model, providerRequestId: `before-flip-${suffix}`, usage: { images: 1 }, measurementStatus: 'observed' });
+    await live.generationContext.run({ trace: trace(beforeFlip), providerSequence: 0 }, () => live.tracker.execute({ modality: 'image', provider, model }, async () => resultOk));
+    const settledBefore = await prisma.generationRequest.findUnique({ where: { jobId_sequence: { jobId: beforeFlip, sequence: 1 } }, include: { creditReservation: true, costSnapshot: true } });
+    assert.equal(settledBefore.creditReservation.chargingMode, 'live');
+    assert.equal(settledBefore.creditReservation.status, 'settled');
+    const accountAfterFirst = await prisma.creditAccount.findUnique({ where: { tenantId: account.tenant.id } });
+
+    // Flip billable:false -- the exact lever this test is verifying.
+    const flipped = await billing.configurePrice(price.id, { billable: false });
+    assert.equal(flipped.billable, false);
+
+    // Run a second generation against the now-non-billable price.
+    const afterFlip = crypto.randomUUID();
+    const resultAfter = providerResult({ output: 'image', provider, model, providerRequestId: `after-flip-${suffix}`, usage: { images: 1 }, measurementStatus: 'observed' });
+    await live.generationContext.run({ trace: trace(afterFlip), providerSequence: 0 }, () => live.tracker.execute({ modality: 'image', provider, model }, async () => resultAfter));
+    const settledAfter = await prisma.generationRequest.findUnique({ where: { jobId_sequence: { jobId: afterFlip, sequence: 1 } }, include: { creditReservation: true, costSnapshot: true, usageEvent: true } });
+
+    // Usage still tracks: a real UsageEvent and a real ProviderCostSnapshot exist, with the true
+    // computed provider cost -- billable:false must never mean "stop measuring", only "stop
+    // charging the customer for it".
+    assert.ok(settledAfter.usageEvent);
+    assert.ok(settledAfter.costSnapshot);
+    assert.equal(settledAfter.costSnapshot.providerCostNanoUsd, 15_000_000n);
+
+    // But no customer settlement happened: the reservation never went live, and settled in the
+    // "not charged" state.
+    assert.equal(settledAfter.creditReservation.chargingMode, 'provider_not_billable');
+    assert.equal(settledAfter.creditReservation.status, 'settled_not_charged');
+    assert.equal(settledAfter.creditReservation.reservedCreditMicros, 0n);
+
+    // No ledger entries were created for this second generation at all (no reservation, no
+    // settlement) -- proof there was zero balance impact, not just a $0 charge.
+    const ledgerForSecond = await prisma.creditLedgerEntry.findMany({ where: { generationRequestId: settledAfter.id } });
+    assert.deepEqual(ledgerForSecond, []);
+
+    // And the account balance is byte-for-byte unchanged from right after the first (billable)
+    // generation settled.
+    const accountAfterSecond = await prisma.creditAccount.findUnique({ where: { tenantId: account.tenant.id } });
+    assert.equal(accountAfterSecond.availableCreditMicros, accountAfterFirst.availableCreditMicros);
+    assert.equal(accountAfterSecond.reservedCreditMicros, accountAfterFirst.reservedCreditMicros);
+  } finally {
+    await prisma.$transaction(async (db) => {
+      await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries DISABLE TRIGGER USER');
+      await db.$executeRawUnsafe('ALTER TABLE provider_cost_snapshots DISABLE TRIGGER USER');
+      await db.$executeRawUnsafe('ALTER TABLE credit_reservations DISABLE TRIGGER USER');
+      await db.creditLedgerEntry.deleteMany({ where: { tenantId: account.tenant.id } });
+      await db.creditReservation.deleteMany({ where: { tenantId: account.tenant.id } });
+      await db.providerCostSnapshot.deleteMany({ where: { generationRequest: { tenantId: account.tenant.id } } });
+      await db.usageEvent.deleteMany({ where: { tenantId: account.tenant.id } });
+      await db.generationRequest.deleteMany({ where: { tenantId: account.tenant.id } });
+      await db.creditAccount.deleteMany({ where: { tenantId: account.tenant.id } });
+      await db.providerPriceVersion.deleteMany({ where: { provider } });
+      await db.workspace.deleteMany({ where: { id: account.tenant.id } });
+      await db.user.deleteMany({ where: { id: account.user.id } });
+      await db.$executeRawUnsafe('ALTER TABLE credit_reservations ENABLE TRIGGER USER');
+      await db.$executeRawUnsafe('ALTER TABLE provider_cost_snapshots ENABLE TRIGGER USER');
+      await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries ENABLE TRIGGER USER');
+    });
+    await prisma.$disconnect();
+  }
+});

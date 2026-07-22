@@ -36,7 +36,16 @@ function resolveEventCost(event, priceIndex) {
   if (provider === 'stub') return { costUSD: 0, unpriced: false, billingTier };
   if (event.costSnapshot) return { costUSD: Number(event.costSnapshot.providerCostNanoUsd) / 1e9, unpriced: false, billingTier };
   if (!price) return { costUSD: 0, unpriced: true, billingTier: null };
-  const cost = calculateProviderCost(price.rateCard, event.usage || {});
+  // A matched price can still fail to compute live (e.g. historical usage recorded with a
+  // fractional value for a rate card that requires an integer unit -- a real data-quality gap,
+  // not something to paper over). Same honesty rule as "no price matched": surface as unpriced,
+  // never a silent $0, and never let one bad row crash an aggregate spend query.
+  let cost;
+  try {
+    cost = calculateProviderCost(price.rateCard, event.usage || {});
+  } catch {
+    return { costUSD: 0, unpriced: true, billingTier: null };
+  }
   return { costUSD: Number(cost.nanoUsd) / 1e9, unpriced: false, billingTier };
 }
 
@@ -213,7 +222,19 @@ function createSpendSummaryService({ prisma, billingRepository }) {
     return { prices: localJsonSafe(prices), markup: localJsonSafe(markup), creditRate: localJsonSafe(creditRate) };
   }
 
-  return { localJsonSafe, aggregateEvents, withCredits, getProjectSpend, getTenantSpend, getActivePricing };
+  // Site-wide (not single-tenant) spend split, for the admin billing sanity report: how much of
+  // all usage in the window is customer_metered (what's actually billed) vs platform_overhead
+  // (tracked but included by design) vs genuinely unpriced (a real gap).
+  async function getPlatformSpend({ startAt, endAt } = {}) {
+    const range = { ...(startAt ? { gte: startAt } : {}), ...(endAt ? { lt: endAt } : {}) };
+    const [events, prices] = await Promise.all([
+      prisma.usageEvent.findMany({ where: Object.keys(range).length ? { occurredAt: range } : {}, include: { costSnapshot: true } }),
+      activePrices(),
+    ]);
+    return aggregateEvents(events, prices);
+  }
+
+  return { localJsonSafe, aggregateEvents, withCredits, getProjectSpend, getTenantSpend, getActivePricing, getPlatformSpend };
 }
 
 module.exports = { createSpendSummaryService, aggregateEvents, localJsonSafe };

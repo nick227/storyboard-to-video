@@ -196,6 +196,31 @@ class PrismaBillingRepository {
     });
   }
 
+  // Operational health signals for the admin billing sanity report -- distinct from listMargins
+  // (which is per-settled-reservation detail): 'reserved' reservations still mid-flight (a
+  // reservation held for a long time can mean a leaked/stuck generation), reservations tied to a
+  // provider failure ('released' live-mode, 'failed_not_charged' non-live-mode), and real Stripe
+  // purchase refunds (distinct from the routine unused-reservation 'refund' ledger entries that
+  // are just part of normal settlement, not an anomaly).
+  async sanityReport({ startAt, endAt } = {}) {
+    const range = { ...(startAt ? { gte: startAt } : {}), ...(endAt ? { lt: endAt } : {}) };
+    const reservationWhere = Object.keys(range).length ? { createdAt: range } : {};
+    const ledgerWhere = Object.keys(range).length ? { createdAt: range } : {};
+    const [reservationsHeld, failedSettlements, purchaseRefunds] = await Promise.all([
+      this.prisma.creditReservation.count({ where: { ...reservationWhere, status: 'reserved' } }),
+      this.prisma.creditReservation.count({ where: { ...reservationWhere, status: { in: ['released', 'failed_not_charged'] } } }),
+      this.prisma.creditLedgerEntry.aggregate({ where: { ...ledgerWhere, type: 'purchase_refund' }, _count: true, _sum: { availableDeltaCreditMicros: true } }),
+    ]);
+    return {
+      reservationsHeld,
+      failedSettlements,
+      purchaseRefundsIssued: {
+        count: purchaseRefunds._count,
+        creditMicros: -(purchaseRefunds._sum.availableDeltaCreditMicros || 0n),
+      },
+    };
+  }
+
   createPriceVersion(data) {
     if (data.billable) {
       if (data.billingTier !== 'customer_metered') throw new AppError('PRICE_NOT_ELIGIBLE_FOR_BILLING', 'Only a customer-metered provider price may be billable', { status: 409 });

@@ -15,15 +15,22 @@
 <body>
   <storyframe-topbar></storyframe-topbar>
   <main class="credits-shell">
-    <div class="balance-card">
-        <h2>Available balance: </h2><span id="creditBalance">—</span>
+    <header class="credits-heading">
+      <div>
+        <div class="eyebrow">Generation balance</div>
+        <h1>Site credits</h1>
+        <p>One-time purchases. No subscription.</p>
+      </div>
+      <div class="balance-card">
+          <h2>Available balance: </h2><span id="creditBalance">—</span>
 
-      <div class="balance-actions"><button type="button" id="openAddCreditsButton" class="primary"
-          aria-haspopup="dialog">Add credits</button></div>
-          
-        <button type="button" id="pricingInfoButton" class="info-button"
-          aria-label="How pricing works" aria-haspopup="dialog">i</button>
-    </div>
+        <div class="balance-actions"><button type="button" id="openAddCreditsButton" class="primary"
+            aria-haspopup="dialog">Add credits</button></div>
+
+          <button type="button" id="pricingInfoButton" class="info-button"
+            aria-label="How pricing works" aria-haspopup="dialog">i</button>
+      </div>
+    </header>
 
     <section class="purchase-history">
       <h2>Purchase history</h2>

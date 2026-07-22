@@ -41,6 +41,11 @@
         <h3>Activity</h3>
         <div id="overviewActivity" class="overview-metrics"></div>
       </section>
+      <section class="overview-section">
+        <h3>Billing sanity check</h3>
+        <p class="admin-hint">Customer-metered spend vs. platform-overhead spend, plus health signals worth watching before expanding live charging.</p>
+        <div id="overviewBillingSanity" class="overview-metrics"></div>
+      </section>
       <div class="admin-grid-two">
         <article class="panel">
           <h2>What people made</h2>
@@ -76,7 +81,8 @@
       <article class="panel">
         <h2>Provider prices</h2>
         <p class="admin-hint">Vendor base costs live in <code>pricing/canonical-prices.js</code> and are refreshed with <code>node scripts/seed-canonical-pricing.js --apply</code> after vendor price changes. Toggle billable here once verified.</p>
-        <div class="table-wrap"><table><thead><tr><th>Provider</th><th>Model</th><th>Type</th><th>Base rate</th><th>Reservation</th><th>Billable</th><th></th></tr></thead><tbody id="pricesBody"></tbody></table></div>
+        <div class="admin-filter-row"><label>Tier<select id="priceTierFilter"><option value="">All</option><option value="customer_metered">Customer-metered</option><option value="platform_overhead">Platform-overhead</option><option value="untagged">Untagged</option></select></label><label>Billable<select id="priceBillableFilter"><option value="">All</option><option value="true">Billable</option><option value="false">Not billable</option></select></label><button id="pricesApply">Apply</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Provider</th><th>Model</th><th>Type</th><th>Base rate</th><th>Reservation</th><th>Tier</th><th>Billable</th><th></th></tr></thead><tbody id="pricesBody"></tbody></table></div>
       </article>
       <article class="panel"><h2>Stripe credit packs</h2><p>Draft packs become immutable when published with a Stripe Price ID.</p><div class="table-wrap"><table><thead><tr><th>Pack</th><th>USD price</th><th>Credits</th><th>Tax</th><th>Status</th><th>Stripe Price</th><th>Action</th></tr></thead><tbody id="creditPacksBody"></tbody></table></div></article>
       <article class="panel"><h2>Recent sales</h2><div class="table-wrap"><table><thead><tr><th>When</th><th>Customer</th><th>Cash</th><th>Credits</th><th>Provider/reference</th><th>Status</th><th>Recorded by</th><th>Action</th></tr></thead><tbody id="salesBody"></tbody></table></div></article>

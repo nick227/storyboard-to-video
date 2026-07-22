@@ -37,6 +37,33 @@ test('admin console and API require a platform administrator', async () => {
   await request(app).get('/api/admin/overview').set(auth('bob-token')).expect(403).expect((response) => assert.equal(response.body.error.code, 'FORBIDDEN'));
 });
 
+test('the admin billing sanity report is admin-gated and splits customer-billable spend from platform-included spend', async () => {
+  await request(app).get('/api/admin/billing/sanity-report').set(auth('bob-token')).expect(403).expect((response) => assert.equal(response.body.error.code, 'FORBIDDEN'));
+  await request(app).get('/api/admin/billing/sanity-report').set(auth('alice-token')).expect(200).expect((response) => {
+    const body = response.body;
+    assert.equal(body.ok, true);
+    // Not asserting exact values -- this is a shared dev DB with ongoing concurrent activity and
+    // years of prior test/reconciliation runs (see the analogous "every provider/model..." test
+    // above). This proves the report's wiring, guard, and money-math survive real historical data
+    // (including the fractional-seconds usage rows that used to crash live cost computation)
+    // without hardcoding counts that would make this test flaky.
+    assert.equal(typeof body.customerBillableSpendUSD, 'number');
+    assert.equal(typeof body.platformIncludedSpendUSD, 'number');
+    assert.ok(body.customerBillableSpendUSD >= 0);
+    assert.ok(body.platformIncludedSpendUSD >= 0);
+    assert.equal(typeof body.unpricedUsageCount, 'number');
+    assert.ok(body.unpricedUsageCount >= 0);
+    assert.ok(Array.isArray(body.unpriced));
+    assert.equal(typeof body.reservationsHeld, 'number');
+    assert.ok(body.reservationsHeld >= 0);
+    assert.equal(typeof body.failedSettlements, 'number');
+    assert.ok(body.failedSettlements >= 0);
+    assert.equal(typeof body.refundsIssued.count, 'number');
+    assert.ok(body.refundsIssued.count >= 0);
+    assert.equal(typeof body.refundsIssued.creditMicros, 'string');
+  });
+});
+
 test('credit purchase pages require login and Stripe webhooks bypass user auth', async () => {
   await request(app).get('/credits').expect(302).expect('Location', /login\.html/);
   await request(app).get('/credits.html').set(auth('bob-token')).expect(302).expect('Location', '/credits');

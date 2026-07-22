@@ -54,6 +54,16 @@ test('a UsageEvent stores the canonical model key (not a dated/versioned provide
   assert.equal(providers.openai.modalities.text.models['gpt-4.1-mini-2025-04-14'], undefined);
 });
 
+test('a matched price that fails to compute live (e.g. a linear_steps rate card given historical fractional-seconds usage) is unpriced, not a crash', () => {
+  const events = [{ provider: 'piper', modality: 'audio', model: 'piper-modal', usage: { seconds: 0.00009070294784580499 } }];
+  const prices = [{ provider: 'piper', modality: 'audio', model: 'piper-modal', billingTier: 'platform_overhead', rateCard: { type: 'linear_steps', usageKey: 'seconds', baseNanoUsd: 10_000_000, baseUnits: 100 } }];
+  const { totalCostUSD, platformCostUSD, unpriced, providers } = aggregateEvents(events, prices);
+  assert.equal(totalCostUSD, 0);
+  assert.equal(platformCostUSD, 0);
+  assert.deepEqual(unpriced, [{ provider: 'piper', modality: 'audio', model: 'piper-modal', count: 1 }]);
+  assert.equal(providers.piper.modalities.audio.models['piper-modal'].unpriced, true);
+});
+
 test('a platform_overhead-tier event is costed but excluded from totalCostUSD, and tracked separately in platformCostUSD', () => {
   const events = [{ provider: 'piper', modality: 'audio', model: 'piper-local', usage: { characters: 100 } }];
   const prices = [{ ...flatPrice('piper', 'audio', 'piper-local', 10_000, 'characters'), billingTier: 'platform_overhead' }];
