@@ -35,7 +35,10 @@ function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl,
           mode: 'payment',
           client_reference_id: prepared.sale.id,
           line_items: [{ price: prepared.pack.stripePriceId, quantity: 1 }],
-          automatic_tax: { enabled: true },
+          // automatic_tax requires a head-office address and per-jurisdiction registrations on the
+          // Stripe account (dashboard > Tax); without them Stripe hard-rejects session creation, and
+          // even set up, it silently collects $0 in any unregistered jurisdiction. Leave this off
+          // until the account has real registrations — enabling it is a deliberate business/tax call.
           ...(customer ? { customer } : { customer_email: userEmail, customer_creation: 'always' }),
           success_url: `${base}/credits.html?checkout=success&saleId=${prepared.sale.id}&session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${base}/credits.html?checkout=canceled&saleId=${prepared.sale.id}`,

@@ -27,7 +27,11 @@ class AuthService {
   }
 
   sessionCookieOptions() {
-    return { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: this.sessionTtlMs };
+    // SameSite=Strict drops the cookie on the top-level GET redirect Stripe Checkout issues back
+    // to success_url/cancel_url (an external-site navigation), silently logging the user out right
+    // after they pay. Lax still withholds the cookie from cross-site POSTs, so the CSRF check
+    // below (which also verifies Origin on state-changing requests) stays effective.
+    return { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: this.sessionTtlMs };
   }
 
   async resolve(req) {
@@ -107,7 +111,7 @@ class AuthService {
   async logout(req, res) {
     const token = cookieValue(req, SESSION_COOKIE);
     if (token && this.identityStore) await this.identityStore.deleteSession(tokenHash(token));
-    res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/' });
+    res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
   }
 
 
