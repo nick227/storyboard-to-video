@@ -24,23 +24,27 @@ function buildPriceIndex(prices) {
 // generation settled) if one exists, otherwise the same formal ProviderPriceVersion rate card
 // computed live (for events that predate the price row, or ran while it was momentarily
 // inactive) -- never a second, hand-maintained cost formula. `stub` is genuinely free, not
-// unknown. Anything with no matching price at all is `unpriced`, not silently $0.
+// unknown. Anything with no matching price at all is `unpriced`, not silently $0. `billingTier`
+// (from the matched price, when one exists) tells the caller whether this cost is customer-facing
+// or platform overhead included by design -- distinct from `unpriced`, a genuine gap.
 function resolveEventCost(event, priceIndex) {
   const provider = event.provider || 'unknown';
   const modality = event.modality || 'unknown';
   const model = event.model || 'unknown';
-  if (provider === 'stub') return { costUSD: 0, unpriced: false };
-  if (event.costSnapshot) return { costUSD: Number(event.costSnapshot.providerCostNanoUsd) / 1e9, unpriced: false };
   const price = priceIndex.get(priceKey(provider, modality, model));
-  if (!price) return { costUSD: 0, unpriced: true };
+  const billingTier = price?.billingTier || null;
+  if (provider === 'stub') return { costUSD: 0, unpriced: false, billingTier };
+  if (event.costSnapshot) return { costUSD: Number(event.costSnapshot.providerCostNanoUsd) / 1e9, unpriced: false, billingTier };
+  if (!price) return { costUSD: 0, unpriced: true, billingTier: null };
   const cost = calculateProviderCost(price.rateCard, event.usage || {});
-  return { costUSD: Number(cost.nanoUsd) / 1e9, unpriced: false };
+  return { costUSD: Number(cost.nanoUsd) / 1e9, unpriced: false, billingTier };
 }
 
 function aggregateEvents(events, prices = []) {
   const priceIndex = buildPriceIndex(prices);
   const providers = {};
   let totalCostUSD = 0;
+  let platformCostUSD = 0;
   let totalTokens = 0;
   const unpricedByKey = new Map();
 
@@ -48,7 +52,7 @@ function aggregateEvents(events, prices = []) {
     const provider = event.provider || 'unknown';
     const modality = event.modality || 'unknown';
     const model = event.model || 'unknown';
-    const { costUSD, unpriced } = resolveEventCost(event, priceIndex);
+    const { costUSD, unpriced, billingTier } = resolveEventCost(event, priceIndex);
 
     if (unpriced) {
       const key = priceKey(provider, modality, model);
@@ -98,6 +102,7 @@ function aggregateEvents(events, prices = []) {
         outputTokens: 0,
         extra: {},
         unpriced: false,
+        billingTier: null,
       };
     }
 
@@ -107,6 +112,7 @@ function aggregateEvents(events, prices = []) {
     modelGroup.inputTokens += input;
     modelGroup.outputTokens += output;
     if (unpriced) modelGroup.unpriced = true;
+    if (billingTier) modelGroup.billingTier = billingTier;
 
     if (modality === 'text') {
       modalityGroup.count += 1;
@@ -131,11 +137,12 @@ function aggregateEvents(events, prices = []) {
       modelGroup.count += 1;
     }
 
-    totalCostUSD += costUSD;
+    if (billingTier === 'platform_overhead') platformCostUSD += costUSD;
+    else totalCostUSD += costUSD;
     totalTokens += tokens;
   }
 
-  return { providers, totalCostUSD, totalTokens, unpriced: [...unpricedByKey.values()] };
+  return { providers, totalCostUSD, platformCostUSD, totalTokens, unpriced: [...unpricedByKey.values()] };
 }
 
 function createSpendSummaryService({ prisma, billingRepository }) {
@@ -176,12 +183,13 @@ function createSpendSummaryService({ prisma, billingRepository }) {
     const titleById = new Map(projects.map((project) => [project.id, project.title]));
     const projectSummaries = [];
     for (const [projectId, projectEvents] of eventsByProject) {
-      const { totalCostUSD, totalTokens, unpriced } = aggregateEvents(projectEvents, prices);
+      const { totalCostUSD, platformCostUSD, totalTokens, unpriced } = aggregateEvents(projectEvents, prices);
       const { credits, creditMicros } = await withCredits(totalCostUSD);
       projectSummaries.push({
         projectId,
         title: titleById.get(projectId) || null,
         costUSD: totalCostUSD,
+        platformCostUSD,
         tokens: totalTokens,
         credits,
         creditMicros: creditMicros.toString(),
@@ -190,10 +198,10 @@ function createSpendSummaryService({ prisma, billingRepository }) {
     }
     projectSummaries.sort((a, b) => b.costUSD - a.costUSD);
 
-    const { providers, totalCostUSD, totalTokens, unpriced } = aggregateEvents(events, prices);
+    const { providers, totalCostUSD, platformCostUSD, totalTokens, unpriced } = aggregateEvents(events, prices);
     const { credits, creditMicros } = await withCredits(totalCostUSD);
 
-    return { totalCostUSD, totalTokens, totalCredits: credits, totalCreditMicros: creditMicros.toString(), providers, projects: projectSummaries, unpriced };
+    return { totalCostUSD, platformCostUSD, totalTokens, totalCredits: credits, totalCreditMicros: creditMicros.toString(), providers, projects: projectSummaries, unpriced };
   }
 
   async function getActivePricing() {

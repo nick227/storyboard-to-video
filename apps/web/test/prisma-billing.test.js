@@ -55,8 +55,29 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
     await assert.rejects(() => prisma.welcomeCreditPolicyVersion.update({ where: { id: welcomePolicy.id }, data: { creditMicros: 1n } }), /immutable/);
     assert.throws(() => billing.createPriceVersion({
       versionKey: `unreconciled-${crypto.randomUUID()}`, provider: 'test', modality: 'text', model: 'test', currency: 'USD',
-      rateCard: { type: 'flat', nanoUsdPerUnit: 1 }, reservationNanoUsd: 1n, evidenceStatus: 'documented', billable: true, active: false,
+      rateCard: { type: 'flat', nanoUsdPerUnit: 1 }, reservationNanoUsd: 1n, evidenceStatus: 'documented', billingTier: 'customer_metered', billable: true, active: false,
     }), (error) => error.code === 'PRICE_NOT_RECONCILED');
+    // Prototype billing policy: a customer_metered price may become billable on 'documented'
+    // evidence alone (previously only 'dashboard_reconciled' was accepted for any provider).
+    const customerMeteredSuffix = crypto.randomUUID();
+    const customerMeteredPrice = await billing.createPriceVersion({
+      versionKey: `customer-metered-${customerMeteredSuffix}`, provider: `billing-test-${customerMeteredSuffix}`, modality: 'text', model: 'test', currency: 'USD',
+      rateCard: { type: 'flat', nanoUsdPerUnit: 1 }, reservationNanoUsd: 1n, evidenceStatus: 'documented', reconciledAt: new Date(),
+      billingTier: 'customer_metered', billable: true, active: false,
+    });
+    assert.equal(customerMeteredPrice.billable, true);
+    await prisma.providerPriceVersion.deleteMany({ where: { id: customerMeteredPrice.id } });
+    // A platform_overhead price is hard-blocked from ever being billable, regardless of evidence.
+    assert.throws(() => billing.createPriceVersion({
+      versionKey: `platform-overhead-${crypto.randomUUID()}`, provider: 'test', modality: 'text', model: 'test', currency: 'USD',
+      rateCard: { type: 'flat', nanoUsdPerUnit: 1 }, reservationNanoUsd: 1n, evidenceStatus: 'dashboard_reconciled', reconciledAt: new Date(),
+      billingTier: 'platform_overhead', billable: true, active: false,
+    }), (error) => error.code === 'PRICE_NOT_ELIGIBLE_FOR_BILLING');
+    assert.throws(() => billing.createPriceVersion({
+      versionKey: `null-tier-${crypto.randomUUID()}`, provider: 'test', modality: 'text', model: 'test', currency: 'USD',
+      rateCard: { type: 'flat', nanoUsdPerUnit: 1 }, reservationNanoUsd: 1n, evidenceStatus: 'dashboard_reconciled', reconciledAt: new Date(),
+      billable: true, active: false,
+    }), (error) => error.code === 'PRICE_NOT_ELIGIBLE_FOR_BILLING');
 
     const disabled = trackerFor(usage, billing, false);
     const disabledJob = crypto.randomUUID();
@@ -82,7 +103,7 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
       versionKey: `flat-price-${suffix}`, provider, modality: 'image', model, currency: 'USD',
       rateCard: { type: 'flat', quantityKey: 'images', nanoUsdPerUnit: 15000000 }, reservationNanoUsd: 20000000n,
       evidenceStatus: 'dashboard_reconciled', reconciledAt: new Date(), reconciliationNotes: 'Integration-test evidence',
-      billable: true, active: true,
+      billingTier: 'customer_metered', billable: true, active: true,
     });
     await assert.rejects(() => prisma.providerPriceVersion.update({ where: { id: price.id }, data: { rateCard: { type: 'flat', nanoUsdPerUnit: 1 } } }), /immutable/);
     await billing.grant({ tenantId: account.tenant.id, userId: account.user.id, creditMicros: 10000000n, idempotencyKey: `test-grant:${suffix}` });
@@ -144,7 +165,7 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
     await billing.createPriceVersion({
       versionKey: `expensive-price-${suffix}`, provider, modality: 'text', model: expensiveModel, currency: 'USD',
       rateCard: { type: 'flat', nanoUsdPerUnit: 1000000000 }, reservationNanoUsd: 1000000000n,
-      evidenceStatus: 'dashboard_reconciled', reconciledAt: new Date(), billable: true, active: true,
+      evidenceStatus: 'dashboard_reconciled', reconciledAt: new Date(), billingTier: 'customer_metered', billable: true, active: true,
     });
     const insufficientJob = crypto.randomUUID();
     let insufficientExecuted = false;

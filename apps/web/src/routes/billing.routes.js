@@ -17,6 +17,7 @@ const priceInput = z.object({
   currency: z.string().length(3).default('USD'), rateCard, reservationNanoUsd: unsignedInteger,
   evidenceStatus: z.enum(['documented', 'dashboard_reconciled', 'estimated']), reconciledAt: z.coerce.date().nullable().optional(),
   reconciliationNotes: z.string().max(4000).nullable().optional(), sourceReference: z.string().max(2000).nullable().optional(),
+  billingTier: z.enum(['customer_metered', 'platform_overhead']).nullable().optional(),
   billable: z.boolean().default(false), active: z.boolean().default(false),
 });
 
@@ -63,7 +64,10 @@ function billingRoutes(repository, billing, adminRepository = null) {
   }));
   router.post('/prices', asyncRoute(async (req, res) => {
     const input = priceInput.parse(req.body);
-    if (input.billable && (input.evidenceStatus !== 'dashboard_reconciled' || !input.reconciledAt)) throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must have dated dashboard reconciliation before it can be billable', { status: 409 });
+    if (input.billable) {
+      if (input.billingTier !== 'customer_metered') throw new AppError('PRICE_NOT_ELIGIBLE_FOR_BILLING', 'Only a customer-metered provider price may be billable', { status: 409 });
+      if (!input.reconciledAt) throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must have a recorded evidence-acceptance date before it can be billable', { status: 409 });
+    }
     let price = await repository.createPriceVersion({ ...input, active: false });
     if (input.active) price = await repository.configurePrice(price.id, { active: true });
     await audit(req, { action: 'pricing.provider_version_created', targetType: 'provider_price_version', targetId: price.id, after: { versionKey: price.versionKey, provider: price.provider, model: price.model, active: price.active, billable: price.billable } });
@@ -71,7 +75,7 @@ function billingRoutes(repository, billing, adminRepository = null) {
   }));
   router.patch('/prices/:id', asyncRoute(async (req, res) => {
     const id = uuid.parse(req.params.id);
-    const input = z.object({ active: z.boolean().optional(), billable: z.boolean().optional(), evidenceStatus: z.enum(['documented', 'dashboard_reconciled', 'estimated']).optional(), reconciledAt: z.coerce.date().nullable().optional(), reconciliationNotes: z.string().max(4000).nullable().optional() }).parse(req.body);
+    const input = z.object({ active: z.boolean().optional(), billable: z.boolean().optional(), evidenceStatus: z.enum(['documented', 'dashboard_reconciled', 'estimated']).optional(), reconciledAt: z.coerce.date().nullable().optional(), reconciliationNotes: z.string().max(4000).nullable().optional(), billingTier: z.enum(['customer_metered', 'platform_overhead']).nullable().optional() }).parse(req.body);
     const price = await repository.configurePrice(id, input);
     await audit(req, { action: 'pricing.provider_version_configured', targetType: 'provider_price_version', targetId: id, after: { active: price.active, billable: price.billable, evidenceStatus: price.evidenceStatus, reconciledAt: price.reconciledAt } });
     res.json(jsonSafe({ ok: true, price }));

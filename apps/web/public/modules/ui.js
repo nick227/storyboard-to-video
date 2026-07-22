@@ -972,6 +972,10 @@ export function populateTokensInfoModal(els) {
         <div class="tokens-spend-card-providers">`;
         
       for (const item of group.items) {
+        let costDisplay;
+        if (item.billingTier === 'platform_overhead') costDisplay = '<span style="color: var(--muted); font-style: italic;">Included</span>';
+        else if (item.unpriced) costDisplay = '<span style="color: var(--muted);">⚠ Unpriced</span>';
+        else costDisplay = `$${item.costUSD.toFixed(5)}`;
         let countDetails = '';
         if (modality === 'text') {
           countDetails = `${item.count} prompt(s) (${item.inputTokens.toLocaleString()} in / ${item.outputTokens.toLocaleString()} out)`;
@@ -987,7 +991,7 @@ export function populateTokensInfoModal(els) {
         spendHTML += `<div class="tokens-spend-provider-row">
           <div class="tokens-spend-provider-header">
             <strong>${item.provider} <span style="font-weight: normal; color: var(--muted); font-size: 11px;">(${item.model})</span></strong>
-            <span>${item.unpriced ? '<span style="color: var(--muted);">Unpriced</span>' : `$${item.costUSD.toFixed(5)}`}</span>
+            <span>${costDisplay}</span>
           </div>
           <div class="tokens-spend-model-list">
             <div class="tokens-spend-model-row">

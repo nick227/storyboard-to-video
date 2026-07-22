@@ -136,8 +136,8 @@ async function load() {
   }
   $('pricingMarkup').textContent = formatMarkup(pricing.markup);
   $('pricingCreditRate').textContent = formatCreditRate(pricing.creditRate);
-  const pricingRows = pricing.prices.map((price) => ({ provider: price.provider, modality: price.modality, model: price.model, rate: formatRateCard(price.rateCard) }));
-  $('pricingBody').innerHTML = pricingRows.map((row) => `<tr><td>${esc(row.provider)}</td><td style="text-transform: capitalize;">${esc(row.modality)}</td><td><code>${esc(row.model)}</code></td><td>${esc(row.rate)}</td></tr>`).join('') || '<tr><td colspan="4">No pricing configured yet.</td></tr>';
+  const pricingRows = pricing.prices.map((price) => ({ provider: price.provider, modality: price.modality, model: price.model, rate: formatRateCard(price.rateCard), billingTier: price.billingTier }));
+  $('pricingBody').innerHTML = pricingRows.map((row) => { const billable = row.billingTier === 'customer_metered'; return `<tr><td>${esc(row.provider)}</td><td style="text-transform: capitalize;">${esc(row.modality)}</td><td><code>${esc(row.model)}</code></td><td>${esc(row.rate)}</td><td><span class="status-pill ${billable ? 'tier-billable' : 'tier-included'}">${billable ? 'Billable' : 'Included'}</span></td></tr>`; }).join('') || '<tr><td colspan="5">No pricing configured yet.</td></tr>';
   const examples = generationExamples(pricing);
   purchaseContext = { options, pricing, examples };
   if (!$('creditAmount').dataset.initialized) {

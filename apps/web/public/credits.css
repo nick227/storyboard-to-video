@@ -49,5 +49,8 @@
 .purchase-history table { width: 100%; border-collapse: collapse; }
 .purchase-history th, .purchase-history td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; }
 .status-pill { display: inline-block; padding: 4px 9px; border-radius: 999px; background: var(--panel-2); font-size: 12px; }
+.status-pill.tier-billable { background: var(--accent-soft, rgba(120, 170, 255, .18)); color: var(--accent, #78aaff); }
+.status-pill.tier-included { background: var(--panel-2); color: var(--muted); }
+.pricing-tier-note { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
 .row{ display: flex; }
 @media (max-width: 760px) { .credits-shell { padding: 32px 14px 60px; } .credits-heading { align-items: stretch; flex-direction: column; } .balance-card { min-width: 0; width: 100%; } .amount-row { flex-direction: column; } .amount-row button { width: 100%; } .purchase-modal, .pricing-modal { padding: 20px 14px; } .pricing-example-grid { grid-template-columns: 1fr; } }

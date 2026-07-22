@@ -197,7 +197,10 @@ class PrismaBillingRepository {
   }
 
   createPriceVersion(data) {
-    if (data.billable && (data.evidenceStatus !== 'dashboard_reconciled' || !data.reconciledAt)) throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must have dated dashboard reconciliation before it can be billable', { status: 409 });
+    if (data.billable) {
+      if (data.billingTier !== 'customer_metered') throw new AppError('PRICE_NOT_ELIGIBLE_FOR_BILLING', 'Only a customer-metered provider price may be billable', { status: 409 });
+      if (!data.reconciledAt) throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must have a recorded evidence-acceptance date before it can be billable', { status: 409 });
+    }
     return this.prisma.providerPriceVersion.create({ data: { id: crypto.randomUUID(), ...data } });
   }
   createMarkupVersion(data) { return this.prisma.markupPolicyVersion.create({ data: { id: crypto.randomUUID(), ...data } }); }
@@ -210,20 +213,24 @@ class PrismaBillingRepository {
     });
   }
 
-  async configurePrice(id, { active, billable, evidenceStatus, reconciledAt, reconciliationNotes }) {
+  async configurePrice(id, { active, billable, evidenceStatus, reconciledAt, reconciliationNotes, billingTier }) {
     return serializable(this.prisma, async (db) => {
       const current = await db.providerPriceVersion.findUnique({ where: { id } });
       if (!current) throw new AppError('PRICE_VERSION_NOT_FOUND', 'Provider price version not found', { status: 404 });
-      const nextEvidence = evidenceStatus || current.evidenceStatus;
       const nextReconciledAt = reconciledAt === undefined ? current.reconciledAt : reconciledAt;
       const nextBillable = billable == null ? current.billable : billable;
-      if (nextBillable && (nextEvidence !== 'dashboard_reconciled' || !nextReconciledAt)) throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must have dated dashboard reconciliation before it can be billable', { status: 409 });
+      const nextBillingTier = billingTier === undefined ? current.billingTier : billingTier;
+      if (nextBillable) {
+        if (nextBillingTier !== 'customer_metered') throw new AppError('PRICE_NOT_ELIGIBLE_FOR_BILLING', 'Only a customer-metered provider price may be billable', { status: 409 });
+        if (!nextReconciledAt) throw new AppError('PRICE_NOT_RECONCILED', 'A provider price must have a recorded evidence-acceptance date before it can be billable', { status: 409 });
+      }
       if (active === true) await db.providerPriceVersion.updateMany({ where: { provider: current.provider, modality: current.modality, model: current.model, active: true, id: { not: id } }, data: { active: false, retiredAt: new Date() } });
       return db.providerPriceVersion.update({ where: { id }, data: {
         ...(active == null ? {} : { active, retiredAt: active ? null : new Date() }),
         ...(billable == null ? {} : { billable }), ...(evidenceStatus ? { evidenceStatus } : {}),
         ...(reconciledAt !== undefined ? { reconciledAt } : {}),
         ...(reconciliationNotes !== undefined ? { reconciliationNotes } : {}),
+        ...(billingTier !== undefined ? { billingTier } : {}),
       } });
     });
   }

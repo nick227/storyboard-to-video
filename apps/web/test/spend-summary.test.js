@@ -54,6 +54,28 @@ test('a UsageEvent stores the canonical model key (not a dated/versioned provide
   assert.equal(providers.openai.modalities.text.models['gpt-4.1-mini-2025-04-14'], undefined);
 });
 
+test('a platform_overhead-tier event is costed but excluded from totalCostUSD, and tracked separately in platformCostUSD', () => {
+  const events = [{ provider: 'piper', modality: 'audio', model: 'piper-local', usage: { characters: 100 } }];
+  const prices = [{ ...flatPrice('piper', 'audio', 'piper-local', 10_000, 'characters'), billingTier: 'platform_overhead' }];
+  const { totalCostUSD, platformCostUSD, unpriced, providers } = aggregateEvents(events, prices);
+  assert.equal(totalCostUSD, 0);
+  assert.equal(platformCostUSD, 0.001);
+  assert.deepEqual(unpriced, []);
+  const modelGroup = providers.piper.modalities.audio.models['piper-local'];
+  assert.equal(modelGroup.costUSD, 0.001);
+  assert.equal(modelGroup.unpriced, false);
+  assert.equal(modelGroup.billingTier, 'platform_overhead');
+});
+
+test('a customer_metered-tier event is costed and included in totalCostUSD, not platformCostUSD', () => {
+  const events = [{ provider: 'openai', modality: 'image', model: 'gpt-image-1', usage: { images: 1 } }];
+  const prices = [{ ...flatPrice('openai', 'image', 'gpt-image-1', 40_000_000, 'images'), billingTier: 'customer_metered' }];
+  const { totalCostUSD, platformCostUSD, providers } = aggregateEvents(events, prices);
+  assert.equal(totalCostUSD, 0.04);
+  assert.equal(platformCostUSD, 0);
+  assert.equal(providers.openai.modalities.image.models['gpt-image-1'].billingTier, 'customer_metered');
+});
+
 test('unpriced events across multiple providers are each reported with their own count', () => {
   const events = [
     { provider: 'minimax', modality: 'video', model: 'video-01', usage: {} },

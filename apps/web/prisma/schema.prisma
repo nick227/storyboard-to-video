@@ -348,6 +348,10 @@ model ProviderPriceVersion {
   reconciledAt        DateTime?              @map("reconciled_at") @db.Timestamptz(3)
   reconciliationNotes String?                @map("reconciliation_notes")
   sourceReference     String?                @map("source_reference")
+  // Nullable and fail-closed on purpose: only 'customer_metered' unlocks billable:true (enforced
+  // in prisma-billing.repository.js). Null, 'platform_overhead', or any other value blocks it --
+  // a price must be explicitly categorized as customer-metered before it can ever be charged.
+  billingTier         String?                @map("billing_tier")
   billable            Boolean                @default(false)
   active              Boolean                @default(false)
   effectiveAt         DateTime               @default(now()) @map("effective_at") @db.Timestamptz(3)

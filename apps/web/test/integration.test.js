@@ -362,10 +362,16 @@ test('GET /api/projects/:projectId/tokens retrieves and aggregates project token
   });
 
   const videoRes = await request(app).get(`/api/projects/${projectId}/tokens`).set(auth()).expect(200);
-  assert.equal(videoRes.body.totalCostUSD, 0.065);
+  // ltx is a platform-overhead price under the prototype billing policy: its real cost is still
+  // computed and shown per-model, but excluded from the customer-facing totalCostUSD and tracked
+  // separately in platformCostUSD.
+  assert.equal(videoRes.body.totalCostUSD, 0.05);
+  assert.equal(videoRes.body.platformCostUSD, 0.015);
   assert.equal(videoRes.body.providers.ltx.modalities.video.count, 1);
   assert.equal(videoRes.body.providers.ltx.modalities.video.models['ltx-video'].count, 1);
   assert.equal(videoRes.body.providers.ltx.modalities.video.models['ltx-video'].extra.frames, 121);
+  assert.equal(videoRes.body.providers.ltx.modalities.video.models['ltx-video'].costUSD, 0.015);
+  assert.equal(videoRes.body.providers.ltx.modalities.video.models['ltx-video'].billingTier, 'platform_overhead');
 });
 
 // The exact provider/modality/model combinations this task seeded non-billable observability
@@ -392,21 +398,26 @@ const REQUIRED_PRICED_MODELS = [
   { provider: 'whisperx', modality: 'alignment', model: 'whisperx-forced-alignment' },
 ];
 
-test('every provider/model this task priced for observability has an active price row, and nothing is billable without recorded dashboard-reconciled evidence', async () => {
-  const activePrices = await prisma.providerPriceVersion.findMany({ where: { active: true }, select: { provider: true, modality: true, model: true, billable: true, versionKey: true, evidenceStatus: true, reconciledAt: true } });
+test('every provider/model this task priced for observability has an active price row, and nothing is billable unless tagged customer_metered with a recorded evidence-acceptance date', async () => {
+  const activePrices = await prisma.providerPriceVersion.findMany({ where: { active: true }, select: { provider: true, modality: true, model: true, billable: true, versionKey: true, evidenceStatus: true, reconciledAt: true, billingTier: true } });
   const priceKeys = new Set(activePrices.map((price) => `${price.provider}::${price.modality}::${price.model}`));
   const missing = REQUIRED_PRICED_MODELS.filter((row) => !priceKeys.has(`${row.provider}::${row.modality}::${row.model}`));
   assert.deepEqual(missing, [], `expected an active price row for each of: ${JSON.stringify(missing)}`);
 
-  // Billable coverage is expected to grow over time as real reconciliation happens (tracked
-  // outside this repo) -- this test doesn't hardcode which/how many prices are billable. It only
-  // guards the one invariant that must never be violated: nothing can be billable without a
-  // recorded dashboard-reconciled attestation (configurePrice's own guard already enforces this
-  // at write time; this is a regression check against any path that bypasses it).
+  // Prototype provider-cost billing policy: a customer_metered price may be billable on
+  // documented/estimated/dashboard_reconciled evidence, as long as it has a recorded
+  // reconciledAt (evidence-acceptance date). A platform_overhead (or uncategorized) price must
+  // never be billable, regardless of evidence -- that invariant must never be violated
+  // (configurePrice's own guard, plus a DB check constraint, already enforce this at write time;
+  // this is a regression check against any path that bypasses it).
   const billable = activePrices.filter((price) => price.billable);
+  const platformOverhead = activePrices.filter((price) => price.billingTier === 'platform_overhead');
   for (const price of billable) {
-    assert.equal(price.evidenceStatus, 'dashboard_reconciled', `${price.versionKey} is billable without dashboard-reconciled evidence`);
+    assert.equal(price.billingTier, 'customer_metered', `${price.versionKey} is billable but not tagged customer_metered`);
     assert.ok(price.reconciledAt, `${price.versionKey} is billable without a reconciledAt date`);
+  }
+  for (const price of platformOverhead) {
+    assert.equal(price.billable, false, `${price.versionKey} is a platform_overhead price but is billable`);
   }
   assert.ok(billable.some((price) => price.versionKey === 'openai-gpt-4.1-mini-2026-07-17'), 'the reconciled OpenAI text price should still be billable');
 });
