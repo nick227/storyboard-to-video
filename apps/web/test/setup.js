@@ -10,3 +10,8 @@ process.env.ADMIN_OWNER_IDS ||= 'alice';
 // fills in keys absent from process.env, so a deleted key would just get reloaded from .env.
 process.env.STRIPE_SECRET_KEY = '';
 process.env.STRIPE_WEBHOOK_SECRET = '';
+// Same reasoning: tests currently pass with a developer's real BILLING_CUSTOMER_CHARGING_ENABLED
+// only because no test-seeded price is billable and no test tenant has chargingEnabled -- that's
+// incidental, not guaranteed. Force it off so live-charging code paths never activate in tests
+// by accident.
+process.env.BILLING_CUSTOMER_CHARGING_ENABLED = 'false';
