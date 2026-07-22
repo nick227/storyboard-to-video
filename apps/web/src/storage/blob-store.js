@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { AppError } = require('../errors');
 const { createR2BlobStore } = require('./r2-blob-store');
 const { createDualBlobStore } = require('./dual-blob-store');
+const { createReadFallbackBlobStore } = require('./read-fallback-blob-store');
 
 const PROJECT_ASSET_KEY_PATTERN = /^projects\/([a-zA-Z0-9][a-zA-Z0-9_-]{0,79})\/assets\/(images|audio|videos|subtitles|exports|ai-references|scene-images)\/([^/]+)$/;
 
@@ -104,8 +105,9 @@ function createBlobStore(config) {
   if (backend === 'r2' || backend === 'dual') {
     assertR2Config(config.storage);
     const remote = createR2BlobStore(config.storage.r2);
-    if (backend === 'r2') return remote;
-    return createDualBlobStore({ local, remote });
+    if (backend === 'dual') return createDualBlobStore({ local, remote });
+    // R2 writes; reads prefer R2 then legacy local disk.
+    return createReadFallbackBlobStore({ primary: remote, fallback: local });
   }
   throw new Error(`Invalid STORAGE_BACKEND: ${backend}`);
 }
@@ -117,5 +119,6 @@ module.exports = {
   createLocalBlobStore,
   createR2BlobStore,
   createDualBlobStore,
+  createReadFallbackBlobStore,
   createBlobStore,
 };

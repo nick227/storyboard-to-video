@@ -11,6 +11,7 @@ const {
   createDualBlobStore,
   createLocalBlobStore,
   createR2BlobStore,
+  createReadFallbackBlobStore,
 } = require('../src/storage/blob-store');
 const { loadConfig } = require('../src/config/env');
 
@@ -161,6 +162,84 @@ test('DualBlobStore writes local and remote; reads from local; survives remote p
   await dual.put(secondKey, source);
   assert.equal(await dual.exists(secondKey), true);
   assert.equal(errors.length, 1);
+});
+
+test('DualBlobStore delete succeeds when remote delete fails', async () => {
+  const root = tempRoot();
+  const local = createLocalBlobStore({ root });
+  const remote = {
+    backend: 'r2',
+    async put() { return { storageKey: 'x' }; },
+    async delete() { throw new Error('r2 delete down'); },
+    async exists() { return true; },
+    async getStream() { throw new Error('unused'); },
+    resolveLocalPath() { return null; },
+  };
+  const errors = [];
+  const dual = createDualBlobStore({ local, remote, onRemoteError: (...args) => errors.push(args) });
+  const source = path.join(root, 'stage.bin');
+  fs.writeFileSync(source, Buffer.from('gone'));
+  const storageKey = buildProjectAssetStorageKey('p', 'images', 'del.bin');
+  await dual.put(storageKey, source);
+  await dual.delete(storageKey);
+  assert.equal(await dual.exists(storageKey), false);
+  assert.equal(await local.exists(storageKey), false);
+  assert.equal(errors.length, 1);
+});
+
+test('DualBlobStore exists reflects local only, not remote', async () => {
+  const root = tempRoot();
+  const local = createLocalBlobStore({ root });
+  const remote = {
+    backend: 'r2',
+    async put() { return { storageKey: 'x' }; },
+    async delete() {},
+    async exists() { return true; },
+    async getStream() { throw new Error('dual must not read remote'); },
+    resolveLocalPath() { return null; },
+  };
+  const dual = createDualBlobStore({ local, remote });
+  const storageKey = buildProjectAssetStorageKey('p', 'images', 'remote-only.bin');
+  assert.equal(await remote.exists(storageKey), true);
+  assert.equal(await dual.exists(storageKey), false);
+});
+
+test('ReadFallbackBlobStore prefers primary then falls back to local legacy', async () => {
+  const root = tempRoot();
+  const local = createLocalBlobStore({ root });
+  const primaryObjects = new Map();
+  const primary = {
+    backend: 'r2',
+    async put(storageKey, sourcePath) {
+      primaryObjects.set(storageKey, fs.readFileSync(sourcePath));
+      return { storageKey };
+    },
+    async delete(storageKey) { primaryObjects.delete(storageKey); },
+    async exists(storageKey) { return primaryObjects.has(storageKey); },
+    async getStream(storageKey) {
+      if (!primaryObjects.has(storageKey)) throw new Error('missing');
+      return Readable.from([primaryObjects.get(storageKey)]);
+    },
+    resolveLocalPath() { return null; },
+  };
+  const store = createReadFallbackBlobStore({ primary, fallback: local });
+  const source = path.join(root, 'stage.bin');
+  fs.writeFileSync(source, Buffer.from('primary'));
+  const primaryKey = buildProjectAssetStorageKey('p', 'images', 'primary.bin');
+  await store.put(primaryKey, source);
+  assert.equal(await store.exists(primaryKey), true);
+
+  const legacyKey = buildProjectAssetStorageKey('p', 'images', 'legacy.bin');
+  await local.put(legacyKey, source);
+  assert.equal(await primary.exists(legacyKey), false);
+  assert.equal(await store.exists(legacyKey), true);
+  const chunks = [];
+  await new Promise((resolve, reject) => {
+    store.getStream(legacyKey).then((stream) => {
+      stream.on('data', (chunk) => chunks.push(chunk)).on('end', resolve).on('error', reject);
+    }, reject);
+  });
+  assert.equal(Buffer.concat(chunks).toString(), 'primary');
 });
 
 test('createBlobStore defaults to local when STORAGE_BACKEND is unset', () => {

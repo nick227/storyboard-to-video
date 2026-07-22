@@ -1,6 +1,10 @@
 /**
- * Dual-write policy: local is the read source; R2 is mirrored on put/delete.
- * R2 write failures after a successful local put are logged and do not fail the commit.
+ * Dual-write policy: local is the active read source; R2 is mirrored on put/delete.
+ *
+ * Semantics:
+ * - exists() reflects local only (not “either backend”).
+ * - delete() removes local first; R2 delete failures are logged and never block/resurrect local lifecycle.
+ * - R2 put failures after a successful local put are logged and do not fail the commit.
  */
 function createDualBlobStore({ local, remote, onRemoteError = console.error }) {
   return {

@@ -45,8 +45,9 @@ function createExportService({ config, projectStore }) {
               const active = Array.isArray(versions) ? versions[Number.isInteger(activeIndex) ? activeIndex : 0] : null;
               if (active?.path) {
                 const asset = await projectStore.resolveAsset(projectId, active.path, { ownerId });
-                if (asset && fs.existsSync(asset.sourcePath)) {
-                  archive.file(asset.sourcePath, { name: `${folder}/${number}-${name}${path.extname(asset.fileName) || defaultExtension}` });
+                if (asset?.storageKey) {
+                  const stream = await projectStore.blobStore.getStream(asset.storageKey);
+                  archive.append(stream, { name: `${folder}/${number}-${name}${path.extname(asset.fileName) || defaultExtension}` });
                 }
               }
             }
