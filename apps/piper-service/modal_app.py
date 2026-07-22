@@ -3,11 +3,22 @@
 Image build downloads the Piper linux x86_64 release and the curated voice models
 from Hugging Face (same pins as apps/web/scripts/setup-piper.js). No local vendor/
 tree is required on the deploying machine.
+
+Environment separation: this file is deployed into two distinct Modal Environments -- `dev`
+(automatic, on every push to main that passes tests) and `prod` (manual-only, via the
+`Deploy Modal TTS services` workflow_dispatch). See apps/voice-service/modal_app.py's docstring
+for the full explanation (one-time `modal environment create`, per-Environment Secrets, the
+MODAL_MAX_CONTAINERS env var) -- the same mechanism applies here. Requires a
+`piper-service-secrets` Modal Secret (PIPER_SERVICE_TOKEN) in each Environment.
 """
+
+import os
 
 import modal
 
 PIPER_RELEASE_URL = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
+# Fail-safe default matches the prod cap, not "unlimited" -- see voice-service/modal_app.py.
+MAX_CONTAINERS = int(os.environ.get("MODAL_MAX_CONTAINERS", "2"))
 VOICE_IDS = [
     "en_US-lessac-medium",
     "en_US-amy-medium",
@@ -68,6 +79,7 @@ app = modal.App("piper-service", image=image)
     secrets=[modal.Secret.from_name("piper-service-secrets")],
     timeout=120,
     min_containers=0,
+    max_containers=MAX_CONTAINERS,
 )
 @modal.asgi_app()
 def fastapi_app():

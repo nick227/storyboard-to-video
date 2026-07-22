@@ -12,23 +12,47 @@ Instead the build itself fetches both from their upstream sources:
 Modal caches each image layer, so re-deploys only redo these steps when the pin changes.
 
 Before the first real deploy you still need to create, outside this file:
+  - the `dev` and `prod` Modal Environments themselves (`modal environment create dev` /
+    `modal environment create prod` -- Modal does not auto-create these on first deploy).
+    Secrets and Volumes below are scoped per-Environment, so the next two steps must be
+    repeated once for each of dev and prod (`modal secret create ... --env dev`, `--env prod`).
   - a `voice-service-secrets` Modal Secret (SPARK_SERVICE_TOKEN, SPARK_TEMPERATURE,
     SPARK_TOP_K, SPARK_TOP_P)
   - a `voice-service-voices` Modal Volume (create_if_missing=True below handles this)
   - MODAL_TOKEN_ID / MODAL_TOKEN_SECRET as repo secrets for .github/workflows/deploy-modal.yml
+    and .github/workflows/ci.yml
+
+Environment separation: this file is deployed into two distinct Modal Environments -- `dev`
+(automatic, on every push to main that passes tests) and `prod` (manual-only, via the
+`Deploy Modal TTS services` workflow_dispatch). Which one a given `modal deploy` targets is
+selected entirely outside this file, via the CLI's `--env` flag (see the two GitHub Actions
+workflows) -- Modal namespaces Apps, Secrets, and Volumes per Environment automatically, so
+the App name below ("voice-service") does not need an environment suffix. MODAL_MAX_CONTAINERS
+(also set by the workflows) is the one setting this file itself is aware of: prod is deliberately
+capped low (1) since this is a GPU function -- unbounded concurrent scale-up is real, unbounded
+GPU cost. Do not raise it without a deliberate capacity decision.
 
 Verified against Modal's current docs this session (not guessed): stacking @app.function(...)
 with @modal.asgi_app() on a function that returns an existing FastAPI app instance is the
 documented pattern for serving a full app (as opposed to @modal.fastapi_endpoint, which is for
-a single simple route). gpu=, secrets=, volumes=, timeout=, and min_containers= are real,
-current parameters of App.function(). Image.pip_install_from_requirements, Image.run_commands,
-and Image.run_function are also confirmed-current methods with the signatures used below.
+a single simple route). gpu=, secrets=, volumes=, timeout=, min_containers=, and max_containers=
+are real, current parameters of App.function() (max_containers is the modern name for what used
+to be called concurrency_limit). Image.pip_install_from_requirements, Image.run_commands, and
+Image.run_function are also confirmed-current methods with the signatures used below. Modal
+Environments (`modal environment create`, the CLI's `--env` flag, per-Environment scoping of
+Secrets/Volumes/Apps) are likewise the documented, current mechanism for dev/prod separation.
 """
+
+import os
 
 import modal
 
 SPARK_TTS_COMMIT = "2f1ea9082400547242641f5271b6f941c9f439d1"
 SPARK_TTS_REPO_ID = "SparkAudio/Spark-TTS-0.5B"
+
+# Fail-safe default matches the prod cap, not "unlimited" -- an omitted env var (e.g. a manual
+# `modal deploy` run outside CI) must never accidentally mean unbounded GPU container scale-up.
+MAX_CONTAINERS = int(os.environ.get("MODAL_MAX_CONTAINERS", "1"))
 
 
 def download_pretrained_model():
@@ -62,6 +86,7 @@ voices_volume = modal.Volume.from_name("voice-service-voices", create_if_missing
     volumes={"/root/voices": voices_volume},
     timeout=600,
     min_containers=0,
+    max_containers=MAX_CONTAINERS,
 )
 @modal.asgi_app()
 def fastapi_app():

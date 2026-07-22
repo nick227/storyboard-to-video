@@ -74,6 +74,9 @@ jobs:
         working-directory: apps/piper-service
 
   # Modal deploys gate on their own TTS job only (not web). Requires MODAL_* secrets.
+  # These deploy to the `dev` Modal Environment ONLY -- never prod. Prod is manual-only, via
+  # .github/workflows/deploy-modal.yml (workflow_dispatch), so a push to main can never overwrite
+  # whatever is currently serving real production traffic.
   deploy-voice:
     needs: voice-service
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -84,12 +87,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install modal
-      - name: Deploy voice-service to Modal
+      - name: Deploy voice-service to Modal (dev)
         working-directory: apps/voice-service
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: modal deploy modal_app.py
+          MODAL_MAX_CONTAINERS: "1"
+        run: modal deploy --env dev modal_app.py
 
   deploy-piper:
     needs: piper-service
@@ -101,9 +105,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install modal
-      - name: Deploy piper-service to Modal
+      - name: Deploy piper-service to Modal (dev)
         working-directory: apps/piper-service
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: modal deploy modal_app.py
+          MODAL_MAX_CONTAINERS: "2"
+        run: modal deploy --env dev modal_app.py
