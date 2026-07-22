@@ -23,8 +23,10 @@ test('script exports preserve screenplay element semantics across text, RTF, and
 
   const rtf = toRichTextScript(sample);
   assert.match(rtf, /^\{\\rtf1/);
-  assert.match(rtf, /\\li3600.*Dr\. Rivera/);
-  assert.match(rtf, /\\li1800\\ri1800.*We should begin\./);
+  assert.match(rtf, /\\li3168.*Dr\. Rivera/);
+  assert.match(rtf, /\\li1440\\ri2160.*We should begin\./);
+  assert.doesNotMatch(rtf, /\\b /);
+  assert.doesNotMatch(rtf, /\\i /);
 
   const fdx = toFinalDraftXml(sample);
   assert.match(fdx, /<Paragraph Type="Scene Heading"><Text>INT\. OFFICE - DAY<\/Text>/);

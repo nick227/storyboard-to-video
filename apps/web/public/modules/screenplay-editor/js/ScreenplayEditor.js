@@ -1,9 +1,10 @@
 import { RawScriptAdapter } from './adapters/RawScriptAdapter.js';
-import { FountainAdapter } from './adapters/FountainAdapter.js';
 import { LineFormatter } from './LineFormatter.js';
 import { KeyboardManager } from './keyboard/KeyboardManager.js';
 import { PageManager } from './page/PageManager.js';
 import { EditorDOMHandler } from './handlers/EditorDOMHandler.js';
+import { HelpModal } from './ui/HelpModal.js';
+import { ViewportScaler } from './ui/ViewportScaler.js';
 import { EDITOR_EVENTS } from './constants/editorConstants.js';
 import { VALID_FORMATS, FORMAT_DISPLAY_NAMES } from './constants/formats.js';
 
@@ -45,20 +46,25 @@ export class ScreenplayEditor {
         this.pageManager = null;
         this.domHandler = null;
         this.keyboardManager = null;
+        this.helpModal = null;
+        this.viewportScaler = null;
 
         // Elements
         this.wrapper = null;
         this.toolbar = null;
         this.workspace = null;
+        this.scaleShell = null;
+        this.scaleTarget = null;
 
         this._initUI();
+        this.helpModal = new HelpModal({ themeHost: this.wrapper });
         this._initEngine();
         this.loadScript(options.initialScript || '', this.format);
     }
 
     _initUI () {
         this.container.innerHTML = '';
-        
+
         this.wrapper = document.createElement('div');
         this.wrapper.className = `screenplay-editor-wrapper theme-${this.theme}`;
 
@@ -71,8 +77,16 @@ export class ScreenplayEditor {
 
         this.workspace = document.createElement('div');
         this.workspace.className = 'screenplay-workspace';
-        this.wrapper.appendChild(this.workspace);
 
+        this.scaleShell = document.createElement('div');
+        this.scaleShell.className = 'screenplay-scale-shell';
+
+        this.scaleTarget = document.createElement('div');
+        this.scaleTarget.className = 'screenplay-scale-target';
+
+        this.scaleShell.appendChild(this.scaleTarget);
+        this.workspace.appendChild(this.scaleShell);
+        this.wrapper.appendChild(this.workspace);
         this.container.appendChild(this.wrapper);
     }
 
@@ -98,12 +112,25 @@ export class ScreenplayEditor {
         });
         this.toolbar.appendChild(chipsGroup);
 
+        const helpBtn = document.createElement('button');
+        helpBtn.type = 'button';
+        helpBtn.className = 'screenplay-help-btn';
+        helpBtn.setAttribute('aria-label', 'Screenplay editor help');
+        helpBtn.title = 'Keyboard shortcuts';
+        helpBtn.textContent = '?';
+        helpBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.helpModal.open();
+        });
+        chipsGroup.appendChild(helpBtn);
+
         const rightGroup = document.createElement('div');
         rightGroup.className = 'screenplay-toolbar-right';
 
         this.pageBadge = document.createElement('span');
         this.pageBadge.className = 'screenplay-page-badge';
-        this.pageBadge.textContent = 'Page 1 of 1';
+        this.pageBadge.title = 'Approximate page count until deterministic pagination';
+        this.pageBadge.textContent = '≈ Page 1 of 1';
         rightGroup.appendChild(this.pageBadge);
 
         const themeBtn = document.createElement('button');
@@ -122,7 +149,7 @@ export class ScreenplayEditor {
 
     _initEngine () {
         this.pageManager = new PageManager({
-            container: this.workspace,
+            container: this.scaleTarget,
             lineFormatter: this.lineFormatter
         });
         this.pageManager.initialize();
@@ -145,6 +172,14 @@ export class ScreenplayEditor {
 
         this.keyboardManager.initialize(this.workspace);
 
+        this.viewportScaler = new ViewportScaler({
+            wrapper: this.wrapper,
+            workspace: this.workspace,
+            shell: this.scaleShell,
+            target: this.scaleTarget
+        });
+        this.viewportScaler.start();
+
         this.workspace.addEventListener('input', () => this._notifyChange());
         this.workspace.addEventListener('keyup', () => this._updateSelectionState());
         this.workspace.addEventListener('click', () => this._updateSelectionState());
@@ -163,6 +198,7 @@ export class ScreenplayEditor {
         this.pageManager.renderDocument(linesData);
         this.isDirty = false;
         this._updateSelectionState();
+        if (this.viewportScaler) this.viewportScaler.scheduleUpdate();
     }
 
     getRawScript (format) {
@@ -260,8 +296,10 @@ export class ScreenplayEditor {
         if (this.pageBadge && this.pageManager) {
             const current = this.pageManager.getCurrentPageNumber();
             const total = this.pageManager.getPageCount();
-            this.pageBadge.textContent = `Page ${current} of ${total}`;
+            this.pageBadge.textContent = `≈ Page ${current} of ${total}`;
+            this.pageBadge.title = 'Approximate page count until deterministic pagination';
         }
+        if (this.viewportScaler) this.viewportScaler.scheduleUpdate();
     }
 
     _handleEngineEvent (event, data) {
@@ -271,8 +309,15 @@ export class ScreenplayEditor {
     }
 
     destroy () {
+        if (this.viewportScaler) {
+            this.viewportScaler.destroy();
+            this.viewportScaler = null;
+        }
         if (this.keyboardManager) {
             this.keyboardManager.destroy();
+        }
+        if (this.helpModal) {
+            this.helpModal.destroy();
         }
         this.container.innerHTML = '';
     }

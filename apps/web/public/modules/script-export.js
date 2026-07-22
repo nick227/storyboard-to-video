@@ -6,6 +6,7 @@ const FDX_TYPES = Object.freeze({
   speaker: 'Character',
   dialog: 'Dialogue',
   directions: 'Parenthetical',
+  transition: 'Transition',
   'chapter-break': 'New Act',
 });
 
@@ -41,22 +42,25 @@ export function toPlainScript(source = '') {
   return scriptLines(source).map((line) => {
     const content = line.content.trim();
     if (line.format === 'header') return content.toUpperCase();
-    if (line.format === 'speaker') return indent(24, content.toUpperCase());
-    if (line.format === 'dialog') return indent(12, content);
-    if (line.format === 'directions') return indent(18, content.startsWith('(') ? content : `(${content})`);
+    if (line.format === 'speaker') return indent(22, content.toUpperCase());
+    if (line.format === 'dialog') return indent(10, content);
+    if (line.format === 'directions') return indent(16, content.startsWith('(') ? content : `(${content})`);
+    if (line.format === 'transition') return indent(45, content.toUpperCase());
     if (line.format === 'chapter-break') return `\f${content.toUpperCase()}\f`;
     return content;
   }).join('\n\n');
 }
 
 export function toRichTextScript(source = '') {
+  /* Twips: 1440 = 1in. Content-relative indents after 1.5in left margin. */
   const controls = {
-    header: '\\keepn\\sb240\\sa120\\b\\caps',
-    action: '\\sa120',
-    speaker: '\\li3600\\sa0\\b',
-    dialog: '\\li1800\\ri1800\\sa80',
-    directions: '\\li2520\\ri1800\\sa0\\i',
-    'chapter-break': '\\page\\qc\\sb240\\sa240\\b\\caps',
+    header: '\\keepn\\sb240\\sa240\\caps',
+    action: '\\sa240',
+    speaker: '\\li3168\\sa0\\caps',
+    dialog: '\\li1440\\ri2160\\sa240',
+    directions: '\\li2304\\ri2880\\sa0',
+    transition: '\\li6480\\sa240\\caps\\qr',
+    'chapter-break': '\\page\\qc\\sb240\\sa240\\caps',
   };
   const paragraphs = scriptLines(source).map((line) => {
     return `\\pard\\plain\\f0\\fs24${controls[line.format] || controls.action} ${escapeRtf(line.content.trim())}\\par`;
@@ -92,13 +96,15 @@ export function toPrintableScriptHtml(source = '', title = 'Screenplay') {
   <style>
     @page { size: Letter; margin: 1in 1in 1in 1.5in; }
     * { box-sizing: border-box; }
-    body { margin: 0 auto; max-width: 6in; color: #000; background: #fff; font: 12pt/1 Courier, "Courier New", monospace; }
-    p { margin: 0 0 1em; white-space: pre-wrap; }
-    .header { margin-top: 1.5em; font-weight: bold; text-transform: uppercase; }
-    .speaker { margin: 1em 0 0 3in; font-weight: bold; text-transform: uppercase; }
-    .dialog { margin: 0 1.5in 0 1.5in; }
-    .directions { margin: 0 1.5in 0 2in; font-style: italic; }
-    .chapter-break { break-before: page; margin-top: 3in; text-align: center; font-weight: bold; text-transform: uppercase; }
+    body { margin: 0 auto; max-width: 6in; color: #000; background: #fff; font: 12pt/1 "Courier Prime", Courier, "Courier New", monospace; }
+    p { margin: 0 0 1em; white-space: pre-wrap; font-weight: 400; font-style: normal; }
+    .header { margin-top: 1em; text-transform: uppercase; }
+    .action { margin-bottom: 1em; }
+    .speaker { margin: 1em 0 0 2.2in; text-transform: uppercase; }
+    .dialog { margin: 0 1.5in 1em 1in; }
+    .directions { margin: 0 2in 0 1.6in; }
+    .transition { margin: 1em 0 1em 4.5in; text-align: right; text-transform: uppercase; }
+    .chapter-break { break-before: page; margin-top: 3in; text-align: center; text-transform: uppercase; }
     @media screen { body { padding: 0.6in 0; } }
   </style>
 </head>

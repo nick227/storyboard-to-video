@@ -1,15 +1,25 @@
 @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&display=swap');
 
-/* Self-contained screenplay editor CSS variables */
+/*
+ * Canonical US Letter screenplay geometry (always used for layout/print/export).
+ * On-screen responsiveness is visual scale only — not percentage indents.
+ */
 .screenplay-editor-wrapper {
     --font-script: 'Courier Prime', 'Courier New', Courier, monospace;
-
-    /* Screenplay Indents */
-    --dialog-left: 25%;
-    --dialog-right: 25%;
-    --speaker-left: 32%;
-    --directions-left: 24%;
-    --directions-right: 26%;
+    --page-width: 8.5in;
+    --page-height: 11in;
+    --page-scale: 1;
+    --margin-top: 1in;
+    --margin-right: 1in;
+    --margin-bottom: 1in;
+    --margin-left: 1.5in;
+    /* Indents measured from content box (after left margin) */
+    --indent-character: 2.2in;
+    --indent-dialogue-left: 1in;
+    --indent-dialogue-right: 1.5in;
+    --indent-parenthetical-left: 1.6in;
+    --indent-parenthetical-right: 2in;
+    --indent-transition: 4.5in;
     --max-height: 69vh;
 
     display: flex;
@@ -22,16 +32,14 @@
     overflow: hidden;
 }
 
-
 .screenplay-editor-container {
-  height: var(--max-height);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #0b0f14;
-  overflow: hidden;
+    height: var(--max-height);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #0b0f14;
+    overflow: hidden;
 }
 
-/* Theme: Dark (Default) */
 .screenplay-editor-wrapper.theme-dark {
     --color-bg-workspace: #0d1117;
     --color-bg-page: #161b22;
@@ -45,9 +53,9 @@
     --color-chip-active-border: #4f8cff;
     --color-chip-active-text: #ffffff;
     --color-focus-bg: rgba(79, 140, 255, 0.15);
+    --color-selection-bg: rgba(79, 140, 255, 0.28);
 }
 
-/* Theme: Light */
 .screenplay-editor-wrapper.theme-light {
     --color-bg-workspace: #f6f8fa;
     --color-bg-page: #ffffff;
@@ -61,13 +69,14 @@
     --color-chip-active-border: #0969da;
     --color-chip-active-text: #ffffff;
     --color-focus-bg: rgba(9, 105, 218, 0.08);
+    --color-selection-bg: rgba(9, 105, 218, 0.18);
 }
 
 .screenplay-editor-wrapper * {
     box-sizing: border-box;
 }
 
-/* Toolbar Styling */
+/* Toolbar */
 .screenplay-toolbar {
     min-height: 44px;
     padding: 6px 12px;
@@ -98,7 +107,7 @@
     font-size: 12px;
     font-weight: 500;
     line-height: 1.2;
-    transition: all 120ms ease;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
     white-space: nowrap;
 }
 
@@ -111,6 +120,30 @@
     border-color: var(--color-chip-active-border);
     color: var(--color-chip-active-text);
     font-weight: 600;
+}
+
+.screenplay-help-btn {
+    width: 46px;
+    height: 26px;
+    padding: 0;
+    border-radius: 14px;
+    border: 1px solid var(--color-chip-border);
+    background: var(--color-chip-bg);
+    color: var(--color-chip-text);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.screenplay-help-btn:hover {
+    border-color: var(--color-chip-active-bg);
+    color: var(--color-chip-active-text);
+    background: var(--color-chip-active-bg);
 }
 
 .screenplay-toolbar-right {
@@ -135,17 +168,18 @@
     border-radius: 14px;
     cursor: pointer;
     font-size: 12px;
-    transition: all 120ms ease;
+    transition: border-color 120ms ease;
 }
 
 .screenplay-theme-btn:hover {
     border-color: var(--color-chip-active-bg);
 }
 
-/* Editor Workspace Container */
+/* Workspace + scale shell */
 .screenplay-workspace {
+    flex: 1 1 auto;
     height: var(--max-height);
-    overflow-y: auto;
+    overflow: auto;
     padding: 16px;
     display: flex;
     flex-direction: column;
@@ -153,69 +187,96 @@
     background-color: var(--color-bg-workspace);
 }
 
-/* Script Page Layout — Surface Shadow Removed */
-.script-page {
-    width: 100%;
-    max-width: 816px;
-    min-height: auto;
-    background: var(--color-bg-page);
-    box-shadow: none;
-    border: 1px solid var(--color-toolbar-border);
-    border-radius: 8px;
-    padding: 24px 36px;
-    margin-bottom: 16px;
+.screenplay-scale-shell {
+    width: calc(var(--page-width) * var(--page-scale));
+    height: calc(var(--pages-height, var(--page-height)) * var(--page-scale));
+    flex-shrink: 0;
     position: relative;
-    color: var(--color-text-main);
+    margin: 0 auto;
 }
 
-/* Script Line Rules */
-.script-line {
-    min-height: 1.2em;
-    line-height: 1.35;
-    font-size: 11.5pt;
+.screenplay-scale-target {
+    width: var(--page-width);
+    transform: scale(var(--page-scale));
+    transform-origin: top left;
+    will-change: transform;
+}
+
+/* Canonical page — fixed Letter geometry */
+.script-page {
+    width: var(--page-width);
+    min-height: var(--page-height);
+    padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
+    margin: 0 0 0.35in;
+    background: var(--color-bg-page);
+    border: 1px solid var(--color-toolbar-border);
+    border-radius: 2px;
+    box-shadow: none;
+    position: relative;
+    color: var(--color-text-main);
     font-family: var(--font-script);
+    font-size: 12pt;
+    line-height: 1;
+}
+
+.script-page:last-child {
+    margin-bottom: 0;
+}
+
+.script-line {
+    min-height: 1em;
+    line-height: 1;
+    font-size: 12pt;
+    font-family: var(--font-script);
+    font-weight: 400;
+    font-style: normal;
     outline: none;
     white-space: pre-wrap;
     word-break: break-word;
     margin: 0;
-    padding: 2px 4px;
-    border-radius: 4px;
+    padding: 0;
+    border-radius: 2px;
     position: relative;
     color: var(--color-text-main);
 }
 
-/* Formatting Elements */
+/* Layout rules only — semantics live in data-format / formats.js */
 .script-line[data-format="header"] {
     text-transform: uppercase;
-    font-weight: bold;
-    margin-top: 1.2em;
-    margin-bottom: 0.6em;
-    color: var(--color-chip-active-bg);
+    margin-top: 1em;
+    margin-bottom: 1em;
 }
 
 .script-line[data-format="action"] {
-    margin-bottom: 0.6em;
+    margin-bottom: 1em;
+    width: 100%;
 }
 
 .script-line[data-format="speaker"] {
     text-transform: uppercase;
-    margin-left: var(--speaker-left);
-    margin-top: 0.8em;
+    margin-left: var(--indent-character);
+    margin-top: 1em;
     margin-bottom: 0;
-    font-weight: 600;
 }
 
 .script-line[data-format="dialog"] {
-    margin-left: var(--dialog-left);
-    margin-right: var(--dialog-right);
-    margin-bottom: 0.6em;
+    margin-left: var(--indent-dialogue-left);
+    margin-right: var(--indent-dialogue-right);
+    margin-bottom: 1em;
 }
 
 .script-line[data-format="directions"] {
-    margin-left: var(--directions-left);
-    margin-right: var(--directions-right);
+    margin-left: var(--indent-parenthetical-left);
+    margin-right: var(--indent-parenthetical-right);
     margin-bottom: 0;
-    font-style: italic;
+}
+
+.script-line[data-format="transition"] {
+    text-transform: uppercase;
+    margin-left: var(--indent-transition);
+    margin-top: 1em;
+    margin-bottom: 1em;
+    text-align: right;
 }
 
 .script-line[data-format="chapter-break"] {
@@ -224,14 +285,200 @@
     margin: 1.5em 0;
     padding-top: 0.5em;
     color: var(--color-chip-text);
-    font-style: italic;
 }
 
-/* Caret / Active Line formatting */
 .script-line:focus {
     background-color: var(--color-focus-bg);
 }
 
+.script-line.is-selected {
+    background-color: var(--color-selection-bg, rgba(79, 140, 255, 0.28));
+}
+
 .script-page .script-line:empty::before {
     content: "\200B";
+}
+
+/*
+ * Narrow mobile: fluid editing view (usability).
+ * Semantic formats unchanged; layout may leave canonical inch geometry.
+ */
+.screenplay-editor-wrapper.is-fluid .screenplay-scale-shell {
+    width: 100%;
+    height: auto;
+}
+
+.screenplay-editor-wrapper.is-fluid .screenplay-scale-target {
+    width: 100%;
+    transform: none;
+}
+
+.screenplay-editor-wrapper.is-fluid .script-page {
+    width: 100%;
+    min-height: auto;
+    padding: 20px 18px 28px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+}
+
+.screenplay-editor-wrapper.is-fluid .script-line[data-format="speaker"] {
+    margin-left: 1.4em;
+}
+
+.screenplay-editor-wrapper.is-fluid .script-line[data-format="dialog"] {
+    margin-left: 0.75em;
+    margin-right: 0.75em;
+}
+
+.screenplay-editor-wrapper.is-fluid .script-line[data-format="directions"] {
+    margin-left: 1.1em;
+    margin-right: 1.1em;
+}
+
+.screenplay-editor-wrapper.is-fluid .script-line[data-format="transition"] {
+    margin-left: 2em;
+}
+
+/* Print / PDF: always canonical geometry, never scaled */
+@media print {
+    .screenplay-toolbar,
+    .screenplay-help-modal {
+        display: none !important;
+    }
+
+    .screenplay-editor-wrapper,
+    .screenplay-workspace,
+    .screenplay-scale-shell,
+    .screenplay-scale-target {
+        display: block !important;
+        width: auto !important;
+        height: auto !important;
+        overflow: visible !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: #fff !important;
+        transform: none !important;
+        border: none !important;
+        border-radius: 0 !important;
+    }
+
+    .screenplay-editor-wrapper {
+        --page-scale: 1 !important;
+        --color-bg-page: #ffffff;
+        --color-text-main: #000000;
+        --color-toolbar-border: transparent;
+    }
+
+    .script-page {
+        width: 8.5in;
+        min-height: 11in;
+        padding: 1in 1in 1in 1.5in;
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+        page-break-after: always;
+        break-after: page;
+        color: #000;
+        background: #fff;
+    }
+
+    .script-page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+    }
+
+    .script-line {
+        color: #000;
+        background: transparent !important;
+    }
+}
+
+/* Help modal */
+.screenplay-help-modal {
+    border: 1px solid var(--color-toolbar-border, #30363d);
+    border-radius: 10px;
+    padding: 0;
+    max-width: 480px;
+    width: calc(100% - 32px);
+    background: var(--color-bg-page, #161b22);
+    color: var(--color-text-main, #e6edf3);
+    font-family: system-ui, -apple-system, sans-serif;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+
+.screenplay-help-modal.theme-dark {
+    --color-bg-page: #161b22;
+    --color-text-main: #e6edf3;
+    --color-toolbar-border: #30363d;
+    --color-chip-text: #c9d1d9;
+}
+
+.screenplay-help-modal.theme-light {
+    --color-bg-page: #ffffff;
+    --color-text-main: #1f2328;
+    --color-toolbar-border: #d0d7de;
+    --color-chip-text: #24292f;
+}
+
+.screenplay-help-modal::backdrop {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.screenplay-help-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--color-toolbar-border, #30363d);
+}
+
+.screenplay-help-header h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.screenplay-help-close {
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.7;
+    padding: 0 4px;
+}
+
+.screenplay-help-close:hover { opacity: 1; }
+
+.screenplay-help-intro {
+    margin: 0;
+    padding: 14px 16px 0;
+    font-size: 13px;
+    opacity: 0.85;
+    line-height: 1.45;
+}
+
+.screenplay-help-list {
+    margin: 0;
+    padding: 12px 16px 18px;
+    display: grid;
+    grid-template-columns: minmax(120px, auto) 1fr;
+    gap: 10px 14px;
+}
+
+.screenplay-help-list dt {
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.screenplay-help-list dd {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    opacity: 0.9;
 }

@@ -62,18 +62,19 @@ test('Fountain serialization handles empty scripts gracefully', async () => {
   assert.equal(roundTripped, '');
 });
 
-test('Fountain parsing classifies headers, speakers, dialogue, directions, and action', async () => {
+test('Fountain parsing classifies headers, speakers, dialogue, directions, action, and transitions', async () => {
   const { FountainAdapter } = await loadAdapters();
 
-  const script = `EXT. PARK - NIGHT\n\nJOHN\n(whispering)\nDid you hear that?\n\nA shadow moves in the trees.`;
+  const script = `EXT. PARK - NIGHT\n\nJOHN\n(whispering)\nDid you hear that?\n\nA shadow moves in the trees.\n\nCUT TO:`;
   const doc = FountainAdapter.toDocument(script);
 
-  assert.equal(doc.lines.length, 5);
+  assert.equal(doc.lines.length, 6);
   assert.equal(doc.lines[0].format, 'header');
   assert.equal(doc.lines[1].format, 'speaker');
   assert.equal(doc.lines[2].format, 'directions');
   assert.equal(doc.lines[3].format, 'dialog');
   assert.equal(doc.lines[4].format, 'action');
+  assert.equal(doc.lines[5].format, 'transition');
 });
 
 test('PageManager exposes page count, page elements, and page query API', async () => {
