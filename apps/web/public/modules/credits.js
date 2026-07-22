@@ -1,3 +1,5 @@
+import { formatRateCard, formatMarkup, formatCreditRate } from './pricing-format.js';
+
 const $ = (id) => document.getElementById(id);
 
 async function api(path, options = {}) {
@@ -13,12 +15,19 @@ function money(amount, currency = 'USD') { return new Intl.NumberFormat(undefine
 function notice(text, error = false) { $('checkoutNotice').textContent = text; $('checkoutNotice').classList.toggle('error', error); }
 
 async function load() {
-  const [catalog, history, usage] = await Promise.all([api('/api/billing/credit-packs'), api('/api/billing/purchases'), api('/api/billing/spend')]);
+  const [catalog, history, usage, pricing] = await Promise.all([api('/api/billing/credit-packs'), api('/api/billing/purchases'), api('/api/billing/spend'), api('/api/billing/pricing')]);
   $('creditBalance').textContent = `${credits(history.account?.availableCreditMicros)} credits`;
   $('creditPacks').innerHTML = catalog.packs.map((pack) => `<article class="credit-pack"><h3>${esc(pack.name)}</h3><strong class="pack-price">${money(pack.unitAmount, pack.currency)}</strong><span class="pack-credits">${credits(pack.creditsGrantedMicros)} credits</span><button class="primary" data-pack="${pack.id}" ${catalog.paymentsEnabled ? '' : 'disabled'}>${catalog.paymentsEnabled ? 'Continue to Checkout' : 'Payments not configured'}</button></article>`).join('') || '<p>No credit packs are currently available.</p>';
   $('purchasesBody').innerHTML = history.purchases.map((sale) => `<tr><td>${new Date(sale.createdAt).toLocaleString()}</td><td>${esc(sale.creditPack?.name || 'Credit purchase')}</td><td>${money(sale.totalAmount, sale.currency)}</td><td>${credits(sale.creditsGranted)}</td><td><span class="status-pill">${esc(sale.status)}</span>${sale.refundResolutionRequired ? '<small> Admin resolution required</small>' : ''}</td></tr>`).join('') || '<tr><td colspan="5">No purchases yet.</td></tr>';
   $('usageTotalCredits').textContent = `${Number(usage.totalCredits || 0).toFixed(2)} credits`;
   $('usageProjectsBody').innerHTML = (usage.projects || []).map((project) => `<tr><td>${esc(project.title || 'Untitled')}</td><td>${Number(project.credits || 0).toFixed(2)}</td><td>${money(Math.round(Number(project.costUSD || 0) * 100))}</td><td>${Number(project.tokens || 0).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="4">No usage recorded yet.</td></tr>';
+  $('pricingMarkup').textContent = formatMarkup(pricing.markup);
+  $('pricingCreditRate').textContent = formatCreditRate(pricing.creditRate);
+  const pricingRows = [
+    ...pricing.prices.map((price) => ({ provider: price.provider, modality: price.modality, model: price.model, rate: formatRateCard(price.rateCard) })),
+    ...pricing.estimatedPrices.map((price) => ({ provider: price.provider, modality: price.modality, model: price.model, rate: price.rate })),
+  ];
+  $('pricingBody').innerHTML = pricingRows.map((row) => `<tr><td>${esc(row.provider)}</td><td style="text-transform: capitalize;">${esc(row.modality)}</td><td><code>${esc(row.model)}</code></td><td>${esc(row.rate)}</td></tr>`).join('') || '<tr><td colspan="4">No pricing configured yet.</td></tr>';
 }
 
 async function pollSale(saleId) {

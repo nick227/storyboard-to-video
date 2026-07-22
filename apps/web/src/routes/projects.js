@@ -238,9 +238,9 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
       return res.json({ ok: true, totalCostUSD: 0, totalTokens: 0, totalCredits: 0, totalCreditMicros: '0', providers: {}, activePrices: [], estimatedPrices: [], videoModels });
     }
 
-    const [{ providers, totalCostUSD, totalTokens }, activePrices] = await Promise.all([
+    const [{ providers, totalCostUSD, totalTokens }, pricing] = await Promise.all([
       spendSummary.getProjectSpend(projectId),
-      prisma.providerPriceVersion.findMany({ where: { active: true } }),
+      spendSummary.getActivePricing(),
     ]);
     const { credits: totalCredits, creditMicros: totalCreditMicros } = await spendSummary.withCredits(totalCostUSD);
 
@@ -251,8 +251,8 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
       totalCredits,
       totalCreditMicros: totalCreditMicros.toString(),
       providers,
-      activePrices: spendSummary.localJsonSafe(activePrices),
-      estimatedPrices: spendSummary.estimatedPrices,
+      activePrices: pricing.prices,
+      estimatedPrices: pricing.estimatedPrices,
       videoModels,
     });
   }));

@@ -17,6 +17,11 @@ function paymentRoutes(repository, payments, spendSummary) {
     const summary = await spendSummary.getTenantSpend(req.auth.tenantId);
     res.json(jsonSafe({ ok: true, ...summary }));
   }));
+  router.get('/pricing', asyncRoute(async (req, res) => {
+    if (!spendSummary) return res.json(jsonSafe({ ok: true, prices: [], markup: null, creditRate: null, estimatedPrices: [] }));
+    const pricing = await spendSummary.getActivePricing();
+    res.json(jsonSafe({ ok: true, ...pricing }));
+  }));
   router.post('/checkout', asyncRoute(async (req, res) => {
     const idempotencyKey = String(req.get('Idempotency-Key') || '').trim();
     if (!idempotencyKey || idempotencyKey.length > 200) throw new AppError('IDEMPOTENCY_KEY_REQUIRED', 'A valid Idempotency-Key header is required', { status: 400 });

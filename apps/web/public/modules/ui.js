@@ -5,6 +5,7 @@ import { adaptSceneImageShot, imageShot, setActiveImageVersion } from './scene-s
 import { api } from './api.js';
 import { previewVoice, openVoiceLibraryModal } from './voices.js';
 import { computeStageStatus, getCachedJobs, getCachedSpend } from './stages.js';
+import { formatRateCard } from './pricing-format.js';
 
 const NO_MAPPING_AUDIO_PROVIDERS = ['stub'];
 const PREVIEWABLE_AUDIO_PROVIDERS = ['elevenlabs', 'spark', 'piper'];
@@ -1015,37 +1016,11 @@ export function populateTokensInfoModal(els) {
 
   // Render Database Configured Prices
   for (const price of activePrices) {
-    let rateStr = '';
-    const card = price.rateCard || {};
-    if (card.type === 'token_components') {
-      const comps = card.components || [];
-      rateStr = comps.map(c => {
-        const ratePerM = c.nanoUsdPerMillion / 1e9;
-        const keyLabel = c.usageKey === 'inputTokens' ? 'Input' 
-                       : c.usageKey === 'cachedInputTokens' ? 'Cached Input'
-                       : c.usageKey === 'outputTokens' ? 'Output'
-                       : c.usageKey === 'inputTextTokens' ? 'Input Text'
-                       : c.usageKey === 'inputImageTokens' ? 'Input Image'
-                       : c.usageKey === 'outputImageTokens' ? 'Output Image'
-                       : c.usageKey === 'outputTextOrThinkingTokens' ? 'Output Text/Thinking'
-                       : c.usageKey;
-        return `${keyLabel}: $${ratePerM.toFixed(4)}/M`;
-      }).join(', ');
-    } else if (card.type === 'linear_steps') {
-      const baseUSD = card.baseNanoUsd / 1e9;
-      rateStr = `$${baseUSD.toFixed(4)} per ${card.baseUnits} steps (scaled linearly)`;
-    } else if (card.type === 'flat') {
-      const rate = card.nanoUsdPerUnit / 1e9;
-      rateStr = `$${rate.toFixed(4)} flat rate`;
-    } else {
-      rateStr = JSON.stringify(card);
-    }
-
     pricingHTML += `<tr>
       <td><strong>${price.provider}</strong></td>
       <td style="text-transform: capitalize;">${price.modality}</td>
       <td><code>${price.model}</code></td>
-      <td>${rateStr}</td>
+      <td>${formatRateCard(price.rateCard)}</td>
     </tr>`;
   }
 

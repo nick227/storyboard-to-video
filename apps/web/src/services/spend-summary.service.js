@@ -259,7 +259,16 @@ function createSpendSummaryService({ prisma, billingRepository }) {
     return { totalCostUSD, totalTokens, totalCredits: credits, totalCreditMicros: creditMicros.toString(), providers, projects: projectSummaries };
   }
 
-  return { estimateUsageCost, estimatedPrices, localJsonSafe, aggregateEvents, withCredits, getProjectSpend, getTenantSpend };
+  async function getActivePricing() {
+    const [prices, markup, creditRate] = await Promise.all([
+      prisma.providerPriceVersion.findMany({ where: { active: true }, orderBy: [{ provider: 'asc' }, { modality: 'asc' }, { model: 'asc' }] }),
+      billingRepository ? billingRepository.activeMarkup() : null,
+      billingRepository ? billingRepository.activeCreditRate() : null,
+    ]);
+    return { prices: localJsonSafe(prices), markup: localJsonSafe(markup), creditRate: localJsonSafe(creditRate), estimatedPrices };
+  }
+
+  return { estimateUsageCost, estimatedPrices, localJsonSafe, aggregateEvents, withCredits, getProjectSpend, getTenantSpend, getActivePricing };
 }
 
 module.exports = { createSpendSummaryService, estimateUsageCost, estimatedPrices, aggregateEvents, localJsonSafe };
