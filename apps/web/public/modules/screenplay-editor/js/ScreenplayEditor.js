@@ -19,6 +19,8 @@ export class ScreenplayEditor {
      * @param {string|Array} [options.initialScript=''] - Initial raw script text (Fountain, Tagged HTML, or JSON)
      * @param {string} [options.format='fountain'] - Input format ('fountain' | 'tagged' | 'json' | 'array')
      * @param {boolean} [options.showToolbar=true] - Whether to render built-in toolbar
+     * @param {HTMLElement} [options.toolbarHost] - Optional external host for format chips (70% column)
+     * @param {HTMLElement} [options.toolbarMetaHost] - Optional external host for page badge / theme
      * @param {function} [options.onChange] - Callback fired whenever script content changes
      * @param {function} [options.onSelectionChange] - Callback fired whenever selection/cursor format changes
      */
@@ -30,6 +32,8 @@ export class ScreenplayEditor {
         this.container = options.container;
         this.format = options.format || 'fountain';
         this.showToolbar = options.showToolbar !== false;
+        this.toolbarHost = options.toolbarHost || null;
+        this.toolbarMetaHost = options.toolbarMetaHost || null;
         this.theme = options.theme || 'dark';
 
         this.callbacks = {
@@ -69,10 +73,7 @@ export class ScreenplayEditor {
         this.wrapper.className = `screenplay-editor-wrapper theme-${this.theme}`;
 
         if (this.showToolbar) {
-            this.toolbar = document.createElement('div');
-            this.toolbar.className = 'screenplay-toolbar';
             this._buildToolbarUI();
-            this.wrapper.appendChild(this.toolbar);
         }
 
         this.workspace = document.createElement('div');
@@ -91,8 +92,6 @@ export class ScreenplayEditor {
     }
 
     _buildToolbarUI () {
-        this.toolbar.innerHTML = '';
-
         const chipsGroup = document.createElement('div');
         chipsGroup.className = 'screenplay-toolbar-chips';
 
@@ -110,7 +109,6 @@ export class ScreenplayEditor {
             chipsGroup.appendChild(btn);
             this.chipButtons[fmt] = btn;
         });
-        this.toolbar.appendChild(chipsGroup);
 
         const helpBtn = document.createElement('button');
         helpBtn.type = 'button';
@@ -124,14 +122,10 @@ export class ScreenplayEditor {
         });
         chipsGroup.appendChild(helpBtn);
 
-        const rightGroup = document.createElement('div');
-        rightGroup.className = 'screenplay-toolbar-right';
-
         this.pageBadge = document.createElement('span');
         this.pageBadge.className = 'screenplay-page-badge';
         this.pageBadge.title = 'Approximate page count until deterministic pagination';
         this.pageBadge.textContent = '≈ Page 1 of 1';
-        rightGroup.appendChild(this.pageBadge);
 
         const themeBtn = document.createElement('button');
         themeBtn.type = 'button';
@@ -142,9 +136,37 @@ export class ScreenplayEditor {
             this.setTheme(this.theme === 'dark' ? 'light' : 'dark');
         });
         this.themeBtn = themeBtn;
-        rightGroup.appendChild(themeBtn);
 
+        if (this.toolbarHost) {
+            this.toolbarHost.innerHTML = '';
+            this.toolbarHost.hidden = false;
+            this.toolbarHost.classList.add('screenplay-toolbar', 'is-hosted', `theme-${this.theme}`);
+            this.toolbarHost.appendChild(chipsGroup);
+            this.toolbar = this.toolbarHost;
+
+            if (this.toolbarMetaHost) {
+                this.toolbarMetaHost.innerHTML = '';
+                this.toolbarMetaHost.hidden = false;
+                this.toolbarMetaHost.classList.add('screenplay-toolbar-meta', `theme-${this.theme}`);
+                this.toolbarMetaHost.append(this.pageBadge, themeBtn);
+            } else {
+                const rightGroup = document.createElement('div');
+                rightGroup.className = 'screenplay-toolbar-right';
+                rightGroup.append(this.pageBadge, themeBtn);
+                this.toolbarHost.appendChild(rightGroup);
+            }
+            return;
+        }
+
+        this.toolbar = document.createElement('div');
+        this.toolbar.className = 'screenplay-toolbar';
+        this.toolbar.appendChild(chipsGroup);
+
+        const rightGroup = document.createElement('div');
+        rightGroup.className = 'screenplay-toolbar-right';
+        rightGroup.append(this.pageBadge, themeBtn);
         this.toolbar.appendChild(rightGroup);
+        this.wrapper.appendChild(this.toolbar);
     }
 
     _initEngine () {
@@ -230,6 +252,11 @@ export class ScreenplayEditor {
             this.wrapper.classList.remove('theme-dark', 'theme-light');
             this.wrapper.classList.add(`theme-${this.theme}`);
         }
+        [this.toolbarHost, this.toolbarMetaHost].forEach((el) => {
+            if (!el) return;
+            el.classList.remove('theme-dark', 'theme-light');
+            el.classList.add(`theme-${this.theme}`);
+        });
         if (this.themeBtn) {
             this.themeBtn.textContent = this.theme === 'dark' ? '☀️ Light' : '🌙 Dark';
         }
@@ -318,6 +345,14 @@ export class ScreenplayEditor {
         }
         if (this.helpModal) {
             this.helpModal.destroy();
+        }
+        if (this.toolbarHost) {
+            this.toolbarHost.innerHTML = '';
+            this.toolbarHost.hidden = true;
+        }
+        if (this.toolbarMetaHost) {
+            this.toolbarMetaHost.innerHTML = '';
+            this.toolbarMetaHost.hidden = true;
         }
         this.container.innerHTML = '';
     }

@@ -40,7 +40,9 @@
     overflow: hidden;
 }
 
-.screenplay-editor-wrapper.theme-dark {
+.screenplay-editor-wrapper.theme-dark,
+.screenplay-toolbar.theme-dark,
+.screenplay-toolbar-meta.theme-dark {
     --color-bg-workspace: #0d1117;
     --color-bg-page: #161b22;
     --color-text-main: #e6edf3;
@@ -56,7 +58,9 @@
     --color-selection-bg: rgba(79, 140, 255, 0.28);
 }
 
-.screenplay-editor-wrapper.theme-light {
+.screenplay-editor-wrapper.theme-light,
+.screenplay-toolbar.theme-light,
+.screenplay-toolbar-meta.theme-light {
     --color-bg-workspace: #f6f8fa;
     --color-bg-page: #ffffff;
     --color-text-main: #1f2328;
@@ -72,7 +76,9 @@
     --color-selection-bg: rgba(9, 105, 218, 0.18);
 }
 
-.screenplay-editor-wrapper * {
+.screenplay-editor-wrapper *,
+.screenplay-toolbar *,
+.screenplay-toolbar-meta * {
     box-sizing: border-box;
 }
 
@@ -90,11 +96,20 @@
     font-family: system-ui, -apple-system, sans-serif;
 }
 
+.screenplay-toolbar.is-hosted {
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+    border-bottom: none;
+    justify-content: flex-start;
+}
+
 .screenplay-toolbar-chips {
     display: flex;
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
+    min-width: 0;
 }
 
 .screenplay-chip {

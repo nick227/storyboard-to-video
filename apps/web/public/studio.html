@@ -56,12 +56,14 @@
     <section id="scriptPagePanel" class="screenplay-editor w-full" role="tabpanel"
       aria-labelledby="tabScriptBtn" hidden>
       <article class="panel concept-column story-concept">
-        <div class="script-header-row row align-end">
-          <select id="scriptModeSelect" class="script-mode-select">
-            <option value="raw">Raw Text</option>
-            <option value="screenplay">Screenplay Editor</option>
-          </select>
+        <div class="script-header-row">
+          <div id="screenplayToolbarHost" class="script-header-primary" hidden></div>
           <div class="script-header-actions">
+            <div id="screenplayToolbarMeta" class="script-header-meta" hidden></div>
+            <select id="scriptModeSelect" class="script-mode-select">
+              <option value="raw">Raw Text</option>
+              <option value="screenplay">Screenplay Editor</option>
+            </select>
             <div class="script-download-control">
               <button type="button" id="scriptDownloadBtn" class="script-icon-button" aria-label="Download script"
                 title="Download script" aria-haspopup="menu" aria-expanded="false" aria-controls="scriptDownloadMenu">
@@ -795,8 +797,6 @@
       <h2>Voice Library</h2>
       <button type="button" id="closeVoiceLibraryBtn" class="secondary text-button" aria-label="Close">✕</button>
     </div>
-    <p class="field-note">Cloned voices are saved here and can be reused for any speaker, in any storyboard — separate
-      from the audio clips generated for individual scenes.</p>
 
     <div id="voiceLibraryList" class="voice-library-list"></div>
 
@@ -812,15 +812,13 @@
         <span id="voiceMicStatus" class="field-note">Requesting microphone access...</span>
       </div>
       <canvas id="voiceWaveformCanvas" class="voice-waveform-canvas" width="480" height="60"></canvas>
-      <small class="field-note">The wave above reacts live to your selected microphone, even before you hit record —
-        speak now to confirm you picked the right one. For best cloning quality, read naturally for at least 10-15
-        seconds.</small>
+      <small class="field-note">For best cloning quality, read naturally for at least 10-15 seconds.</small>
       <div class="voice-record-controls">
-        <button type="button" id="voiceRecordBtn" class="secondary" disabled>Record</button>
+        <button type="button" id="voiceRecordBtn" class="primary" disabled>Record</button>
       </div>
       <audio id="voiceRecordPreview" class="voice-recorder-preview" controls hidden></audio>
       <small id="voiceDurationNote" class="field-note voice-duration-note" hidden></small>
-      <div class="voice-record-save">
+      <div class="voice-record-save" hidden>
         <input type="text" id="voiceNameInput" placeholder="Voice name" />
         <button type="button" id="voiceSaveBtn" class="primary" disabled>Save as voice</button>
       </div>

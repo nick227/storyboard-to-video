@@ -394,8 +394,23 @@ label > span {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 8px;
+}
+.script-header-primary {
+  flex: 1 1 70%;
+  min-width: 0;
+  max-width: 70%;
+}
+.script-header-primary[hidden],
+.script-header-meta[hidden] {
+  display: none !important;
+}
+.script-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .script-mode-label {
   font-size: 12px;
@@ -407,16 +422,33 @@ label > span {
 .script-mode-select {
   width: auto;
   min-width: 140px;
+  max-width: 100%;
   padding: 4px 8px;
   font-size: 13px;
   background: var(--panel-2);
   border-radius: 6px;
 }
 .script-header-actions {
+  flex: 0 1 30%;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  margin-left: auto;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+@media (max-width: 960px) {
+  .script-header-row {
+    flex-wrap: wrap;
+  }
+  .script-header-primary,
+  .script-header-actions {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  .script-header-actions {
+    justify-content: flex-end;
+  }
 }
 .script-download-control { position: relative; }
 .script-icon-button {
@@ -473,7 +505,6 @@ label > span {
   align-items: center;
   gap: 7px;
   min-height: 34px;
-  margin-left: auto;
   padding: 6px 10px;
   background: transparent;
   color: var(--muted);
@@ -500,10 +531,10 @@ body.script-focus-active { overflow: hidden; }
 #scriptPagePanel.is-script-focus .screenplay-editor-container {
   flex: 1 1 auto;
   min-height: 0;
-  height: calc(100dvh - 57px - 88px);
+  height: calc(100dvh - 57px - 64px);
 }
 #scriptPagePanel.is-script-focus .screenplay-editor-wrapper {
-  --max-height: calc(100dvh - 57px - 90px);
+  --max-height: calc(100dvh - 57px - 66px);
 }
 .video-concept.storyboard-top-panel {
   display: flex;
@@ -1832,6 +1863,7 @@ button.text-button {
   gap: 8px;
   margin-top: 10px;
 }
+.voice-record-save[hidden] { display: none; }
 .voice-record-save input { flex: 1; }
 .voice-record-save button { flex: 0 0 auto; }
 @media (max-width: 900px) {

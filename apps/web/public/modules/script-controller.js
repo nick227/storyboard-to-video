@@ -19,6 +19,11 @@ export function initScriptController(elements, { setStatus, onScriptChange } = {
     if (emit) elements.scriptText.dispatchEvent(new Event('input', { bubbles: true }));
   };
 
+  const setToolbarHostsVisible = (visible) => {
+    if (elements.toolbarHost) elements.toolbarHost.hidden = !visible;
+    if (elements.toolbarMetaHost) elements.toolbarMetaHost.hidden = !visible;
+  };
+
   const setEditorMode = (mode) => {
     const currentMode = mode || 'raw';
     try { localStorage.setItem('scriptEditorMode', currentMode); } catch (_) {}
@@ -32,6 +37,8 @@ export function initScriptController(elements, { setStatus, onScriptChange } = {
         if (!elements.pagePanel.hidden) {
           editor = new ScreenplayEditor({
             container: elements.editorContainer,
+            toolbarHost: elements.toolbarHost || null,
+            toolbarMetaHost: elements.toolbarMetaHost || null,
             initialScript,
             format: 'fountain',
             showToolbar: true,
@@ -40,11 +47,14 @@ export function initScriptController(elements, { setStatus, onScriptChange } = {
         }
       } else {
         editor.loadScript(initialScript, 'fountain');
+        setToolbarHostsVisible(true);
       }
+      setToolbarHostsVisible(Boolean(editor));
     } else {
       if (editor) updateScriptText(editor.getRawScript('fountain'));
       elements.editorContainer.hidden = true;
       elements.scriptText.hidden = false;
+      setToolbarHostsVisible(false);
     }
   };
 
