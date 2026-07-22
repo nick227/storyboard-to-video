@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { createPrismaClient } = require('../src/storage/prisma-client');
 const { PrismaIdentityRepository } = require('../src/storage/prisma-identity.repository');
 const { PrismaPaymentRepository } = require('../src/storage/prisma-payment.repository');
+const { PrismaBillingRepository } = require('../src/storage/prisma-billing.repository');
 const { createPaymentService } = require('../src/services/payment.service');
 
 const enabled = process.env.PRISMA_INTEGRATION_TESTS === '1';
@@ -20,14 +21,19 @@ test('Stripe checkout funds once, expires safely, blocks consumed-credit refunds
     await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries ENABLE TRIGGER USER');
   });
   const suffix = crypto.randomUUID();
-  const pack = await repository.createPack({ code: `test-${suffix}`, version: 1, name: 'Test Pack', currency: 'USD', unitAmount: 1000n, creditsGrantedMicros: 1000000000n, taxBehavior: 'exclusive' });
-  await repository.publishPack(pack.id, { stripePriceId: `price_test_${suffix.replaceAll('-', '')}`, activeFrom: new Date(Date.now() - 1000) });
-  await assert.rejects(() => prisma.creditPack.update({ where: { id: pack.id }, data: { unitAmount: 999n } }), /immutable/);
+  // Only one SiteCreditRateVersion may be active at a time (a partial unique index enforces it),
+  // so a raw create with active:true directly collides with whatever real rate is already
+  // active. Deactivate-then-activate through the repository instead, and restore the previously
+  // active rate in `finally` -- this test shouldn't change real business config as a side effect.
+  const billingRepository = new PrismaBillingRepository(prisma);
+  const previouslyActiveRate = await billingRepository.activeCreditRate();
+  const creditRate = await billingRepository.createCreditRateVersion({ versionKey: `stripe-test-${suffix}`, nanoUsdPerSiteCredit: 10000000n, active: false });
+  await billingRepository.activateCreditRate(creditRate.id);
   let sessionNumber = 0; let refundCalls = 0;
   const stripe = {
     checkout: { sessions: { create: async (params, options) => {
       sessionNumber += 1;
-      assert.equal(params.mode, 'payment'); assert.equal(params.automatic_tax.enabled, true); assert.equal(params.line_items[0].price.startsWith('price_test_'), true); assert.match(options.idempotencyKey, /^checkout:/);
+      assert.equal(params.mode, 'payment'); assert.equal(params.automatic_tax, undefined); assert.equal(params.line_items[0].price_data.unit_amount, 1000); assert.match(options.idempotencyKey, /^checkout:/);
       return { id: `cs_test_${sessionNumber}_${suffix}`, url: `https://checkout.stripe.test/${sessionNumber}`, customer: null };
     } } },
     refunds: { create: async (params, options) => { refundCalls += 1; assert.match(options.idempotencyKey, /^refund:/); return { id: `re_test_${refundCalls}_${suffix}`, amount: params.amount, payment_intent: params.payment_intent, metadata: params.metadata }; } },
@@ -37,17 +43,17 @@ test('Stripe checkout funds once, expires safely, blocks consumed-credit refunds
 
   const sales = [];
   async function checkout(key = crypto.randomUUID()) {
-    const result = await payments.createCheckout({ packId: pack.id, tenantId: customer.tenant.id, userId: customer.user.id, userEmail: customer.user.email, idempotencyKey: key });
+    const result = await payments.createCheckout({ amount: 1000, tenantId: customer.tenant.id, userId: customer.user.id, userEmail: customer.user.email, idempotencyKey: key });
     sales.push(result.saleId); return result;
   }
   function completed(result, eventId = `evt_${crypto.randomUUID()}`) {
-    return { id: eventId, type: 'checkout.session.completed', data: { object: { id: result.checkoutSessionId, client_reference_id: result.saleId, metadata: { saleId: result.saleId, tenantId: customer.tenant.id, userId: customer.user.id, creditPackId: pack.id }, payment_status: 'paid', amount_subtotal: 1000, amount_total: 1080, total_details: { amount_tax: 80 }, currency: 'usd', customer: `cus_${suffix}`, payment_intent: `pi_${result.saleId}`, created: Math.floor(Date.now() / 1000) } } };
+    return { id: eventId, type: 'checkout.session.completed', data: { object: { id: result.checkoutSessionId, client_reference_id: result.saleId, metadata: { saleId: result.saleId, tenantId: customer.tenant.id, userId: customer.user.id }, payment_status: 'paid', amount_subtotal: 1000, amount_total: 1000, total_details: { amount_tax: 0 }, currency: 'usd', customer: `cus_${suffix}`, payment_intent: `pi_${result.saleId}`, created: Math.floor(Date.now() / 1000) } } };
   }
 
   try {
     const key = crypto.randomUUID();
     const first = await checkout(key);
-    const replay = await payments.createCheckout({ packId: pack.id, tenantId: customer.tenant.id, userId: customer.user.id, userEmail: customer.user.email, idempotencyKey: key });
+    const replay = await payments.createCheckout({ amount: 1000, tenantId: customer.tenant.id, userId: customer.user.id, userEmail: customer.user.email, idempotencyKey: key });
     assert.equal(replay.saleId, first.saleId); assert.equal(replay.url, first.url); assert.equal(sessionNumber, 1);
     const paidEvent = completed(first, `evt_paid_${suffix}`);
     await payments.processWebhook(paidEvent);
@@ -79,7 +85,7 @@ test('Stripe checkout funds once, expires safely, blocks consumed-credit refunds
     await prisma.creditAccount.update({ where: { tenantId: customer.tenant.id }, data: { availableCreditMicros: 0n } });
     await assert.rejects(() => payments.refundSale({ saleId: consumed.saleId, reason: 'requested_by_customer', idempotencyKey: crypto.randomUUID() }), (error) => error.code === 'REFUND_CREDITS_CONSUMED');
     assert.equal(refundCalls, 1);
-    const externalRefund = { id: `re_external_${suffix}`, amount: 1080, payment_intent: `pi_${consumed.saleId}`, metadata: { saleId: consumed.saleId } };
+    const externalRefund = { id: `re_external_${suffix}`, amount: 1000, payment_intent: `pi_${consumed.saleId}`, metadata: { saleId: consumed.saleId } };
     await payments.processWebhook({ id: `evt_external_refund_${suffix}`, type: 'refund.created', data: { object: externalRefund } });
     const unresolved = await repository.purchaseStatus({ saleId: consumed.saleId, tenantId: customer.tenant.id, userId: customer.user.id });
     assert.equal(unresolved.refundResolutionRequired, true); assert.equal(unresolved.creditsReversed, 0n);
@@ -98,13 +104,18 @@ test('Stripe checkout funds once, expires safely, blocks consumed-credit refunds
       await db.creditSale.deleteMany({ where: { id: { in: sales } } });
       await db.paymentCustomer.deleteMany({ where: { tenantId: customer.tenant.id } });
       await db.creditAccount.deleteMany({ where: { tenantId: customer.tenant.id } });
-      await db.creditPack.delete({ where: { id: pack.id } });
+      // Deliberately not deleted: this rate is a globally-shared resource for the moment it's
+      // active, so any real concurrent billing activity elsewhere on this DB during that window
+      // can attach a CreditReservation to it, which would make a hard delete here race against
+      // real traffic (FK violation). Leaving it retired-but-present is safe and matches how
+      // other pricing/rate config rows are treated as permanent history elsewhere in this repo.
       await db.workspace.delete({ where: { id: customer.tenant.id } });
       await db.user.delete({ where: { id: customer.user.id } });
       await db.$executeRawUnsafe('ALTER TABLE credit_packs ENABLE TRIGGER USER');
       await db.$executeRawUnsafe('ALTER TABLE credit_sales ENABLE TRIGGER USER');
       await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries ENABLE TRIGGER USER');
     });
+    if (previouslyActiveRate) await billingRepository.activateCreditRate(previouslyActiveRate.id);
     await prisma.$disconnect();
   }
 });

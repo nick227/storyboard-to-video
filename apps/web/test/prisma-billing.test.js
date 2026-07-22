@@ -32,7 +32,17 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
   const trace = (jobId) => ({ tenantId: account.tenant.id, userId: account.user.id, projectId: 'billing-audit-test', jobId, idempotencyKey: `billing:${jobId}` });
   let testProvider;
   let welcomePolicyId;
+  let testCreditRateId;
+  const previouslyActiveRate = await billing.activeCreditRate();
   try {
+    // This test's dollar-figure assertions below are all written against a fixed 1-credit=$0.01
+    // conversion. Rather than depend on whatever SiteCreditRateVersion happens to be globally
+    // active (which is real business config other work in this repo changes over time), pin a
+    // dedicated one for the test's duration and restore whatever was active before in `finally`.
+    const testCreditRate = await billing.createCreditRateVersion({ versionKey: `test-credit-rate-${crypto.randomUUID()}`, nanoUsdPerSiteCredit: 10_000_000n, active: false });
+    testCreditRateId = testCreditRate.id;
+    await billing.activateCreditRate(testCreditRateId);
+
     const welcomePolicy = await billing.createWelcomeCreditPolicyVersion({ versionKey: `welcome-test-${crypto.randomUUID()}`, name: 'Future registration test', creditMicros: 123000000n, active: false, createdByAdminId: account.user.id });
     welcomePolicyId = welcomePolicy.id;
     assert.equal((await billing.listWelcomeCreditPolicies()).some((policy) => policy.id === welcomePolicy.id), true);
@@ -161,6 +171,10 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
       await db.creditAccount.deleteMany({ where: { tenantId: account.tenant.id } });
       if (testProvider) await db.providerPriceVersion.deleteMany({ where: { provider: testProvider } });
       if (welcomePolicyId) await db.welcomeCreditPolicyVersion.deleteMany({ where: { id: welcomePolicyId } });
+      // Deliberately not deleted: this rate is a globally-shared resource for the moment it's
+      // active, so any real concurrent billing activity elsewhere on this DB during that window
+      // can attach a CreditReservation to it, which would make a hard delete here race against
+      // real traffic (FK violation). Leaving it retired-but-present is safe.
       await db.workspace.deleteMany({ where: { id: account.tenant.id } });
       await db.user.deleteMany({ where: { id: account.user.id } });
       await db.$executeRawUnsafe('ALTER TABLE credit_reservations ENABLE TRIGGER USER');
@@ -168,6 +182,7 @@ test('billing snapshots costs while disabled and atomically reserves, settles, a
       await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries ENABLE TRIGGER USER');
       await db.$executeRawUnsafe('ALTER TABLE welcome_credit_policy_versions ENABLE TRIGGER USER');
     });
+    if (previouslyActiveRate) await billing.activateCreditRate(previouslyActiveRate.id);
     await prisma.$disconnect();
   }
 });
