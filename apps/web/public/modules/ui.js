@@ -296,7 +296,7 @@ export function renderStageBar(els) {
   if (els.stageVideoStatus) els.stageVideoStatus.textContent = stageStatusLabel(status.video);
   if (els.stageSubtitlesStatus) els.stageSubtitlesStatus.textContent = stageStatusLabel(status.subtitles);
   if (els.stageTokensStatus) {
-    els.stageTokensStatus.textContent = spend.totalCostUSD != null ? `${spend.totalCostUSD.toFixed(4)} USD` : '0.0000 USD';
+    els.stageTokensStatus.textContent = spend.totalCredits != null ? `${spend.totalCredits.toFixed(2)} credits` : '0.00 credits';
   }
 
   if (els.stageTokensBtn) {
@@ -304,7 +304,7 @@ export function renderStageBar(els) {
     const providerLines = Object.entries(spend.providers || {})
       .map(([provider, stats]) => `${provider}: $${stats.costUSD.toFixed(4)} (${stats.tokens.toLocaleString()} tokens)`)
       .join('\n');
-    els.stageTokensBtn.title = providerLines || 'No spend recorded';
+    els.stageTokensBtn.title = [`${(spend.totalCostUSD || 0).toFixed(4)} USD`, providerLines].filter(Boolean).join('\n') || 'No spend recorded';
   }
 
   // Read-only status strip — selection now happens only in the Start modal (see openStartRunModal
@@ -909,7 +909,7 @@ function selectSceneVersion(vIndex) {
 
 export function populateTokensInfoModal(els) {
   const spend = getCachedSpend() || {};
-  const { totalCostUSD = 0, totalTokens = 0, providers = {}, activePrices = [], estimatedPrices = [], videoModels = [] } = spend;
+  const { totalCostUSD = 0, totalTokens = 0, totalCredits = 0, providers = {}, activePrices = [], estimatedPrices = [], videoModels = [] } = spend;
 
   // 1. Render Active Project Spend Breakdown
   let spendHTML = '';
@@ -949,7 +949,8 @@ export function populateTokensInfoModal(els) {
     </div>`;
   } else {
     spendHTML = `<div style="margin-bottom: 12px; font-size: 13px; font-weight: 500; display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 10px 16px; border-radius: 8px; border: 1px solid var(--line);">
-      <span>Total Storyboard Spend: <strong style="color: var(--accent); font-size: 15px;">$${totalCostUSD.toFixed(5)} USD</strong></span>
+      <span>Total Credits Spent: <strong style="color: var(--accent); font-size: 15px;">${totalCredits.toFixed(2)}</strong></span>
+      <span>Total Storyboard Spend: <strong>$${totalCostUSD.toFixed(5)} USD</strong></span>
       <span>Total Tokens: <strong>${totalTokens.toLocaleString()}</strong></span>
     </div>`;
 

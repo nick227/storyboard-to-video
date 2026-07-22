@@ -49,6 +49,8 @@ export const generationStore = new Store({
 export const spendStore = new Store({
   totalCostUSD: 0,
   totalTokens: 0,
+  totalCredits: 0,
+  totalCreditMicros: '0',
   providers: {},
   activePrices: [],
   estimatedPrices: [],

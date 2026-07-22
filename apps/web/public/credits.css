@@ -14,6 +14,8 @@
 .checkout-notice { min-height: 24px; color: var(--accent); }
 .checkout-notice.error { color: var(--danger, #ff7474); }
 .purchase-history { margin-top: 46px; }
+.usage-total { color: var(--muted); margin: 0 0 14px; }
+.usage-total strong { color: var(--text); }
 .purchase-history table { width: 100%; border-collapse: collapse; }
 .purchase-history th, .purchase-history td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; }
 .status-pill { display: inline-block; padding: 4px 9px; border-radius: 999px; background: var(--panel-2); font-size: 12px; }

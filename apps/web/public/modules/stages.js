@@ -324,7 +324,7 @@ export function getCachedJobs() {
   return cachedJobs;
 }
 
-const EMPTY_SPEND = Object.freeze({ totalCostUSD: 0, totalTokens: 0, providers: {}, activePrices: [], estimatedPrices: [], videoModels: [] });
+const EMPTY_SPEND = Object.freeze({ totalCostUSD: 0, totalTokens: 0, totalCredits: 0, totalCreditMicros: '0', providers: {}, activePrices: [], estimatedPrices: [], videoModels: [] });
 
 export async function refreshSpend(projectId) {
   if (!projectId) {
