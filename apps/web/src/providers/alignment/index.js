@@ -17,6 +17,10 @@ function isUsableWord(word) {
 // that the alignment service is unreachable or misbehaving.
 function createAlignmentProvider(config, getCancellation, usageTracker, providerAdmission) {
   async function align({ audioBuffer, transcript, mimeType }) {
+    // Not configured (e.g. no alignment-service deployed to this environment yet) -- skip
+    // entirely rather than attempting a call that's guaranteed to fail. No usage/billing record
+    // is created either: this was never attempted, not a failed attempt.
+    if (!config.alignUrl) return { words: [] };
     try {
       const operation = async () => {
         const form = new FormData();

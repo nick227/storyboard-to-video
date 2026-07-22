@@ -60,7 +60,16 @@ function createProviderUsageService({ repository, generationContext, billing = n
     return complete(handle, result);
   }
 
-  return { begin, complete, fail, execute, restore };
+  // True only when begin() would actually create a durable GenerationRequest -- i.e. a real
+  // trace is active. Lets a caller performing a real, costed provider operation (e.g. voice
+  // cloning) fail closed *before* making that call, instead of discovering after the fact that
+  // execute() silently no-opped (no trace => no tracking, by design, for callers that legitimately
+  // don't need it -- but a few call sites must never be allowed to run untracked).
+  function hasActiveTrace() {
+    return Boolean(repository && generationContext.getStore()?.trace);
+  }
+
+  return { begin, complete, fail, execute, restore, hasActiveTrace };
 }
 
 module.exports = { createProviderUsageService };

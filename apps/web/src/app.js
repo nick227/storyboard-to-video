@@ -110,7 +110,7 @@ function registerRoutes(app, d) {
   app.use('/api/storyboard', storyboardRoutes({ controller: d.controllers.storyboard, idempotency: d.idempotency, execute: d.execute }));
   app.use('/api/images', imagesRoutes({ controller: d.controllers.media, idempotency: d.idempotency, execute: d.execute }));
   app.use('/api/videos', videosRoutes({ controller: d.controllers.media, idempotency: d.idempotency, execute: d.execute }));
-  app.use('/api/audio', audioRoutes({ controller: d.controllers.media, voices: d.controllers.voices, upload: d.upload, idempotency: d.idempotency, execute: d.execute }));
+  app.use('/api/audio', audioRoutes({ controller: d.controllers.media, voices: d.controllers.voices, upload: d.upload, idempotency: d.idempotency, execute: d.execute, generationTrace: d.generationTrace }));
   app.use('/api/subtitles', subtitlesRoutes({ controller: d.controllers.media, idempotency: d.idempotency, execute: d.execute }));
   app.use('/api/images/zip', exportsRoutes(d.controllers.media));
   app.use(notFound);

@@ -43,6 +43,14 @@ function createVoiceService(config, getCancellation, audioProvider = {}, usageTr
       });
     },
     async clone(file, name) {
+      // Fail closed: a real Modal-side clone (a real file upload, real Modal storage/compute)
+      // must never be allowed to happen without a durable GenerationRequest/UsageEvent record.
+      // Checked before the network call, not after -- silently proceeding untracked (e.g. because
+      // a future route change drops the trace-setup middleware) is exactly the failure mode this
+      // guards against, not just "usually works".
+      if (usageTracker && !usageTracker.hasActiveTrace()) {
+        throw new AppError('GENERATION_NOT_TRACKED', 'Voice cloning must run within a tracked generation context', { status: 500 });
+      }
       const result = await admit('spark', () => tracked({ modality: 'audio', provider: 'spark', model: 'spark-voice-clone', inputMetadata: { fileBytes: file.buffer.length } }, async () => {
         const form = new FormData();
         form.append('audio', new Blob([file.buffer]), file.originalname || 'recording.webm');

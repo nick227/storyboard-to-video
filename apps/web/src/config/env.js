@@ -62,7 +62,12 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     },
     sparkUrl: String(env.SPARK_TTS_URL || 'http://localhost:8001').replace(/\/+$/, ''), sparkTimeout: integer(env.SPARK_TTS_TIMEOUT_MS, 120_000, 1, 600_000), sparkServiceToken: String(env.SPARK_SERVICE_TOKEN || ''),
     piperUrl: String(env.PIPER_SERVICE_URL || '').replace(/\/+$/, ''), piperServiceToken: String(env.PIPER_SERVICE_TOKEN || ''),
-    alignUrl: String(env.ALIGNMENT_SERVICE_URL || 'http://localhost:8002').replace(/\/+$/, ''), alignTimeout: integer(env.ALIGNMENT_SERVICE_TIMEOUT_MS, 60_000, 1, 600_000), alignServiceToken: String(env.ALIGNMENT_SERVICE_TOKEN || ''),
+    // No implicit localhost default (unlike sparkUrl/ltxUrl): alignment has no local-binary
+    // fallback the way Piper does, and unlike Spark/LTX there is currently no deployed target for
+    // it anywhere but a developer's own machine. An unset URL must mean "not configured yet", not
+    // "assume localhost" -- the alignment provider skips the call entirely rather than attempting
+    // a network request that's guaranteed to fail.
+    alignUrl: String(env.ALIGNMENT_SERVICE_URL || '').replace(/\/+$/, ''), alignTimeout: integer(env.ALIGNMENT_SERVICE_TIMEOUT_MS, 60_000, 1, 600_000), alignServiceToken: String(env.ALIGNMENT_SERVICE_TOKEN || ''),
     ltxUrl: String(env.LTX_VIDEO_URL || 'http://localhost:8000').replace(/\/+$/, ''), videoProvider: VIDEO_PROVIDERS.includes(env.VIDEO_PROVIDER) ? env.VIDEO_PROVIDER : 'ltx',
     videoReconcileIntervalMs: integer(env.VIDEO_RECONCILE_INTERVAL_MS, 30_000, 1_000, 600_000),
     videoAttemptTimeoutMs: integer(env.VIDEO_ATTEMPT_TIMEOUT_MS, 15 * 60_000, 60_000, 3_600_000),

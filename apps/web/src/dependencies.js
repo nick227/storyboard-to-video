@@ -44,6 +44,7 @@ const { createExportService } = require('./services/export.service');
 const { createVoiceService } = require('./services/voice.service');
 const { createMediaOutputService } = require('./services/media-output.service');
 const { requireIdempotency } = require('./middleware/idempotency');
+const { createGenerationTraceMiddleware } = require('./middleware/generation-trace');
 const { createJobExecution } = require('./jobs/execution');
 const { AuthService } = require('./auth');
 const { PrismaIdentityRepository } = require('./storage/prisma-identity.repository');
@@ -125,6 +126,7 @@ function createDependencies(config, overrides = {}) {
     authenticate: auth.middleware(),
     idempotency: requireIdempotency(idempotencyStore, projectStore),
     execute: createJobExecution({ queue, projectStore, idempotencyStore, generationContext }),
+    generationTrace: createGenerationTraceMiddleware(generationContext),
     controllers: {
       storyboard: createStoryboardController({ styles, prompts, dialogue, sceneSplit, shotPlanning, config }),
       media,
