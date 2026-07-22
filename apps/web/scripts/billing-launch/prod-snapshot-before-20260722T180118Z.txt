@@ -1,0 +1,99 @@
+=== SNAPSHOT: 2026-07-22T23:01:18Z ===
+
+--- credit rate ---
+         version_key          | nano_usd_per_site_credit | active 
+------------------------------+--------------------------+--------
+ one-credit-equals-one-usd-v1 |               1000000000 | t
+(1 row)
+
+--- markup ---
+        version_key        | markup_basis_points | fixed_nano_usd | active 
+---------------------------+---------------------+----------------+--------
+ production-markup-1pct-v1 |                 100 |              0 | t
+(1 row)
+
+--- welcome policy ---
+    version_key     | credit_micros | active 
+--------------------+---------------+--------
+ welcome-2026-07-22 |      10000000 | t
+(1 row)
+
+--- tenant / account counts ---
+total workspaces: 11
+total credit_accounts: 11
+tenants with chargingEnabled=true: 0
+total users: 11
+--- credit balances (all accounts) ---
+              tenant_id               |                     email                      | available_credit_micros | reserved_credit_micros | charging_enabled 
+--------------------------------------+------------------------------------------------+-------------------------+------------------------+------------------
+ 03a79e44-593a-472f-bc66-b7a422a423f0 | ci-test-1784667805@example.com                 |              1000000000 |                      0 | f
+ 71f5da56-7ab6-4b43-a37e-8cf700e0b147 | short@example.com                              |              1000000000 |                      0 | f
+ 3cc095f9-6905-4e72-90ae-62620229d38b | ui-test-1784667863@example.com                 |              1000000000 |                      0 | f
+ 5db7c65b-8124-4fe7-b751-99b3f1d48aab | ok2@example.com                                |              1000000000 |                      0 | f
+ e0213d49-ea4c-4e40-a001-00421139c99a | csrf-1784667870@example.com                    |              1000000000 |                      0 | f
+ 08a3490a-3dd3-45a7-ab94-175c7497403d | host-1784667889-26042@example.com              |              1000000000 |                      0 | f
+ 2b2a1a58-1b38-40f2-9d7e-6f9152fea355 | fix-1784667908@example.com                     |              1000000000 |                      0 | f
+ a4c6eb31-d33b-44eb-9701-9cc6f44f4110 | n@g.com                                        |              1000000000 |                      0 | f
+ a5d19995-1f03-4411-8159-b7818d9151b6 | plan-test-1784669403@example.com               |              1000000000 |                      0 | f
+ 6e87ba18-a8ff-4e27-95f8-8cf860ea9cb2 | plan-fix-1784669542@example.com                |              1000000000 |                      0 | f
+ 2685554f-e4b8-4368-a1bc-013ef3554195 | prod-billing-sync-check-1784758158@example.com |                10000000 |                      0 | f
+(11 rows)
+
+--- active ProviderPriceVersion rows ---
+            version_key            | provider | modality |         model          | billing_tier | billable | evidence_status |     reconciled_at      
+-----------------------------------+----------+----------+------------------------+--------------+----------+-----------------+------------------------
+ dezgo-text2image-2026-07-17       | dezgo    | image    | text2image             |              | f        | estimated       | 2026-07-17 10:51:36+00
+ gemini-3.1-flash-image-2026-07-17 | gemini   | image    | gemini-3.1-flash-image |              | f        | documented      | 
+ gemini-3.5-flash-2026-07-17       | gemini   | text     | gemini-3.5-flash       |              | f        | documented      | 
+ openai-gpt-image-1-2026-07-17     | openai   | image    | gpt-image-1            |              | f        | documented      | 
+ openai-gpt-4.1-mini-2026-07-17    | openai   | text     | gpt-4.1-mini           |              | f        | documented      | 
+(5 rows)
+
+
+--- reservation charging_mode breakdown (all tenants) ---
+   charging_mode   |         status         | count 
+-------------------+------------------------+-------
+ charging_disabled | completed_without_cost |     8
+ charging_disabled | failed_not_charged     |     6
+ charging_disabled | settled_not_charged    |     9
+(3 rows)
+
+--- ledger entry types (all tenants) ---
+     type      | count 
+---------------+-------
+ welcome_grant |    11
+(1 row)
+
+--- ledger reconciliation: sum of deltas vs account balance, per tenant ---
+              tenant_id               | account_available | ledger_sum_available | diff 
+--------------------------------------+-------------------+----------------------+------
+ e0213d49-ea4c-4e40-a001-00421139c99a |        1000000000 |           1000000000 |    0
+ 5db7c65b-8124-4fe7-b751-99b3f1d48aab |        1000000000 |           1000000000 |    0
+ 08a3490a-3dd3-45a7-ab94-175c7497403d |        1000000000 |           1000000000 |    0
+ 71f5da56-7ab6-4b43-a37e-8cf700e0b147 |        1000000000 |           1000000000 |    0
+ 6e87ba18-a8ff-4e27-95f8-8cf860ea9cb2 |        1000000000 |           1000000000 |    0
+ 3cc095f9-6905-4e72-90ae-62620229d38b |        1000000000 |           1000000000 |    0
+ 2b2a1a58-1b38-40f2-9d7e-6f9152fea355 |        1000000000 |           1000000000 |    0
+ a4c6eb31-d33b-44eb-9701-9cc6f44f4110 |        1000000000 |           1000000000 |    0
+ 2685554f-e4b8-4368-a1bc-013ef3554195 |          10000000 |             10000000 |    0
+ a5d19995-1f03-4411-8159-b7818d9151b6 |        1000000000 |           1000000000 |    0
+ 03a79e44-593a-472f-bc66-b7a422a423f0 |        1000000000 |           1000000000 |    0
+(11 rows)
+
+--- credit_sales (real Stripe purchases) ---
+ id | status | processor | total_amount | credits_purchased_micros | created_at 
+----+--------+-----------+--------------+--------------------------+------------
+(0 rows)
+
+
+--- live sanity report (via /api/admin/billing/sanity-report) ---
+{"ok":true,"customerBillableSpendUSD":0.23505150000000002,"platformIncludedSpendUSD":0,"unpricedUsageCount":6,"unpriced":[{"provider":"piper","modality":"audio","model":"piper-modal","count":1},{"provider":"minimax","modality":"video","model":"MiniMax-Hailuo-02","count":1},{"provider":"spark","modality":"audio","model":"spark-tts","count":3},{"provider":"spark","modality":"audio","model":"spark-voice-clone","count":1}],"reservationsHeld":0,"failedSettlements":6,"refundsIssued":{"count":0,"creditMicros":"0"}}
+
+--- admin access check ---
+ADMIN_OWNER_IDS=b1eaee0a-a833-4e71-9940-c2ddcf487032 (Nick, n@g.com) -- verified via Railway variables
+Admin route function verified end-to-end via throwaway account temporarily promoted to platformRole=admin, reverted after: GET /api/admin/overview -> 200, GET /api/admin/billing/sanity-report -> 200
+
+--- Stripe / purchase-options check ---
+GET /api/billing/purchase-options -> {"ok":true,"paymentsEnabled":false,...}
+STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET: NOT SET in Railway prod variables
+credit_sales table: 0 rows ever (no real Stripe purchase has ever completed in prod)
