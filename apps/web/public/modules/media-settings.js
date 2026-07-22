@@ -1,3 +1,5 @@
+import { assertElements } from './dom-contract.js';
+
 export function selectedMediaSettings(elements, { clearInheritedDuration = false } = {}) {
   return {
     version: 1,
@@ -33,6 +35,11 @@ export function initMediaSettings(elements, {
   getQuantity,
   fetchRequest = (...args) => fetch(...args),
 } = {}) {
+  assertElements('Media settings', elements, [
+    'aspectRatio', 'imageProvider', 'imageResolutionTier', 'imageQuality',
+    'videoProvider', 'videoResolutionTier', 'videoDurationSeconds',
+    'costPreview', 'saveDefaultsBtn',
+  ]);
   let quoteSequence = 0;
   let videoOptionsSequence = 0;
   let imageOptionsSequence = 0;
@@ -45,7 +52,6 @@ export function initMediaSettings(elements, {
   const projectScope = () => getProjectScope?.() || {};
 
   const refreshVideoDurationOptions = async () => {
-    if (!elements.videoDurationSeconds) return;
     const sequence = ++videoOptionsSequence;
     try {
       const body = await fetchRequest('/api/media-output/video-duration-options', {
@@ -84,7 +90,6 @@ export function initMediaSettings(elements, {
   };
 
   const applyImageOutputOptions = () => {
-    if (!elements.imageResolutionTier || !elements.imageQuality) return;
     const resolutionTier = elements.imageResolutionTier.value;
     const quality = elements.imageQuality.value;
     for (const option of elements.imageResolutionTier.options) {
@@ -104,7 +109,6 @@ export function initMediaSettings(elements, {
   };
 
   const refreshImageOutputOptions = async () => {
-    if (!elements.imageResolutionTier || !elements.imageQuality || !elements.imageProvider) return;
     const sequence = ++imageOptionsSequence;
     try {
       const body = await fetchRequest('/api/media-output/image-output-options', {
@@ -133,7 +137,6 @@ export function initMediaSettings(elements, {
   };
 
   const refreshCostPreview = async () => {
-    if (!elements.costPreview || !elements.imageProvider) return;
     const sequence = ++quoteSequence;
     const quantity = Math.max(1, Number(getQuantity?.()) || 1);
     const outputIntent = selectedSettings({ clearInheritedDuration: true });
@@ -164,15 +167,15 @@ export function initMediaSettings(elements, {
   };
 
   const saveDefaults = async () => {
-    if (!elements.aspectRatio?.value) {
+    if (!elements.aspectRatio.value) {
       setPreview('Choose a shared aspect ratio before saving defaults for new projects.');
       return;
     }
-    if (elements.imageResolutionTier?.selectedOptions[0]?.disabled || elements.imageQuality?.selectedOptions[0]?.disabled) {
+    if (elements.imageResolutionTier.selectedOptions[0]?.disabled || elements.imageQuality.selectedOptions[0]?.disabled) {
       setPreview('Choose image resolution and quality settings supported by the selected provider.');
       return;
     }
-    if (elements.videoDurationSeconds?.selectedOptions[0]?.disabled) {
+    if (elements.videoDurationSeconds.selectedOptions[0]?.disabled) {
       setPreview('Choose a video length supported by the selected provider and resolution.');
       return;
     }
@@ -194,15 +197,15 @@ export function initMediaSettings(elements, {
     refreshCostPreview();
   };
   [elements.aspectRatio, elements.imageResolutionTier, elements.imageQuality, elements.videoResolutionTier, elements.videoDurationSeconds, elements.videoProvider]
-    .forEach((element) => element?.addEventListener('change', saveAndRefreshQuote));
+    .forEach((element) => element.addEventListener('change', saveAndRefreshQuote));
   [elements.aspectRatio, elements.videoResolutionTier, elements.videoProvider]
-    .forEach((element) => element?.addEventListener('change', refreshVideoDurationOptions));
+    .forEach((element) => element.addEventListener('change', refreshVideoDurationOptions));
   [elements.aspectRatio, elements.imageProvider]
-    .forEach((element) => element?.addEventListener('change', refreshImageOutputOptions));
+    .forEach((element) => element.addEventListener('change', refreshImageOutputOptions));
   [elements.imageResolutionTier, elements.imageQuality]
-    .forEach((element) => element?.addEventListener('change', applyImageOutputOptions));
-  elements.imageProvider?.addEventListener('change', saveAndRefreshQuote);
-  elements.saveDefaultsBtn?.addEventListener('click', saveDefaults);
+    .forEach((element) => element.addEventListener('change', applyImageOutputOptions));
+  elements.imageProvider.addEventListener('change', saveAndRefreshQuote);
+  elements.saveDefaultsBtn.addEventListener('click', saveDefaults);
 
   return {
     refreshAll: () => Promise.all([

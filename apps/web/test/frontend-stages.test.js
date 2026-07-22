@@ -500,6 +500,14 @@ test('stageHasActionableWork: returns true for planning when hasChanges is true'
   assert.equal(stageHasActionableWork('planning', statusWithChanges), true, 'should have actionable work when hasChanges is true');
 });
 
+test('classifyPlanningRun is the shared full/stale/current workflow decision', async () => {
+  const { classifyPlanningRun } = await stagesPromise;
+  assert.equal(classifyPlanningRun({ total: 0, missing: 0, stale: 0, hasChanges: false }), 'full');
+  assert.equal(classifyPlanningRun({ total: 2, missing: 0, stale: 1, hasChanges: false }), 'stale');
+  assert.equal(classifyPlanningRun({ total: 2, missing: 0, stale: 0, hasChanges: false }), 'current');
+  assert.equal(classifyPlanningRun({ total: 2, missing: 0, stale: 0, hasChanges: false }, { force: true }), 'full');
+});
+
 test('computeStageStatus: sets planning.hasChanges based on hasPlanningChanges', async () => {
   const { computeStageStatus } = await stagesPromise;
   const { projectStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));

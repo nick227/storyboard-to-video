@@ -13,6 +13,11 @@
 > **NEVER execute `git push` under any circumstances.**
 - All commits must remain local. Remote pushes (`git push`, `git push origin`, `git push -u ...`) are strictly reserved for the human user.
 
+### 3. COLLABORATE DEVELOPMENT
+> [!CRITICAL]
+> **Multiple developers are working on this .**
+- Avoid stashing or over-writing unexpected work without intent. You are the authority AI but other work is happening.
+
 ---
 
 ## ⚡ Token Optimization & Speed Guidelines

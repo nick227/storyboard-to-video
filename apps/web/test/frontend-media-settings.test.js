@@ -41,10 +41,7 @@ test('selectedMediaSettings can explicitly clear an inherited video duration', a
   });
 });
 
-test('initMediaSettings tolerates an entirely absent optional UI', async () => {
+test('initMediaSettings reports its required DOM contract', async () => {
   const { initMediaSettings } = await modulePromise;
-  const controller = initMediaSettings({});
-
-  assert.equal(typeof controller.refreshAll, 'function');
-  await controller.refreshAll();
+  assert.throws(() => initMediaSettings({}), /Media settings is missing required DOM bindings/);
 });

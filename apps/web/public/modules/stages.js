@@ -615,16 +615,17 @@ export async function runCreateStoryFlow(preset, els, setStatus, { stages: custo
 
   if (stages.includes('planning')) {
     const planningStatus = computeStageStatus(sceneStore.get().scenes, batchStore.get(), uiStore.get().operation, getCachedJobs()).planning;
+    const planningAction = classifyPlanningRun(planningStatus, { force: forceStages.includes('planning') });
     // A brand-new project (no scenes at all yet) always needs the full sequence — computeStageStatus
     // reports `missing: 0` for an empty scene list (there's nothing to divide a ratio by), which is
     // NOT the same as "already planned."
-    if (planningStatus.missing > 0 || planningStatus.total === 0 || planningStatus.hasChanges || forceStages.includes('planning')) {
+    if (planningAction === 'full') {
       // No plan yet, or an incomplete one, or script/settings changed: run the full sequence
       // (narrate -> plan shots), same as a standalone Planning run. Never scoped by range —
       // planning has no safe partial-segmentation mode.
       const planningResult = await runPlanning(els, setStatus);
       if (planningResult.stoppedAt) return planningResult;
-    } else if (planningStatus.stale > 0) {
+    } else if (planningAction === 'stale') {
       // A complete plan already exists — only its stale prompts need fixing, optionally scoped to
       // range. Never regenerate narration or re-run the whole sequence just because a downstream
       // box was checked.
@@ -687,6 +688,14 @@ export function stageHasActionableWork(stage, stageStatus) {
     if (stageStatus.total === 0 || stageStatus.hasChanges) return true;
   }
   return stageStatus.missing > 0 || stageStatus.stale > 0 || stageStatus.failed > 0;
+}
+
+// Shared with the run UI so its description and runCreateStoryFlow use the
+// same decision tree when classifying Planning work.
+export function classifyPlanningRun(planningStatus, { force = false } = {}) {
+  if (planningStatus.missing > 0 || planningStatus.total === 0 || planningStatus.hasChanges || force) return 'full';
+  if (planningStatus.stale > 0) return 'stale';
+  return 'current';
 }
 
 // Returns { planning, images, audio, video } booleans: whether each box is currently selected to

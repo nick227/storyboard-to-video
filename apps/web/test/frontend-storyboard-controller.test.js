@@ -1,0 +1,30 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+
+const controllerPromise = import(path.join(__dirname, '..', 'public', 'modules', 'storyboard-controller.js'));
+
+test('ZIP summary counts active storyboard assets and enforces the 200-shot export limit', async () => {
+  const { getZipSummary } = await controllerPromise;
+  const scenes = Array.from({ length: 201 }, (_, index) => ({
+    versions: index === 0 ? [{ path: '/image.png' }] : [],
+    videoVersions: index === 1 ? [{ path: '/video.mp4' }] : [],
+    audioVersions: index === 2 ? [{ path: '/audio.mp3' }] : [],
+  }));
+
+  assert.deepEqual(getZipSummary(scenes), {
+    totalScenes: 201,
+    exportedScenes: 200,
+    imageCount: 1,
+    videoCount: 1,
+    audioCount: 1,
+  });
+});
+
+test('storyboard controller reports missing required controls explicitly', async () => {
+  const { initStoryboardController } = await controllerPromise;
+  assert.throws(
+    () => initStoryboardController({}),
+    /Storyboard controller is missing required DOM bindings:.*title.*downloadBullets/,
+  );
+});

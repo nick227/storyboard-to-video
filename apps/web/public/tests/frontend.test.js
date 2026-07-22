@@ -109,9 +109,12 @@ async function runTests() {
 
     // Test 10: Changing style always refreshes both prompt text and references.
     const appSource = await (await fetch('/app.js')).text();
-    const styleChangeHandler = appSource.match(/styleSelect\.addEventListener\('change',[\s\S]*?\n  \}\);/)?.[0] || '';
-    assert(styleChangeHandler.includes('prefillCommonPrompt(styleId, els)'), 'Style changes should replace the common prompt');
-    assert(styleChangeHandler.includes('loadStyleReferences(styleId, els, setStatus)'), 'Style changes should refresh reference images');
+    const runControllerSource = await (await fetch('/modules/run-controller.js')).text();
+    const storyboardControllerSource = await (await fetch('/modules/storyboard-controller.js')).text();
+    const settingsControllerSource = await (await fetch('/modules/settings-controller.js')).text();
+    const styleChangeHandler = settingsControllerSource.match(/styleSelect\.addEventListener\('change',[\s\S]*?\n  \}\);/)?.[0] || '';
+    assert(styleChangeHandler.includes('prefillCommonPrompt(styleId)'), 'Style changes should replace the common prompt');
+    assert(styleChangeHandler.includes('loadStyleReferences(styleId)'), 'Style changes should refresh reference images');
     assert(!styleChangeHandler.includes('commonPromptText.value.trim()'), 'Prompt refresh should not depend on the previous prompt being empty');
     addResult('Style Change Refreshes Prompt And References', true);
 
@@ -198,8 +201,8 @@ async function runTests() {
     assert(!appSource.includes("requestGenerationConfirmation('images')"), 'Old images confirmation kind should be gone');
     assert(!appSource.includes("requestGenerationConfirmation('audio')"), 'Old audio confirmation kind should be gone');
     assert(!appSource.includes("requestGenerationConfirmation('videos')"), 'Old videos confirmation kind should be gone');
-    assert(appSource.includes("requestGenerationConfirmation(kindMap[stage])") || appSource.includes("'imagesAll'"), 'Regenerate-all should require confirmation per stage');
-    assert(appSource.includes("requestGenerationConfirmation('planningReplan'"), 'Replan/shrink should require an explicit, named-consequence confirmation');
+    assert(runControllerSource.includes("'imagesAll'") && runControllerSource.includes("'subtitlesAll'"), 'Regenerate-all should require confirmation per stage');
+    assert(runControllerSource.includes("confirmGeneration('planningReplan'"), 'Replan/shrink should require an explicit, named-consequence confirmation');
     addResult('Regenerate-All And Replan Require Confirmation', true);
 
     // Test 20: The Planning modal and the shared Images/Audio/Video stage dialog are gone entirely —
@@ -216,7 +219,7 @@ async function runTests() {
     assert(!indexSource.includes('id="settingsSceneCountInput"') && !indexSource.includes('id="settingsSceneCountAutoCheckbox"') && !indexSource.includes('id="settingsSceneCountAutoBtn"'), 'The old editable scene-count target/auto controls should be gone — shot count is an output of planning, not an input');
     assert(indexSource.includes('id="settingsShotCountDisplay"'), 'Shot count should be a read-only, informational display in Settings');
     assert(indexSource.includes('id="settingsReplanBtn"') && indexSource.includes('id="settingsRegenerateImagesBtn"') && indexSource.includes('id="settingsRegenerateAudioBtn"') && indexSource.includes('id="settingsRegenerateVideoBtn"'), 'Settings should expose a Danger zone with Replan and per-stage Regenerate-all actions');
-    assert(appSource.includes('will rebuild the storyboard structure and retire media'), 'Reducing scene count should still name the destructive consequence explicitly, not hide it behind "Replan"');
+    assert(runControllerSource.includes('will rebuild the storyboard structure and retire media'), 'Reducing scene count should still name the destructive consequence explicitly, not hide it behind "Replan"');
     addResult('Planning Modal And Stage Dialog Removed In Favor Of Settings', true);
 
     // Test 21: Stage boxes are color-coded, read-only status indicators — selection happens only
@@ -224,15 +227,15 @@ async function runTests() {
     // rather than a separate static bullet list.
     assert(uiSource.includes("status-actionable") && uiSource.includes("status-failed"), 'Stage boxes should be color-coded by status');
     assert(stagesSource.includes('export function getStageSelection') && stagesSource.includes('export function toggleStageSelection'), 'stages.js should expose the selection model the Start modal reads from');
-    assert(appSource.includes('openStartRunModal'), 'Start must open the Start modal — the modal itself is the confirmation screen summarizing exactly what will run');
+    assert(runControllerSource.includes('openStartModal'), 'Start must open the Start modal — the modal itself is the confirmation screen summarizing exactly what will run');
     assert(!appSource.includes("requestGenerationConfirmation('startRun'"), 'the old static startRun confirmation kind should be gone — the Start modal replaced it');
     addResult('Selectable Color-Coded Stage Boxes With Confirmation', true);
 
     // Test 17: Storyboard density controls expose six layouts and wire them to the grid.
     assert((indexSource.match(/class="resize-scenes/g) || []).length === 6, 'Storyboard should expose six density choices');
     assert(indexSource.includes('data-columns="6" aria-label="Show 6 scenes per row" aria-pressed="true"'), 'Six columns should be selected by default');
-    assert(appSource.includes("storyboardGrid.style.setProperty('--scene-columns', columns)"), 'Density controls should update the grid column count');
-    assert(appSource.includes("candidate.setAttribute('aria-pressed', String(isActive))"), 'Density controls should announce the selected layout');
+    assert(storyboardControllerSource.includes("grid.style.setProperty('--scene-columns', columns)"), 'Density controls should update the grid column count');
+    assert(storyboardControllerSource.includes("candidate.setAttribute('aria-pressed', String(isActive))"), 'Density controls should announce the selected layout');
     addResult('Storyboard Density Controls', true);
 
     // Test 18: Every DOM id app.js binds into `els` must exist in the studio, and vice
@@ -309,10 +312,9 @@ async function runTests() {
       assert(summary.audioCount === 1, 'Should have 1 audio');
 
       // Verify that app.js binds downloadZipBtn to openDownloadConfirmModal statically
-      const appSource = await (await fetch('/app.js')).text();
-      assert(appSource.includes('els.downloadZipBtn.addEventListener'), 'app.js should bind downloadZipBtn click listener');
-      assert(appSource.includes('openDownloadConfirmModal'), 'app.js should define openDownloadConfirmModal');
-      assert(appSource.includes('downloadConfirmModal'), 'app.js should bind downloadConfirmModal elements');
+      assert(storyboardControllerSource.includes("downloadBtn.addEventListener('click'"), 'storyboard-controller.js should bind the ZIP download click listener');
+      assert(storyboardControllerSource.includes('openDownloadModal'), 'storyboard-controller.js should define the ZIP confirmation flow');
+      assert(appSource.includes('downloadConfirmModal'), 'app.js should compose the download confirmation elements');
 
       addResult('Download Confirmation Modal Summary', true);
     } catch (err) {
