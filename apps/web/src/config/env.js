@@ -22,6 +22,7 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     jobs: path.join(root, 'data', 'jobs'), idempotency: path.join(root, 'data', 'idempotency'),
     generationCache: path.join(root, 'data', 'generation-cache'),
     videoAttempts: path.join(root, 'data', 'video-attempts'),
+    materialized: path.join(root, 'data', 'materialized'),
     piper: env.PIPER_BINARY_PATH || path.join(root, 'vendor', 'piper', 'piper'),
     piperVoices: path.join(root, 'vendor', 'piper', 'voices'),
     ltxShared: path.resolve(env.LTX_SHARED_DIR || '/home/administrator/web/ltx-env/io/basic-cartoon-poc'),

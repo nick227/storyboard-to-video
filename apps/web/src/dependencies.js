@@ -54,11 +54,16 @@ const { createStylesController } = require('./controllers/styles.controller');
 const { createVoiceController } = require('./controllers/voice.controller');
 const { createAssetsController } = require('./controllers/assets.controller');
 const { createBlobStore } = require('./storage/blob-store');
+const { createAssetMaterializer } = require('./storage/asset-materializer');
 
 function createDependencies(config, overrides = {}) {
   const useTestAdapters = Boolean(overrides.identityStore && !overrides.prisma && !overrides.projectStore);
   const prisma = useTestAdapters ? null : (overrides.prisma || createPrismaClient(config.env.DATABASE_URL));
   const blobStore = overrides.blobStore || createBlobStore(config);
+  const materializer = overrides.materializer || createAssetMaterializer({
+    blobStore,
+    cacheDir: config.paths.materialized,
+  });
   const projectStore = overrides.projectStore || (useTestAdapters
     ? new ProjectStore(config.paths.projects, { blobStore })
     : new PrismaProjectRepository(config.paths.projects, prisma, { blobStore }));
@@ -99,9 +104,9 @@ function createDependencies(config, overrides = {}) {
   const dialogue = createDialogueService({ textProviders, generationCache });
   const sceneSplit = createSceneSplitService({ textProviders, generationCache });
   const shotPlanning = createShotPlanningService({ textProviders, generationCache });
-  const images = createImageGenerationService({ config, styles, provider: imageProvider, projectStore });
+  const images = createImageGenerationService({ config, styles, provider: imageProvider, projectStore, materializer });
   const audio = createAudioGenerationService({ config, provider: audioProvider, alignmentProvider, projectStore });
-  const videos = createVideoGenerationService({ config, providers: videoProviders, execution: videoExecution, projectStore, styles, attempts: videoAttemptRepository });
+  const videos = createVideoGenerationService({ config, providers: videoProviders, execution: videoExecution, projectStore, styles, attempts: videoAttemptRepository, materializer });
   const mediaOutput = createMediaOutputService({ config, projectStore, billing, videoProviders });
   const subtitles = createSubtitleGenerationService({ config, projectStore });
   const shotReferences = createShotReferenceService({ config, projectStore });

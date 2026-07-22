@@ -10,6 +10,7 @@ const { readImageDimensions } = require('../media/image-dimensions');
 const { videoProviderCapabilities } = require('../shared/video-provider-capabilities');
 const { resolveVideoInputPlan } = require('../shared/video-input-plan');
 const { mergeMediaIntent, resolveVideoOutput } = require('../shared/media-output-policy');
+const { createAssetMaterializer } = require('../storage/asset-materializer');
 
 const DEFAULT_MOTION_PROMPT = [
   'Show clear continuous subject movement and follow-through; never a frozen hold.',
@@ -80,14 +81,20 @@ function validateMiniMaxInterpolationFrames(startSource, endSource, requestedAsp
   return { start, end };
 }
 
-function createVideoGenerationService({ config, provider, providers, execution, projectStore, styles, attempts }) {
-  async function resolve(publicPath, ownerId) {
+function createVideoGenerationService({ config, provider, providers, execution, projectStore, styles, attempts, materializer }) {
+  const assetMaterializer = materializer || createAssetMaterializer({
+    blobStore: projectStore.blobStore,
+    cacheDir: config.paths.materialized || path.join(config.paths.videos, '.materialized'),
+  });
+
+  async function materializePublicAsset(publicPath, ownerId) {
     if (!publicPath) return null;
     const match = String(publicPath).match(/^\/projects\/([^/]+)\/assets\/[^/]+\/[^/]+$/);
     if (!match) return null;
     const projectId = decodeURIComponent(match[1]);
     const asset = await projectStore.resolveAsset(projectId, publicPath, { ownerId });
-    return asset?.sourcePath || null;
+    if (!asset?.storageKey) return null;
+    return assetMaterializer.materialize(asset.storageKey);
   }
 
   function fileHash(sourcePath) {
@@ -158,11 +165,15 @@ function createVideoGenerationService({ config, provider, providers, execution, 
         : null;
       const startFramePath = confirmedKeyframes?.startFrame || activeImage?.path || input.imagePath || null;
       const endFramePath = confirmedKeyframes?.endFrame || null;
-      const startSource = await resolve(startFramePath, ownerId);
+      const startHandle = await materializePublicAsset(startFramePath, ownerId);
+      const endHandle = endFramePath ? await materializePublicAsset(endFramePath, ownerId) : null;
+      let preserveStaged = false;
+      try {
+      const startSource = startHandle?.path || null;
       if (!startSource || !fs.existsSync(startSource)) {
         throw new AppError('INVALID_PATH', 'A valid generated reference image is required', { status: 400 });
       }
-      const endSource = endFramePath ? await resolve(endFramePath, ownerId) : null;
+      const endSource = endHandle?.path || null;
       if (endFramePath && (!endSource || !fs.existsSync(endSource))) throw new AppError('INVALID_END_FRAME', 'The selected end frame is unavailable', { status: 400 });
       const projectVideoDefaults = project.mediaSettings?.video || {};
       const providerName = input.provider || projectVideoDefaults.provider || config.videoProvider || 'ltx';
@@ -192,7 +203,6 @@ function createVideoGenerationService({ config, provider, providers, execution, 
       fs.mkdirSync(config.paths.videos, { recursive: true });
       const file = `${String(input.sceneNumber).padStart(2, '0')}-${slugify(input.sceneTitle || 'scene')}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.mp4`;
       const staged = path.join(config.paths.videos, file);
-      let preserveStaged = false;
       try {
         const inputPlan = resolveVideoInputPlan({
           provider: providerName, model: providerResolution?.model || model, mode: generationMode, capabilities,
@@ -271,6 +281,13 @@ function createVideoGenerationService({ config, provider, providers, execution, 
         };
       } finally {
         if (!preserveStaged) fs.rmSync(staged, { force: true });
+      }
+      } finally {
+        // Keep materialized frame paths when an async attempt is pending — snapshot retains sourcePath.
+        if (!preserveStaged) {
+          if (startHandle) await startHandle.release();
+          if (endHandle) await endHandle.release();
+        }
       }
     },
     cancelAttempt: (attemptId) => execution.cancel(attemptId),
