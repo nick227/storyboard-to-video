@@ -87,7 +87,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install modal
+      # dev is auto-bootstrapped-or-skipped, never a hard CI failure -- see
+      # .github/scripts/modal-preflight.sh. Run .github/scripts/modal-bootstrap.sh once to stop skipping.
+      - name: Preflight - dev Modal environment/secret
+        id: preflight
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: bash .github/scripts/modal-preflight.sh dev voice-service-secrets skip
       - name: Deploy voice-service to Modal (dev)
+        if: steps.preflight.outputs.ready == 'true'
         working-directory: apps/voice-service
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
@@ -105,7 +114,14 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install modal
+      - name: Preflight - dev Modal environment/secret
+        id: preflight
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: bash .github/scripts/modal-preflight.sh dev piper-service-secrets skip
       - name: Deploy piper-service to Modal (dev)
+        if: steps.preflight.outputs.ready == 'true'
         working-directory: apps/piper-service
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}

@@ -6,8 +6,12 @@ name: Deploy Modal TTS services (prod)
 # only path that deploys to the `prod` Modal Environment, and it only runs when a human explicitly
 # triggers it from Actions -> "Deploy Modal TTS services (prod)" -> Run workflow.
 #
-# One-time setup (see apps/voice-service/modal_app.py and apps/piper-service/modal_app.py
-# docstrings for the full explanation):
+# Unlike the dev auto-deploy (which skips with a warning if `dev` isn't bootstrapped yet, so a
+# missing Environment never breaks push-to-main CI), a missing `prod` Environment/Secret here
+# fails the job outright with setup instructions -- see .github/scripts/modal-preflight.sh. A
+# manual, deliberate prod deploy should never silently no-op.
+#
+# One-time setup: ./.github/scripts/modal-bootstrap.sh (see its header comment), or manually:
 #   modal environment create prod
 #   modal secret create voice-service-secrets SPARK_SERVICE_TOKEN=... SPARK_TEMPERATURE=0.8 SPARK_TOP_K=50 SPARK_TOP_P=0.95 --env prod
 #   modal secret create piper-service-secrets PIPER_SERVICE_TOKEN=... --env prod
@@ -25,6 +29,11 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install modal
+      - name: Preflight - prod Modal environment/secret
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: bash .github/scripts/modal-preflight.sh prod voice-service-secrets fail
       - name: Deploy voice-service to Modal (prod)
         working-directory: apps/voice-service
         env:
@@ -41,6 +50,11 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install modal
+      - name: Preflight - prod Modal environment/secret
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: bash .github/scripts/modal-preflight.sh prod piper-service-secrets fail
       - name: Deploy piper-service to Modal (prod)
         working-directory: apps/piper-service
         env:

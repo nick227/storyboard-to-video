@@ -12,6 +12,7 @@
     "test": "npm --prefix apps/web test && apps/voice-service/venv/bin/python -m pytest apps/voice-service/test_main.py && apps/piper-service/venv/bin/python -m pytest apps/piper-service/test_main.py && apps/alignment-service/venv/bin/python -m pytest apps/alignment-service/test_main.py",
     "setup:piper": "npm --prefix apps/web run setup:piper",
     "setup:spark": "bash apps/voice-service/setup.sh",
-    "setup:align": "bash apps/alignment-service/setup.sh"
+    "setup:align": "bash apps/alignment-service/setup.sh",
+    "modal:bootstrap": "bash .github/scripts/modal-bootstrap.sh"
   }
 }
