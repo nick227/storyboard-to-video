@@ -402,15 +402,8 @@ label > span {
   min-width: 0;
   max-width: 70%;
 }
-.script-header-primary[hidden],
-.script-header-meta[hidden] {
+.script-header-primary[hidden] {
   display: none !important;
-}
-.script-header-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
 }
 .script-mode-label {
   font-size: 12px;
@@ -419,23 +412,31 @@ label > span {
   letter-spacing: 0.05em;
   font-weight: 600;
 }
-.script-mode-select {
-  width: auto;
-  min-width: 140px;
-  max-width: 100%;
-  padding: 4px 8px;
-  font-size: 13px;
-  background: var(--panel-2);
-  border-radius: 6px;
-}
 .script-header-actions {
   flex: 0 1 30%;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
+}
+.script-mode-select,
+.script-focus-button,
+.script-icon-button {
+  height: 34px;
+  min-height: 34px;
+  box-sizing: border-box;
+}
+.script-mode-select {
+  width: auto;
+  min-width: 140px;
+  max-width: 100%;
+  padding: 0 10px;
+  font-size: 13px;
+  line-height: 1;
+  background: var(--panel-2);
+  border-radius: 6px;
 }
 @media (max-width: 960px) {
   .script-header-row {
@@ -454,7 +455,6 @@ label > span {
 .script-icon-button {
   display: grid;
   width: 34px;
-  min-height: 34px;
   padding: 0;
   place-items: center;
   background: transparent;
@@ -504,10 +504,10 @@ label > span {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 34px;
-  padding: 6px 10px;
+  padding: 0 10px;
   background: transparent;
   color: var(--muted);
+  white-space: nowrap;
 }
 .script-focus-button:hover { border-color: var(--accent); color: var(--text); }
 body.script-focus-active { overflow: hidden; }

@@ -21,7 +21,6 @@ export function initScriptController(elements, { setStatus, onScriptChange } = {
 
   const setToolbarHostsVisible = (visible) => {
     if (elements.toolbarHost) elements.toolbarHost.hidden = !visible;
-    if (elements.toolbarMetaHost) elements.toolbarMetaHost.hidden = !visible;
   };
 
   const setEditorMode = (mode) => {
@@ -38,7 +37,6 @@ export function initScriptController(elements, { setStatus, onScriptChange } = {
           editor = new ScreenplayEditor({
             container: elements.editorContainer,
             toolbarHost: elements.toolbarHost || null,
-            toolbarMetaHost: elements.toolbarMetaHost || null,
             initialScript,
             format: 'fountain',
             showToolbar: true,

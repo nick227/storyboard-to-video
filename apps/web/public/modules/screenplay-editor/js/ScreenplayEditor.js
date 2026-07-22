@@ -20,7 +20,6 @@ export class ScreenplayEditor {
      * @param {string} [options.format='fountain'] - Input format ('fountain' | 'tagged' | 'json' | 'array')
      * @param {boolean} [options.showToolbar=true] - Whether to render built-in toolbar
      * @param {HTMLElement} [options.toolbarHost] - Optional external host for format chips (70% column)
-     * @param {HTMLElement} [options.toolbarMetaHost] - Optional external host for page badge / theme
      * @param {function} [options.onChange] - Callback fired whenever script content changes
      * @param {function} [options.onSelectionChange] - Callback fired whenever selection/cursor format changes
      */
@@ -33,7 +32,6 @@ export class ScreenplayEditor {
         this.format = options.format || 'fountain';
         this.showToolbar = options.showToolbar !== false;
         this.toolbarHost = options.toolbarHost || null;
-        this.toolbarMetaHost = options.toolbarMetaHost || null;
         this.theme = options.theme || 'dark';
 
         this.callbacks = {
@@ -122,50 +120,18 @@ export class ScreenplayEditor {
         });
         chipsGroup.appendChild(helpBtn);
 
-        this.pageBadge = document.createElement('span');
-        this.pageBadge.className = 'screenplay-page-badge';
-        this.pageBadge.title = 'Approximate page count until deterministic pagination';
-        this.pageBadge.textContent = '≈ Page 1 of 1';
-
-        const themeBtn = document.createElement('button');
-        themeBtn.type = 'button';
-        themeBtn.className = 'screenplay-theme-btn';
-        themeBtn.textContent = this.theme === 'dark' ? '☀️ Light' : '🌙 Dark';
-        themeBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.setTheme(this.theme === 'dark' ? 'light' : 'dark');
-        });
-        this.themeBtn = themeBtn;
-
         if (this.toolbarHost) {
             this.toolbarHost.innerHTML = '';
             this.toolbarHost.hidden = false;
             this.toolbarHost.classList.add('screenplay-toolbar', 'is-hosted', `theme-${this.theme}`);
             this.toolbarHost.appendChild(chipsGroup);
             this.toolbar = this.toolbarHost;
-
-            if (this.toolbarMetaHost) {
-                this.toolbarMetaHost.innerHTML = '';
-                this.toolbarMetaHost.hidden = false;
-                this.toolbarMetaHost.classList.add('screenplay-toolbar-meta', `theme-${this.theme}`);
-                this.toolbarMetaHost.append(this.pageBadge, themeBtn);
-            } else {
-                const rightGroup = document.createElement('div');
-                rightGroup.className = 'screenplay-toolbar-right';
-                rightGroup.append(this.pageBadge, themeBtn);
-                this.toolbarHost.appendChild(rightGroup);
-            }
             return;
         }
 
         this.toolbar = document.createElement('div');
         this.toolbar.className = 'screenplay-toolbar';
         this.toolbar.appendChild(chipsGroup);
-
-        const rightGroup = document.createElement('div');
-        rightGroup.className = 'screenplay-toolbar-right';
-        rightGroup.append(this.pageBadge, themeBtn);
-        this.toolbar.appendChild(rightGroup);
         this.wrapper.appendChild(this.toolbar);
     }
 
@@ -252,13 +218,9 @@ export class ScreenplayEditor {
             this.wrapper.classList.remove('theme-dark', 'theme-light');
             this.wrapper.classList.add(`theme-${this.theme}`);
         }
-        [this.toolbarHost, this.toolbarMetaHost].forEach((el) => {
-            if (!el) return;
-            el.classList.remove('theme-dark', 'theme-light');
-            el.classList.add(`theme-${this.theme}`);
-        });
-        if (this.themeBtn) {
-            this.themeBtn.textContent = this.theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+        if (this.toolbarHost) {
+            this.toolbarHost.classList.remove('theme-dark', 'theme-light');
+            this.toolbarHost.classList.add(`theme-${this.theme}`);
         }
     }
 
@@ -277,7 +239,7 @@ export class ScreenplayEditor {
     setLinesPerPage (maxLines) {
         if (this.pageManager) {
             this.pageManager.setLinesPerPage(maxLines);
-            this._updatePageBadge();
+            if (this.viewportScaler) this.viewportScaler.scheduleUpdate();
         }
     }
 
@@ -285,7 +247,7 @@ export class ScreenplayEditor {
         this.isDirty = true;
         const currentDoc = this.getScriptDocument();
         const rawText = RawScriptAdapter.serialize(currentDoc, this.format);
-        this._updatePageBadge();
+        if (this.viewportScaler) this.viewportScaler.scheduleUpdate();
 
         if (typeof this.callbacks.onChange === 'function') {
             this.callbacks.onChange({
@@ -306,27 +268,13 @@ export class ScreenplayEditor {
                 });
             }
 
-            this._updatePageBadge();
-
             if (typeof this.callbacks.onSelectionChange === 'function') {
                 this.callbacks.onSelectionChange({
                     format: currentFormat,
                     lineElement: activeLine
                 });
             }
-        } else {
-            this._updatePageBadge();
         }
-    }
-
-    _updatePageBadge () {
-        if (this.pageBadge && this.pageManager) {
-            const current = this.pageManager.getCurrentPageNumber();
-            const total = this.pageManager.getPageCount();
-            this.pageBadge.textContent = `≈ Page ${current} of ${total}`;
-            this.pageBadge.title = 'Approximate page count until deterministic pagination';
-        }
-        if (this.viewportScaler) this.viewportScaler.scheduleUpdate();
     }
 
     _handleEngineEvent (event, data) {
@@ -349,10 +297,6 @@ export class ScreenplayEditor {
         if (this.toolbarHost) {
             this.toolbarHost.innerHTML = '';
             this.toolbarHost.hidden = true;
-        }
-        if (this.toolbarMetaHost) {
-            this.toolbarMetaHost.innerHTML = '';
-            this.toolbarMetaHost.hidden = true;
         }
         this.container.innerHTML = '';
     }

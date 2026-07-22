@@ -59,11 +59,16 @@
         <div class="script-header-row">
           <div id="screenplayToolbarHost" class="script-header-primary" hidden></div>
           <div class="script-header-actions">
-            <div id="screenplayToolbarMeta" class="script-header-meta" hidden></div>
             <select id="scriptModeSelect" class="script-mode-select">
               <option value="raw">Raw Text</option>
               <option value="screenplay">Screenplay Editor</option>
             </select>
+            <button type="button" id="scriptFocusBtn" class="script-focus-button" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+              </svg>
+              <span id="scriptFocusBtnLabel">Full screen</span>
+            </button>
             <div class="script-download-control">
               <button type="button" id="scriptDownloadBtn" class="script-icon-button" aria-label="Download script"
                 title="Download script" aria-haspopup="menu" aria-expanded="false" aria-controls="scriptDownloadMenu">
@@ -80,12 +85,6 @@
                 <button type="button" role="menuitem" data-script-format="print"><strong>Print / PDF</strong><small>formatted pages</small></button>
               </div>
             </div>
-            <button type="button" id="scriptFocusBtn" class="script-focus-button" aria-pressed="false">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
-              </svg>
-              <span id="scriptFocusBtnLabel">Full screen</span>
-            </button>
           </div>
         </div>
         <textarea id="scriptText" class="script-textarea" rows="7"
