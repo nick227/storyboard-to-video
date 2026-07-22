@@ -98,13 +98,13 @@ function registerRoutes(app, d) {
   app.use(assetsRoutes(d.controllers.assets));
   app.use('/api/projects', createProjectRouter({
     store: d.projectStore, queue: d.queue, upload: d.upload, shotReferences: d.shotReferences,
-    styles: d.styles, prompts: d.prompts, referenceGeneration: d.referenceGeneration, imageProvider: d.imageProvider, identityStore: d.identityStore, prisma: d.prisma, config: d.config
+    styles: d.styles, prompts: d.prompts, referenceGeneration: d.referenceGeneration, imageProvider: d.imageProvider, identityStore: d.identityStore, prisma: d.prisma, config: d.config, spendSummary: d.spendSummary
   }));
   app.use('/api/jobs', createJobRouter({ queue: d.queue, store: d.projectStore, videoAttempts: d.videoAttemptRepository, videoExecution: d.videoExecution }));
   app.use('/api/admin/usage', usageRoutes(d.usageRepository));
   app.use('/api/admin/billing', billingRoutes(d.billingRepository, d.billing, d.adminRepository));
   app.use('/api/admin', adminRoutes(d.adminRepository, d.queue, d.paymentRepository, d.payments));
-  app.use('/api/billing', paymentRoutes(d.paymentRepository, d.payments));
+  app.use('/api/billing', paymentRoutes(d.paymentRepository, d.payments, d.spendSummary));
   app.use('/api/media-output', mediaOutputRoutes(d.mediaOutput));
   app.use('/api/styles', stylesRoutes({ controller: d.controllers.styles, upload: d.upload }));
   app.use('/api/storyboard', storyboardRoutes({ controller: d.controllers.storyboard, idempotency: d.idempotency, execute: d.execute }));

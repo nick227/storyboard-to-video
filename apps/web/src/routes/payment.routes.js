@@ -6,11 +6,16 @@ const { jsonSafe } = require('./billing.routes');
 
 const uuid = z.string().uuid();
 
-function paymentRoutes(repository, payments) {
+function paymentRoutes(repository, payments, spendSummary) {
   const router = express.Router();
   router.get('/credit-packs', asyncRoute(async (req, res) => {
     const packs = await repository.listActivePacks();
     res.json(jsonSafe({ ok: true, paymentsEnabled: payments.enabled, packs }));
+  }));
+  router.get('/spend', asyncRoute(async (req, res) => {
+    if (!spendSummary) return res.json(jsonSafe({ ok: true, totalCostUSD: 0, totalTokens: 0, totalCredits: 0, totalCreditMicros: '0', providers: {}, projects: [] }));
+    const summary = await spendSummary.getTenantSpend(req.auth.tenantId);
+    res.json(jsonSafe({ ok: true, ...summary }));
   }));
   router.post('/checkout', asyncRoute(async (req, res) => {
     const idempotencyKey = String(req.get('Idempotency-Key') || '').trim();

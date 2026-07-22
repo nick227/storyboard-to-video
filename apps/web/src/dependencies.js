@@ -18,6 +18,7 @@ const { ProviderAdmissionQueue } = require('./services/provider-admission-queue'
 const { createProviderUsageService } = require('./services/provider-usage.service');
 const { createBillingService } = require('./services/billing.service');
 const { createPaymentService } = require('./services/payment.service');
+const { createSpendSummaryService } = require('./services/spend-summary.service');
 const Stripe = require('stripe');
 const { createStylesService } = require('./services/styles.service');
 const { createTextProviders } = require('./providers/text');
@@ -79,6 +80,7 @@ function createDependencies(config, overrides = {}) {
     repository: paymentRepository, stripe, webhookSecret: config.payments?.stripeWebhookSecret, publicAppUrl: config.payments?.publicAppUrl, providerAdmission,
   });
   const usageTracker = createProviderUsageService({ repository: usageRepository, generationContext, billing });
+  const spendSummary = overrides.spendSummary || (prisma ? createSpendSummaryService({ prisma, billingRepository }) : null);
   const videoAttemptRepository = overrides.videoAttemptRepository || (prisma ? new PrismaVideoGenerationAttemptRepository(prisma) : new VideoGenerationAttemptStore(config.paths.videoAttempts));
 
   const styles = createStylesService(config);
@@ -107,7 +109,7 @@ function createDependencies(config, overrides = {}) {
   const auth = new AuthService({ identityStore });
 
   return {
-    config, prisma, projectStore, queue, providerAdmission, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, generationContext, identityStore,
+    config, prisma, projectStore, queue, providerAdmission, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, spendSummary, generationContext, identityStore,
     styles, prompts, referenceGeneration, dialogue, sceneSplit, shotPlanning, images, audio, videos, subtitles, shotReferences, exports, voices, imageProvider, mediaOutput,
     upload: createUpload(config),
     auth,
