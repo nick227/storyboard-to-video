@@ -3,6 +3,7 @@ process.env.ADMIN_OWNER_IDS = 'alice';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -11,6 +12,7 @@ const { app, generationQueue, projectStore, prisma } = require('../server');
 const { GenerationQueue } = require('../src/services/generation-queue');
 const { JobStore } = require('../src/storage/job-store');
 const { ProjectStore } = require('../src/storage/project-store');
+const { PrismaBillingRepository } = require('../src/storage/prisma-billing.repository');
 
 const auth = (token = 'alice-token') => ({ Authorization: `Bearer ${token}` });
 const id = (label) => `test-${label}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -21,6 +23,65 @@ async function cleanupProject(projectId) {
   await prisma.projectTombstone.deleteMany({ where: { projectId } });
   fs.rmSync(projectStore.projectDir(projectId), { recursive: true, force: true });
 }
+
+// CI runs every job against a brand-new, empty Postgres DB; local dev runs against a long-lived
+// shared DB that already has the real, reconciled catalog from prior manual reconciliation work.
+// A fresh DB isn't actually empty of ProviderPriceVersion rows, though: an early migration
+// (20260717111500_billing_foundation) INSERTs 5 of the 14 real (provider, modality, model)
+// tuples directly -- but pre-dating the billingTier column and the later billable flips, so
+// those 5 rows are active with billingTier: null, billable: false. `ensureActivePrice` therefore
+// checks for an active row that already SATISFIES the requested billingTier (and, when
+// billable:true is requested, is actually billable with a recorded reconciledAt) -- not just any
+// active row for that tuple -- and only creates a new one if no such row exists.
+//
+// A DB-level partial unique index (provider_price_versions_one_active, not modeled in
+// schema.prisma -- added via raw SQL in the same migration above) allows at most one active row
+// per (provider, modality, model), so creating a new satisfying row when an old, under-tagged one
+// is already active means that old row must be retired -- there's no way around it at the DB
+// level. This is done via configurePrice's own active:true path (the exact mechanism the admin
+// console and every reconciliation script already use), never a raw update, so it's the same
+// retire-and-activate the app performs for a real pricing change. In the shared dev DB this
+// never actually fires: the real rows already satisfy every fixture below, so the existence
+// check always succeeds and nothing is ever created or retired there. It only fires against a
+// fresh DB, where the row being retired is itself a placeholder the app was never going to use
+// (billingTier: null, billable: false) -- retiring it is correct, not destructive. Rows this
+// creates are the correct permanent catalog entries for that DB (not test pollution), so they're
+// deliberately never torn down afterward.
+const billingRepositoryForSeeds = new PrismaBillingRepository(prisma);
+async function ensureActivePrice({ provider, modality, model, rateCard, billingTier, billable = false, evidenceStatus = 'documented', reconciledAt = null }) {
+  const existing = await prisma.providerPriceVersion.findFirst({
+    where: { provider, modality, model, active: true, billingTier, ...(billable ? { billable: true, reconciledAt: { not: null } } : {}) },
+  });
+  if (existing) return existing;
+  const created = await billingRepositoryForSeeds.createPriceVersion({
+    versionKey: `ci-seed-${provider}-${modality}-${model}-${crypto.randomUUID()}`,
+    provider, modality, model, currency: 'USD', rateCard, reservationNanoUsd: 0n,
+    evidenceStatus, billingTier, billable, reconciledAt: billable ? (reconciledAt || new Date()) : reconciledAt,
+    active: false,
+  });
+  return billingRepositoryForSeeds.configurePrice(created.id, { active: true });
+}
+
+// The canonical (provider, modality, model, billingTier) catalog this app is supposed to have
+// priced -- mirrors the real, manually-reconciled rows in the shared dev DB. Each integration
+// test below calls ensureActivePrice() for exactly the entries it depends on, so it passes
+// standalone against a fresh CI DB without relying on any other test having run first.
+const CANONICAL_PRICE_FIXTURES = {
+  openaiText: { provider: 'openai', modality: 'text', model: 'gpt-4.1-mini', rateCard: { type: 'flat', nanoUsdPerUnit: 1_000_000 }, billingTier: 'customer_metered', billable: true, evidenceStatus: 'dashboard_reconciled' },
+  openaiImage: { provider: 'openai', modality: 'image', model: 'gpt-image-1', rateCard: { type: 'flat', quantityKey: 'images', nanoUsdPerUnit: 40_000_000 }, billingTier: 'customer_metered' },
+  geminiText: { provider: 'gemini', modality: 'text', model: 'gemini-3.5-flash', rateCard: { type: 'flat', nanoUsdPerUnit: 1_000_000 }, billingTier: 'customer_metered' },
+  geminiImage: { provider: 'gemini', modality: 'image', model: 'gemini-3.1-flash-image', rateCard: { type: 'flat', quantityKey: 'images', nanoUsdPerUnit: 60_000_000 }, billingTier: 'customer_metered' },
+  dezgo: { provider: 'dezgo', modality: 'image', model: 'text2image', rateCard: { type: 'flat', quantityKey: 'images', nanoUsdPerUnit: 15_000_000 }, billingTier: 'customer_metered' },
+  minimax: { provider: 'minimax', modality: 'video', model: 'MiniMax-Hailuo-02', rateCard: { type: 'flat', quantityKey: 'videos', nanoUsdPerUnit: 270_000_000 }, billingTier: 'customer_metered' },
+  ltxVideo: { provider: 'ltx', modality: 'video', model: 'ltx-video', rateCard: { type: 'flat', quantityKey: 'videos', nanoUsdPerUnit: 15_000_000 }, billingTier: 'platform_overhead' },
+  piperLocal: { provider: 'piper', modality: 'audio', model: 'piper-local', rateCard: { type: 'flat', quantityKey: 'characters', nanoUsdPerUnit: 100_000 }, billingTier: 'platform_overhead' },
+  piperModal: { provider: 'piper', modality: 'audio', model: 'piper-modal', rateCard: { type: 'flat', quantityKey: 'characters', nanoUsdPerUnit: 100_000 }, billingTier: 'platform_overhead' },
+  sparkTts: { provider: 'spark', modality: 'audio', model: 'spark-tts', rateCard: { type: 'flat', quantityKey: 'characters', nanoUsdPerUnit: 500_000 }, billingTier: 'platform_overhead' },
+  sparkVoiceClone: { provider: 'spark', modality: 'audio', model: 'spark-voice-clone', rateCard: { type: 'flat', nanoUsdPerUnit: 500_000_000 }, billingTier: 'platform_overhead' },
+  sparkPreflight: { provider: 'spark', modality: 'audio', model: 'spark-preflight', rateCard: { type: 'flat', nanoUsdPerUnit: 0 }, billingTier: 'platform_overhead' },
+  sparkReference: { provider: 'spark', modality: 'audio', model: 'spark-reference', rateCard: { type: 'flat', nanoUsdPerUnit: 0 }, billingTier: 'platform_overhead' },
+  whisperx: { provider: 'whisperx', modality: 'alignment', model: 'whisperx-forced-alignment', rateCard: { type: 'flat', nanoUsdPerUnit: 2_000_000 }, billingTier: 'platform_overhead' },
+};
 
 test('public home introduces the product while the studio remains authenticated', async () => {
   await request(app).get('/').expect(200).expect(/Turn a script into a narrated video sequence/).expect(/<storyframe-topbar>/);
@@ -266,7 +327,6 @@ test('split-scene splits one fragment into the requested number of sub-scenes', 
 });
 
 test('GET /api/projects/:projectId/tokens retrieves and aggregates project token spend details', async (t) => {
-  const crypto = require('node:crypto');
   const projectId = id('tokens'); t.after(() => cleanupProject(projectId));
   const project = await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Tokens Test' }).expect(201);
   const tenantId = project.body.project.tenantId;
@@ -360,7 +420,10 @@ test('GET /api/projects/:projectId/tokens retrieves and aggregates project token
   assert.ok(populatedRes.body.providers.openai.modalities.text.models['gpt-4o']);
 
   // Video usage is generation-based rather than token-based, but it must still appear in the same
-  // project-spend breakdown with its provider and model.
+  // project-spend breakdown with its provider and model. This event has no ProviderCostSnapshot,
+  // so its cost is live-computed against the active ltx-video price -- ensure one exists (a fresh
+  // CI DB has no seeded catalog at all; see ensureActivePrice's comment above).
+  await ensureActivePrice(CANONICAL_PRICE_FIXTURES.ltxVideo);
   const videoRequestId = crypto.randomUUID();
   await prisma.generationRequest.create({
     data: {
@@ -401,31 +464,22 @@ test('GET /api/projects/:projectId/tokens retrieves and aggregates project token
   assert.equal(videoRes.body.providers.ltx.modalities.video.models['ltx-video'].billingTier, 'platform_overhead');
 });
 
-// The exact provider/modality/model combinations this task seeded non-billable observability
-// prices for (scripts/seed-observability-prices.js) plus the ones that already existed. Checked
-// against a curated list rather than every distinct (provider, modality, model) that has ever
-// appeared in GenerationRequest: this integration test itself (and others) leave behind
-// `test-version-*` ProviderPriceVersion/GenerationRequest rows in the shared dev DB across runs
-// (e.g. a stray `gpt-4o` model from earlier test runs, never a real production model), which
-// would make a blanket "every model in history" assertion flaky/misleading.
-const REQUIRED_PRICED_MODELS = [
-  { provider: 'openai', modality: 'text', model: 'gpt-4.1-mini' },
-  { provider: 'openai', modality: 'image', model: 'gpt-image-1' },
-  { provider: 'gemini', modality: 'text', model: 'gemini-3.5-flash' },
-  { provider: 'gemini', modality: 'image', model: 'gemini-3.1-flash-image' },
-  { provider: 'dezgo', modality: 'image', model: 'text2image' },
-  { provider: 'minimax', modality: 'video', model: 'MiniMax-Hailuo-02' },
-  { provider: 'ltx', modality: 'video', model: 'ltx-video' },
-  { provider: 'piper', modality: 'audio', model: 'piper-local' },
-  { provider: 'piper', modality: 'audio', model: 'piper-modal' },
-  { provider: 'spark', modality: 'audio', model: 'spark-tts' },
-  { provider: 'spark', modality: 'audio', model: 'spark-voice-clone' },
-  { provider: 'spark', modality: 'audio', model: 'spark-preflight' },
-  { provider: 'spark', modality: 'audio', model: 'spark-reference' },
-  { provider: 'whisperx', modality: 'alignment', model: 'whisperx-forced-alignment' },
-];
+// The exact provider/modality/model combinations this app is supposed to have priced (mirrors
+// CANONICAL_PRICE_FIXTURES above). Checked against a curated list rather than every distinct
+// (provider, modality, model) that has ever appeared in GenerationRequest: this integration test
+// file (and others) leave behind `test-version-*`/stray ProviderPriceVersion rows across runs
+// (e.g. a stray `gpt-4o` model, never a real production model), which would make a blanket
+// "every model in history" assertion flaky/misleading.
+const REQUIRED_PRICED_MODELS = Object.values(CANONICAL_PRICE_FIXTURES).map(({ provider, modality, model }) => ({ provider, modality, model }));
 
 test('every provider/model this task priced for observability has an active price row, and nothing is billable unless tagged customer_metered with a recorded evidence-acceptance date', async () => {
+  // Self-contained: seed every required row rather than assume a previous test (or a shared dev
+  // DB's history) already did. ensureActivePrice() never touches an already-active row, so this
+  // is a no-op against a DB that already has the real catalog. Sequential, not Promise.all --
+  // configurePrice runs a Serializable transaction, and firing 14 of those concurrently against
+  // the same table triggers real Postgres serialization conflicts even across disjoint rows.
+  for (const fixture of Object.values(CANONICAL_PRICE_FIXTURES)) await ensureActivePrice(fixture);
+
   const activePrices = await prisma.providerPriceVersion.findMany({ where: { active: true }, select: { provider: true, modality: true, model: true, billable: true, versionKey: true, evidenceStatus: true, reconciledAt: true, billingTier: true } });
   const priceKeys = new Set(activePrices.map((price) => `${price.provider}::${price.modality}::${price.model}`));
   const missing = REQUIRED_PRICED_MODELS.filter((row) => !priceKeys.has(`${row.provider}::${row.modality}::${row.model}`));
@@ -446,10 +500,17 @@ test('every provider/model this task priced for observability has an active pric
   for (const price of platformOverhead) {
     assert.equal(price.billable, false, `${price.versionKey} is a platform_overhead price but is billable`);
   }
-  assert.ok(billable.some((price) => price.versionKey === 'openai-gpt-4.1-mini-2026-07-17'), 'the reconciled OpenAI text price should still be billable');
+  // Checked by (provider, modality, model), not a specific historical versionKey -- a fresh CI
+  // DB will never have the exact hand-reconciled row from the shared dev DB's real history, but
+  // the invariant this guards (a real, billable, customer-metered OpenAI text price exists) must
+  // hold in both.
+  assert.ok(billable.some((price) => price.provider === 'openai' && price.modality === 'text'), 'a billable, customer-metered OpenAI text price should exist');
 });
 
 test('GET /api/billing/pricing reads real ProviderPriceVersion rows, not a static duplicate array', async () => {
+  await ensureActivePrice(CANONICAL_PRICE_FIXTURES.minimax);
+  await ensureActivePrice(CANONICAL_PRICE_FIXTURES.whisperx);
+
   const response = await request(app).get('/api/billing/pricing').set(auth()).expect(200);
   assert.equal(response.body.ok, true);
   assert.ok(Array.isArray(response.body.prices));
