@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { AppError } = require('../errors');
 const { attachLegacyImageProjection, hasLegacySceneImageState, imageShot, migrateSceneImageToImplicitShot } = require('../shared/scene-shots');
 const { normalizeReferenceImages, normalizeReferenceRole } = require('../shared/reference-roles');
+const { buildProjectAssetPublicPath, buildProjectAssetStorageKey, createLocalBlobStore } = require('./blob-store');
 
 const SCENE_ASSET_FIELDS = Object.freeze({
   image: { list: 'versions', activeIndex: 'activeVersionIndex', visualType: 'image', owner: 'shot' },
@@ -25,6 +26,7 @@ class ProjectStore {
     this.tombstoneRoot = path.join(this.root, '.tombstones');
     this.maxFiles = Number(options.maxFiles || process.env.PROJECT_MAX_FILES || 500);
     this.maxBytes = Number(options.maxBytes || process.env.PROJECT_MAX_BYTES || 2 * 1024 * 1024 * 1024);
+    this.blobStore = options.blobStore || createLocalBlobStore({ root: this.root });
     fs.mkdirSync(this.tombstoneRoot, { recursive: true });
     this.recoverCleanups();
   }
@@ -256,35 +258,40 @@ class ProjectStore {
     return { files, bytes, maxFiles: this.maxFiles, maxBytes: this.maxBytes };
   }
 
-  commitAsset(lease, type, sourcePath, { fileName = path.basename(sourcePath), signal } = {}) {
+  commitAsset(lease, type, sourcePath, { fileName = path.basename(sourcePath), signal, mimeType } = {}) {
     this.verifyLease(lease, signal);
     const safeName = path.basename(fileName);
     if (!safeName || safeName !== fileName || safeName.includes('\\')) throw new AppError('INVALID_PATH', 'Invalid asset filename', { status: 400 });
     const size = fs.statSync(sourcePath).size;
     const usage = this.usage(lease.projectId);
     if (usage.files + 1 > this.maxFiles || usage.bytes + size > this.maxBytes) throw new AppError('PROJECT_QUOTA_EXCEEDED', 'Project storage quota exceeded', { status: 413, details: { ...usage, requestedBytes: size } });
-    const dir = this.assetDir(lease.projectId, type);
-    const destination = path.join(dir, safeName);
-    const temp = path.join(dir, `.${safeName}-${crypto.randomUUID()}.tmp`);
-    fs.copyFileSync(sourcePath, temp, fs.constants.COPYFILE_EXCL);
-    const tempFd = fs.openSync(temp, 'r');
-    try { fs.fsyncSync(tempFd); } finally { fs.closeSync(tempFd); }
+    const storageKey = buildProjectAssetStorageKey(lease.projectId, type, safeName);
+    const publicPath = buildProjectAssetPublicPath(lease.projectId, type, safeName);
+    let committed = false;
     try {
       this.verifyLease(lease, signal);
-      fs.renameSync(temp, destination);
-      const dirFd = fs.openSync(dir, 'r');
-      try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
-    }
-    finally { fs.rmSync(temp, { force: true }); }
-    const publicPath = `/projects/${encodeURIComponent(lease.projectId)}/assets/${type}/${encodeURIComponent(safeName)}`;
-    try {
+      this.blobStore.put(storageKey, sourcePath, { mimeType, byteSize: size });
+      committed = true;
       this.verifyLease(lease, signal);
       this.addReference(lease.projectId, publicPath, `generation:${crypto.randomUUID()}`);
     } catch (error) {
-      fs.rmSync(destination, { force: true });
+      if (committed) this.blobStore.delete(storageKey);
       throw error;
     }
-    return { fileName: safeName, sourcePath: destination, path: publicPath };
+    return {
+      fileName: safeName,
+      storageKey,
+      publicPath,
+      path: publicPath,
+      sourcePath: this.blobStore.resolveLocalPath?.(storageKey) ?? null,
+      mimeType: mimeType || null,
+      byteSize: size,
+    };
+  }
+
+  rollbackAsset(asset) {
+    if (asset?.storageKey) this.blobStore.delete(asset.storageKey);
+    else if (asset?.sourcePath) fs.rmSync(asset.sourcePath, { force: true });
   }
 
   attachSceneVersion(lease, { sceneId, kind, version, jobId }) {
@@ -322,41 +329,28 @@ class ProjectStore {
     const document = this.read(id, { ownerId });
     const safeName = path.basename(String(fileName || ''));
     if (!safeName || safeName !== fileName || safeName.includes('\\')) throw new AppError('INVALID_PATH', 'Invalid asset path', { status: 400 });
-    const publicPath = `/projects/${encodeURIComponent(id)}/assets/${type}/${encodeURIComponent(safeName)}`;
+    const publicPath = buildProjectAssetPublicPath(id, type, safeName);
     const references = [...new Set([...(this.references(id)[publicPath] || []), ...(document.assetReferences?.includes(publicPath) ? ['project'] : [])])];
     if (references.length) throw new AppError('ASSET_IN_USE', 'Asset is referenced by the project and cannot be deleted', { status: 409, details: { path: publicPath, references } });
-    const file = path.join(this.assetDir(id, type, { create: false }), safeName);
-    if (!fs.existsSync(file)) throw new AppError('ASSET_NOT_FOUND', 'Asset not found', { status: 404 });
-    fs.rmSync(file, { force: true });
+    const storageKey = buildProjectAssetStorageKey(id, type, safeName);
+    if (!this.blobStore.exists(storageKey)) throw new AppError('ASSET_NOT_FOUND', 'Asset not found', { status: 404 });
+    this.blobStore.delete(storageKey);
   }
 
   cleanup(id, { ownerId } = {}) {
     const document = this.read(id, { ownerId });
     const referenced = new Set([...Object.keys(this.references(id)), ...(document.assetReferences || [])]);
-    const trash = path.join(this.projectDir(id), `.cleanup-${crypto.randomUUID()}`);
-    const moved = [];
-    fs.mkdirSync(trash, { recursive: true });
-    try {
-      for (const type of ['images', 'audio', 'videos', 'subtitles', 'exports', 'ai-references', 'scene-images']) {
-        const dir = this.assetDir(id, type);
-        for (const fileName of fs.readdirSync(dir)) {
-          const publicPath = `/projects/${encodeURIComponent(id)}/assets/${type}/${encodeURIComponent(fileName)}`;
-          if (type !== 'exports' && referenced.has(publicPath)) continue;
-          const targetDir = path.join(trash, type); fs.mkdirSync(targetDir, { recursive: true });
-          fs.renameSync(path.join(dir, fileName), path.join(targetDir, fileName)); moved.push({ type, fileName });
-        }
+    const removed = [];
+    for (const type of ['images', 'audio', 'videos', 'subtitles', 'exports', 'ai-references', 'scene-images']) {
+      const dir = this.assetDir(id, type);
+      for (const fileName of fs.readdirSync(dir)) {
+        const publicPath = buildProjectAssetPublicPath(id, type, fileName);
+        if (type !== 'exports' && referenced.has(publicPath)) continue;
+        this.blobStore.delete(buildProjectAssetStorageKey(id, type, fileName));
+        removed.push({ type, fileName });
       }
-      this.atomicJson(path.join(trash, 'COMMITTED.json'), { committedAt: new Date().toISOString() });
-      try { fs.rmSync(trash, { recursive: true, force: true }); } catch (_) { /* committed trash is completed during startup recovery */ }
-      return moved;
-    } catch (error) {
-      for (const item of moved.reverse()) {
-        const from = path.join(trash, item.type, item.fileName);
-        if (fs.existsSync(from)) fs.renameSync(from, path.join(this.assetDir(id, item.type), item.fileName));
-      }
-      fs.rmSync(trash, { recursive: true, force: true });
-      throw error;
     }
+    return removed;
   }
 
   recoverCleanups() {
@@ -390,15 +384,16 @@ class ProjectStore {
     const fileName = decodeURIComponent(match[3]);
     if (fileName !== path.basename(fileName)) return null;
 
-    const sourcePath = path.join(this.assetDir(projectId, type, { create: false }), fileName);
-    if (!fs.existsSync(sourcePath)) return null;
+    const storageKey = buildProjectAssetStorageKey(projectId, type, fileName);
+    if (!this.blobStore.exists(storageKey)) return null;
 
     return {
       projectId,
       type,
       fileName,
-      sourcePath,
-      path: publicPath
+      storageKey,
+      path: publicPath,
+      sourcePath: this.blobStore.resolveLocalPath?.(storageKey) ?? null,
     };
   }
 }

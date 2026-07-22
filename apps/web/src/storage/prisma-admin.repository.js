@@ -103,24 +103,32 @@ class PrismaAdminRepository {
     const saleWhere = Object.keys(range).length ? { occurredAt: range, status: { in: fundedStatuses } } : { status: { in: fundedStatuses } };
     const requestWhere = Object.keys(range).length ? { startedAt: range } : {};
     const reservationWhere = Object.keys(range).length ? { createdAt: range, providerCostSnapshotId: { not: null } } : { providerCostSnapshotId: { not: null } };
-    const [sales, saleMoney, accounts, requestsByStatus, requestsByType, reservations] = await Promise.all([
+    const [sales, saleMoney, requestsByStatus, requestsByType, reservations, activeUserRows] = await Promise.all([
       this.prisma.creditSale.aggregate({ where: saleWhere, _sum: { cashAmountNanoUsd: true, creditsPurchasedMicros: true }, _count: true }),
       this.prisma.creditSale.findMany({ where: saleWhere, select: { processor: true, cashAmountNanoUsd: true, totalAmount: true, refundedAmount: true } }),
-      this.prisma.creditAccount.aggregate({ _sum: { availableCreditMicros: true, reservedCreditMicros: true } }),
       this.prisma.generationRequest.groupBy({ by: ['status'], where: requestWhere, _count: true }),
       this.prisma.generationRequest.groupBy({ by: ['modality'], where: requestWhere, _count: true }),
       this.prisma.creditReservation.findMany({ where: reservationWhere, select: { status: true, finalCustomerNanoUsd: true, providerCostSnapshot: { select: { providerCostNanoUsd: true } } } }),
+      this.prisma.generationRequest.groupBy({ by: ['userId'], where: { ...requestWhere, userId: { not: null } }, _count: true }),
     ]);
-    let providerCostNanoUsd = 0n; let nominalChargeNanoUsd = 0n; let negativeMarginCount = 0; let settlementPendingCount = 0;
+    let providerCostNanoUsd = 0n; let customerChargeNanoUsd = 0n;
     for (const row of reservations) {
-      if (row.status === 'settlement_pending') settlementPendingCount += 1;
-      const cost = row.providerCostSnapshot?.providerCostNanoUsd || 0n;
-      const charge = row.finalCustomerNanoUsd || 0n;
-      providerCostNanoUsd += cost; nominalChargeNanoUsd += charge;
-      if (charge < cost) negativeMarginCount += 1;
+      providerCostNanoUsd += row.providerCostSnapshot?.providerCostNanoUsd || 0n;
+      customerChargeNanoUsd += row.finalCustomerNanoUsd || 0n;
     }
     const netSalesNanoUsd = saleMoney.reduce((sum, sale) => sum + (sale.processor === 'stripe' ? (sale.totalAmount - sale.refundedAmount) * 10000000n : sale.cashAmountNanoUsd), 0n);
-    return { sales, netSalesNanoUsd, accounts, requestsByStatus, requestsByType, providerCostNanoUsd, nominalChargeNanoUsd, grossMarginNanoUsd: nominalChargeNanoUsd - providerCostNanoUsd, negativeMarginCount, settlementPendingCount };
+    const totalGenerations = requestsByStatus.reduce((sum, row) => sum + row._count, 0);
+    return {
+      sales,
+      netSalesNanoUsd,
+      requestsByStatus,
+      requestsByType,
+      providerCostNanoUsd,
+      customerChargeNanoUsd,
+      estimatedProfitNanoUsd: customerChargeNanoUsd - providerCostNanoUsd,
+      totalGenerations,
+      activeUsers: activeUserRows.length,
+    };
   }
 
   async listGenerations({ tenantId, userId, modality, provider, status, limit = 100 } = {}) {

@@ -26,8 +26,9 @@ class PrismaIdentityRepository {
         const tenant = await db.workspace.create({ data: { id: crypto.randomUUID(), name: displayName ? `${displayName}'s workspace` : 'Personal workspace', type: 'personal' } });
         await db.membership.create({ data: { userId: user.id, tenantId: tenant.id, role: 'owner' } });
         const welcomePolicy = await db.welcomeCreditPolicyVersion.findFirst({ where: { active: true, effectiveAt: { lte: new Date() } }, orderBy: { effectiveAt: 'desc' } });
+        const chargingEnabled = String(process.env.BILLING_CUSTOMER_CHARGING_ENABLED || '').toLowerCase() === 'true';
         if (welcomePolicy) {
-          const account = await db.creditAccount.create({ data: { id: crypto.randomUUID(), tenantId: tenant.id, availableCreditMicros: welcomePolicy.creditMicros } });
+          const account = await db.creditAccount.create({ data: { id: crypto.randomUUID(), tenantId: tenant.id, availableCreditMicros: welcomePolicy.creditMicros, chargingEnabled } });
           await db.creditLedgerEntry.create({ data: {
             id: crypto.randomUUID(), accountId: account.id, tenantId: tenant.id, userId: user.id,
             welcomeCreditPolicyVersionId: welcomePolicy.id, type: 'welcome_grant',

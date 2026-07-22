@@ -53,11 +53,15 @@ const { createMediaController } = require('./controllers/media.controller');
 const { createStylesController } = require('./controllers/styles.controller');
 const { createVoiceController } = require('./controllers/voice.controller');
 const { createAssetsController } = require('./controllers/assets.controller');
+const { createBlobStore } = require('./storage/blob-store');
 
 function createDependencies(config, overrides = {}) {
   const useTestAdapters = Boolean(overrides.identityStore && !overrides.prisma && !overrides.projectStore);
   const prisma = useTestAdapters ? null : (overrides.prisma || createPrismaClient(config.env.DATABASE_URL));
-  const projectStore = overrides.projectStore || (useTestAdapters ? new ProjectStore(config.paths.projects) : new PrismaProjectRepository(config.paths.projects, prisma));
+  const blobStore = overrides.blobStore || createBlobStore(config);
+  const projectStore = overrides.projectStore || (useTestAdapters
+    ? new ProjectStore(config.paths.projects, { blobStore })
+    : new PrismaProjectRepository(config.paths.projects, prisma, { blobStore }));
   const queue = new GenerationQueue({
     concurrency: config.generationConcurrency,
     store: overrides.jobStore || (useTestAdapters ? new JobStore(config.paths.jobs) : new PrismaJobRepository(prisma)),

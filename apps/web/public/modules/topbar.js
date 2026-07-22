@@ -15,7 +15,6 @@
             <nav class="sf-nav" aria-label="Primary navigation">
               <a class="sf-nav-link" href="/"${current('/')}>Home</a>
               <a class="sf-nav-link" href="/studio"${current('/studio')}>Studio</a>
-              <a class="sf-nav-link" href="/credits"${current('/credits')}>Credits</a>
               <a id="adminConsoleLink" class="sf-nav-link sf-admin-link" href="/admin"${current('/admin')} hidden>Admin</a>
             </nav>
             <div id="authLoggedOut" class="sf-account" hidden>
@@ -23,6 +22,10 @@
               <a class="sf-auth-link primary" href="/login.html?mode=register&amp;redirect=%2Fstudio">Create account</a>
             </div>
             <div id="authLoggedIn" class="sf-account" hidden>
+              <a id="topbarCredits" class="sf-credits" href="/credits" title="Available credits" hidden>
+                <span class="sf-credits-label">Credits</span>
+                <strong id="topbarCreditsValue">—</strong>
+              </a>
               <div class="sf-user" title="Signed-in account">
                 <span id="authUserAvatar" class="sf-avatar" aria-hidden="true"></span>
                 <span id="authUserLabel" class="sf-user-label"></span>
@@ -64,6 +67,19 @@
       label.title = `${session.user.email}\n${session.tenant.name}`;
       admin.hidden = !(session.isPlatformAdmin || ['admin', 'super_admin'].includes(session.user.platformRole));
       this.querySelector('#logoutBtn').addEventListener('click', () => this.logout(), { once: true });
+      this.bindCredits();
+    }
+
+    async bindCredits() {
+      const link = this.querySelector('#topbarCredits');
+      const value = this.querySelector('#topbarCreditsValue');
+      link.hidden = false;
+      const { formatCredits, refreshCreditBalance } = await import('./credit-balance.js');
+      const { creditStore } = await import('./store.js');
+      const render = (state) => { value.textContent = state.error ? '—' : formatCredits(state.availableCreditMicros); };
+      creditStore.subscribe(render);
+      render(creditStore.get());
+      await refreshCreditBalance();
     }
 
     async logout() {

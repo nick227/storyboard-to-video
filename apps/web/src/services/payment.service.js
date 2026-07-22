@@ -1,6 +1,11 @@
 const { AppError } = require('../errors');
+const crypto = require('node:crypto');
 
 function objectId(value) { return typeof value === 'string' ? value : value?.id || null; }
+function integrationIdentifier() {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+  return `storyframe_${Array.from(crypto.randomBytes(8), (byte) => alphabet[byte % alphabet.length]).join('')}`;
+}
 
 function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl, providerAdmission }) {
   function requireStripe() {
@@ -21,9 +26,9 @@ function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl,
       return repository.publishPack(packId, { stripePriceId: price.id, activeFrom });
     },
 
-    async createCheckout({ packId, tenantId, userId, userEmail, idempotencyKey }) {
+    async createCheckout({ amount, tenantId, userId, userEmail, idempotencyKey }) {
       requireStripe();
-      const prepared = await repository.prepareCheckout({ packId, tenantId, userId, idempotencyKey });
+      const prepared = await repository.prepareCheckout({ amount: BigInt(amount), tenantId, userId, idempotencyKey });
       if (prepared.attempt.checkoutUrl && prepared.attempt.processorCheckoutSessionId) {
         return { saleId: prepared.sale.id, checkoutSessionId: prepared.attempt.processorCheckoutSessionId, url: prepared.attempt.checkoutUrl, reused: true };
       }
@@ -33,8 +38,16 @@ function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl,
         const customer = prepared.paymentCustomer?.processorCustomerId;
         const session = await stripeCall(() => stripe.checkout.sessions.create({
           mode: 'payment',
+          integration_identifier: integrationIdentifier(),
           client_reference_id: prepared.sale.id,
-          line_items: [{ price: prepared.pack.stripePriceId, quantity: 1 }],
+          line_items: [{
+            price_data: {
+              currency: prepared.sale.currency.toLowerCase(),
+              unit_amount: Number(prepared.sale.subtotalAmount),
+              product_data: { name: 'Storyframe credits' },
+            },
+            quantity: 1,
+          }],
           // automatic_tax requires a head-office address and per-jurisdiction registrations on the
           // Stripe account (dashboard > Tax); without them Stripe hard-rejects session creation, and
           // even set up, it silently collects $0 in any unregistered jurisdiction. Leave this off
@@ -42,8 +55,8 @@ function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl,
           ...(customer ? { customer } : { customer_email: userEmail, customer_creation: 'always' }),
           success_url: `${base}/credits.html?checkout=success&saleId=${prepared.sale.id}&session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${base}/credits.html?checkout=canceled&saleId=${prepared.sale.id}`,
-          metadata: { saleId: prepared.sale.id, tenantId, userId, creditPackId: prepared.pack.id },
-          payment_intent_data: { metadata: { saleId: prepared.sale.id, tenantId, userId, creditPackId: prepared.pack.id } },
+          metadata: { saleId: prepared.sale.id, tenantId, userId },
+          payment_intent_data: { metadata: { saleId: prepared.sale.id, tenantId, userId } },
         }, { idempotencyKey: `checkout:${prepared.attempt.id}` }));
         await repository.markCheckoutCreated({ attemptId: prepared.attempt.id, session });
         return { saleId: prepared.sale.id, checkoutSessionId: session.id, url: session.url, reused: prepared.reused };

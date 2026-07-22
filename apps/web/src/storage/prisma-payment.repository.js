@@ -27,36 +27,42 @@ class PrismaPaymentRepository {
     return this.prisma.creditPack.update({ where: { id }, data: { activeUntil, status: 'retired' } });
   }
 
-  async prepareCheckout({ packId, tenantId, userId, idempotencyKey }) {
+  async prepareCheckout({ amount, tenantId, userId, idempotencyKey }) {
     return serializable(this.prisma, async (db) => {
       const prior = await db.checkoutAttempt.findUnique({
-        where: { idempotencyKey }, include: { sale: { include: { creditPack: true } } },
+        where: { idempotencyKey }, include: { sale: true },
       });
       if (prior) {
-        if (prior.tenantId !== tenantId || prior.userId !== userId || prior.sale.creditPackId !== packId) {
+        if (prior.tenantId !== tenantId || prior.userId !== userId || prior.sale.subtotalAmount !== amount) {
           throw new AppError('IDEMPOTENCY_CONFLICT', 'That idempotency key belongs to another checkout', { status: 409 });
         }
         const paymentCustomer = await db.paymentCustomer.findUnique({ where: { tenantId_userId_processor: { tenantId, userId, processor: 'stripe' } } });
-        return { attempt: prior, sale: prior.sale, pack: prior.sale.creditPack, paymentCustomer, reused: true };
+        return { attempt: prior, sale: prior.sale, paymentCustomer, reused: true };
       }
       const membership = await db.membership.findUnique({ where: { userId_tenantId: { userId, tenantId } } });
       if (!membership) throw new AppError('TENANT_ACCESS_DENIED', 'The current user is not a member of this workspace', { status: 403 });
       const now = new Date();
-      const pack = await db.creditPack.findFirst({ where: { id: packId, status: 'active', activeFrom: { lte: now }, OR: [{ activeUntil: null }, { activeUntil: { gt: now } }] } });
-      if (!pack || !pack.stripePriceId) throw new AppError('CREDIT_PACK_UNAVAILABLE', 'That credit pack is not available', { status: 404 });
+      if (amount < 100n) throw new AppError('PURCHASE_AMOUNT_TOO_SMALL', 'Add at least $1.00', { status: 400 });
+      if (amount > BigInt(Number.MAX_SAFE_INTEGER)) throw new AppError('PURCHASE_AMOUNT_UNSUPPORTED', 'That amount is too large for the payment processor', { status: 400 });
+      const creditRate = await db.siteCreditRateVersion.findFirst({ where: { active: true }, orderBy: { effectiveAt: 'desc' } });
+      if (!creditRate || creditRate.nanoUsdPerSiteCredit <= 0n) throw new AppError('CREDIT_RATE_UNAVAILABLE', 'Credit conversion is not configured', { status: 503 });
+      const cashAmountNanoUsd = amount * 10000000n;
+      const creditsGranted = (cashAmountNanoUsd * 1000000n) / creditRate.nanoUsdPerSiteCredit;
+      if (creditsGranted <= 0n) throw new AppError('PURCHASE_AMOUNT_TOO_SMALL', 'That amount does not purchase any credits', { status: 400 });
       const saleId = crypto.randomUUID();
       const sale = await db.creditSale.create({ data: {
-        id: saleId, tenantId, customerUserId: userId, creditPackId: pack.id,
-        cashAmountNanoUsd: pack.unitAmount * 10000000n,
-        creditsPurchasedMicros: pack.creditsGrantedMicros, creditsGranted: pack.creditsGrantedMicros,
-        currency: pack.currency, paymentProvider: 'stripe', processor: 'stripe',
-        subtotalAmount: pack.unitAmount, totalAmount: pack.unitAmount, status: 'pending', occurredAt: now,
+        id: saleId, tenantId, customerUserId: userId, creditPackId: null,
+        cashAmountNanoUsd,
+        creditsPurchasedMicros: creditsGranted, creditsGranted,
+        currency: 'USD', paymentProvider: 'stripe', processor: 'stripe',
+        subtotalAmount: amount, totalAmount: amount, status: 'pending', occurredAt: now,
+        notes: `Credit rate ${creditRate.versionKey}`,
       } });
       const attempt = await db.checkoutAttempt.create({ data: {
         id: crypto.randomUUID(), saleId, tenantId, userId, processor: 'stripe', idempotencyKey,
       } });
       const paymentCustomer = await db.paymentCustomer.findUnique({ where: { tenantId_userId_processor: { tenantId, userId, processor: 'stripe' } } });
-      return { attempt, sale, pack, paymentCustomer, reused: false };
+      return { attempt, sale, paymentCustomer, reused: false };
     });
   }
 

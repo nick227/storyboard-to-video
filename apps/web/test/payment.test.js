@@ -27,3 +27,28 @@ test('credit-pack publication verifies the immutable terms against Stripe', asyn
   await assert.rejects(() => service.publishCreditPack({ packId: pack.id, stripePriceId: 'price_wrong' }), (error) => error.code === 'STRIPE_PRICE_MISMATCH');
   assert.deepEqual(admitted, ['stripe', 'stripe']);
 });
+
+test('amount checkout uses server-prepared dynamic pricing and tags the integration', async () => {
+  let checkoutParams;
+  const repository = {
+    prepareCheckout: async ({ amount }) => ({
+      attempt: { id: 'attempt-1' },
+      sale: { id: 'sale-1', currency: 'USD', subtotalAmount: amount },
+      paymentCustomer: null,
+      reused: false,
+    }),
+    markCheckoutCreated: async () => {},
+  };
+  const stripe = { checkout: { sessions: { create: async (params) => {
+    checkoutParams = params;
+    return { id: 'cs_1', url: 'https://checkout.stripe.test/1' };
+  } } } };
+  const service = createPaymentService({ repository, stripe, webhookSecret: 'whsec_test', publicAppUrl: 'http://localhost:3000' });
+  await service.createCheckout({ amount: 1234, tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@example.com', idempotencyKey: 'key-1' });
+  assert.equal(checkoutParams.line_items[0].price_data.unit_amount, 1234);
+  assert.equal(checkoutParams.line_items[0].price_data.currency, 'usd');
+  assert.equal(checkoutParams.line_items[0].price_data.product_data.name, 'Storyframe credits');
+  assert.match(checkoutParams.integration_identifier, /^storyframe_[a-z]{8}$/);
+  assert.equal('payment_method_types' in checkoutParams, false);
+  assert.equal('automatic_tax' in checkoutParams, false);
+});

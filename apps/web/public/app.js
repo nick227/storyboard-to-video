@@ -188,8 +188,11 @@ const els = {
   confirmVideoKeyframeStatus: document.getElementById('confirmVideoKeyframeStatus'),
   confirmVideoGenerateImageBtn: document.getElementById('confirmVideoGenerateImageBtn'),
   confirmVideoSummary: document.getElementById('confirmVideoSummary'),
+  confirmRegenProviderKindLabel: document.getElementById('confirmRegenProviderKindLabel'),
   confirmVideoProviderLabel: document.getElementById('confirmVideoProviderLabel'),
+  confirmVideoBeatRow: document.getElementById('confirmVideoBeatRow'),
   confirmVideoBeatLabel: document.getElementById('confirmVideoBeatLabel'),
+  confirmVideoPromptRow: document.getElementById('confirmVideoPromptRow'),
   confirmVideoPromptLabel: document.getElementById('confirmVideoPromptLabel'),
   confirmVideoNeedsImageNote: document.getElementById('confirmVideoNeedsImageNote'),
   confirmVideoNeedsImageBtn: document.getElementById('confirmVideoNeedsImageBtn'),
@@ -324,6 +327,7 @@ function getGenerationPreflight(kind, context = {}) {
           ? `Reducing from ${context.fromCount} to ${context.toCount} shots will rebuild the storyboard structure and retire media.`
           : 'This re-segments the story from the original script, discarding the current scene structure.',
         bullets: [
+          `LLM provider · ${selectedLabel(els.textProvider)}`,
           `${context.toCount ?? total} shots, rebuilt from the original script`,
           `Prompts, images, audio, and video tied to replaced scenes are retired, not orphaned`,
         ],
@@ -334,7 +338,7 @@ function getGenerationPreflight(kind, context = {}) {
   return configurations[kind];
 }
 
-// --- Start modal: the primary run-control surface ----------------------------
+const START_RUN_DEFAULT_NEXT_COUNT = 5;
 //
 // Replaces the old startRun bullet-list confirmation. This modal is genuinely interactive (the
 // range picker and checkboxes change each other's defaults live), unlike the static
@@ -354,10 +358,12 @@ function formatStartRunRowStatus(stage, row) {
     const p = row.full;
     // Mirrors runCreateStoryFlow's own planning branching exactly, so the row never promises
     // something the run won't actually do.
-    if (!p.total || p.missing > 0 || p.hasChanges) return 'Creates the full storyboard structure — not limited to the selected range.';
-    if (p.stale > 0) return `Updates ${p.stale} stale prompt${p.stale === 1 ? '' : 's'} in the selected range.`;
-    return `${p.label} — up to date.`;
+    const model = `LLM: ${selectedLabel(els.textProvider)}`;
+    if (!p.total || p.missing > 0 || p.hasChanges) return `${model} · Creates the full storyboard structure — not limited to the selected range.`;
+    if (p.stale > 0) return `${model} · Updates ${p.stale} stale prompt${p.stale === 1 ? '' : 's'} in the selected range.`;
+    return `${model} · ${p.label} — up to date.`;
   }
+  if (stage === 'images') return `Image: ${selectedLabel(els.imageProvider)} · ${row.ranged.label} selected · ${row.full.label} total`;
   return `${row.ranged.label} selected · ${row.full.label} total`;
 }
 
@@ -394,10 +400,11 @@ function renderStartRunModal() {
 
 function openStartRunModal() {
   if (!sceneStore.get().scenes.length) {
-    // Nothing to anchor a range to yet — Planning creates the first scenes. Default the range
-    // radios back to "All remaining" so a later open (once scenes exist) isn't left on a
-    // meaningless "next N of zero".
+    // Nothing to anchor a range to yet — Planning creates the first scenes.
     els.startRunRangeAll.checked = true;
+  } else {
+    els.startRunRangeNext.checked = true;
+    els.startRunNextCount.value = String(START_RUN_DEFAULT_NEXT_COUNT);
   }
   renderStartRunModal();
   els.startRunModal.returnValue = '';

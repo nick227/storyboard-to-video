@@ -1,8 +1,8 @@
 .credits-shell { width: 100%; max-width: 1500px; margin: 0 auto; padding: 44px 24px 80px; }
-.credits-heading { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; margin-bottom: 34px; }
+.credits-heading { margin: 20px auto; gap: 24px; align-items: flex-end; margin-bottom: 34px; }
 .credits-heading h1 { margin: 5px 0; font-size: clamp(34px, 5vw, 56px); }
 .credits-heading p { color: var(--muted); margin: 0; }
-.balance-card { min-width: 340px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.balance-card { display: flex; align-items: center; justify-content: flex-start; gap: 18px; }
 .balance-card small { display: block; color: var(--muted); }
 .balance-card strong { display: block; margin-top: 3px; font-size: 23px; white-space: nowrap; }
 .balance-actions { display: flex; align-items: center; gap: 8px; }
@@ -10,7 +10,7 @@
 .modal-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .modal-title-row h2 { margin: 0; }
 .info-button, .modal-close { display: inline-grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; }
-.info-button { width: 26px; height: 26px; padding: 0; border-radius: 50%; font: 700 15px/1 Georgia, serif; }
+.info-button { width: 50px; height: 26px; padding: 0; border-radius: 5px; font: 700 15px/1 Georgia, serif; }
 .modal-close { width: 36px; height: 36px; padding: 0; border-radius: 10px; font-size: 24px; }
 .add-credits-form > label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 14px; }
 .amount-row { display: flex; gap: 12px; align-items: stretch; }
@@ -49,4 +49,5 @@
 .purchase-history table { width: 100%; border-collapse: collapse; }
 .purchase-history th, .purchase-history td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; }
 .status-pill { display: inline-block; padding: 4px 9px; border-radius: 999px; background: var(--panel-2); font-size: 12px; }
+.row{ display: flex; }
 @media (max-width: 760px) { .credits-shell { padding: 32px 14px 60px; } .credits-heading { align-items: stretch; flex-direction: column; } .balance-card { min-width: 0; width: 100%; } .amount-row { flex-direction: column; } .amount-row button { width: 100%; } .purchase-modal, .pricing-modal { padding: 20px 14px; } .pricing-example-grid { grid-template-columns: 1fr; } }

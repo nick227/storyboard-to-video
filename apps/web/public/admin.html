@@ -20,9 +20,39 @@
     <p id="adminMessage" class="admin-message" role="status"></p>
 
     <section id="tab-overview" class="admin-view">
-      <div class="admin-filter-row"><label>Start<input id="overviewStart" type="date" /></label><label>End<input id="overviewEnd" type="date" /></label><button id="overviewApply">Apply</button></div>
-      <div id="overviewCards" class="metric-grid"></div>
-      <div class="admin-grid-two"><article class="panel"><h2>Generation status</h2><div id="overviewStatuses"></div></article><article class="panel"><h2>Generation types</h2><div id="overviewTypes"></div></article></div>
+      <article class="panel overview-intro">
+        <div class="overview-intro-copy">
+          <h2>Platform snapshot</h2>
+          <p>How much customers bought, how much they created, and whether generations succeeded — for the selected time window.</p>
+        </div>
+        <div class="period-picker" role="group" aria-label="Time period">
+          <button type="button" data-period="7">Last 7 days</button>
+          <button type="button" data-period="30" class="active">Last 30 days</button>
+          <button type="button" data-period="90">Last 90 days</button>
+          <button type="button" data-period="all">All time</button>
+        </div>
+      </article>
+      <p id="overviewPeriodLabel" class="overview-period-label"></p>
+      <section class="overview-section">
+        <h3>Revenue</h3>
+        <div id="overviewRevenue" class="overview-metrics"></div>
+      </section>
+      <section class="overview-section">
+        <h3>Activity</h3>
+        <div id="overviewActivity" class="overview-metrics"></div>
+      </section>
+      <div class="admin-grid-two">
+        <article class="panel">
+          <h2>What people made</h2>
+          <p class="admin-hint">Share of AI work by content type.</p>
+          <div id="overviewTypes" class="breakdown-list"></div>
+        </article>
+        <article class="panel">
+          <h2>Did it work?</h2>
+          <p class="admin-hint">How generations finished — failed runs may need support follow-up.</p>
+          <div id="overviewStatuses" class="breakdown-list"></div>
+        </article>
+      </div>
     </section>
 
     <section id="tab-users" class="admin-view" hidden>
@@ -31,11 +61,23 @@
     </section>
 
     <section id="tab-commerce" class="admin-view" hidden>
-      <div class="admin-grid-two">
-        <article class="panel"><h2>Record sale</h2><form id="saleForm" class="admin-form"><label>Customer user ID<input name="customerUserId" required /></label><label>Tenant ID<input name="tenantId" required /></label><label>Cash received (USD)<input name="cashUsd" type="number" min="0.01" step="0.01" required /></label><label>Site credits sold<input name="siteCredits" type="number" min="0.000001" step="0.000001" required /></label><label>Payment reference<input name="externalPaymentId" /></label><label>Notes<textarea name="notes" rows="2"></textarea></label><button class="primary">Record sale and grant credits</button></form></article>
-        <article class="panel"><h2>Site economics</h2><form id="markupForm" class="admin-form"><label>Markup version<input name="versionKey" placeholder="production-markup-v1" required /></label><label>Markup percent<input name="percent" type="number" min="0" step="0.01" required /></label><button>Create and activate markup</button></form><form id="creditRateForm" class="admin-form separated"><label>Credit-rate version<input name="versionKey" placeholder="production-credit-value-v1" required /></label><label>USD value per site credit<input name="usdPerCredit" type="number" min="0.000001" step="0.000001" required /></label><button>Create and activate conversion</button></form><form id="welcomeCreditForm" class="admin-form separated"><h3>New-user welcome credits</h3><p id="activeWelcomeCredits">Loading current policy…</p><label>Policy version<input name="versionKey" placeholder="welcome-v2" required /></label><label>Credits granted to new users<input name="credits" type="number" min="0.000001" step="0.000001" required /></label><button>Create and activate welcome grant</button></form></article>
-      </div>
-      <article class="panel"><h2>Provider prices</h2><div class="table-wrap"><table><thead><tr><th>Provider</th><th>Model</th><th>Type</th><th>Evidence</th><th>Active</th><th>Billable</th><th>Reservation</th></tr></thead><tbody id="pricesBody"></tbody></table></div></article>
+      <article class="panel">
+        <h2>Site economics</h2>
+        <p class="admin-hint">Markup and credit value apply to all billable generations. Base provider costs are fixed; adjust economics here.</p>
+        <div class="economics-summary">
+          <p>Markup: <strong id="activeMarkup">—</strong></p>
+          <p>Credit value: <strong id="activeCreditRate">—</strong></p>
+          <p>Welcome credits (new users): <strong id="activeWelcomeCredits">—</strong></p>
+        </div>
+        <form id="markupForm" class="admin-form"><label>Markup percent<input name="percent" type="number" min="0" step="0.01" required /></label><button>Update markup</button></form>
+        <form id="creditRateForm" class="admin-form separated"><label>USD per site credit<input name="usdPerCredit" type="number" min="0.000001" step="0.000001" required /></label><button>Update credit value</button></form>
+        <form id="welcomeCreditForm" class="admin-form separated"><label>Welcome credits for new users<input name="credits" type="number" min="0" step="0.01" required /></label><button>Update welcome grant</button></form>
+      </article>
+      <article class="panel">
+        <h2>Provider prices</h2>
+        <p class="admin-hint">Vendor base costs live in <code>pricing/canonical-prices.js</code> and are refreshed with <code>node scripts/seed-canonical-pricing.js --apply</code> after vendor price changes. Toggle billable here once verified.</p>
+        <div class="table-wrap"><table><thead><tr><th>Provider</th><th>Model</th><th>Type</th><th>Base rate</th><th>Reservation</th><th>Billable</th><th></th></tr></thead><tbody id="pricesBody"></tbody></table></div>
+      </article>
       <article class="panel"><h2>Stripe credit packs</h2><p>Draft packs become immutable when published with a Stripe Price ID.</p><div class="table-wrap"><table><thead><tr><th>Pack</th><th>USD price</th><th>Credits</th><th>Tax</th><th>Status</th><th>Stripe Price</th><th>Action</th></tr></thead><tbody id="creditPacksBody"></tbody></table></div></article>
       <article class="panel"><h2>Recent sales</h2><div class="table-wrap"><table><thead><tr><th>When</th><th>Customer</th><th>Cash</th><th>Credits</th><th>Provider/reference</th><th>Status</th><th>Recorded by</th><th>Action</th></tr></thead><tbody id="salesBody"></tbody></table></div></article>
     </section>

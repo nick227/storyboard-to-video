@@ -169,6 +169,35 @@ function setupConfirmModal() {
 
 const VIDEO_PROVIDER_LABELS = Object.freeze({ ltx: 'LTX (local)', minimax: 'MiniMax', veo: 'Veo', stub: 'Stub Preview (no API)' });
 
+function selectedOptionLabel(select, fallback = '') {
+  return select?.selectedOptions?.[0]?.textContent?.trim() || select?.value || fallback;
+}
+
+export function regenerationProviderSelection(type, domEls) {
+  const selections = {
+    prompt: { kind: 'LLM provider', select: domEls.textProvider },
+    action: { kind: 'LLM provider', select: domEls.textProvider },
+    dialogue: { kind: 'LLM provider', select: domEls.textProvider },
+    image: { kind: 'Image provider', select: domEls.imageProvider },
+    audio: { kind: 'Audio provider', select: domEls.audioProvider },
+    video: { kind: 'Video provider', select: domEls.videoProvider, fallback: 'Platform default' },
+  };
+  const selection = selections[type];
+  if (!selection) return null;
+  return { kind: selection.kind, label: selectedOptionLabel(selection.select, selection.fallback) };
+}
+
+function configureRegenerationProvider(type) {
+  const selection = regenerationProviderSelection(type, els);
+  if (!els.confirmVideoSummary) return;
+  els.confirmVideoSummary.hidden = !selection;
+  if (!selection) return;
+  els.confirmRegenProviderKindLabel.textContent = selection.kind;
+  els.confirmVideoProviderLabel.textContent = selection.label;
+  els.confirmVideoBeatRow.hidden = true;
+  els.confirmVideoPromptRow.hidden = true;
+}
+
 function goToImageGeneration(sceneIndex) {
   els.confirmRegenModal.close();
   openEntityModal(sceneIndex, 'image');
@@ -182,7 +211,10 @@ function configureVideoKeyframeConfirmation(scene, sceneIndex) {
 
   if (els.confirmVideoSummary) {
     els.confirmVideoSummary.hidden = false;
+    els.confirmRegenProviderKindLabel.textContent = 'Video provider';
     els.confirmVideoProviderLabel.textContent = providerName ? (VIDEO_PROVIDER_LABELS[providerName] || providerName) : 'Platform default';
+    els.confirmVideoBeatRow.hidden = false;
+    els.confirmVideoPromptRow.hidden = false;
     els.confirmVideoBeatLabel.textContent = scene.beat?.trim() || '—';
     els.confirmVideoPromptLabel.textContent = shot.prompt?.trim() || '—';
   }
@@ -273,6 +305,7 @@ function confirmRegeneration(message, confirmLabel = 'Regenerate', options = {})
     if (els.confirmVideoKeyframes) els.confirmVideoKeyframes.hidden = true;
     if (els.confirmVideoSummary) els.confirmVideoSummary.hidden = true;
     if (els.confirmVideoNeedsImageNote) els.confirmVideoNeedsImageNote.hidden = true;
+    configureRegenerationProvider(options.entityType);
     if (options.videoScene) configureVideoKeyframeConfirmation(options.videoScene, options.sceneIndex);
     els.confirmRegenMessage.textContent = message;
     els.confirmRegenConfirmBtn.textContent = confirmLabel;
@@ -842,8 +875,11 @@ function setupEntityModal() {
     // Scene expansion is a deliberate storyboard-edit operation (see the "Expand into scenes"
     // action on the narration view), never an incidental side effect of regenerating an image —
     // this button always just regenerates, regardless of how long the scene's narration has grown.
-    const confirmationOptions = modalState.type === 'video' ? { videoScene: scene, sceneIndex: index } : {};
-    confirmRegeneration(`${verb} the ${config.title.toLowerCase()} for scene ${index + 1}? This creates a new version and makes it active.`, verb, confirmationOptions).then((confirmed) => {
+    const confirmationOptions = {
+      entityType: modalState.type,
+      ...(modalState.type === 'video' ? { videoScene: scene, sceneIndex: index } : {}),
+    };
+    confirmRegeneration(`${verb} the ${config.title.toLowerCase()} for scene ${index + 1}?and make it active`, verb, confirmationOptions).then((confirmed) => {
       if (!confirmed) return;
       // Close immediately so the scene card's own spinner (driven by uiStore.operation, set
       // synchronously inside regenerate* before its first await) is visible right away, instead of
@@ -859,7 +895,7 @@ function setupEntityModal() {
     const scene = sceneStore.get().scenes[index];
     const suggested = suggestSceneCountFromNarration([scene]);
     if (suggested <= 1) return;
-    confirmRegeneration(`Split scene ${index + 1} into ${suggested} scenes based on its narration? This changes the storyboard structure — existing image/audio/video for this scene apply only to the first of the new scenes.`, 'Split').then((confirmed) => {
+    confirmRegeneration(`Split scene ${index + 1} into ${suggested} scenes based on its narration? This changes the storyboard structure — existing image/audio/video for this scene apply only to the first of the new scenes.`, 'Split', { entityType: 'dialogue' }).then((confirmed) => {
       if (confirmed) {
         splitSceneInPlace(index, suggested, els, (t) => els.statusText.textContent = t)
           .then((didSplit) => { if (didSplit) els.entityModal.close(); })
@@ -875,7 +911,7 @@ function setupEntityModal() {
     if (!config.regenBeat) return;
     const scene = sceneStore.get().scenes[index];
     const verb = Boolean(String(scene.beat || '').trim()) ? 'Regenerate' : 'Generate';
-    confirmRegeneration(`${verb} the physical action for scene ${index + 1}? This does not change the visual prompt.`, verb).then((confirmed) => {
+    confirmRegeneration(`${verb} the physical action for scene ${index + 1}? This does not change the visual prompt.`, verb, { entityType: 'action' }).then((confirmed) => {
       if (confirmed) config.regenBeat(index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
     });
   });
@@ -886,7 +922,7 @@ function setupEntityModal() {
     const config = ENTITY_CONFIG[modalState.type];
     const scene = sceneStore.get().scenes[index];
     const verb = hasExistingEntity(modalState.type, scene) ? 'Regenerate' : 'Generate';
-    confirmRegeneration(`${verb} the ${(config.fieldLabel || config.title).toLowerCase()} for scene ${index + 1}? This replaces the current version.`, verb).then((confirmed) => {
+    confirmRegeneration(`${verb} the ${(config.fieldLabel || config.title).toLowerCase()} for scene ${index + 1}? This replaces the current version.`, verb, { entityType: modalState.type }).then((confirmed) => {
       if (confirmed) config.regen(index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
     });
   });
@@ -970,7 +1006,7 @@ export function initRendering(domEls) {
   uiStore.subscribe(() => { renderScenes(); renderEntityModal(); });
 }
 
-function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio, words, captionEl }) {
+export function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio, words, captionEl }) {
   let playing = false;
   let duration = 0;
   let currentTime = 0;
@@ -1041,14 +1077,17 @@ function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio, words, c
     if (captionEl) renderCaptionInto(captionEl, words, currentTime);
     animationFrame = requestAnimationFrame(tick);
   };
+  const togglePlayback = () => { if (playing) pause(); else play(); };
   const controller = {
     pause,
     cleanup() {
       pause();
-      video.removeAttribute('src');
-      video.load();
-      audio.removeAttribute('src');
-      audio.load();
+      // The renderer owns the media sources. A playback controller is replaced whenever the
+      // scene's video/audio/subtitle combination changes, often while the same DOM node and the
+      // same audio asset are being reused. Removing src here left the renderer's dataset cache
+      // claiming that the audio was still installed, so generating a video made the next preview
+      // silently play only that (muted) video.
+      toggle.removeEventListener('click', togglePlayback);
       video.removeEventListener('loadedmetadata', updateDuration);
       video.removeEventListener('durationchange', updateDuration);
       audio.removeEventListener('loadedmetadata', updateDuration);
@@ -1067,7 +1106,7 @@ function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio, words, c
   video.addEventListener('durationchange', updateDuration);
   audio.addEventListener('loadedmetadata', updateDuration);
   audio.addEventListener('durationchange', updateDuration);
-  toggle.addEventListener('click', () => { if (playing) pause(); else play(); });
+  toggle.addEventListener('click', togglePlayback);
   updateDuration();
   return controller.cleanup;
 }

@@ -1,3 +1,5 @@
+import { formatRateCard, formatMarkup, formatCreditRate } from './pricing-format.js';
+
 const $ = (id) => document.getElementById(id);
 let users = [];
 
@@ -16,19 +18,105 @@ function when(value) { return value ? new Date(value).toLocaleString() : '—'; 
 function pill(value, tone = '') { return `<span class="pill ${tone}">${esc(value)}</span>`; }
 function message(text, error = false) { $('adminMessage').textContent = text || ''; $('adminMessage').classList.toggle('error', error); }
 function formObject(form) { return Object.fromEntries(new FormData(form).entries()); }
+function versionStamp(prefix) { return `${prefix}-${new Date().toISOString().slice(0, 10)}`; }
+
+const MODALITY_LABELS = {
+  text: 'Writing & prompts',
+  image: 'Images',
+  audio: 'Voice & audio',
+  video: 'Video',
+  alignment: 'Subtitles',
+};
+const STATUS_LABELS = {
+  completed: { label: 'Succeeded', tone: 'good', hint: 'Finished normally' },
+  failed: { label: 'Failed', tone: 'bad', hint: 'Needs attention' },
+  started: { label: 'In progress', tone: 'warn', hint: 'Still running or stuck' },
+};
+
+function money(nano) {
+  const dollars = Number(nano || 0) / 1e9;
+  if (!Number.isFinite(dollars) || dollars === 0) return '$0.00';
+  if (dollars >= 10000) return `$${(dollars / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k`;
+  return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function overviewCard(label, value, note = '') {
+  return `<div class="overview-card"><span class="overview-card-label">${esc(label)}</span><strong class="overview-card-value">${esc(value)}</strong>${note ? `<span class="overview-card-note">${esc(note)}</span>` : ''}</div>`;
+}
+
+function breakdownRows(rows, total, labelFor) {
+  if (!total) return '<p class="breakdown-empty">Nothing in this period yet.</p>';
+  return rows.map((row) => {
+    const label = labelFor(row);
+    const pct = Math.max(4, Math.round((row._count / total) * 100));
+    return `<div class="breakdown-row"><span class="breakdown-label">${esc(label)}</span><div class="breakdown-bar" aria-hidden="true"><span style="width:${pct}%"></span></div><span class="breakdown-value">${row._count.toLocaleString()}</span></div>`;
+  }).join('');
+}
+
+let overviewPeriod = '30';
+
+function overviewRange(period) {
+  if (period === 'all') return {};
+  const days = Number(period);
+  const end = new Date();
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (days - 1));
+  return { start, end };
+}
+
+function overviewPeriodLabel(period) {
+  if (period === 'all') return 'Showing all time';
+  const { start, end } = overviewRange(period);
+  const fmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return `Showing ${fmt.format(start)} – ${fmt.format(end)}`;
+}
+
+function overviewQuery(period) {
+  const query = new URLSearchParams();
+  const { start, end } = overviewRange(period);
+  if (start) query.set('startAt', start.toISOString());
+  if (end) {
+    const endExclusive = new Date(end);
+    endExclusive.setDate(endExclusive.getDate() + 1);
+    endExclusive.setHours(0, 0, 0, 0);
+    query.set('endAt', endExclusive.toISOString());
+  }
+  return query;
+}
 
 async function loadOverview() {
-  const query = new URLSearchParams(); if ($('overviewStart').value) query.set('startAt', `${$('overviewStart').value}T00:00:00Z`); if ($('overviewEnd').value) { const end = new Date(`${$('overviewEnd').value}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + 1); query.set('endAt', end.toISOString()); }
-  const o = (await api(`/api/admin/overview?${query}`)).overview;
-  const cards = [
-    ['Net cash sales', usd(o.netSalesNanoUsd || 0)], ['Credits sold', credit(o.sales._sum.creditsPurchasedMicros || 0)],
-    ['Provider cost', usd(o.providerCostNanoUsd)], ['Nominal charges', usd(o.nominalChargeNanoUsd)], ['Gross margin', usd(o.grossMarginNanoUsd)],
-    ['Credits outstanding', credit(o.accounts._sum.availableCreditMicros || 0)], ['Credits reserved', credit(o.accounts._sum.reservedCreditMicros || 0)],
-    ['Settlement pending', o.settlementPendingCount], ['Negative margin', o.negativeMarginCount],
-  ];
-  $('overviewCards').innerHTML = cards.map(([label, value]) => `<div class="metric"><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`).join('');
-  $('overviewStatuses').innerHTML = o.requestsByStatus.map((row) => `<p>${pill(row.status, row.status === 'failed' ? 'bad' : row.status === 'completed' ? 'good' : 'warn')} ${row._count}</p>`).join('') || '<p>No requests.</p>';
-  $('overviewTypes').innerHTML = o.requestsByType.map((row) => `<p>${pill(row.modality)} ${row._count}</p>`).join('') || '<p>No requests.</p>';
+  const o = (await api(`/api/admin/overview?${overviewQuery(overviewPeriod)}`)).overview;
+  $('overviewPeriodLabel').textContent = overviewPeriodLabel(overviewPeriod);
+
+  const purchaseCount = o.sales._count || 0;
+  const creditsSold = o.sales._sum.creditsPurchasedMicros || 0;
+  const completed = o.requestsByStatus.find((row) => row.status === 'completed')?._count || 0;
+  const failed = o.requestsByStatus.find((row) => row.status === 'failed')?._count || 0;
+  const total = o.totalGenerations || 0;
+  const successRate = total ? Math.round((completed / total) * 100) : null;
+
+  $('overviewRevenue').innerHTML = [
+    overviewCard('Credit purchases', money(o.netSalesNanoUsd), purchaseCount ? `${purchaseCount} checkout${purchaseCount === 1 ? '' : 's'} completed` : 'No purchases in this period'),
+    overviewCard('Credits sold', credit(creditsSold), 'Total credits customers received'),
+    overviewCard('Estimated profit', money(o.estimatedProfitNanoUsd), `Provider spend ${money(o.providerCostNanoUsd)} · customer usage ${money(o.customerChargeNanoUsd)}`),
+  ].join('');
+
+  $('overviewActivity').innerHTML = [
+    overviewCard('AI generations', total.toLocaleString(), 'Every image, voice, video, or text request'),
+    overviewCard('Active creators', (o.activeUsers || 0).toLocaleString(), 'Users who ran at least one generation'),
+    overviewCard('Success rate', successRate == null ? '—' : `${successRate}%`, failed ? `${failed.toLocaleString()} failed · ${completed.toLocaleString()} succeeded` : completed ? `${completed.toLocaleString()} succeeded` : 'No finished runs yet'),
+  ].join('');
+
+  const types = [...o.requestsByType].sort((a, b) => b._count - a._count);
+  $('overviewTypes').innerHTML = breakdownRows(types, total, (row) => MODALITY_LABELS[row.modality] || row.modality);
+
+  const statuses = ['completed', 'failed', 'started']
+    .map((status) => o.requestsByStatus.find((row) => row.status === status))
+    .filter(Boolean)
+    .sort((a, b) => b._count - a._count);
+  const statusTotal = statuses.reduce((sum, row) => sum + row._count, 0) || total;
+  $('overviewStatuses').innerHTML = breakdownRows(statuses, statusTotal, (row) => STATUS_LABELS[row.status]?.label || row.status);
 }
 
 async function loadUsers() {
@@ -36,7 +124,7 @@ async function loadUsers() {
   users = (await api(`/api/admin/users?${query}`)).users;
   $('usersBody').innerHTML = users.map((user) => {
     const membership = user.memberships[0]; const tenant = membership?.workspace; const account = tenant?.creditAccount;
-    return `<tr><td><strong>${esc(user.displayName)}</strong><small>${esc(user.email)}</small><small class="break">${esc(user.id)}</small></td><td>${esc(tenant?.name || '—')}<small class="break">${esc(tenant?.id || '')}</small></td><td>${credit(account?.availableCreditMicros || 0)}<small>${credit(account?.reservedCreditMicros || 0)} reserved · charging ${account?.chargingEnabled ? 'on' : 'off'}</small></td><td>${user._count.generationRequests}<small>${user._count.sessions} sessions</small></td><td>${pill(user.status, user.status === 'active' ? 'good' : 'bad')}</td><td>${pill(user.platformRole)}</td><td><div class="row-actions"><button data-action="status" data-user="${user.id}">${user.status === 'active' ? 'Disable' : 'Enable'}</button><button data-action="role" data-user="${user.id}">Role</button><button data-action="credits" data-user="${user.id}">Give credits</button><button data-action="charging" data-user="${user.id}">${account?.chargingEnabled ? 'Stop charging' : 'Allow charging'}</button><button data-action="sale" data-user="${user.id}">Record sale</button></div></td></tr>`;
+    return `<tr><td><strong>${esc(user.displayName)}</strong><small>${esc(user.email)}</small><small class="break">${esc(user.id)}</small></td><td>${esc(tenant?.name || '—')}<small class="break">${esc(tenant?.id || '')}</small></td><td>${credit(account?.availableCreditMicros || 0)}<small>${credit(account?.reservedCreditMicros || 0)} reserved · charging ${account?.chargingEnabled ? 'on' : 'off'}</small></td><td>${user._count.generationRequests}<small>${user._count.sessions} sessions</small></td><td>${pill(user.status, user.status === 'active' ? 'good' : 'bad')}</td><td>${pill(user.platformRole)}</td><td><div class="row-actions"><button data-action="status" data-user="${user.id}">${user.status === 'active' ? 'Disable' : 'Enable'}</button><button data-action="role" data-user="${user.id}">Role</button><button data-action="credits" data-user="${user.id}">Give credits</button><button data-action="charging" data-user="${user.id}">${account?.chargingEnabled ? 'Stop charging' : 'Allow charging'}</button></div></td></tr>`;
   }).join('');
 }
 
@@ -47,15 +135,29 @@ async function userAction(button) {
   if (action === 'role') { const platformRole = prompt('Platform role: user, admin, or super_admin', user.platformRole); if (!platformRole || platformRole === user.platformRole) return; const reason = prompt('Reason for role change:'); if (!reason) return; await api(`/api/admin/users/${user.id}/role`, { method: 'PATCH', body: { platformRole, reason } }); }
   if (action === 'credits') { const amount = prompt('Site credits to grant:'); if (!amount) return; const notes = prompt('Reason for grant:'); if (!notes) return; await api('/api/admin/billing/credits/grant', { method: 'POST', body: { tenantId: tenant.id, creditMicros: decimalUnits(amount, 6), idempotencyKey: `admin-grant:${crypto.randomUUID()}`, notes } }); }
   if (action === 'charging') { const enabled = !tenant.creditAccount?.chargingEnabled; if (!confirm(`${enabled ? 'Enable' : 'Disable'} charging for ${tenant.name}?`)) return; await api(`/api/admin/billing/accounts/${tenant.id}/charging`, { method: 'PATCH', body: { enabled, idempotencyKey: `admin-charging:${crypto.randomUUID()}` } }); }
-  if (action === 'sale') { const form = $('saleForm'); form.customerUserId.value = user.id; form.tenantId.value = tenant.id; document.querySelector('[data-tab="commerce"]').click(); form.cashUsd.focus(); return; }
   message('User updated.'); await Promise.all([loadUsers(), loadOverview()]);
+}
+
+function renderEconomics(billing) {
+  const markup = billing.markups.find((row) => row.active);
+  const creditRate = billing.creditRates.find((row) => row.active);
+  const welcome = billing.welcomeCreditPolicies.find((policy) => policy.active);
+  $('activeMarkup').textContent = formatMarkup(markup);
+  $('activeCreditRate').textContent = formatCreditRate(creditRate);
+  $('activeWelcomeCredits').textContent = welcome ? `${credit(welcome.creditMicros)} credits` : 'Not configured';
+  if (markup) $('markupForm').percent.value = (Number(markup.markupBasisPoints || 0) / 100).toFixed(2);
+  else $('markupForm').percent.value = '1';
+  if (creditRate) $('creditRateForm').usdPerCredit.value = (Number(creditRate.nanoUsdPerSiteCredit || 0) / 1e9).toFixed(6);
+  else $('creditRateForm').usdPerCredit.value = '1.000000';
+  if (welcome) $('welcomeCreditForm').credits.value = (Number(welcome.creditMicros || 0) / 1e6).toFixed(2);
+  else $('welcomeCreditForm').credits.value = '10';
 }
 
 async function loadCommerce() {
   const [billing, sales, packs] = await Promise.all([api('/api/admin/billing'), api('/api/admin/sales?limit=100'), api('/api/admin/credit-packs')]);
-  $('pricesBody').innerHTML = billing.prices.map((price) => `<tr><td>${esc(price.provider)}</td><td>${esc(price.model)}<small>${esc(price.versionKey)}</small></td><td>${esc(price.modality)}</td><td>${pill(price.evidenceStatus, price.evidenceStatus === 'dashboard_reconciled' ? 'good' : 'warn')}</td><td>${price.active ? 'Yes' : 'No'}</td><td>${price.billable ? pill('Yes','good') : pill('No','warn')}</td><td>${usd(price.reservationNanoUsd)}</td></tr>`).join('');
-  const welcome = billing.welcomeCreditPolicies.find((policy) => policy.active);
-  $('activeWelcomeCredits').textContent = welcome ? `${credit(welcome.creditMicros)} credits · ${welcome.versionKey}` : 'No active welcome-credit policy';
+  renderEconomics(billing);
+  const activePrices = billing.prices.filter((price) => price.active).sort((a, b) => `${a.provider}${a.modality}${a.model}`.localeCompare(`${b.provider}${b.modality}${b.model}`));
+  $('pricesBody').innerHTML = activePrices.map((price) => `<tr data-price-id="${price.id}"><td>${esc(price.provider)}</td><td><code>${esc(price.model)}</code></td><td>${esc(price.modality)}</td><td>${esc(formatRateCard(price.rateCard))}</td><td>${usd(price.reservationNanoUsd)}</td><td>${price.billable ? pill('Yes', 'good') : pill('No', 'warn')}</td><td><button data-toggle-billable="${price.id}" data-billable="${price.billable ? '1' : '0'}">${price.billable ? 'Disable billing' : 'Enable billing'}</button></td></tr>`).join('') || '<tr><td colspan="7">No active provider prices. Run scripts/seed-canonical-pricing.js --apply.</td></tr>';
   $('creditPacksBody').innerHTML = packs.packs.map((pack) => `<tr><td>${esc(pack.name)}<small>${esc(pack.code)} v${pack.version}</small></td><td>$${(Number(pack.unitAmount) / 100).toFixed(2)}</td><td>${credit(pack.creditsGrantedMicros)}</td><td>${esc(pack.taxBehavior)}</td><td>${pill(pack.status, pack.status === 'active' ? 'good' : 'warn')}</td><td><small class="break">${esc(pack.stripePriceId || 'not configured')}</small></td><td>${pack.status === 'draft' ? `<button data-publish-pack="${pack.id}">Publish</button>` : pack.status === 'active' ? `<button data-retire-pack="${pack.id}">Retire</button>` : '—'}</td></tr>`).join('');
   $('salesBody').innerHTML = sales.sales.map((sale) => { const refundable = sale.processor === 'stripe' && ['credits_funded','partially_refunded'].includes(sale.status); const cash = sale.processor === 'stripe' ? `${minorUsd(BigInt(sale.totalAmount) - BigInt(sale.refundedAmount))}<small>${minorUsd(sale.refundedAmount)} refunded</small>` : usd(sale.cashAmountNanoUsd); return `<tr><td>${when(sale.occurredAt)}</td><td>${esc(sale.customerUser.displayName)}<small>${esc(sale.customerUser.email)}</small></td><td>${cash}</td><td>${credit(sale.creditsPurchasedMicros)}<small>${credit(sale.creditsReversed)} reversed</small></td><td>${esc(sale.paymentProvider)}<small>${esc(sale.processorCheckoutSessionId || sale.externalPaymentId || 'manual')}</small></td><td>${pill(sale.status, sale.status === 'credits_funded' ? 'good' : sale.refundResolutionRequired ? 'bad' : 'warn')}</td><td>${esc(sale.recordedByAdmin?.displayName || 'Stripe webhook')}</td><td>${refundable ? `<button data-refund-sale="${sale.id}">Refund</button>` : '—'}</td></tr>`; }).join('');
 }
@@ -70,13 +172,35 @@ async function loadAudit() { const rows = (await api('/api/admin/audit?limit=200
 async function loadCurrent() { const tab = document.querySelector('.admin-tabs button.active').dataset.tab; message('Loading…'); try { if (tab === 'overview') await loadOverview(); if (tab === 'users') await loadUsers(); if (tab === 'commerce') await loadCommerce(); if (tab === 'generations') await loadGenerations(); if (tab === 'audit') await loadAudit(); message(''); } catch (error) { message(error.message, true); } }
 
 document.querySelectorAll('.admin-tabs button').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.admin-tabs button').forEach((item) => item.classList.toggle('active', item === button)); document.querySelectorAll('.admin-view').forEach((view) => { view.hidden = view.id !== `tab-${button.dataset.tab}`; }); loadCurrent(); }));
-$('adminRefresh').addEventListener('click', loadCurrent); $('overviewApply').addEventListener('click', loadOverview); $('usersApply').addEventListener('click', loadUsers); $('generationsApply').addEventListener('click', loadGenerations);
+$('adminRefresh').addEventListener('click', loadCurrent);
+document.querySelector('.period-picker')?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-period]');
+  if (!button) return;
+  overviewPeriod = button.dataset.period;
+  document.querySelectorAll('.period-picker button').forEach((item) => item.classList.toggle('active', item === button));
+  loadOverview().catch((error) => message(error.message, true));
+});
+$('usersApply').addEventListener('click', loadUsers); $('generationsApply').addEventListener('click', loadGenerations);
 $('usersBody').addEventListener('click', (event) => { const button = event.target.closest('button[data-action]'); if (button) userAction(button).catch((error) => message(error.message, true)); });
 $('generationsBody').addEventListener('click', async (event) => { const button = event.target.closest('button[data-cancel-job]'); if (!button || !confirm('Cancel this running job?')) return; try { await api(`/api/admin/jobs/${button.dataset.cancelJob}`, { method: 'DELETE', body: { reason: 'Cancelled from admin console' } }); await loadGenerations(); } catch (error) { message(error.message, true); } });
 $('creditPacksBody').addEventListener('click', async (event) => { const publish = event.target.closest('button[data-publish-pack]'); const retire = event.target.closest('button[data-retire-pack]'); try { if (publish) { const stripePriceId = prompt('Stripe Price ID (price_…):'); if (!stripePriceId) return; await api(`/api/admin/credit-packs/${publish.dataset.publishPack}/publish`, { method: 'PATCH', body: { stripePriceId } }); } if (retire && confirm('Retire this pack immediately? Existing sales remain unchanged.')) await api(`/api/admin/credit-packs/${retire.dataset.retirePack}/retire`, { method: 'PATCH', body: {} }); await loadCommerce(); } catch (error) { message(error.message, true); } });
 $('salesBody').addEventListener('click', async (event) => { const button = event.target.closest('button[data-refund-sale]'); if (!button || !confirm('Issue a full Stripe refund and remove the unspent purchased credits?')) return; try { await api(`/api/admin/sales/${button.dataset.refundSale}/refund`, { method: 'POST', body: { reason: 'requested_by_customer', idempotencyKey: crypto.randomUUID() } }); message('Refund created and credits reversed.'); await Promise.all([loadCommerce(), loadOverview()]); } catch (error) { message(error.message, true); } });
-$('saleForm').addEventListener('submit', async (event) => { event.preventDefault(); try { const input = formObject(event.currentTarget); await api('/api/admin/sales', { method: 'POST', body: { tenantId: input.tenantId, customerUserId: input.customerUserId, cashAmountNanoUsd: decimalUnits(input.cashUsd, 9), creditsPurchasedMicros: decimalUnits(input.siteCredits, 6), currency: 'USD', paymentProvider: 'manual', externalPaymentId: input.externalPaymentId || null, occurredAt: new Date().toISOString(), notes: input.notes, idempotencyKey: `manual-sale:${crypto.randomUUID()}` } }); event.currentTarget.reset(); message('Sale recorded and credits granted.'); await Promise.all([loadCommerce(), loadOverview()]); } catch (error) { message(error.message, true); } });
-$('markupForm').addEventListener('submit', async (event) => { event.preventDefault(); try { const input = formObject(event.currentTarget); await api('/api/admin/billing/markups', { method: 'POST', body: { versionKey: input.versionKey, name: input.versionKey, markupBasisPoints: Math.round(Number(input.percent) * 100), fixedNanoUsd: '0', active: true } }); event.currentTarget.reset(); message('Markup version activated.'); await loadCommerce(); } catch (error) { message(error.message, true); } });
-$('creditRateForm').addEventListener('submit', async (event) => { event.preventDefault(); try { const input = formObject(event.currentTarget); await api('/api/admin/billing/credit-rates', { method: 'POST', body: { versionKey: input.versionKey, nanoUsdPerSiteCredit: decimalUnits(input.usdPerCredit, 9), active: true } }); event.currentTarget.reset(); message('Credit conversion activated.'); await loadCommerce(); } catch (error) { message(error.message, true); } });
-$('welcomeCreditForm').addEventListener('submit', async (event) => { event.preventDefault(); try { const input = formObject(event.currentTarget); await api('/api/admin/billing/welcome-credits', { method: 'POST', body: { versionKey: input.versionKey, name: input.versionKey, creditMicros: decimalUnits(input.credits, 6), active: true } }); event.currentTarget.reset(); message('Welcome credits updated for future users. Existing balances were not changed.'); await loadCommerce(); } catch (error) { message(error.message, true); } });
+$('pricesBody').addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-toggle-billable]');
+  if (!button) return;
+  const billable = button.dataset.billable !== '1';
+  const label = billable ? 'Enable customer billing for this model?' : 'Disable customer billing for this model?';
+  if (!confirm(label)) return;
+  try {
+    await api(`/api/admin/billing/prices/${button.dataset.toggleBillable}`, {
+      method: 'PATCH',
+      body: billable ? { billable: true, evidenceStatus: 'dashboard_reconciled', reconciledAt: new Date().toISOString() } : { billable: false },
+    });
+    message(billable ? 'Model is now billable.' : 'Model billing disabled.');
+    await loadCommerce();
+  } catch (error) { message(error.message, true); }
+});
+$('markupForm').addEventListener('submit', async (event) => { event.preventDefault(); try { const input = formObject(event.currentTarget); await api('/api/admin/billing/markups', { method: 'POST', body: { versionKey: versionStamp('markup'), name: 'Site markup', markupBasisPoints: Math.round(Number(input.percent) * 100), fixedNanoUsd: '0', active: true } }); message('Markup updated.'); await loadCommerce(); } catch (error) { message(error.message, true); } });
+$('creditRateForm').addEventListener('submit', async (event) => { event.preventDefault(); try { const input = formObject(event.currentTarget); await api('/api/admin/billing/credit-rates', { method: 'POST', body: { versionKey: versionStamp('credit-rate'), nanoUsdPerSiteCredit: decimalUnits(input.usdPerCredit, 9), active: true } }); message('Credit value updated.'); await loadCommerce(); } catch (error) { message(error.message, true); } });
+$('welcomeCreditForm').addEventListener('submit', async (event) => { event.preventDefault(); try { const input = formObject(event.currentTarget); await api('/api/admin/billing/welcome-credits', { method: 'POST', body: { versionKey: versionStamp('welcome'), name: 'Welcome credits', creditMicros: decimalUnits(input.credits, 6), active: true } }); message('Welcome credits updated for new users only.'); await loadCommerce(); } catch (error) { message(error.message, true); } });
 await loadOverview();

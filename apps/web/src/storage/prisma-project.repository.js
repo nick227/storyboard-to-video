@@ -5,6 +5,7 @@ const { Prisma } = require('../../dist/generated/prisma/client.js');
 const { ProjectStore } = require('./project-store');
 const { AppError } = require('../errors');
 const { imageShot } = require('../shared/scene-shots');
+const { buildProjectAssetPublicPath, buildProjectAssetStorageKey } = require('./blob-store');
 
 const SCENE_ASSET_FIELDS = Object.freeze({
   image: { list: 'versions', activeIndex: 'activeVersionIndex', visualType: 'image', owner: 'shot' },
@@ -101,30 +102,38 @@ class PrismaProjectRepository extends ProjectStore {
     const size = fs.statSync(sourcePath).size;
     const usage = await this.usage(lease.projectId);
     if (usage.files + 1 > this.maxFiles || usage.bytes + size > this.maxBytes) throw new AppError('PROJECT_QUOTA_EXCEEDED', 'Project storage quota exceeded', { status: 413, details: { ...usage, requestedBytes: size } });
-    const dir = this.assetDir(lease.projectId, type);
-    const destination = path.join(dir, safeName);
-    if (fs.existsSync(destination)) throw new AppError('ASSET_EXISTS', 'An asset with that filename already exists', { status: 409 });
-    const temp = path.join(dir, `.${safeName}-${crypto.randomUUID()}.tmp`);
-    fs.copyFileSync(sourcePath, temp, fs.constants.COPYFILE_EXCL);
+    const storageKey = buildProjectAssetStorageKey(lease.projectId, type, safeName);
+    const publicPath = buildProjectAssetPublicPath(lease.projectId, type, safeName);
+    let committed = false;
     try {
       await this.verifyLease(lease, signal);
-      fs.renameSync(temp, destination);
-      const publicPath = `/projects/${encodeURIComponent(lease.projectId)}/assets/${type}/${encodeURIComponent(safeName)}`;
-      const storageKey = `projects/${lease.projectId}/assets/${type}/${safeName}`;
+      this.blobStore.put(storageKey, sourcePath, { mimeType, byteSize: size });
+      committed = true;
+      await this.verifyLease(lease, signal);
       const record = await this.prisma.asset.create({ data: {
         id: crypto.randomUUID(), tenantId: lease.ownerId, userId: lease.userId, projectId: lease.projectId, type, fileName: safeName,
         storageKey, publicPath, mimeType: mimeType || null, byteSize: BigInt(size), status: 'committed',
       } });
-      return { id: record.id, fileName: safeName, sourcePath: destination, path: publicPath };
+      return {
+        id: record.id,
+        fileName: safeName,
+        storageKey,
+        publicPath,
+        path: publicPath,
+        sourcePath: this.blobStore.resolveLocalPath?.(storageKey) ?? null,
+        mimeType: mimeType || null,
+        byteSize: size,
+      };
     } catch (error) {
-      fs.rmSync(destination, { force: true });
+      if (committed) this.blobStore.delete(storageKey);
       throw error;
-    } finally { fs.rmSync(temp, { force: true }); }
+    }
   }
 
   async rollbackAsset(asset) {
     if (asset?.id) await this.prisma.asset.deleteMany({ where: { id: asset.id } });
-    if (asset?.sourcePath) fs.rmSync(asset.sourcePath, { force: true });
+    if (asset?.storageKey) this.blobStore.delete(asset.storageKey);
+    else if (asset?.sourcePath) fs.rmSync(asset.sourcePath, { force: true });
   }
 
   async findAsset(id, type, fileName, { ownerId } = {}) {
@@ -133,9 +142,15 @@ class PrismaProjectRepository extends ProjectStore {
     if (!safeName || safeName !== fileName || safeName.includes('\\')) throw new AppError('INVALID_PATH', 'Invalid asset path', { status: 400 });
     const record = await this.prisma.asset.findUnique({ where: { projectId_type_fileName: { projectId: id, type, fileName: safeName } } });
     if (!record || record.status !== 'committed') throw new AppError('ASSET_NOT_FOUND', 'Asset not found', { status: 404 });
-    const sourcePath = path.join(this.assetDir(id, type, { create: false }), safeName);
-    if (!fs.existsSync(sourcePath)) throw new AppError('ASSET_NOT_FOUND', 'Asset bytes are unavailable', { status: 404 });
-    return { ...record, byteSize: Number(record.byteSize), sourcePath, path: record.publicPath };
+    if (!this.blobStore.exists(record.storageKey)) throw new AppError('ASSET_NOT_FOUND', 'Asset bytes are unavailable', { status: 404 });
+    return {
+      ...record,
+      byteSize: Number(record.byteSize),
+      storageKey: record.storageKey,
+      publicPath: record.publicPath,
+      path: record.publicPath,
+      sourcePath: this.blobStore.resolveLocalPath?.(record.storageKey) ?? null,
+    };
   }
 
   async attachSceneVersion(lease, { sceneId, kind, version, jobId }) {
@@ -174,7 +189,7 @@ class PrismaProjectRepository extends ProjectStore {
     const removed = [];
     for (const asset of assets) {
       if (asset.type !== 'exports' && referenced.has(asset.publicPath)) continue;
-      await this.rollbackAsset({ id: asset.id, sourcePath: path.join(this.assetDir(id, asset.type, { create: false }), asset.fileName) });
+      await this.rollbackAsset({ id: asset.id, storageKey: asset.storageKey });
       removed.push({ type: asset.type, fileName: asset.fileName });
     }
     return removed;
@@ -209,18 +224,17 @@ class PrismaProjectRepository extends ProjectStore {
 
     const record = await this.prisma.asset.findUnique({ where: { projectId_type_fileName: { projectId: id, type, fileName } } });
     if (!record || record.status !== 'committed') return null;
-
-    const sourcePath = path.join(this.assetDir(id, type, { create: false }), fileName);
-    if (!fs.existsSync(sourcePath)) return null;
+    if (!this.blobStore.exists(record.storageKey)) return null;
 
     return {
       projectId: id,
       type,
       fileName,
-      sourcePath,
+      storageKey: record.storageKey,
       path: publicPath,
       mimeType: record.mimeType,
-      byteSize: Number(record.byteSize)
+      byteSize: Number(record.byteSize),
+      sourcePath: this.blobStore.resolveLocalPath?.(record.storageKey) ?? null,
     };
   }
 }

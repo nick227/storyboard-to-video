@@ -776,7 +776,7 @@
         <label class="start-run-range-option row">
           <input type="radio" name="startRunRange" id="startRunRangeNext" value="next" checked />
           <span>Next</span>
-          <input type="number" id="startRunNextCount" min="1" value="1" max="10" aria-label="Number of scenes" />
+          <input type="number" id="startRunNextCount" min="1" value="5" max="10" aria-label="Number of scenes" />
         </label>
       </div>
       
@@ -833,9 +833,9 @@
     </div>
     <p id="confirmRegenMessage" class="field-note"></p>
     <div id="confirmVideoSummary" class="confirm-video-summary" hidden>
-      <div class="confirm-video-summary-row"><span>Provider</span><strong id="confirmVideoProviderLabel"></strong></div>
-      <div class="confirm-video-summary-row"><span>Physical action</span><span id="confirmVideoBeatLabel"></span></div>
-      <div class="confirm-video-summary-row"><span>Visual prompt</span><span id="confirmVideoPromptLabel"></span></div>
+      <div class="confirm-video-summary-row"><span id="confirmRegenProviderKindLabel">Provider</span><strong id="confirmVideoProviderLabel"></strong></div>
+      <div id="confirmVideoBeatRow" class="confirm-video-summary-row"><span>Physical action</span><span id="confirmVideoBeatLabel"></span></div>
+      <div id="confirmVideoPromptRow" class="confirm-video-summary-row"><span>Visual prompt</span><span id="confirmVideoPromptLabel"></span></div>
     </div>
     <div id="confirmVideoKeyframes" class="confirm-video-keyframes" hidden>
       <details id="confirmVideoKeyframesDetails">

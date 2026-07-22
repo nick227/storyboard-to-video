@@ -26,8 +26,19 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     piperVoices: path.join(root, 'vendor', 'piper', 'voices'),
     ltxShared: path.resolve(env.LTX_SHARED_DIR || '/home/administrator/web/ltx-env/io/basic-cartoon-poc'),
   };
+  const storageBackend = String(env.STORAGE_BACKEND || 'local').toLowerCase();
   return {
     port: integer(env.PORT, 3000, 1, 65535), paths,
+    storage: {
+      backend: storageBackend,
+      r2: {
+        accountId: String(env.R2_ACCOUNT_ID || ''),
+        accessKeyId: String(env.R2_ACCESS_KEY_ID || ''),
+        secretAccessKey: String(env.R2_SECRET_ACCESS_KEY || ''),
+        bucket: String(env.R2_BUCKET || ''),
+        endpoint: String(env.R2_ENDPOINT || ''),
+      },
+    },
     limits: { references: 8, referenceBytes: 8 * 1024 * 1024, script: 200_000, prompt: 20_000, line: 2_000, json: '10mb' },
     generationConcurrency: integer(env.GENERATION_CONCURRENCY, 1, 1, 32),
     mediaOutputDefaults: {
