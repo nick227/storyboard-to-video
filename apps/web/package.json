@@ -16,6 +16,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "start:production": "npm run prisma:migrate:deploy && node server.js",
     "metadata:import": "npm run prisma:build && node scripts/import-filesystem-metadata.js",
+    "credits:reseed": "npm run prisma:build && node scripts/reseed-site-credit-rate-and-packs.js",
     "validate:providers": "npm run prisma:build && node scripts/validate-provider-usage.js",
     "setup:piper": "node scripts/setup-piper.js"
   },
