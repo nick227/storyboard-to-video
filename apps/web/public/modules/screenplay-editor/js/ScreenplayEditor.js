@@ -5,6 +5,7 @@ import { PageManager } from './page/PageManager.js';
 import { EditorDOMHandler } from './handlers/EditorDOMHandler.js';
 import { HelpModal } from './ui/HelpModal.js';
 import { ViewportScaler } from './ui/ViewportScaler.js';
+import { PageScrollIndicator } from './ui/PageScrollIndicator.js';
 import { EDITOR_EVENTS } from './constants/editorConstants.js';
 import { VALID_FORMATS, FORMAT_DISPLAY_NAMES } from './constants/formats.js';
 
@@ -50,6 +51,7 @@ export class ScreenplayEditor {
         this.keyboardManager = null;
         this.helpModal = null;
         this.viewportScaler = null;
+        this.pageScrollIndicator = null;
 
         // Elements
         this.wrapper = null;
@@ -168,6 +170,13 @@ export class ScreenplayEditor {
         });
         this.viewportScaler.start();
 
+        this.pageScrollIndicator = new PageScrollIndicator({
+            wrapper: this.wrapper,
+            workspace: this.workspace,
+            pageManager: this.pageManager
+        });
+        this.pageScrollIndicator.start();
+
         this.workspace.addEventListener('input', () => this._notifyChange());
         this.workspace.addEventListener('keyup', () => this._updateSelectionState());
         this.workspace.addEventListener('click', () => this._updateSelectionState());
@@ -187,6 +196,7 @@ export class ScreenplayEditor {
         this.isDirty = false;
         this._updateSelectionState();
         if (this.viewportScaler) this.viewportScaler.scheduleUpdate();
+        if (this.pageScrollIndicator) this.pageScrollIndicator.refresh(false);
     }
 
     getRawScript (format) {
@@ -248,6 +258,7 @@ export class ScreenplayEditor {
         const currentDoc = this.getScriptDocument();
         const rawText = RawScriptAdapter.serialize(currentDoc, this.format);
         if (this.viewportScaler) this.viewportScaler.scheduleUpdate();
+        if (this.pageScrollIndicator) this.pageScrollIndicator.refresh(false);
 
         if (typeof this.callbacks.onChange === 'function') {
             this.callbacks.onChange({
@@ -284,6 +295,10 @@ export class ScreenplayEditor {
     }
 
     destroy () {
+        if (this.pageScrollIndicator) {
+            this.pageScrollIndicator.destroy();
+            this.pageScrollIndicator = null;
+        }
         if (this.viewportScaler) {
             this.viewportScaler.destroy();
             this.viewportScaler = null;
