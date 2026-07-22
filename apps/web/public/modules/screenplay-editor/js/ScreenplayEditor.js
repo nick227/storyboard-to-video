@@ -124,7 +124,8 @@ export class ScreenplayEditor {
 
         if (this.toolbarHost) {
             this.toolbarHost.innerHTML = '';
-            this.toolbarHost.hidden = false;
+            this.toolbarHost.classList.remove('is-inactive');
+            this.toolbarHost.setAttribute('aria-hidden', 'false');
             this.toolbarHost.classList.add('screenplay-toolbar', 'is-hosted', `theme-${this.theme}`);
             this.toolbarHost.appendChild(chipsGroup);
             this.toolbar = this.toolbarHost;
@@ -311,7 +312,8 @@ export class ScreenplayEditor {
         }
         if (this.toolbarHost) {
             this.toolbarHost.innerHTML = '';
-            this.toolbarHost.hidden = true;
+            this.toolbarHost.classList.add('is-inactive');
+            this.toolbarHost.setAttribute('aria-hidden', 'true');
         }
         this.container.innerHTML = '';
     }

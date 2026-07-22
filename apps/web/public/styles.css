@@ -51,7 +51,13 @@ button {
   transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
   font-size: 13px;
 }
-button.primary { background: var(--dark); border-color: var(--accent); color: white; }
+button.primary { 
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 650;
+ }
 button.secondary { background: transparent; padding: 2px 4px; min-height: 0; }
 button.danger { background: var(--danger); border-color: var(--danger); color: white; }
 button:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -82,14 +88,15 @@ label > span {
   padding: 20px;
 }
 .storyboard-topbar {
-  display: grid;
+  display: flex;
+  justify-content: space-between;
   grid-template-columns: 1fr 1fr;
   gap: 2px;
   align-items: center;
   margin-bottom: 14px;
   grid-template-columns: 94% 5% !important;
 }
-.brand-block { min-width: 0; flex: 1; }
+.brand-block { min-width: 0; flex: 1; max-width: 50%; }
 .storyboard-title-row {
   display: flex;
   align-items: center;
@@ -130,13 +137,15 @@ label > span {
 .storyboard-picker-toggle {
   flex: 0 0 auto;
   padding: 0;
-  border: 0;
-  color: var(--muted);
   font-size: 30px;
   cursor: pointer;
   min-width: 50px;
-  background: black;
   cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 650;
 }
 .storyboard-picker-toggle:hover { color: var(--text); }
 .storyboard-picker-list {
@@ -173,7 +182,7 @@ label > span {
   background-color: rgba(255,255,255,0.1);
   font-weight: 600;
 }
-.top-actions { flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; margin-top: 5px; }
+.top-actions { flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; }
 #newStoryboardBtn {
   width: 100%;
 }
@@ -185,7 +194,6 @@ label > span {
   margin-bottom: 16px;
 }
 .panel-tight { padding: 12px 16px; }
-.storyboard-topbar,
 .concept-grid {
   display: grid;
   grid-template-columns: 70% 29%;
@@ -401,9 +409,11 @@ label > span {
   flex: 1 1 70%;
   min-width: 0;
   max-width: 70%;
+  min-height: 34px;
 }
-.script-header-primary[hidden] {
-  display: none !important;
+.script-header-primary.is-inactive {
+  visibility: hidden;
+  pointer-events: none;
 }
 .script-mode-label {
   font-size: 12px;
@@ -2082,9 +2092,8 @@ button.text-button {
 }
 .page-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
-  margin-bottom: 20px;
 }
 .page-tab {
   flex: 0 0 auto;

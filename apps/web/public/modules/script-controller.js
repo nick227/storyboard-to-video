@@ -20,7 +20,9 @@ export function initScriptController(elements, { setStatus, onScriptChange } = {
   };
 
   const setToolbarHostsVisible = (visible) => {
-    if (elements.toolbarHost) elements.toolbarHost.hidden = !visible;
+    if (!elements.toolbarHost) return;
+    elements.toolbarHost.classList.toggle('is-inactive', !visible);
+    elements.toolbarHost.setAttribute('aria-hidden', String(!visible));
   };
 
   const setEditorMode = (mode) => {

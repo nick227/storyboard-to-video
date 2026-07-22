@@ -17,7 +17,7 @@
 
   <div class="app-shell">
     <header class="storyboard-topbar">
-      <div class="brand-block">
+      <div class="brand-block row">
         <div class="storyboard-title-row">
           <div class="storyboard-combo">
             <input id="storyboardTitle" class="storyboard-title" type="text" maxlength="200"
@@ -29,21 +29,21 @@
               aria-label="Saved storyboards" hidden></ul>
           </div>
         </div>
+        <div class="toolbar top-actions">
+          <button id="newStoryboardBtn" class="primary">New</button>
+          <button id="saveStateBtn" class="hidden" disabled>Saved</button>
+        </div>
       </div>
-      <div class="toolbar top-actions">
-        <button id="newStoryboardBtn" class="primary">New</button>
-        <button id="saveStateBtn" class="hidden" disabled>Saved</button>
-      </div>
-    </header>
 
-    <section class="page-tabs page-controls" role="tablist" aria-label="Studio pages">
-      <button type="button" id="tabScriptBtn" class="page-tab" role="tab" data-page="script"
-        aria-controls="scriptPagePanel" aria-selected="false" tabindex="-1">Script</button>
-      <button type="button" id="tabStoryboardBtn" class="page-tab is-active" role="tab" data-page="storyboard"
-        aria-controls="storyboardPagePanel" aria-selected="true">Storyboard</button>
-      <button type="button" id="tabTimelineBtn" class="page-tab" role="tab" data-page="timeline"
-        aria-controls="timelinePagePanel" aria-selected="false" tabindex="-1">Timeline</button>
-    </section>
+      <section class="page-tabs page-controls" role="tablist" aria-label="Studio pages">
+        <button type="button" id="tabScriptBtn" class="page-tab" role="tab" data-page="script"
+          aria-controls="scriptPagePanel" aria-selected="false" tabindex="-1">Script</button>
+        <button type="button" id="tabStoryboardBtn" class="page-tab is-active" role="tab" data-page="storyboard"
+          aria-controls="storyboardPagePanel" aria-selected="true">Storyboard</button>
+        <button type="button" id="tabTimelineBtn" class="page-tab" role="tab" data-page="timeline"
+          aria-controls="timelinePagePanel" aria-selected="false" tabindex="-1">Timeline</button>
+      </section>
+    </header>
 
     <div class="studio-page-stage">
       <div id="pageTransition" class="page-transition" role="status" aria-live="polite" aria-atomic="true" hidden>
@@ -57,7 +57,7 @@
       aria-labelledby="tabScriptBtn" hidden>
       <article class="panel concept-column story-concept">
         <div class="script-header-row">
-          <div id="screenplayToolbarHost" class="script-header-primary" hidden></div>
+          <div id="screenplayToolbarHost" class="script-header-primary is-inactive" aria-hidden="true"></div>
           <div class="script-header-actions">
             <select id="scriptModeSelect" class="script-mode-select">
               <option value="raw">Raw Text</option>
