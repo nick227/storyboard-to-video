@@ -16,13 +16,11 @@ function fixture() {
   return { root, store, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
 }
 
-function writeImageAsset(store, projectId, ownerId, fileName, contents) {
-  const dir = store.assetDir(projectId, 'images');
-  const staged = path.join(dir, `staged-${fileName}`);
+async function writeImageAsset(store, projectId, ownerId, fileName, contents) {
+  const staged = path.join(store.root, '..', `staged-${fileName}`);
   fs.writeFileSync(staged, contents);
   const lease = store.acquireLease(projectId, { ownerId });
-  const asset = store.commitAsset(lease, 'images', staged, {});
-  return asset;
+  return store.commitAsset(lease, 'images', staged, { fileName });
 }
 
 test('replan cleanup: an asset only tied to a replaced scene is retired, but an asset still referenced by a surviving scene is not', async () => {
@@ -31,8 +29,8 @@ test('replan cleanup: an asset only tied to a replaced scene is retired, but an 
     const ownerId = 'owner-1';
     const project = store.create({ id: 'replan-test-project', title: 'Replan Test' }, { ownerId, tenantId: ownerId });
 
-    const assetA = writeImageAsset(store, project.id, ownerId, 'scene-a.png', 'scene-a-image-bytes');
-    const assetB = writeImageAsset(store, project.id, ownerId, 'scene-b.png', 'scene-b-image-bytes');
+    const assetA = await writeImageAsset(store, project.id, ownerId, 'scene-a.png', 'scene-a-image-bytes');
+    const assetB = await writeImageAsset(store, project.id, ownerId, 'scene-b.png', 'scene-b-image-bytes');
 
     // Attach both as real scene versions in the live document (this is the state before a replan:
     // two scenes, each with a generated image).
@@ -60,7 +58,7 @@ test('replan cleanup: an asset only tied to a replaced scene is retired, but an 
 
     // Per the plan's ordering requirement: cleanup only happens AFTER this rebuild write already
     // succeeded and is the confirmed, authoritative document (which it now is, at this point).
-    const moved = store.cleanup(project.id, { ownerId });
+    const moved = await store.cleanup(project.id, { ownerId });
 
     assert.ok(moved.some((item) => item.fileName === assetA.fileName), 'the orphaned scene-a image must be retired by cleanup');
     assert.ok(!moved.some((item) => item.fileName === assetB.fileName), 'the still-referenced scene-b image must NOT be swept up by cleanup');

@@ -134,8 +134,8 @@ test('video versions record the start frame and exact provider settings', async 
     const endSource = path.join(f.root, 'end.png');
     fs.writeFileSync(source, 'image');
     fs.writeFileSync(endSource, 'ending');
-    const image = f.store.commitAsset(f.store.acquireLease('video-project'), 'images', source);
-    const endImage = f.store.commitAsset(f.store.acquireLease('video-project'), 'images', endSource);
+    const image = await f.store.commitAsset(f.store.acquireLease('video-project'), 'images', source);
+    const endImage = await f.store.commitAsset(f.store.acquireLease('video-project'), 'images', endSource);
     project = f.store.write('video-project', {
       ...project,
       scenes: [{
@@ -200,7 +200,7 @@ test('project-level media settings choose the default video provider, and an exp
     let project = f.store.create({ id: 'provider-project', project: { scenes: [{ id: 'scene-1' }] } });
     const source = path.join(f.root, 'source.png');
     fs.writeFileSync(source, 'image');
-    const image = f.store.commitAsset(f.store.acquireLease('provider-project'), 'images', source);
+    const image = await f.store.commitAsset(f.store.acquireLease('provider-project'), 'images', source);
     project = f.store.write('provider-project', {
       ...project,
       mediaSettings: { video: { resolutionTier: 'draft', provider: 'stub' } },
@@ -253,8 +253,8 @@ test('a selected MiniMax end frame automatically uses Hailuo first/last-frame in
     const endSource = path.join(f.root, 'end.png');
     fs.writeFileSync(startSource, pngHeader(640, 480));
     fs.writeFileSync(endSource, pngHeader(1280, 960));
-    const start = f.store.commitAsset(f.store.acquireLease(project.id), 'images', startSource);
-    const end = f.store.commitAsset(f.store.acquireLease(project.id), 'images', endSource);
+    const start = await f.store.commitAsset(f.store.acquireLease(project.id), 'images', startSource);
+    const end = await f.store.commitAsset(f.store.acquireLease(project.id), 'images', endSource);
     project = f.store.write(project.id, {
       ...project,
       mediaSettings: { aspectRatio: '4:3', video: { provider: 'minimax', resolutionTier: 'standard', durationSeconds: 6 } },
@@ -306,7 +306,7 @@ test('Veo -- a second real provider -- plugs into the same registry/execution/ma
     let project = f.store.create({ id: 'veo-neutrality', project: { scenes: [{ id: 'scene-1' }] } });
     const source = path.join(f.root, 'source.png');
     fs.writeFileSync(source, pngHeader(1280, 720));
-    const image = f.store.commitAsset(f.store.acquireLease('veo-neutrality'), 'images', source);
+    const image = await f.store.commitAsset(f.store.acquireLease('veo-neutrality'), 'images', source);
     project = f.store.write('veo-neutrality', {
       ...project,
       mediaSettings: { aspectRatio: '16:9', video: { provider: 'veo', resolutionTier: 'standard' } },

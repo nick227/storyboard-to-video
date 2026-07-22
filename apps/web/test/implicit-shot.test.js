@@ -231,10 +231,10 @@ test('ZIP export resolves the active image and video from shots[0]', async () =>
     fs.writeFileSync(secondSource, 'second');
     fs.writeFileSync(firstVideoSource, 'first video');
     fs.writeFileSync(secondVideoSource, 'second video');
-    const first = f.store.commitAsset(lease, 'images', firstSource);
-    const second = f.store.commitAsset(lease, 'images', secondSource);
-    const firstVideo = f.store.commitAsset(lease, 'videos', firstVideoSource);
-    const secondVideo = f.store.commitAsset(lease, 'videos', secondVideoSource);
+    const first = await f.store.commitAsset(lease, 'images', firstSource);
+    const second = await f.store.commitAsset(lease, 'images', secondSource);
+    const firstVideo = await f.store.commitAsset(lease, 'videos', firstVideoSource);
+    const secondVideo = await f.store.commitAsset(lease, 'videos', secondVideoSource);
     project = f.store.write('export', {
       ...project,
       scenes: [{

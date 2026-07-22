@@ -258,7 +258,7 @@ class ProjectStore {
     return { files, bytes, maxFiles: this.maxFiles, maxBytes: this.maxBytes };
   }
 
-  commitAsset(lease, type, sourcePath, { fileName = path.basename(sourcePath), signal, mimeType } = {}) {
+  async commitAsset(lease, type, sourcePath, { fileName = path.basename(sourcePath), signal, mimeType } = {}) {
     this.verifyLease(lease, signal);
     const safeName = path.basename(fileName);
     if (!safeName || safeName !== fileName || safeName.includes('\\')) throw new AppError('INVALID_PATH', 'Invalid asset filename', { status: 400 });
@@ -270,12 +270,12 @@ class ProjectStore {
     let committed = false;
     try {
       this.verifyLease(lease, signal);
-      this.blobStore.put(storageKey, sourcePath, { mimeType, byteSize: size });
+      await this.blobStore.put(storageKey, sourcePath, { mimeType, byteSize: size });
       committed = true;
       this.verifyLease(lease, signal);
       this.addReference(lease.projectId, publicPath, `generation:${crypto.randomUUID()}`);
     } catch (error) {
-      if (committed) this.blobStore.delete(storageKey);
+      if (committed) await this.blobStore.delete(storageKey);
       throw error;
     }
     return {
@@ -289,8 +289,8 @@ class ProjectStore {
     };
   }
 
-  rollbackAsset(asset) {
-    if (asset?.storageKey) this.blobStore.delete(asset.storageKey);
+  async rollbackAsset(asset) {
+    if (asset?.storageKey) await this.blobStore.delete(asset.storageKey);
     else if (asset?.sourcePath) fs.rmSync(asset.sourcePath, { force: true });
   }
 
@@ -325,7 +325,7 @@ class ProjectStore {
     fs.rmSync(this.projectDir(id), { recursive: true, force: true });
   }
 
-  deleteAsset(id, type, fileName, { ownerId } = {}) {
+  async deleteAsset(id, type, fileName, { ownerId } = {}) {
     const document = this.read(id, { ownerId });
     const safeName = path.basename(String(fileName || ''));
     if (!safeName || safeName !== fileName || safeName.includes('\\')) throw new AppError('INVALID_PATH', 'Invalid asset path', { status: 400 });
@@ -333,11 +333,11 @@ class ProjectStore {
     const references = [...new Set([...(this.references(id)[publicPath] || []), ...(document.assetReferences?.includes(publicPath) ? ['project'] : [])])];
     if (references.length) throw new AppError('ASSET_IN_USE', 'Asset is referenced by the project and cannot be deleted', { status: 409, details: { path: publicPath, references } });
     const storageKey = buildProjectAssetStorageKey(id, type, safeName);
-    if (!this.blobStore.exists(storageKey)) throw new AppError('ASSET_NOT_FOUND', 'Asset not found', { status: 404 });
-    this.blobStore.delete(storageKey);
+    if (!await this.blobStore.exists(storageKey)) throw new AppError('ASSET_NOT_FOUND', 'Asset not found', { status: 404 });
+    await this.blobStore.delete(storageKey);
   }
 
-  cleanup(id, { ownerId } = {}) {
+  async cleanup(id, { ownerId } = {}) {
     const document = this.read(id, { ownerId });
     const referenced = new Set([...Object.keys(this.references(id)), ...(document.assetReferences || [])]);
     const removed = [];
@@ -346,7 +346,7 @@ class ProjectStore {
       for (const fileName of fs.readdirSync(dir)) {
         const publicPath = buildProjectAssetPublicPath(id, type, fileName);
         if (type !== 'exports' && referenced.has(publicPath)) continue;
-        this.blobStore.delete(buildProjectAssetStorageKey(id, type, fileName));
+        await this.blobStore.delete(buildProjectAssetStorageKey(id, type, fileName));
         removed.push({ type, fileName });
       }
     }
@@ -385,7 +385,7 @@ class ProjectStore {
     if (fileName !== path.basename(fileName)) return null;
 
     const storageKey = buildProjectAssetStorageKey(projectId, type, fileName);
-    if (!this.blobStore.exists(storageKey)) return null;
+    if (!await this.blobStore.exists(storageKey)) return null;
 
     return {
       projectId,

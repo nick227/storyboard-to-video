@@ -84,35 +84,35 @@ test('persisted queued and running jobs recover as interrupted', async () => {
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('cancelled leases reject late asset commits', () => {
+test('cancelled leases reject late asset commits', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-'));
   try {
     const store = new ProjectStore(root); const project = store.create({ id: 'p', ownerId: 'alice' }); const lease = store.acquireLease(project.id);
     const source = path.join(root, 'source.bin'); fs.writeFileSync(source, Buffer.alloc(8));
     const controller = new AbortController(); controller.abort();
-    assert.throws(() => store.commitAsset(lease, 'images', source, { signal: controller.signal }), /abort/i);
+    await assert.rejects(() => store.commitAsset(lease, 'images', source, { signal: controller.signal }), /abort/i);
     assert.deepEqual(fs.readdirSync(store.assetDir('p', 'images')), []);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('project tombstones prevent late jobs from recreating deleted projects', () => {
+test('project tombstones prevent late jobs from recreating deleted projects', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-'));
   try {
     const store = new ProjectStore(root); store.create({ id: 'p', ownerId: 'alice' }); const lease = store.acquireLease('p');
     const source = path.join(root, 'source.bin'); fs.writeFileSync(source, Buffer.alloc(8)); store.delete('p');
-    assert.throws(() => store.commitAsset(lease, 'images', source), /deleted/i);
+    await assert.rejects(() => store.commitAsset(lease, 'images', source), /deleted/i);
     assert.equal(fs.existsSync(store.projectDir('p')), false);
     assert.throws(() => store.create({ id: 'p' }), /permanently deleted/i);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('asset deletion rejects explicit active-version references', () => {
+test('asset deletion rejects explicit active-version references', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-'));
   try {
     const store = new ProjectStore(root); let project = store.create({ id: 'p' }); const lease = store.acquireLease('p');
-    const source = path.join(root, 'source.bin'); fs.writeFileSync(source, Buffer.alloc(8)); const asset = store.commitAsset(lease, 'images', source);
+    const source = path.join(root, 'source.bin'); fs.writeFileSync(source, Buffer.alloc(8)); const asset = await store.commitAsset(lease, 'images', source);
     project = store.write('p', { ...project, scenes: [{ versions: [{ path: asset.path }], activeVersionIndex: 0 }] }, { expectedRevision: project.revision });
-    assert.throws(() => store.deleteAsset('p', 'images', asset.fileName), (error) => error.code === 'ASSET_IN_USE');
+    await assert.rejects(() => store.deleteAsset('p', 'images', asset.fileName), (error) => error.code === 'ASSET_IN_USE');
     assert.ok(project.assetReferences.includes(asset.path));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -161,15 +161,15 @@ test('duplicate active generation requests reuse the active job', async (t) => {
   assert.equal((await firstPromise).status, 200);
 });
 
-test('quota enforcement is atomic and cleanup removes only unreferenced assets', () => {
+test('quota enforcement is atomic and cleanup removes only unreferenced assets', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-'));
   try {
     const store = new ProjectStore(root, { maxFiles: 2, maxBytes: 12 }); let project = store.create({ id: 'p' }); const lease = store.acquireLease('p');
-    const source = path.join(root, 'source.bin'); fs.writeFileSync(source, Buffer.alloc(8)); const kept = store.commitAsset(lease, 'images', source, { fileName: 'kept.bin' });
+    const source = path.join(root, 'source.bin'); fs.writeFileSync(source, Buffer.alloc(8)); const kept = await store.commitAsset(lease, 'images', source, { fileName: 'kept.bin' });
     project = store.write('p', { ...project, scenes: [{ versions: [{ path: kept.path }] }] }, { expectedRevision: project.revision });
-    fs.writeFileSync(source, Buffer.alloc(8)); assert.throws(() => store.commitAsset(lease, 'images', source, { fileName: 'too-big.bin' }), (error) => error.code === 'PROJECT_QUOTA_EXCEEDED');
+    fs.writeFileSync(source, Buffer.alloc(8)); await assert.rejects(() => store.commitAsset(lease, 'images', source, { fileName: 'too-big.bin' }), (error) => error.code === 'PROJECT_QUOTA_EXCEEDED');
     fs.writeFileSync(path.join(store.assetDir('p', 'images'), 'unused.bin'), Buffer.alloc(1));
-    const removed = store.cleanup('p'); assert.deepEqual(removed, [{ type: 'images', fileName: 'unused.bin' }]);
+    const removed = await store.cleanup('p'); assert.deepEqual(removed, [{ type: 'images', fileName: 'unused.bin' }]);
     assert.equal(fs.existsSync(path.join(store.assetDir('p', 'images'), 'kept.bin')), true);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

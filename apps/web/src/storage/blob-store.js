@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { AppError } = require('../errors');
+const { createR2BlobStore } = require('./r2-blob-store');
+const { createDualBlobStore } = require('./dual-blob-store');
 
 const PROJECT_ASSET_KEY_PATTERN = /^projects\/([a-zA-Z0-9][a-zA-Z0-9_-]{0,79})\/assets\/(images|audio|videos|subtitles|exports|ai-references|scene-images)\/([^/]+)$/;
 
@@ -35,7 +37,7 @@ function createLocalBlobStore({ root }) {
   return {
     backend: 'local',
 
-    put(storageKey, sourcePath, { mimeType } = {}) {
+    async put(storageKey, sourcePath, { mimeType } = {}) {
       void mimeType;
       const destination = localPathForStorageKey(resolvedRoot, storageKey);
       if (fs.existsSync(destination)) {
@@ -58,7 +60,7 @@ function createLocalBlobStore({ root }) {
       return { storageKey };
     },
 
-    getStream(storageKey) {
+    async getStream(storageKey) {
       const filePath = localPathForStorageKey(resolvedRoot, storageKey);
       if (!fs.existsSync(filePath)) {
         throw new AppError('ASSET_NOT_FOUND', 'Asset not found', { status: 404 });
@@ -66,12 +68,11 @@ function createLocalBlobStore({ root }) {
       return fs.createReadStream(filePath);
     },
 
-    delete(storageKey) {
-      const filePath = localPathForStorageKey(resolvedRoot, storageKey);
-      fs.rmSync(filePath, { force: true });
+    async delete(storageKey) {
+      fs.rmSync(localPathForStorageKey(resolvedRoot, storageKey), { force: true });
     },
 
-    exists(storageKey) {
+    async exists(storageKey) {
       return fs.existsSync(localPathForStorageKey(resolvedRoot, storageKey));
     },
 
@@ -98,12 +99,13 @@ function assertR2Config(storage) {
 
 function createBlobStore(config) {
   const backend = String(config.storage?.backend || 'local').toLowerCase();
-  if (backend === 'local') {
-    return createLocalBlobStore({ root: config.paths.projects });
-  }
+  const local = createLocalBlobStore({ root: config.paths.projects });
+  if (backend === 'local') return local;
   if (backend === 'r2' || backend === 'dual') {
     assertR2Config(config.storage);
-    throw new Error(`STORAGE_BACKEND=${backend} is not available yet; use STORAGE_BACKEND=local or omit STORAGE_BACKEND`);
+    const remote = createR2BlobStore(config.storage.r2);
+    if (backend === 'r2') return remote;
+    return createDualBlobStore({ local, remote });
   }
   throw new Error(`Invalid STORAGE_BACKEND: ${backend}`);
 }
@@ -113,5 +115,7 @@ module.exports = {
   buildProjectAssetPublicPath,
   parseProjectAssetStorageKey,
   createLocalBlobStore,
+  createR2BlobStore,
+  createDualBlobStore,
   createBlobStore,
 };

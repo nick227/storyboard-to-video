@@ -107,7 +107,7 @@ class PrismaProjectRepository extends ProjectStore {
     let committed = false;
     try {
       await this.verifyLease(lease, signal);
-      this.blobStore.put(storageKey, sourcePath, { mimeType, byteSize: size });
+      await this.blobStore.put(storageKey, sourcePath, { mimeType, byteSize: size });
       committed = true;
       await this.verifyLease(lease, signal);
       const record = await this.prisma.asset.create({ data: {
@@ -125,14 +125,14 @@ class PrismaProjectRepository extends ProjectStore {
         byteSize: size,
       };
     } catch (error) {
-      if (committed) this.blobStore.delete(storageKey);
+      if (committed) await this.blobStore.delete(storageKey);
       throw error;
     }
   }
 
   async rollbackAsset(asset) {
     if (asset?.id) await this.prisma.asset.deleteMany({ where: { id: asset.id } });
-    if (asset?.storageKey) this.blobStore.delete(asset.storageKey);
+    if (asset?.storageKey) await this.blobStore.delete(asset.storageKey);
     else if (asset?.sourcePath) fs.rmSync(asset.sourcePath, { force: true });
   }
 
@@ -142,7 +142,7 @@ class PrismaProjectRepository extends ProjectStore {
     if (!safeName || safeName !== fileName || safeName.includes('\\')) throw new AppError('INVALID_PATH', 'Invalid asset path', { status: 400 });
     const record = await this.prisma.asset.findUnique({ where: { projectId_type_fileName: { projectId: id, type, fileName: safeName } } });
     if (!record || record.status !== 'committed') throw new AppError('ASSET_NOT_FOUND', 'Asset not found', { status: 404 });
-    if (!this.blobStore.exists(record.storageKey)) throw new AppError('ASSET_NOT_FOUND', 'Asset bytes are unavailable', { status: 404 });
+    if (!await this.blobStore.exists(record.storageKey)) throw new AppError('ASSET_NOT_FOUND', 'Asset bytes are unavailable', { status: 404 });
     return {
       ...record,
       byteSize: Number(record.byteSize),
@@ -224,7 +224,7 @@ class PrismaProjectRepository extends ProjectStore {
 
     const record = await this.prisma.asset.findUnique({ where: { projectId_type_fileName: { projectId: id, type, fileName } } });
     if (!record || record.status !== 'committed') return null;
-    if (!this.blobStore.exists(record.storageKey)) return null;
+    if (!await this.blobStore.exists(record.storageKey)) return null;
 
     return {
       projectId: id,
