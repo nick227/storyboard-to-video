@@ -5,7 +5,9 @@ const { IMAGE_PROVIDER_CAPABILITIES, imageProviderCapabilities } = require('../.
 const fs = require('node:fs');
 const { estimatedUsage } = require('../../shared/media-output-policy');
 const { AppError } = require('../../errors');
-const { DEZGO_SD1_MODEL, dezgoModel, dezgoSteps, isDezgoFlux } = require('./dezgo-settings');
+const {
+  DEZGO_FLUX_MODEL, DEZGO_SD1_MODEL, dezgoBillingProvider, dezgoModelForProvider, dezgoSteps, isDezgoFluxProvider, isDezgoProvider,
+} = require('./dezgo-settings');
 
 function fileBlob(file) {
   const extension = file.split('.').pop()?.toLowerCase();
@@ -78,7 +80,7 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
       measurementStatus: 'estimated',
     });
   }
-  async function dezgoFlux(prompt, output, model, steps) {
+  async function dezgoFlux(prompt, output, steps) {
     const { width, height } = output.resolved.providerSettings;
     const response = await fetch('https://api.dezgo.com/text2image_flux', {
       method: 'POST',
@@ -87,14 +89,14 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
         Accept: 'image/png',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ prompt, model, width, height, steps, format: 'png' }),
+      body: JSON.stringify({ prompt, model: DEZGO_FLUX_MODEL, width, height, steps, format: 'png' }),
       signal: signal(config.env.IMAGE_PROVIDER_TIMEOUT_MS || 180_000, getCancellation),
     });
     if (!response.ok) await throwResponse('dezgo', response);
     return providerResult({
       output: { buffer: Buffer.from(await response.arrayBuffer()), mimeType: 'image/png', extension: 'png' },
       provider: 'dezgo',
-      model,
+      model: DEZGO_FLUX_MODEL,
       providerRequestId: providerRequestId(response),
       settings: { output, steps, mode: 'text_to_image', format: 'png' },
       usage: { images: 1, ...estimatedUsage(output), steps },
@@ -147,13 +149,14 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
       measurementStatus: 'estimated',
     });
   }
-  async function dezgo(prompt, references = [], output) {
+  async function dezgo(provider, prompt, references = [], output) {
     if (!config.env.DEZGO_API_KEY) throw new Error('DEZGO_API_KEY missing');
-    const model = dezgoModel(config.env);
-    // Flux has no image2image on Dezgo — keep SD1 for reference-anchored generations.
-    if (references.length) return dezgoSd1Image2Image(prompt, references[0], output, dezgoSteps(config.env, DEZGO_SD1_MODEL));
-    const steps = dezgoSteps(config.env, model);
-    if (isDezgoFlux(model)) return dezgoFlux(prompt, output, model, steps);
+    if (isDezgoFluxProvider(provider)) {
+      // Flux has no image2image — never attach references; caller should already omit them.
+      return dezgoFlux(prompt, output, dezgoSteps(config.env, DEZGO_FLUX_MODEL));
+    }
+    const steps = dezgoSteps(config.env, DEZGO_SD1_MODEL);
+    if (references.length) return dezgoSd1Image2Image(prompt, references[0], output, steps);
     return dezgoSd1Text2Image(prompt, output, steps);
   }
   async function gemini(prompt, references, output) {
@@ -162,18 +165,24 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.env.GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: textProviders.geminiParts(prompt, references) }], generationConfig: { temperature: 0.7, responseModalities: ['TEXT','IMAGE'], imageConfig: { imageSize, aspectRatio } } }), signal: signal(config.env.IMAGE_PROVIDER_TIMEOUT_MS || 180_000, getCancellation) });
     if (!response.ok) await throwResponse('gemini', response); const data = await response.json(); const part = (data.candidates?.[0]?.content?.parts || []).find((item) => item.inlineData?.data || item.inline_data?.data); const b64 = part?.inlineData?.data || part?.inline_data?.data; if (!b64) throw new Error('Gemini image error: no image returned'); const mimeType = part?.inlineData?.mimeType || part?.inline_data?.mime_type || 'image/png'; const rawUsage = data.usageMetadata || null; const outputImageTokens = (rawUsage?.candidatesTokensDetails || []).filter((item) => item.modality === 'IMAGE').reduce((sum, item) => sum + (item.tokenCount || 0), 0); const candidateTokens = rawUsage?.candidatesTokenCount || 0; return providerResult({ output: { buffer: Buffer.from(b64, 'base64'), mimeType, extension: mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/webp' ? 'webp' : 'png' }, provider: 'gemini', model: data.modelVersion || model, providerRequestId: providerRequestId(response, data), settings: { output, temperature: 0.7, responseModalities: ['TEXT', 'IMAGE'] }, usage: { images: 1, ...estimatedUsage(output), ...(rawUsage ? { inputTokens: rawUsage.promptTokenCount || 0, cachedInputTokens: rawUsage.cachedContentTokenCount || 0, outputTokens: candidateTokens + (rawUsage.thoughtsTokenCount || 0), candidateTokens, outputImageTokens, outputTextOrThinkingTokens: Math.max(0, candidateTokens - outputImageTokens) + (rawUsage.thoughtsTokenCount || 0), thinkingTokens: rawUsage.thoughtsTokenCount || 0, totalTokens: rawUsage.totalTokenCount || 0, serviceTier: rawUsage.serviceTier || 'standard' } : {}) }, rawUsage, measurementStatus: rawUsage ? 'observed' : 'estimated' });
   }
+  function imageModel(provider) {
+    if (isDezgoProvider(provider)) return dezgoModelForProvider(provider);
+    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' }[provider];
+  }
   function generate({ provider, prompt, references = [], referenceBindings = [], title, output }) {
     const capabilities = imageProviderCapabilities(provider);
     if (references.length > capabilities.maxReferences) throw new RangeError(`${provider} accepts at most ${capabilities.maxReferences} planned reference image${capabilities.maxReferences === 1 ? '' : 's'}`);
     if (!output?.requested || !output?.resolved) throw new AppError('MEDIA_OUTPUT_NOT_RESOLVED', 'Image generation requires server-resolved media output', { status: 500 });
-    const models = { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', dezgo: dezgoModel(config.env), gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' };
+    const model = imageModel(provider);
     const operation = () => provider === 'stub'
-      ? Promise.resolve(providerResult({ output: { buffer: stubImage(prompt, title, output.resolved), mimeType: 'image/svg+xml', extension: 'svg' }, provider: 'stub', model: models.stub, settings: { output, renderer: 'stub-svg-v1' }, usage: { images: 1, ...estimatedUsage(output) }, measurementStatus: 'not_applicable' }))
-      : provider === 'openai' ? openai(prompt, references, output) : provider === 'dezgo' ? dezgo(prompt, references, output) : gemini(prompt, referenceBindings.length ? referenceBindings : references, output);
-    const reservationUsage = { images: 1, ...estimatedUsage(output), ...(provider === 'dezgo' ? { steps: dezgoSteps(config.env, models.dezgo) } : {}) };
-    const tracked = () => usageTracker ? usageTracker.execute({ modality: 'image', provider, model: models[provider], estimatedUsage: reservationUsage, estimatedUsageComplete: provider !== 'stub', inputMetadata: { promptCharacters: String(prompt).length, referenceCount: references.length, output } }, operation) : operation();
+      ? Promise.resolve(providerResult({ output: { buffer: stubImage(prompt, title, output.resolved), mimeType: 'image/svg+xml', extension: 'svg' }, provider: 'stub', model, settings: { output, renderer: 'stub-svg-v1' }, usage: { images: 1, ...estimatedUsage(output) }, measurementStatus: 'not_applicable' }))
+      : provider === 'openai' ? openai(prompt, references, output)
+        : isDezgoProvider(provider) ? dezgo(provider, prompt, references, output)
+          : gemini(prompt, referenceBindings.length ? referenceBindings : references, output);
+    const reservationUsage = { images: 1, ...estimatedUsage(output), ...(isDezgoProvider(provider) ? { steps: dezgoSteps(config.env, model) } : {}) };
+    const tracked = () => usageTracker ? usageTracker.execute({ modality: 'image', provider: dezgoBillingProvider(provider), model, estimatedUsage: reservationUsage, estimatedUsageComplete: provider !== 'stub', inputMetadata: { promptCharacters: String(prompt).length, referenceCount: references.length, selectedProvider: provider, output } }, operation) : operation();
     return provider !== 'stub' && providerAdmission
-      ? providerAdmission.run(provider, tracked, { signal: getCancellation?.() })
+      ? providerAdmission.run(dezgoBillingProvider(provider), tracked, { signal: getCancellation?.() })
       : tracked();
   }
   return { capabilities: IMAGE_PROVIDER_CAPABILITIES, generate, getCapabilities: imageProviderCapabilities };

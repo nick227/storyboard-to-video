@@ -3,7 +3,7 @@ const {
   ASPECT_RATIOS, IMAGE_QUALITY_LEVELS, RESOLUTION_TIERS, estimatedUsage,
   mergeMediaIntent, resolveImageOutput, resolveVideoOutput,
 } = require('../shared/media-output-policy');
-const { dezgoModel, dezgoSteps } = require('../providers/image/dezgo-settings');
+const { dezgoBillingProvider, dezgoModelForProvider, dezgoSteps, isDezgoProvider } = require('../providers/image/dezgo-settings');
 
 function serializeQuote(quote, quantity) {
   if (!quote) return { available: false, reason: 'billing_not_configured' };
@@ -25,7 +25,8 @@ function createMediaOutputService({ config, projectStore, billing, videoProvider
   const VIDEO_DURATION_OPTIONS = Object.freeze([2, 4, 6, 8, 10, 12]);
   function imageModel(provider, requested) {
     if (requested) return requested;
-    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', dezgo: dezgoModel(config.env), gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' }[provider];
+    if (isDezgoProvider(provider)) return dezgoModelForProvider(provider);
+    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' }[provider];
   }
 
   async function selection(input, { ownerId } = {}) {
@@ -50,8 +51,8 @@ function createMediaOutputService({ config, projectStore, billing, videoProvider
   async function quote(input, context) {
     const resolved = await selection(input, context);
     const quantity = Math.min(200, Math.max(1, Number.parseInt(input.quantity, 10) || 1));
-    const unitUsage = { [resolved.modality === 'image' ? 'images' : 'videos']: 1, ...estimatedUsage(resolved.output), ...(resolved.provider === 'dezgo' ? { steps: dezgoSteps(config.env, dezgoModel(config.env)) } : {}) };
-    const billingQuote = billing ? await billing.quote({ modality: resolved.modality, provider: resolved.provider, model: resolved.model, estimatedUsage: unitUsage, estimatedUsageComplete: resolved.modality === 'image' }) : null;
+    const unitUsage = { [resolved.modality === 'image' ? 'images' : 'videos']: 1, ...estimatedUsage(resolved.output), ...(isDezgoProvider(resolved.provider) ? { steps: dezgoSteps(config.env, resolved.model) } : {}) };
+    const billingQuote = billing ? await billing.quote({ modality: resolved.modality, provider: dezgoBillingProvider(resolved.provider), model: resolved.model, estimatedUsage: unitUsage, estimatedUsageComplete: resolved.modality === 'image' }) : null;
     return { ...resolved, estimate: serializeQuote(billingQuote, quantity) };
   }
 

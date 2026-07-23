@@ -106,8 +106,8 @@ function resolveImageOutput({ provider, model, intent }) {
     const supportsTiers = String(model || '').includes('3.1-flash-image');
     dimensions = supportsTiers ? scaleGemini(intent.aspectRatio, intent.resolutionTier) : (intent.resolutionTier === 'standard' ? scaleGemini(intent.aspectRatio, 'standard') : null);
     if (dimensions) providerSettings = { imageSize: dimensions.providerValue, aspectRatio: intent.aspectRatio };
-  } else if (provider === 'dezgo') {
-    const flux = String(model || '').toLowerCase().includes('flux');
+  } else if (provider === 'dezgo' || provider === 'dezgo_flux') {
+    const flux = provider === 'dezgo_flux' || String(model || '').toLowerCase().includes('flux');
     const shortEdge = intent.aspectRatio === '1:1' || flux ? 1024 : 768;
     dimensions = intent.resolutionTier === 'standard' ? shortEdgeDimensions(intent.aspectRatio, shortEdge) : null;
     if (dimensions && flux) dimensions = fitDezgoFluxDimensions(dimensions);

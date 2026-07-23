@@ -11,7 +11,7 @@ const { resolveImageReferencePlan } = require('../shared/image-reference-plan');
 const { mergeMediaIntent, resolveImageOutput } = require('../shared/media-output-policy');
 const { buildProjectAssetStorageKey } = require('../storage/blob-store');
 const { createAssetMaterializer } = require('../storage/asset-materializer');
-const { dezgoModel } = require('../providers/image/dezgo-settings');
+const { dezgoModelForProvider, isDezgoProvider } = require('../providers/image/dezgo-settings');
 
 function createImageGenerationService({ config, styles, provider, projectStore, materializer }) {
   const assetMaterializer = materializer || createAssetMaterializer({
@@ -57,7 +57,12 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
     const project = lease
       ? await projectStore.verifyLease(lease, signal)
       : await projectStore.read(input.projectId, { ownerId });
-    const models = { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', dezgo: dezgoModel(config.env), gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' };
+    const models = {
+      stub: 'stub-image-v1',
+      openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
+      gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image',
+      ...(isDezgoProvider(input.provider) ? { [input.provider]: dezgoModelForProvider(input.provider) } : {}),
+    };
     const output = resolveImageOutput({
       provider: input.provider,
       model: models[input.provider],

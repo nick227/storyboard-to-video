@@ -108,7 +108,7 @@ const imageGeneration = z.object({
   styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
   commonPromptText: z.string().max(20_000).default(''),
   extraPromptText: z.string().max(20_000).default(''),
-  provider: z.enum(['gemini', 'openai', 'dezgo', 'stub']).default('gemini'),
+  provider: z.enum(['gemini', 'openai', 'dezgo', 'dezgo_flux', 'stub']).default('gemini'),
   confirmedReferencePlanHash: z.string().trim().max(80).optional(),
   outputIntent: z.object({
     aspectRatio: aspectRatio.optional(),

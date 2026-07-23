@@ -71,7 +71,7 @@ async function main() {
     }));
     results.push(await run('dezgo', () => {
       const intent = mergeMediaIntent({ modality: 'image' });
-      return images.generate({ provider: 'dezgo', prompt: imagePrompt, references: [], title: 'Live suite check', output: resolveImageOutput({ provider: 'dezgo', model: 'flux_1_schnell', intent }) });
+      return images.generate({ provider: 'dezgo_flux', prompt: imagePrompt, references: [], title: 'Live suite check', output: resolveImageOutput({ provider: 'dezgo_flux', model: 'flux_1_schnell', intent }) });
     }));
 
     // MiniMax is asynchronous (submit -> poll -> fetch) so it drives usageTracker.begin/complete
