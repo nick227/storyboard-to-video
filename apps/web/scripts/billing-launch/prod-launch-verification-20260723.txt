@@ -1,0 +1,48 @@
+=== LIVE BILLING LAUNCH VERIFICATION: 2026-07-23 ===
+
+--- Step: provider price catalog synced (sync-prod-provider-prices.js) ---
+total active: 14, customer_metered: 6, platform_overhead: 8, billable: 6
+(idempotent re-run confirmed: zero changes on second pass, both locally and in prod)
+
+--- Step: paymentsEnabled check ---
+GET /api/billing/purchase-options -> {"ok":true,"paymentsEnabled":true,...}
+
+--- Step: real Stripe test-mode purchase ---
+Checkout session: cs_test_a1K6atP5AUhrtRyqfWDXdcREuD5hzG8LXl13waMnHYpoyzhXm49S4Zw9U6
+Completed via Playwright + Stripe test card 4242 4242 4242 4242
+Sale 4df0c3fd-ad9c-4d56-8ab9-4e3063127bf7: status=credits_funded, total_amount=500 cents,
+  credits_purchased_micros=5000000 (5 credits, matches $1/credit exactly)
+Ledger entry: type=purchase_funding, delta=+5000000, account balance after=15000000 (10 welcome + 5 purchased)
+
+--- Step: charging enabled for exactly one tenant ---
+Tenant a4c6eb31-d33b-44eb-9701-9cc6f44f4110 (n@g.com): chargingEnabled=true
+All other 10 tenants: chargingEnabled=false (verified via direct query)
+
+--- Step: BILLING_CUSTOMER_CHARGING_ENABLED=true set in Railway, redeployed ---
+
+--- Step: real live-charged generation on Nick's real account (run-live-charged-launch-smoke-test.js) ---
+[
+  { "name": "openai-text", "status": "completed", "model": "gpt-4.1-mini", "costUSD": 0.0000236,
+    "reservation": { "status": "settled", "chargingMode": "live", "reservedCreditMicros": "50500", "finalCreditMicros": "24" } },
+  { "name": "gemini-text", "status": "completed", "model": "gemini-3.5-flash", "costUSD": 0.0101715,
+    "reservation": { "status": "settled", "chargingMode": "live", "reservedCreditMicros": "101000", "finalCreditMicros": "10274" } },
+  { "name": "minimax", "status": "completed", "model": "MiniMax-Hailuo-02", "costUSD": 0.27,
+    "reservation": { "status": "settled", "chargingMode": "live", "reservedCreditMicros": "303000", "finalCreditMicros": "272700" } }
+]
+Reconciliation: {
+  "ledgerEntryCount": 11, "ledgerSumAvailableCreditMicros": "999717002",
+  "accountAvailableCreditMicros": "999717002", "availableMatches": true, "reservedMatches": true
+}
+Balance: 1000000000 -> 999717002 (decreased by exactly 282998 micros = sum of the 3 real charges)
+
+--- Step: post-enable sanity report (scoped to after the enable moment) ---
+GET /api/admin/billing/sanity-report?startAt=2026-07-23T02:30:00Z
+{"ok":true,"customerBillableSpendUSD":0.2801951,"platformIncludedSpendUSD":0,
+ "unpricedUsageCount":0,"unpriced":[],"reservationsHeld":0,"failedSettlements":0,
+ "refundsIssued":{"count":0,"creditMicros":"0"}}
+-- zero failed settlements, zero stuck reservations, zero unpriced customer-metered usage, all
+   confirmed for the post-enable window. (All-time view still shows 6 historical failed
+   settlements + 4 unpriced platform-overhead items, all predating this launch and already
+   understood from earlier fixes this session -- not new, not customer-metered.)
+
+--- Admin access re-confirmed working (throwaway promote/verify/revert, as in prior sessions) ---
