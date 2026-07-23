@@ -6,6 +6,11 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+# stylesheets/*.css is the canonical source; public/styles.css and public/auth.css are
+# generated artifacts. Build them here (before the dev-dependency prune below removes
+# lightningcss-cli) so the deployed image always serves CSS built from source, with no
+# reliance on a committed compiled file staying in sync.
+RUN npm run css:build
 RUN npm run prisma:build
 RUN npm prune --omit=dev
 
