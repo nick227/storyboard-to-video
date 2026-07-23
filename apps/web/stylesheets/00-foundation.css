@@ -1,38 +1,10 @@
-:root {
-  --bg: #0d1117;
-  --panel: #161b22;
-  --panel-2: #1f2630;
-  --line: #30363d;
-  --text: #e6edf3;
-  --muted: #9da7b3;
-  --accent: #4f8cff;
-  --accent-soft: rgba(79, 140, 255, 0.15);
-  --danger: #d9534f;
-  --border: var(--line);
-  --surface-input: #0b0f14;
-  --space-1: 4px;
-  --space-2: 6px;
-  --space-3: 8px;
-  --space-4: 10px;
-  --space-5: 12px;
-  --space-6: 16px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-control: 10px;
-  --radius-panel: 12px;
-  --radius-lg: 16px;
-  --radius-round: 999px;
-  --text-xs: 10px;
-  --text-sm: 11px;
-  --text-control: 12px;
-  --text-body: 13px;
-  --max-script-height: 69vh;
-}
+@import "./shared/tokens.css";
+
 * { box-sizing: border-box; }
 body {
   margin: 0;
   /* Inter is loaded by topbar.css (shared across all app shells). */
-  font-family: var(--sf-font, Inter, system-ui, Arial, sans-serif);
+  font-family: var(--sf-font);
   background: var(--bg);
   color: var(--text);
 }
@@ -60,7 +32,7 @@ input[type="checkbox"] {
 .checkbox-field > span { margin-bottom: 0; }
 button {
   border: 1px solid var(--line);
-  background: #222a35;
+  background: var(--surface-button);
   color: var(--text);
   border-radius: var(--radius-control);
   min-height: 40px;
@@ -70,18 +42,18 @@ button {
   transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
   font-size: var(--text-body);
 }
-button.primary { 
+button.primary {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
   color: var(--text);
   font-weight: 650;
- }
+}
 button.secondary { background: transparent; padding: 2px 4px; min-height: 0; }
-button.danger { background: var(--danger); border-color: var(--danger); color: white; }
+button.danger { background: var(--danger); border-color: var(--danger); color: var(--on-accent); }
 button:disabled { opacity: 0.6; cursor: not-allowed; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, .upload-chip:focus-within {
-  outline: 3px solid rgba(79, 140, 255, 0.7);
+  outline: 3px solid var(--accent-ring);
   outline-offset: 2px;
 }
 .icon-button {
@@ -108,4 +80,7 @@ label > span {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   margin-bottom: var(--space-1);
+}
+.mb-20 {
+  margin-bottom: 20px;
 }

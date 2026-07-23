@@ -1,4 +1,4 @@
-/* ---------- Dedicated login / register page (public/login.html) ---------- */
+/* ---------- Dedicated login / register page (pages/login.html) ---------- */
 .auth-page-body {
   min-height: 100vh;
   display: flex;
@@ -52,7 +52,7 @@
   font-size: 13px;
   font-weight: 600;
 }
-.auth-tab.is-active { background: var(--accent); color: white; }
+.auth-tab.is-active { background: var(--accent); color: var(--on-accent); }
 .auth-form { display: grid; gap: 14px; }
 .auth-form label[hidden] { display: none; }
 .auth-form button[type="submit"] { width: 100%; margin-top: 2px; }
@@ -60,7 +60,7 @@
   min-height: 18px;
   margin: 0;
   padding: 0;
-  color: #ff8b86;
+  color: var(--danger);
   font-size: 12px;
 }
 .auth-card-footer {
@@ -72,4 +72,3 @@
 .auth-card-footer a { color: var(--accent); text-decoration: none; }
 .auth-card-footer a:hover { text-decoration: underline; }
 .mb-20 { margin-bottom: 20px; }
-

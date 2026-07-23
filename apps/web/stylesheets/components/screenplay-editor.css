@@ -1,0 +1,495 @@
+@import "../shared/tokens.css";
+
+/*
+ * Canonical US Letter screenplay geometry (always used for layout/print/export).
+ * Single source of truth for .script-page / .script-line[data-format] formatting.
+ * Consumers: Studio editor, public script reader, print/PDF.
+ * On-screen responsiveness is visual scale (or .is-fluid) — not percentage indents.
+ */
+.screenplay-editor-wrapper {
+    --font-script: 'Courier Prime', 'Courier New', Courier, monospace;
+    --page-width: 8.5in;
+    --page-height: 11in;
+    --page-scale: 1;
+    --margin-top: 1in;
+    --margin-right: 1in;
+    --margin-bottom: 1in;
+    --margin-left: 1.5in;
+    /* Indents measured from content box (after left margin) */
+    --indent-character: 2.2in;
+    --indent-dialogue-left: 1in;
+    --indent-dialogue-right: 1.5in;
+    --indent-parenthetical-left: 1.6in;
+    --indent-parenthetical-right: 2in;
+    --indent-transition: 4.5in;
+    --max-height: 69vh;
+
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    font-family: var(--font-script);
+    box-sizing: border-box;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+}
+
+.screenplay-editor-container {
+    height: 90vh;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-input);
+    overflow: hidden;
+}
+
+.screenplay-editor-wrapper.theme-dark,
+.screenplay-toolbar.theme-dark {
+    --color-bg-workspace: var(--bg);
+    --color-bg-page: var(--panel);
+    --color-text-main: var(--text);
+    --color-bg-toolbar: var(--panel);
+    --color-toolbar-border: var(--line);
+    --color-chip-bg: #21262d;
+    --color-chip-border: #363b42;
+    --color-chip-text: #c9d1d9;
+    --color-chip-active-bg: var(--accent);
+    --color-chip-active-border: var(--accent);
+    --color-chip-active-text: var(--on-accent);
+    --color-focus-bg: var(--accent-soft);
+    --color-selection-bg: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.screenplay-editor-wrapper.theme-light,
+.screenplay-toolbar.theme-light {
+    --color-bg-workspace: #f6f8fa;
+    --color-bg-page: #ffffff;
+    --color-text-main: #1f2328;
+    --color-bg-toolbar: #ffffff;
+    --color-toolbar-border: #d0d7de;
+    --color-chip-bg: #f3f4f6;
+    --color-chip-border: #d0d7de;
+    --color-chip-text: #24292f;
+    --color-chip-active-bg: #0969da;
+    --color-chip-active-border: #0969da;
+    --color-chip-active-text: #ffffff;
+    --color-focus-bg: rgba(9, 105, 218, 0.08);
+    --color-selection-bg: rgba(9, 105, 218, 0.18);
+}
+
+.screenplay-editor-wrapper *,
+.screenplay-toolbar * {
+    box-sizing: border-box;
+}
+
+/* Toolbar */
+.screenplay-toolbar {
+    min-height: 44px;
+    padding: 6px 12px;
+    background: var(--color-bg-toolbar);
+    border-bottom: 1px solid var(--color-toolbar-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-family: system-ui, -apple-system, sans-serif;
+}
+
+.screenplay-toolbar.is-hosted {
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+    border-bottom: none;
+    justify-content: flex-start;
+}
+
+.screenplay-toolbar-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.screenplay-chip {
+    background: var(--color-chip-bg);
+    color: var(--color-chip-text);
+    border: 1px solid var(--color-chip-border);
+    padding: 4px 10px;
+    border-radius: 14px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+    white-space: nowrap;
+}
+
+.screenplay-chip:hover {
+    border-color: var(--color-chip-active-bg);
+}
+
+.screenplay-chip.is-active {
+    background: var(--color-chip-active-bg);
+    border-color: var(--color-chip-active-border);
+    color: var(--color-chip-active-text);
+    font-weight: 600;
+}
+
+.screenplay-help-btn {
+    width: 46px;
+    height: 26px;
+    padding: 0;
+    border-radius: 14px;
+    border: 1px solid var(--color-chip-border);
+    background: var(--color-chip-bg);
+    color: var(--color-chip-text);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.screenplay-help-btn:hover {
+    border-color: var(--color-chip-active-bg);
+    color: var(--color-chip-active-text);
+    background: var(--color-chip-active-bg);
+}
+
+/* Workspace + scale shell */
+.screenplay-workspace {
+    flex: 1 1 auto;
+    height: var(--max-height);
+    overflow: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: var(--color-bg-workspace);
+}
+
+.screenplay-page-float {
+    position: absolute;
+    right: 18px;
+    top: 18px;
+    z-index: 6;
+    pointer-events: none;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font: 600 11px/1.2 system-ui, -apple-system, sans-serif;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    color: var(--color-chip-text);
+    background: color-mix(in srgb, var(--color-bg-toolbar) 88%, transparent);
+    border: 1px solid var(--color-toolbar-border);
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.screenplay-page-float.is-visible {
+    opacity: 0.92;
+    transform: translateY(0);
+}
+
+.screenplay-scale-shell {
+    width: calc(var(--page-width) * var(--page-scale));
+    height: calc(var(--pages-height, var(--page-height)) * var(--page-scale));
+    flex-shrink: 0;
+    position: relative;
+    margin: 0 auto;
+}
+
+.screenplay-scale-target {
+    width: var(--page-width);
+    transform: scale(var(--page-scale));
+    transform-origin: top left;
+    will-change: transform;
+}
+
+/* Canonical page — fixed Letter geometry */
+.script-page {
+    width: var(--page-width);
+    min-height: var(--page-height);
+    padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
+    margin: 0 0 0.35in;
+    background: var(--color-bg-page);
+    border: 1px solid var(--color-toolbar-border);
+    border-radius: 2px;
+    box-shadow: none;
+    position: relative;
+    color: var(--color-text-main);
+    font-family: var(--font-script);
+    font-size: 12pt;
+    line-height: 1;
+}
+
+.script-page:last-child {
+    margin-bottom: 0;
+}
+
+.script-line {
+    min-height: 1em;
+    line-height: 1;
+    font-size: 12pt;
+    font-family: var(--font-script);
+    font-weight: 400;
+    font-style: normal;
+    outline: none;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    padding: 0;
+    border-radius: 2px;
+    position: relative;
+    color: var(--color-text-main);
+}
+
+/* Layout rules only — semantics live in data-format / formats.js */
+.script-line[data-format="header"] {
+    text-transform: uppercase;
+    margin-top: 1em;
+    margin-bottom: 1em;
+}
+
+.script-line[data-format="action"] {
+    margin-bottom: 1em;
+    width: 100%;
+}
+
+.script-line[data-format="speaker"] {
+    text-transform: uppercase;
+    margin-left: var(--indent-character);
+    margin-top: 1em;
+    margin-bottom: 0;
+}
+
+.script-line[data-format="dialog"] {
+    margin-left: var(--indent-dialogue-left);
+    margin-right: var(--indent-dialogue-right);
+    margin-bottom: 1em;
+}
+
+.script-line[data-format="directions"] {
+    margin-left: var(--indent-parenthetical-left);
+    margin-right: var(--indent-parenthetical-right);
+    margin-bottom: 0;
+}
+
+.script-line[data-format="transition"] {
+    text-transform: uppercase;
+    margin-left: var(--indent-transition);
+    margin-top: 1em;
+    margin-bottom: 1em;
+    text-align: right;
+}
+
+.script-line[data-format="chapter-break"] {
+    text-align: center;
+    border-top: 1px dashed var(--color-toolbar-border);
+    margin: 1.5em 0;
+    padding-top: 0.5em;
+    color: var(--color-chip-text);
+}
+
+.script-line:focus {
+    background-color: var(--color-focus-bg);
+}
+
+.script-line.is-selected {
+    background-color: var(--color-selection-bg);
+}
+
+.script-page .script-line:empty::before {
+    content: "\200B";
+}
+
+/*
+ * Narrow mobile: fluid editing view (usability).
+ * Semantic formats unchanged; layout may leave canonical inch geometry.
+ */
+.screenplay-editor-wrapper.is-fluid .screenplay-scale-shell {
+    width: 100%;
+    height: auto;
+}
+
+.screenplay-editor-wrapper.is-fluid .screenplay-scale-target {
+    width: 100%;
+    transform: none;
+}
+
+.screenplay-editor-wrapper.is-fluid .script-page {
+    width: 100%;
+    min-height: auto;
+    padding: 20px 18px 28px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+}
+
+.screenplay-editor-wrapper.is-fluid .script-line[data-format="speaker"] {
+    margin-left: 1.4em;
+}
+
+.screenplay-editor-wrapper.is-fluid .script-line[data-format="dialog"] {
+    margin-left: 0.75em;
+    margin-right: 0.75em;
+}
+
+.screenplay-editor-wrapper.is-fluid .script-line[data-format="directions"] {
+    margin-left: 1.1em;
+    margin-right: 1.1em;
+}
+
+.screenplay-editor-wrapper.is-fluid .script-line[data-format="transition"] {
+    margin-left: 2em;
+}
+
+/* Print / PDF: always canonical geometry, never scaled */
+@media print {
+    .screenplay-toolbar,
+    .screenplay-help-modal,
+    .screenplay-page-float {
+        display: none !important;
+    }
+
+    .screenplay-editor-wrapper,
+    .screenplay-workspace,
+    .screenplay-scale-shell,
+    .screenplay-scale-target {
+        display: block !important;
+        width: auto !important;
+        height: auto !important;
+        overflow: visible !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: #fff !important;
+        transform: none !important;
+        border: none !important;
+        border-radius: 0 !important;
+    }
+
+    .screenplay-editor-wrapper {
+        --page-scale: 1 !important;
+        --color-bg-page: #ffffff;
+        --color-text-main: #000000;
+        --color-toolbar-border: transparent;
+    }
+
+    .script-page {
+        width: 8.5in;
+        min-height: 11in;
+        padding: 1in 1in 1in 1.5in;
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+        page-break-after: always;
+        break-after: page;
+        color: #000;
+        background: #fff;
+    }
+
+    .script-page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+    }
+
+    .script-line {
+        color: #000;
+        background: transparent !important;
+    }
+}
+
+/* Help modal */
+.screenplay-help-modal {
+    border: 1px solid var(--color-toolbar-border, var(--line));
+    border-radius: 10px;
+    padding: 0;
+    max-width: 480px;
+    width: calc(100% - 32px);
+    background: var(--color-bg-page, var(--panel));
+    color: var(--color-text-main, var(--text));
+    font-family: system-ui, -apple-system, sans-serif;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+
+.screenplay-help-modal.theme-dark {
+    --color-bg-page: var(--panel);
+    --color-text-main: var(--text);
+    --color-toolbar-border: var(--line);
+    --color-chip-text: #c9d1d9;
+}
+
+.screenplay-help-modal.theme-light {
+    --color-bg-page: #ffffff;
+    --color-text-main: #1f2328;
+    --color-toolbar-border: #d0d7de;
+    --color-chip-text: #24292f;
+}
+
+.screenplay-help-modal::backdrop {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.screenplay-help-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--color-toolbar-border, var(--line));
+}
+
+.screenplay-help-header h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.screenplay-help-close {
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.7;
+    padding: 0 4px;
+}
+
+.screenplay-help-close:hover { opacity: 1; }
+
+.screenplay-help-intro {
+    margin: 0;
+    padding: 14px 16px 0;
+    font-size: 13px;
+    opacity: 0.85;
+    line-height: 1.45;
+}
+
+.screenplay-help-list {
+    margin: 0;
+    padding: 12px 16px 18px;
+    display: grid;
+    grid-template-columns: minmax(120px, auto) 1fr;
+    gap: 10px 14px;
+}
+
+.screenplay-help-list dt {
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.screenplay-help-list dd {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    opacity: 0.9;
+}

@@ -1,10 +1,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { BUNDLES } = require('./build-css');
 
 const webRoot = path.join(__dirname, '..');
 const sourceRoot = path.join(webRoot, 'stylesheets');
-const outputPath = path.join(webRoot, 'public', 'styles.css');
-const authOutputPath = path.join(webRoot, 'public', 'auth.css');
+const outputRoot = path.join(webRoot, 'public', 'css');
 const manifestPath = path.join(sourceRoot, 'index.css');
 const authManifestPath = path.join(sourceRoot, 'auth-index.css');
 const expectedModules = [
@@ -44,6 +44,14 @@ function duplicateProperties(source, filename) {
   }
 }
 
+function listCssFiles(root, relative = '') {
+  const directory = path.join(root, relative);
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const child = path.join(relative, entry.name);
+    return entry.isDirectory() ? listCssFiles(root, child) : (entry.name.endsWith('.css') ? [child] : []);
+  });
+}
+
 const manifest = fs.readFileSync(manifestPath, 'utf8');
 const imports = importedModules(manifest);
 const expectedStudioModules = expectedModules.filter((moduleName) => moduleName !== '09-auth.css');
@@ -55,38 +63,50 @@ if (JSON.stringify(authImports) !== JSON.stringify(['00-foundation.css', '09-aut
   fail('stylesheets/auth-index.css must contain only the shared foundation and authentication module');
 }
 
-let sourceBytes = 0;
 for (const moduleName of expectedModules) {
   const modulePath = path.join(sourceRoot, moduleName);
   if (!fs.existsSync(modulePath)) {
     fail(`missing module ${moduleName}`);
-    continue;
   }
+}
 
+let sourceBytes = 0;
+const authoredFiles = listCssFiles(sourceRoot);
+for (const sourceName of authoredFiles) {
+  const modulePath = path.join(sourceRoot, sourceName);
   const source = fs.readFileSync(modulePath, 'utf8');
   sourceBytes += Buffer.byteLength(source);
   const lineCount = source.split('\n').length;
-  if (lineCount > 700) fail(`${moduleName} has ${lineCount} lines; split modules before they exceed 700`);
-  duplicateProperties(source, moduleName);
+  if (lineCount > 700) fail(`${sourceName} has ${lineCount} lines; split modules before they exceed 700`);
+  duplicateProperties(source, sourceName);
 }
 
-if (sourceBytes > 90_000) fail(`authored CSS is ${sourceBytes} bytes; budget is 90,000`);
-if (!fs.existsSync(outputPath)) {
-  fail('public/styles.css has not been built');
-} else {
+if (sourceBytes > 145_000) fail(`authored CSS is ${sourceBytes} bytes; budget is 145,000`);
+
+const expectedOutputs = BUNDLES.map((bundle) => bundle.output).sort();
+const actualOutputs = listCssFiles(outputRoot).sort();
+if (JSON.stringify(actualOutputs) !== JSON.stringify(expectedOutputs)) {
+  fail(`public/css must contain only generated bundles: ${expectedOutputs.join(', ')}`);
+}
+
+for (const bundle of BUNDLES) {
+  const outputPath = path.join(outputRoot, bundle.output);
+  if (!fs.existsSync(outputPath)) {
+    fail(`public/css/${bundle.output} has not been built`);
+    continue;
+  }
   const output = fs.readFileSync(outputPath, 'utf8');
   const outputBytes = Buffer.byteLength(output);
-  if (outputBytes > 70_000) fail(`generated CSS is ${outputBytes} bytes; budget is 70,000`);
-  if (!output.includes('.confirm-video-summary[hidden]')) {
-    fail('generated CSS is missing the hidden regeneration-summary rule');
+  if (outputBytes > bundle.maxBytes) {
+    fail(`${bundle.output} is ${outputBytes} bytes; budget is ${bundle.maxBytes.toLocaleString()}`);
   }
 }
-if (!fs.existsSync(authOutputPath)) {
-  fail('public/auth.css has not been built');
-} else if (fs.statSync(authOutputPath).size > 8_000) {
-  fail(`generated auth CSS is ${fs.statSync(authOutputPath).size} bytes; budget is 8,000`);
+
+const studioOutput = fs.readFileSync(path.join(outputRoot, 'styles.css'), 'utf8');
+if (!studioOutput.includes('.confirm-video-summary[hidden]')) {
+  fail('generated CSS is missing the hidden regeneration-summary rule');
 }
 
 if (!process.exitCode) {
-  console.log(`CSS check passed: ${expectedModules.length} modules, ${sourceBytes} source bytes.`);
+  console.log(`CSS check passed: ${authoredFiles.length} source files, ${BUNDLES.length} generated bundles, ${sourceBytes} source bytes.`);
 }

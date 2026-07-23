@@ -41,7 +41,7 @@
   border: 1px solid rgba(255, 255, 255, 0.25);
   background: rgba(22, 27, 34, 0.82);
   backdrop-filter: blur(8px);
-  color: #ffffff;
+  color: var(--on-accent);
   display: flex;
   align-items: center;
   justify-content: center;

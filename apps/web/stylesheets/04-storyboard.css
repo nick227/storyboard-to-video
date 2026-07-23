@@ -20,6 +20,15 @@
   background: var(--accent-soft);
   color: var(--text);
 }
+.storyboard-add-scene-row { justify-content: flex-end; margin-bottom: 4px; }
+.add-scene-btn {
+  width: 36px;
+  min-height: 32px;
+  padding: 6px;
+  border-radius: 8px;
+  color: var(--muted);
+}
+.add-scene-btn:hover { border-color: var(--accent); color: var(--text); }
 .view-type {
   width: 36px;
   min-height: 32px;
@@ -41,7 +50,7 @@
 .storyboard-slider[hidden] { display: none; }
 .storyboard-slider {
   overflow: hidden;
-  border: 1px solid #303846;
+  border: 1px solid var(--line-strong);
   border-radius: 18px;
   background:
     radial-gradient(circle at 50% 0, rgba(79, 140, 255, .12), transparent 40%),
@@ -143,7 +152,7 @@
   padding: 0;
   gap: 0;
   overflow: hidden;
-  border-color: #303846;
+  border-color: var(--line-strong);
   border-radius: 14px;
   background: #0d1117;
 }
@@ -159,7 +168,7 @@
 .storyboard-slider-stage .scene-image-wrap {
   aspect-ratio: 16 / 9;
   border: 0;
-  border-top: 1px solid #222a35;
+  border-top: 1px solid var(--surface-button);
   border-radius: 0;
   background: #05070a;
 }
@@ -178,7 +187,7 @@
   gap: 7px;
   min-height: 0;
   padding: 6px;
-  border: 1px solid #303846;
+  border: 1px solid var(--line-strong);
   border-radius: 10px;
   background: #11161e;
   color: var(--muted);
@@ -186,7 +195,7 @@
 }
 .storyboard-filmstrip-item:hover { border-color: #596678; color: var(--text); }
 .storyboard-filmstrip-item[aria-selected="true"] {
-  border-color: #f2b544;
+  border-color: var(--warning);
   box-shadow: 0 0 0 2px rgba(242, 181, 68, .18);
   color: var(--text);
 }
@@ -199,7 +208,7 @@
   overflow: hidden;
   border-radius: 6px;
   background: #080b10;
-  color: #59636f;
+  color: var(--muted-strong);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
 }
@@ -213,7 +222,7 @@
 }
 .storyboard-slider-hint {
   margin: -7px 18px 14px;
-  color: #59636f;
+  color: var(--muted-strong);
   font-size: 11px;
   text-align: center;
 }
@@ -230,11 +239,11 @@
 .storyboard-grid[data-columns="1"] .scene-card {
   margin: 0 auto !important;
 }
-.scene-card.is-busy { border-color: rgba(79, 140, 255, 0.7); }
+.scene-card.is-busy { border-color: var(--accent-ring); }
 /* The run anchor ("Start from Scene N") — deliberately distinct from is-busy's blue so a scene can
    read as both "selected" and "currently processing" at once without the signals blending. */
-.scene-card.is-selected { border-color: #f2b544; border-width: 2px; padding: 13px; }
-.scene-card.is-selected.is-busy { border-color: #f2b544; box-shadow: inset 0 0 0 1px rgba(79, 140, 255, 0.7); }
+.scene-card.is-selected { border-color: var(--warning); border-width: 2px; padding: 13px; }
+.scene-card.is-selected.is-busy { border-color: var(--warning); box-shadow: inset 0 0 0 1px var(--accent-ring); }
 .scene-header {
   display: flex;
   flex-direction: column;
@@ -277,7 +286,7 @@
   border: 1px solid var(--line);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.025);
-  color: #59636f;
+  color: var(--muted-strong);
   transition: color 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
   opacity: 0.45;
   cursor: pointer;
@@ -298,20 +307,20 @@
   cursor: pointer;
 }
 .scene-status-icon.is-present svg {
-  stroke: #ffffff;
+  stroke: var(--on-accent);
 }
 .scene-status-icon.is-stale {
-  color: #fbbf24;
-  border-color: rgba(245, 158, 11, .55);
-  background: rgba(245, 158, 11, .1);
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
   opacity: 1;
 }
 .scene-status-icon.is-stale svg {
-  stroke: #fbbf24;
+  stroke: var(--warning);
 }
 .scene-status-icon:hover:not(:disabled) {
-  border-color: #59636f;
-  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--muted-strong);
+  background: color-mix(in srgb, #fff 8%, transparent);
   opacity: 0.85;
 }
 .scene-status-icon.is-present:hover:not(:disabled) {
@@ -333,19 +342,19 @@
    to out-cascade it. Stays visible (dimmed, not hidden) even while disabled, so a failure elsewhere
    on the card doesn't visually disappear while some other stage is busy. */
 .scene-status-icon.is-failed {
-  color: #ff6b6b;
-  border-color: rgba(255, 107, 107, 0.55);
-  background: rgba(255, 107, 107, 0.12);
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
   opacity: 1;
   cursor: pointer;
 }
 .scene-status-icon.is-failed svg {
-  stroke: #ff6b6b;
+  stroke: var(--danger);
 }
 .scene-status-icon.is-failed:hover:not(:disabled) {
-  border-color: #ff6b6b;
-  background: rgba(255, 107, 107, 0.2);
-  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.3);
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 30%, transparent);
   opacity: 1;
 }
 .scene-status-icon.is-failed:disabled {
@@ -453,7 +462,7 @@
   width: 54px;
   height: 38px;
   border-radius: 11px;
-  color: #fff;
+  color: var(--on-accent);
   background: rgba(183, 189, 175, 0.9);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.38);
   transition: transform 140ms ease, background 140ms ease, opacity 140ms ease;
@@ -463,7 +472,7 @@
   background: rgb(20, 17, 17);
   transform: scale(1.06);
 }
-.scene-media-toggle:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
+.scene-media-toggle:focus-visible { outline: 2px solid var(--on-accent); outline-offset: -4px; }
 .scene-media-toggle:disabled { cursor: wait; }
 .scene-media-toggle:disabled .scene-media-toggle-icon { opacity: 0.55; }
 .scene-media-icon {

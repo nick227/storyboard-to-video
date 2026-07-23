@@ -1,9 +1,9 @@
 
 .narration-stale-notice {
-  border: 1px solid rgba(245, 158, 11, .5);
+  border: 1px solid color-mix(in srgb, var(--warning) 50%, transparent);
   border-radius: 9px;
-  background: rgba(245, 158, 11, .09);
-  color: #fbbf24;
+  background: color-mix(in srgb, var(--warning) 9%, transparent);
+  color: var(--warning);
   padding: 10px 12px;
 }
 .narration-guidance-field > span {

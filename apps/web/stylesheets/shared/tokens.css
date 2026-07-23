@@ -1,0 +1,65 @@
+/*
+ * Shared design tokens — single theme surface for all CSS bundles.
+ * Override on :root or [data-theme] to retheme the app.
+ */
+:root {
+  /* surfaces */
+  --bg: #0d1117;
+  --panel: #161b22;
+  --panel-2: #1f2630;
+  --surface-input: #0b0f14;
+  --surface-button: #222a35;
+
+  /* ink */
+  --text: #e6edf3;
+  --muted: #9da7b3;
+  --muted-strong: #59636f;
+  --on-accent: #ffffff;
+
+  /* lines */
+  --line: #30363d;
+  --line-strong: #303846;
+  --border: var(--line);
+
+  /* brand */
+  --accent: #4f8cff;
+  --accent-2: #8f6bff;
+  --accent-hover: #3d7ce8;
+  --accent-ink: #a9c5ff;
+  --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
+  --accent-ring: color-mix(in srgb, var(--accent) 70%, transparent);
+
+  /* status */
+  --danger: #ff6b6b;
+  --danger-soft: color-mix(in srgb, var(--danger) 15%, transparent);
+  --warning: #fbbf24;
+  --success: #73d99a;
+
+  /* chrome */
+  --overlay: color-mix(in srgb, var(--bg) 72%, transparent);
+  --glass: color-mix(in srgb, #fff 5%, transparent);
+  --topbar-bg: color-mix(in srgb, var(--bg) 96%, transparent);
+
+  /* type */
+  --sf-font: Inter, system-ui, Arial, sans-serif;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-control: 12px;
+  --text-body: 13px;
+
+  /* space + radius */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-control: 10px;
+  --radius-panel: 12px;
+  --radius-lg: 16px;
+  --radius-round: 999px;
+
+  --max-script-height: 69vh;
+}

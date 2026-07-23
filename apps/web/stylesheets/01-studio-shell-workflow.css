@@ -199,7 +199,7 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.generation-action-icon { color: #a9c5ff; }
+.generation-action-icon { color: var(--accent-ink); }
 .generation-action-lock { display: none; width: 12px; height: 12px; color: var(--muted); }
 .generation-action.is-locked { color: #7f8995; border-style: dashed; cursor: help; }
 .generation-action.is-locked .generation-action-icon { opacity: .55; }
@@ -209,7 +209,7 @@
 .generation-action.was-clicked .generation-action-icon { color: gray; }
 
 .generation-action.was-clicked:hover:not(:disabled) { background: rgba(79, 140, 255, 0.12); }
-.generation-action.danger { border-color: var(--danger); background: var(--danger); color: #fff; }
+.generation-action.danger { border-color: var(--danger); background: var(--danger); color: var(--on-accent); }
 .generation-action.danger .generation-action-icon { color: inherit; }
 
 /* Stage bar: Planning / Images / Audio / Video, one primary action, pause/cancel, Create Story. */
@@ -287,7 +287,7 @@
   cursor: pointer;
 }
 .icon-link:hover {
-  color: white;
+  color: var(--on-accent);
 }
 
 /* Settings modal: visual planning mode + scene-count recommendation policy + danger zone —

@@ -43,7 +43,7 @@
   width: 24px;
   height: 24px;
   border-radius: 6px;
-  color: #a9c5ff;
+  color: var(--accent-ink);
   background: rgba(79, 140, 255, 0.14);
   flex-shrink: 0;
 }
@@ -310,7 +310,7 @@ details > summary::marker { color: var(--muted); }
   border-radius: 6px;
   padding: 2px 6px;
   font-size: 10px;
-  background: #222a35;
+  background: var(--surface-button);
 }
 .upload-chip input:disabled + span { opacity: 0.55; cursor: not-allowed; }
 .style-ref-list {

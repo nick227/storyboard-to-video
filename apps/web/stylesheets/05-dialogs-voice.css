@@ -141,7 +141,7 @@
 }
 .generation-confirm-label {
   margin-bottom: 5px;
-  color: #a9c5ff;
+  color: var(--accent-ink);
   font-size: 9px;
   font-weight: 800;
   letter-spacing: .12em;
@@ -184,7 +184,7 @@
 }
 
 .start-run-anchor { margin: 0 0 16px; font-size: 14px; font-weight: 700; color: var(--text); }
-.start-run-anchor span { color: #a9c5ff; }
+.start-run-anchor span { color: var(--accent-ink); }
 .start-run-regen-option {
   display: flex;
   gap: 8px;
@@ -413,7 +413,7 @@
   pointer-events: none;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.65), transparent);
   padding-top: 24px;
-  color: #fff;
+  color: var(--on-accent);
 }
 .timeline-stage-caption[hidden],
 .scene-caption[hidden],

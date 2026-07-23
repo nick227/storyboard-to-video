@@ -1,7 +1,7 @@
 # Stylesheet architecture
 
-The files in this directory are the authored CSS source. The files in
-`public/` are generated browser assets and must not be edited directly.
+The files in this directory are the only authored CSS source. Every file under
+`public/css/` is generated and must not be edited directly.
 
 ## Commands
 
@@ -12,15 +12,18 @@ The files in this directory are the authored CSS source. The files in
 `npm start` rebuilds CSS before startup and whenever Nodemon restarts after a
 stylesheet change.
 
-## Bundles
+## Source layout
 
-- `index.css` produces `public/styles.css` for the studio and shared legacy
-  pages.
-- `auth-index.css` produces the small, page-specific `public/auth.css` bundle.
+- Numbered root modules build the shared studio bundle through `index.css`.
+- `auth-index.css` builds the authentication bundle.
+- `pages/` owns page-specific styles.
+- `shared/` owns styles used across otherwise independent pages.
+- `shared/tokens.css` is the single theme surface (`:root` colors, type, space).
+- `components/` owns portable component styles.
 
-Additional page bundles should import only their shared foundations and owned
-feature modules. Do not make a page import the full studio bundle for one
-component.
+`scripts/build-css.js` is the bundle manifest and maps these sources to the
+nine generated files under `public/css/`. Add new bundles there and give each
+one an explicit output-size budget.
 
 ## Ownership rules
 
@@ -34,7 +37,8 @@ component.
    occurs at least three times. Avoid spacing and typography utility classes.
 5. Avoid IDs and `!important` in new selectors. Existing exceptions can be
    removed incrementally when their cascade dependencies are understood.
-6. Keep `index.css` import-only so cascade order remains visible and reviewable.
+6. Keep bundle manifests import-only so cascade order remains visible and reviewable.
 7. Never remove selectors based only on a text search: runtime JavaScript
    constructs state and component classes. Confirm removal with browser
    coverage and relevant UI tests.
+8. Never hand-edit `public/css/`; change the owning source and rebuild.
