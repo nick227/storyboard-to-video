@@ -140,6 +140,9 @@ export async function hydrateCurrentProjectFromServer() {
     const mergedScenes = mergeScenes(serverProject.scenes, record.scenes);
     Object.assign(record, {
       revision: serverProject.revision,
+      scriptId: serverProject.scriptId || record.scriptId || null,
+      script: serverProject.script || record.script || null,
+      scriptText: serverProject.scriptText ?? record.scriptText,
       scenes: mergedScenes.length ? mergedScenes : adaptSceneImageShots(serverProject.scenes),
     });
     
@@ -234,6 +237,7 @@ function restoreStoryboardFields(els) {
     if (els.stageStyleSelect) els.stageStyleSelect.value = record.styleId;
   }
   if (record.commonPromptText != null) els.commonPromptText.value = record.commonPromptText;
+  if (els.narrationGuidance) els.narrationGuidance.value = record.narrationGuidance || '';
   if (els.settingsShotLimitSelect) {
     els.settingsShotLimitSelect.value = optionValues(els.settingsShotLimitSelect).includes(String(record.maxShots || '')) ? String(record.maxShots || '') : '';
   }
@@ -285,6 +289,7 @@ export function createStoryboard(els) {
 
   els.scriptText.value = '';
   els.commonPromptText.value = '';
+  if (els.narrationGuidance) els.narrationGuidance.value = '';
   els.fallbackPolicy.value = 'local';
   els.videoMotionIntensity.value = 'medium';
   if (els.subtitleStyleSelect) els.subtitleStyleSelect.value = 'classic';
@@ -307,6 +312,7 @@ export function saveStoryboard(els, immediate = false) {
     scriptText: els.scriptText.value,
     styleId: els.styleSelect.value,
     commonPromptText: els.commonPromptText.value,
+    narrationGuidance: els.narrationGuidance ? els.narrationGuidance.value.trim() : '',
     textProvider: els.textProvider.value,
     imageProvider: els.imageProvider.value,
     // Media controls are independent project settings. A blank aspect ratio/provider means

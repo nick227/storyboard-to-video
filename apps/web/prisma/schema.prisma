@@ -24,6 +24,7 @@ model User {
   memberships        Membership[]
   sessions           Session[]
   projects           Project[]           @relation("ProjectCreator")
+  scripts            Script[]            @relation("ScriptCreator")
   jobs               GenerationJob[]
   assets             Asset[]
   idempotency        IdempotencyRecord[]
@@ -51,6 +52,7 @@ model Workspace {
   memberships        Membership[]
   sessions           Session[]
   projects           Project[]
+  scripts            Script[]
   jobs               GenerationJob[]
   assets             Asset[]
   idempotency        IdempotencyRecord[]
@@ -99,10 +101,32 @@ model Session {
   @@map("sessions")
 }
 
+model Script {
+  id              String    @id @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  createdByUserId String    @map("created_by_user_id") @db.Uuid
+  title           String
+  slug            String    @unique
+  visibility      String    @default("private")
+  author          String
+  scriptText      String    @default("") @map("script_text") @db.Text
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant          Workspace @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy       User      @relation("ScriptCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  projects        Project[]
+
+  @@index([tenantId, updatedAt])
+  @@index([visibility, publishedAt])
+  @@map("scripts")
+}
+
 model Project {
   id              String              @id @db.VarChar(80)
   tenantId        String              @map("tenant_id") @db.Uuid
   createdByUserId String              @map("created_by_user_id") @db.Uuid
+  scriptId        String?             @map("script_id") @db.Uuid
   title           String
   revision        Int
   incarnationId   String              @map("incarnation_id") @db.Uuid
@@ -111,12 +135,14 @@ model Project {
   updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
   tenant          Workspace           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy       User                @relation("ProjectCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  script          Script?             @relation(fields: [scriptId], references: [id], onDelete: SetNull)
   jobs            GenerationJob[]
   assets          Asset[]
   idempotency     IdempotencyRecord[]
   videoGenerationAttempts VideoGenerationAttempt[]
 
   @@index([tenantId, updatedAt])
+  @@index([scriptId])
   @@map("projects")
 }
 

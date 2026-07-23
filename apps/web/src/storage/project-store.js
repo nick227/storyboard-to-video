@@ -70,7 +70,7 @@ class ProjectStore {
     if (fs.existsSync(this.documentPath(id))) throw new AppError('PROJECT_EXISTS', 'Project already exists', { status: 409 });
     const now = new Date().toISOString();
     const scopeId = tenantId || ownerId || input.tenantId || input.ownerId || 'local-user';
-    const document = this.normalize({ ...(input.project || {}), id, tenantId: scopeId, createdByUserId: createdByUserId || input.createdByUserId || scopeId, title: input.title || input.project?.title || 'Untitled', revision: 1, incarnationId: crypto.randomUUID(), createdAt: now, updatedAt: now });
+    const document = this.normalize({ ...(input.project || {}), id, tenantId: scopeId, createdByUserId: createdByUserId || input.createdByUserId || scopeId, scriptId: input.scriptId || input.project?.scriptId || null, title: input.title || input.project?.title || 'Untitled', revision: 1, incarnationId: crypto.randomUUID(), createdAt: now, updatedAt: now });
     this.atomicJson(this.documentPath(id), document);
     this.atomicJson(this.referencePath(id), {});
     return document;
@@ -106,16 +106,24 @@ class ProjectStore {
     if (expectedRevision !== undefined && Number(expectedRevision) !== existing.revision) {
       throw new AppError('REVISION_CONFLICT', `Expected revision ${expectedRevision}, current revision is ${existing.revision}`, { status: 409, details: { expectedRevision: Number(expectedRevision), currentRevision: existing.revision } });
     }
-    const next = this.normalize({ ...document, id, tenantId: existing.tenantId || existing.ownerId, createdByUserId: existing.createdByUserId || existing.ownerId, incarnationId: existing.incarnationId, revision: existing.revision + 1, createdAt: existing.createdAt, updatedAt: new Date().toISOString() });
+    const next = this.normalize({ ...document, id, tenantId: existing.tenantId || existing.ownerId, createdByUserId: existing.createdByUserId || existing.ownerId, scriptId: document.scriptId || existing.scriptId || null, incarnationId: existing.incarnationId, revision: existing.revision + 1, createdAt: existing.createdAt, updatedAt: new Date().toISOString() });
     this.atomicJson(this.documentPath(id), next);
     this.syncReferences(id, next.assetReferences || []);
     return next;
+  }
+
+  setScriptId(id, scriptId, { ownerId } = {}) {
+    const document = this.read(id, { ownerId });
+    document.scriptId = scriptId || null;
+    this.atomicJson(this.documentPath(id), document);
+    return document;
   }
 
   normalize(document) {
     const copy = structuredClone(document);
     copy.tenantId = copy.tenantId || copy.ownerId || 'local-user';
     copy.createdByUserId = copy.createdByUserId || copy.ownerId || copy.tenantId;
+    copy.scriptId = copy.scriptId || null;
     delete copy.ownerId;
     delete copy.storyBible;
     delete copy.schemaVersion;

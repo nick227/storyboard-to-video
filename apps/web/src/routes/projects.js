@@ -10,15 +10,40 @@ const { mergeMediaIntent, resolveImageOutput } = require('../shared/media-output
 const { VIDEO_PROVIDER_CAPABILITIES } = require('../shared/video-provider-capabilities');
 const { dezgoModelForProvider, isDezgoProvider } = require('../providers/image/dezgo-settings');
 
-function createProjectRouter({ store, queue, upload, shotReferences, styles, prompts, referenceGeneration, imageProvider, identityStore, prisma, config, spendSummary }) {
+function createProjectRouter({ store, queue, upload, shotReferences, styles, prompts, referenceGeneration, imageProvider, identityStore, prisma, config, spendSummary, scripts }) {
   const router = express.Router();
   const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 
-  router.get('/', asyncRoute(async (req, res) => res.json({ ok: true, projects: await store.list({ ownerId: req.auth.tenantId }) })));
+  async function attachScript(project, req) {
+    if (!scripts) return project;
+    const script = await scripts.ensureForProject(project, {
+      tenantId: req.auth.tenantId,
+      userId: req.auth.userId,
+      author: req.user?.displayName,
+      projectStore: store,
+    });
+    return { ...project, scriptId: script.id, script, scriptText: script.scriptText };
+  }
+
+  async function withCanonicalScript(project) {
+    if (!scripts || !project.scriptId) return project;
+    try {
+      const script = await scripts.get(project.scriptId, { tenantId: project.tenantId });
+      return { ...project, scriptText: script.scriptText, script };
+    } catch {
+      return project;
+    }
+  }
+
+  router.get('/', asyncRoute(async (req, res) => {
+    const projects = await store.list({ ownerId: req.auth.tenantId });
+    res.json({ ok: true, projects: await Promise.all(projects.map((project) => withCanonicalScript(project))) });
+  }));
   router.post('/', validate(createProject), asyncRoute(async (req, res) => {
     const mediaDefaults = identityStore?.getMediaDefaults ? await identityStore.getMediaDefaults(req.auth.userId) : null;
     const input = mediaDefaults ? { ...req.body, project: { ...(req.body.project || {}), mediaSettings: req.body.project?.mediaSettings || mediaDefaults } } : req.body;
-    res.status(201).json({ ok: true, project: await store.create(input, { tenantId: req.auth.tenantId, createdByUserId: req.auth.userId }) });
+    const created = await store.create(input, { tenantId: req.auth.tenantId, createdByUserId: req.auth.userId });
+    res.status(201).json({ ok: true, project: await attachScript(created, req) });
   }));
   router.post('/:projectId/cleanup', asyncRoute(async (req, res) => res.json({ ok: true, removed: await store.cleanup(req.params.projectId, { ownerId: req.auth.tenantId }) })));
   router.post('/:projectId/scenes/:sceneId/references', upload.array('files', 8), asyncRoute(async (req, res) => {
@@ -226,7 +251,10 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
     res.json({ ok: true, scene: result.scene, revision: result.project.revision });
   }));
 
-  router.get('/:projectId', asyncRoute(async (req, res) => res.json({ ok: true, project: await store.read(req.params.projectId, { ownerId: req.auth.tenantId }) })));
+  router.get('/:projectId', asyncRoute(async (req, res) => {
+    const project = await withCanonicalScript(await store.read(req.params.projectId, { ownerId: req.auth.tenantId }));
+    res.json({ ok: true, project });
+  }));
   router.get('/:projectId/tokens', asyncRoute(async (req, res) => {
     const { projectId } = req.params;
     const videoModels = Object.entries(VIDEO_PROVIDER_CAPABILITIES).flatMap(([provider, capabilities]) =>
@@ -267,7 +295,10 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
     const header = req.get('If-Match');
     const expectedRevision = header ? Number(String(header).replace(/^W\/|"/g, '').replace(/"$/, '')) : req.body.revision;
     if (!Number.isInteger(expectedRevision)) throw new AppError('REVISION_REQUIRED', 'If-Match or a numeric revision is required', { status: 428 });
-    const project = await store.write(req.params.projectId, req.body, { expectedRevision, ownerId: req.auth.tenantId });
+    const project = await attachScript(
+      await store.write(req.params.projectId, req.body, { expectedRevision, ownerId: req.auth.tenantId }),
+      req,
+    );
     res.set('ETag', `"${project.revision}"`).json({ ok: true, project });
   }));
   router.delete('/:projectId', asyncRoute(async (req, res) => {

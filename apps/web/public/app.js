@@ -14,10 +14,12 @@ import {
 
 import { initMediaSettings } from './modules/media-settings.js';
 import { initScriptController } from './modules/script-controller.js';
+import { initScriptPublishControls } from './modules/script-publish.js';
 import { initRunController } from './modules/run-controller.js';
 import { assertElements } from './modules/dom-contract.js';
 import { initStoryboardController } from './modules/storyboard-controller.js';
 import { initSettingsController } from './modules/settings-controller.js';
+import { initNarrationController } from './modules/narration-controller.js';
 
 export { getZipSummary } from './modules/storyboard-controller.js';
 
@@ -32,6 +34,8 @@ const els = {
   scriptFocusBtnLabel: document.getElementById('scriptFocusBtnLabel'),
   scriptDownloadBtn: document.getElementById('scriptDownloadBtn'),
   scriptDownloadMenu: document.getElementById('scriptDownloadMenu'),
+  scriptVisibilityToggle: document.getElementById('scriptVisibilityToggle'),
+  scriptShareBtn: document.getElementById('scriptShareBtn'),
 
   // Studio page navigation
   pageTabs: document.querySelector('.page-tabs'),
@@ -39,6 +43,19 @@ const els = {
   pagePanels: Array.from(document.querySelectorAll('[role="tabpanel"]')),
   pageTransition: document.getElementById('pageTransition'),
   pageTransitionLabel: document.getElementById('pageTransitionLabel'),
+  narrationPagePanel: document.getElementById('narrationPagePanel'),
+  narrationRows: document.getElementById('narrationRows'),
+  narrationEmpty: document.getElementById('narrationEmpty'),
+  narrationSceneCount: document.getElementById('narrationSceneCount'),
+  narrationTotalDuration: document.getElementById('narrationTotalDuration'),
+  narrationStaleNotice: document.getElementById('narrationStaleNotice'),
+  narrationModeSelect: document.getElementById('narrationModeSelect'),
+  narrationTextProvider: document.getElementById('narrationTextProvider'),
+  narrationAudioProvider: document.getElementById('narrationAudioProvider'),
+  narrationVoicesPanel: document.getElementById('narrationVoicesPanel'),
+  narrationGuidance: document.getElementById('narrationGuidance'),
+  narrationHelperButtons: Array.from(document.querySelectorAll('[data-narration-helper]')),
+  prepareNarrationBtn: document.getElementById('prepareNarrationBtn'),
 
   styleSelect: document.getElementById('styleSelect'),
   stageStyleSelect: document.getElementById('stageStyleSelect'),
@@ -286,6 +303,7 @@ async function runStage(label, fn) {
 }
 
 let scriptController = null;
+let scriptPublishControls = null;
 let storyboardController = null;
 let settingsController = null;
 
@@ -300,10 +318,16 @@ async function loadStoryboardIntoUI() {
   renderScenes();
   settingsController?.refreshShotCount();
   scriptController?.syncFromText();
+  scriptPublishControls?.syncFromRecord(getCurrentStoryboardRecord());
   return stylesLoaded && referencesLoaded && voicesLoaded;
 }
 
 function initControllers() {
+  scriptPublishControls = initScriptPublishControls({
+    scriptText: els.scriptText,
+    scriptVisibilityToggle: els.scriptVisibilityToggle,
+    scriptShareBtn: els.scriptShareBtn,
+  }, { setStatus });
   scriptController = initScriptController({
     scriptText: els.scriptText,
     modeSelect: els.scriptModeSelect,
@@ -467,6 +491,31 @@ function initControllers() {
     setStatus,
   });
 
+  initNarrationController({
+    pagePanel: els.narrationPagePanel,
+    rows: els.narrationRows,
+    empty: els.narrationEmpty,
+    sceneCount: els.narrationSceneCount,
+    totalDuration: els.narrationTotalDuration,
+    staleNotice: els.narrationStaleNotice,
+    mode: els.narrationModeSelect,
+    textProviderMirror: els.narrationTextProvider,
+    audioProviderMirror: els.narrationAudioProvider,
+    guidance: els.narrationGuidance,
+    helperButtons: els.narrationHelperButtons,
+    prepareBtn: els.prepareNarrationBtn,
+    scriptText: els.scriptText,
+    textProvider: els.textProvider,
+    audioProvider: els.audioProvider,
+    enrichNarration: els.enrichNarration,
+    appElements: els,
+  }, {
+    setStatus,
+    saveProject: (immediate) => saveStoryboard(els, immediate),
+    refreshVoices: () => refreshVoicesForCurrentProvider(setStatus),
+    renderVoices: () => renderVoicesPanel(els),
+  });
+
   // Watchers for basic UI updates
   sceneStore.subscribe(() => renderStageBar(els));
   uiStore.subscribe(() => {
@@ -491,6 +540,9 @@ async function init() {
     'settingsModal', 'planningModeSelect', 'settingsShotCountDisplay',
     'settingsShotLimitSelect', 'commonPromptText', 'textProvider',
     'videoMotionIntensity', 'enrichNarration', 'styleSelect',
+    'narrationPagePanel', 'narrationRows', 'narrationEmpty',
+    'narrationModeSelect', 'narrationTextProvider', 'narrationAudioProvider',
+    'narrationVoicesPanel', 'narrationGuidance', 'prepareNarrationBtn',
     'characterRefInput', 'worldRefInput', 'audioProvider', 'voiceLibraryModal',
     'closeVoiceLibraryBtn', 'voiceMicSelect', 'voiceRecordBtn', 'voiceSaveBtn',
     'voiceNameInput', 'tokensInfoBtn', 'tokensInfoModal',
@@ -511,6 +563,14 @@ async function init() {
   const restored = await runStage('Restoring your storyboards', () => restoreStoryboardLibrary(els));
   storyboardController.renderPicker();
   const loaded = await loadStoryboardIntoUI();
+
+  const startupParams = new URLSearchParams(window.location.search);
+  if (startupParams.get('download') === '1') {
+    els.downloadZipBtn.click();
+    startupParams.delete('download');
+    const query = startupParams.toString();
+    history.replaceState(history.state, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+  }
 
   if (restored && loaded) setStatus('Ready. Saved.');
 }

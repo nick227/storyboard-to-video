@@ -53,6 +53,27 @@ const planShots = z.object({
   bypassCache: z.boolean().default(false),
 });
 
+const prepareNarration = z.object({
+  projectId,
+  scriptText: z.string().trim().min(1).max(200_000),
+  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
+  fallbackPolicy,
+  enrich: z.boolean().default(true),
+  guidance: z.string().max(500).default(''),
+  maxShots: z.coerce.number().int().min(1).max(200).optional(),
+  bypassCache: z.boolean().default(false),
+});
+
+const planVisuals = z.object({
+  projectId,
+  scenes: z.array(z.record(z.any())).min(1).max(MAX_PROJECT_SCENES),
+  styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
+  commonPromptText: z.string().max(20_000).default(''),
+  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
+  fallbackPolicy,
+  bypassCache: z.boolean().default(false),
+});
+
 const splitScene = z.object({
   projectId,
   scriptFragment: z.string().trim().min(1).max(20_000),
@@ -180,4 +201,33 @@ const regenerateDialogue = z.object({
   bypassCache: z.boolean().default(false),
 });
 
-module.exports = { MAX_PROJECT_SCENES, audioGeneration, createProject, exportProject, fallbackPolicy, imageGeneration, mediaSettings, planShots, projectDocument, projectId, regenerateAction, regenerateDialogue, regeneratePrompt, speechGeneration, splitScene, subtitleGeneration, videoGeneration };
+const createScript = z.object({
+  title: z.string().trim().min(1).max(200).default('Untitled'),
+  slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
+  author: z.string().trim().max(200).optional(),
+  scriptText: z.string().max(200_000).default(''),
+  visibility: z.enum(['private', 'public']).default('private'),
+}).default({});
+
+const updateScript = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
+  author: z.string().trim().max(200).optional(),
+  scriptText: z.string().max(200_000).optional(),
+}).default({});
+
+const scriptVisibility = z.object({
+  visibility: z.enum(['private', 'public']),
+});
+
+const publicScriptListQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+}).default({});
+
+module.exports = {
+  MAX_PROJECT_SCENES, audioGeneration, createProject, createScript, exportProject, fallbackPolicy,
+  imageGeneration, mediaSettings, planShots, planVisuals, prepareNarration, projectDocument, projectId, publicScriptListQuery,
+  regenerateAction, regenerateDialogue, regeneratePrompt, scriptVisibility, speechGeneration,
+  splitScene, subtitleGeneration, updateScript, videoGeneration,
+};

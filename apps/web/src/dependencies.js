@@ -43,6 +43,7 @@ const { createShotReferenceService } = require('./services/shot-reference.servic
 const { createExportService } = require('./services/export.service');
 const { createVoiceService } = require('./services/voice.service');
 const { createMediaOutputService } = require('./services/media-output.service');
+const { createScriptsService } = require('./services/scripts.service');
 const { requireIdempotency } = require('./middleware/idempotency');
 const { createGenerationTraceMiddleware } = require('./middleware/generation-trace');
 const { createJobExecution } = require('./jobs/execution');
@@ -56,6 +57,8 @@ const { createVoiceController } = require('./controllers/voice.controller');
 const { createAssetsController } = require('./controllers/assets.controller');
 const { createBlobStore } = require('./storage/blob-store');
 const { createAssetMaterializer } = require('./storage/asset-materializer');
+const { ScriptStore } = require('./storage/script-store');
+const { PrismaScriptRepository } = require('./storage/prisma-script.repository');
 
 function createDependencies(config, overrides = {}) {
   const useTestAdapters = Boolean(overrides.identityStore && !overrides.prisma && !overrides.projectStore);
@@ -68,6 +71,10 @@ function createDependencies(config, overrides = {}) {
   const projectStore = overrides.projectStore || (useTestAdapters
     ? new ProjectStore(config.paths.projects, { blobStore })
     : new PrismaProjectRepository(config.paths.projects, prisma, { blobStore }));
+  const scriptStore = overrides.scriptStore || (useTestAdapters
+    ? new ScriptStore()
+    : new PrismaScriptRepository(prisma));
+  const scripts = overrides.scripts || createScriptsService({ store: scriptStore });
   const queue = new GenerationQueue({
     concurrency: config.generationConcurrency,
     store: overrides.jobStore || (useTestAdapters ? new JobStore(config.paths.jobs) : new PrismaJobRepository(prisma)),
@@ -119,7 +126,7 @@ function createDependencies(config, overrides = {}) {
   const auth = new AuthService({ identityStore });
 
   return {
-    config, prisma, projectStore, queue, providerAdmission, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, spendSummary, generationContext, identityStore,
+    config, prisma, projectStore, scriptStore, scripts, queue, providerAdmission, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, spendSummary, generationContext, identityStore,
     styles, prompts, referenceGeneration, dialogue, sceneSplit, shotPlanning, images, audio, videos, subtitles, shotReferences, exports, voices, imageProvider, mediaOutput,
     upload: createUpload(config),
     auth,

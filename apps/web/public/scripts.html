@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Browse public screenplays on Storyboarder." />
+  <title>Scripts — Storyboarder</title>
+  <link rel="icon" type="image/png" href="/images/favicon.png" />
+  <link rel="stylesheet" href="/topbar.css" />
+  <link rel="stylesheet" href="/scripts-public.css" />
+  <script src="/modules/topbar.js"></script>
+</head>
+<body>
+  <storyboarder-topbar></storyboarder-topbar>
+  <main class="scripts-page">
+    <header class="scripts-page-header">
+      <h1>Scripts</h1>
+      <p>Public screenplays shared from Storyboarder.</p>
+    </header>
+    <p id="scriptsStatus" class="scripts-status" role="status">Loading scripts…</p>
+    <div id="scriptsGrid" class="scripts-grid" hidden></div>
+  </main>
+  <script type="module" src="/modules/scripts-index.js"></script>
+</body>
+</html>

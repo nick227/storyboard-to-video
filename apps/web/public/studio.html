@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Studio — Storyframe</title>
+  <title>Studio — Storyboarder</title>
   <link rel="icon" type="image/png" href="/images/favicon.png" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/topbar.css" />
@@ -13,7 +13,7 @@
 </head>
 
 <body>
-  <storyframe-topbar></storyframe-topbar>
+  <storyboarder-topbar></storyboarder-topbar>
 
   <div class="app-shell">
     <header class="storyboard-topbar">
@@ -34,15 +34,6 @@
           <button id="saveStateBtn" class="hidden" disabled>Saved</button>
         </div>
       </div>
-
-      <section class="page-tabs page-controls" role="tablist" aria-label="Studio pages">
-        <button type="button" id="tabScriptBtn" class="page-tab" role="tab" data-page="script"
-          aria-controls="scriptPagePanel" aria-selected="false" tabindex="-1">Script</button>
-        <button type="button" id="tabStoryboardBtn" class="page-tab is-active" role="tab" data-page="storyboard"
-          aria-controls="storyboardPagePanel" aria-selected="true">Storyboard</button>
-        <button type="button" id="tabTimelineBtn" class="page-tab" role="tab" data-page="timeline"
-          aria-controls="timelinePagePanel" aria-selected="false" tabindex="-1">Timeline</button>
-      </section>
     </header>
 
     <div class="studio-page-stage">
@@ -59,6 +50,19 @@
         <div class="script-header-row">
           <div id="screenplayToolbarHost" class="script-header-primary is-inactive" aria-hidden="true"></div>
           <div class="script-header-actions">
+            <div class="script-publish-control" id="scriptPublishControl">
+              <label class="script-visibility-toggle" title="Public scripts appear on /scripts">
+                <input type="checkbox" id="scriptVisibilityToggle" />
+                <span>Public</span>
+              </label>
+              <button type="button" id="scriptShareBtn" class="script-icon-button" aria-label="Copy share link"
+                title="Copy share link" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 6" />
+                  <path d="M14 11a5 5 0 0 0-7.07 0L5.5 12.43a5 5 0 0 0 7.07 7.07L14 18" />
+                </svg>
+              </button>
+            </div>
             <select id="scriptModeSelect" class="script-mode-select">
               <option value="raw">Raw Text</option>
               <option value="screenplay">Screenplay Editor</option>
@@ -95,6 +99,78 @@
     </section>
 
       <!-- Entity screenplay editor -->
+
+      <!-- Start narration -->
+
+    <section id="narrationPagePanel" class="narration-page" role="tabpanel"
+      aria-labelledby="tabNarrationBtn" hidden>
+      <header class="panel narration-toolbar">
+        <div class="narration-toolbar-heading">
+          <div>
+            <h2>Narration</h2>
+            <p>Prepare the spoken story and scene boundaries before planning visuals.</p>
+          </div>
+          <div class="narration-summary" aria-live="polite">
+            <strong id="narrationSceneCount">0 scenes</strong>
+            <span id="narrationTotalDuration">About 0:00</span>
+          </div>
+        </div>
+        <div id="narrationStaleNotice" class="narration-stale-notice" hidden>
+          The script or narration settings changed. Prepare narration again to update scene boundaries.
+        </div>
+        <div class="narration-controls">
+          <label>
+            <span>Narration style</span>
+            <select id="narrationModeSelect">
+              <option value="literal">Literal</option>
+              <option value="enriched">Enriched</option>
+            </select>
+          </label>
+          <label>
+            <span>Text provider</span>
+            <select id="narrationTextProvider">
+              <option value="gemini">Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="stub">Stub</option>
+            </select>
+          </label>
+          <label>
+            <span>Audio provider</span>
+            <select id="narrationAudioProvider">
+              <option value="stub">Local voice (TTS)</option>
+              <option value="piper">Piper</option>
+              <option value="spark">Voice cloning</option>
+              <option value="elevenlabs">ElevenLabs</option>
+            </select>
+          </label>
+          <div class="narration-voice-field">
+            <span>Narrator voice</span>
+            <div id="narrationVoicesPanel" class="audio-settings-voice"></div>
+          </div>
+          <button type="button" id="prepareNarrationBtn" class="primary">Prepare narration</button>
+        </div>
+        <label class="narration-guidance-field">
+          <span>Narration guidance</span>
+          <input id="narrationGuidance" type="text" maxlength="500"
+            placeholder="Optional direction for tone, pacing, length, or emphasis" />
+        </label>
+        <div class="narration-helper-chips" aria-label="Narration prompt helpers">
+          <button type="button" class="secondary" data-narration-helper="Preserve original dialogue closely.">Preserve dialogue</button>
+          <button type="button" class="secondary" data-narration-helper="Make the narration more concise without dropping important events.">More concise</button>
+          <button type="button" class="secondary" data-narration-helper="Add more sensory description while staying faithful to the source.">More descriptive</button>
+          <button type="button" class="secondary" data-narration-helper="Use slower pacing with more breathing room.">Slower pacing</button>
+          <button type="button" class="secondary" data-narration-helper="Use faster, tighter pacing.">Faster pacing</button>
+        </div>
+      </header>
+
+      <div id="narrationEmpty" class="panel narration-empty">
+        <h3>No narration prepared yet</h3>
+        <p>Add a script, then prepare narration to create the shared scenes used by Storyboard and Timeline.</p>
+      </div>
+      <div id="narrationRows" class="narration-rows"></div>
+    </section>
+
+      <!-- End narration -->
 
       <!-- Start storyboard -->
 
@@ -155,13 +231,12 @@
           <select id="stageStyleSelect" class="stage-style-select" aria-label="Select Style" title="Select Style"></select>
           <button type="button" id="settingsBtn" class="primary" aria-haspopup="dialog"
             aria-controls="settingsModal" title="Open Settings">Settings</button>
-          <button id="downloadZipBtn" class="primary">Download</button>
           <button type="button" id="startPauseBtn" class="primary positive">Start</button>
         </div>
       </section>
 
     <section class="panel panel-tight status-panel">
-      <div class="status-row">
+      <div class="row">
         <div class="status-message">
           <span class="status-dot" aria-hidden="true"></span>
           <span id="statusText" role="status" aria-live="polite">Idle</span>
@@ -690,7 +765,6 @@
         aria-label="Close scene reference settings">✕</button>
     </div>
     <div class="settings-modal-body">
-      <p class="settings-modal-description">Choose which style defaults apply, then label each scene-only image by the job it should perform during generation.</p>
       <section class="scene-reference-section">
         <div class="style-ref-col-header">
           <div><strong>Project default references</strong><small>Toggle selected-style references for this scene</small></div>
@@ -709,7 +783,7 @@
       </section>
     </div>
     <div class="settings-modal-footer">
-      <span id="sceneReferencesSaveNote" class="settings-modal-save-note">Changes apply to this scene</span>
+      <span id="sceneReferencesSaveNote" class="settings-modal-save-note" hidden>Changes apply to this scene</span>
       <button type="button" class="primary" data-close-scene-references>Done</button>
     </div>
   </dialog>

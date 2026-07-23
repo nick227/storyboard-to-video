@@ -23,6 +23,7 @@ class PrismaProjectRepository extends ProjectStore {
     if (!row) return null;
     return this.normalize({
       ...json(row.document), id: row.id, tenantId: row.tenantId, createdByUserId: row.createdByUserId,
+      scriptId: row.scriptId || null,
       title: row.title, revision: row.revision, incarnationId: row.incarnationId,
       createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
     });
@@ -37,7 +38,7 @@ class PrismaProjectRepository extends ProjectStore {
     const document = this.normalize({ ...(input.project || {}), id, tenantId: scopeId, createdByUserId: createdByUserId || input.createdByUserId, title: input.title || input.project?.title || 'Untitled', revision: 1, incarnationId: crypto.randomUUID(), createdAt: now.toISOString(), updatedAt: now.toISOString() });
     try {
       const row = await this.prisma.project.create({ data: {
-        id, tenantId: document.tenantId, createdByUserId: document.createdByUserId, title: document.title,
+        id, tenantId: document.tenantId, createdByUserId: document.createdByUserId, scriptId: document.scriptId || input.scriptId || null, title: document.title,
         revision: 1, incarnationId: document.incarnationId, document: json(document), createdAt: now, updatedAt: now,
       } });
       fs.mkdirSync(this.projectDir(id), { recursive: true });
@@ -61,16 +62,22 @@ class PrismaProjectRepository extends ProjectStore {
   async write(id, document, { expectedRevision, ownerId } = {}) {
     const existing = await this.read(id, { ownerId });
     if (expectedRevision !== undefined && Number(expectedRevision) !== existing.revision) throw new AppError('REVISION_CONFLICT', `Expected revision ${expectedRevision}, current revision is ${existing.revision}`, { status: 409, details: { expectedRevision: Number(expectedRevision), currentRevision: existing.revision } });
-    const next = this.normalize({ ...document, id, tenantId: existing.tenantId, createdByUserId: existing.createdByUserId, incarnationId: existing.incarnationId, revision: existing.revision + 1, createdAt: existing.createdAt, updatedAt: new Date().toISOString() });
+    const next = this.normalize({ ...document, id, tenantId: existing.tenantId, createdByUserId: existing.createdByUserId, scriptId: document.scriptId || existing.scriptId || null, incarnationId: existing.incarnationId, revision: existing.revision + 1, createdAt: existing.createdAt, updatedAt: new Date().toISOString() });
     const result = await this.prisma.project.updateMany({
       where: { id, tenantId: existing.tenantId, revision: existing.revision },
-      data: { title: next.title, revision: next.revision, document: json(next), updatedAt: new Date(next.updatedAt) },
+      data: { title: next.title, scriptId: next.scriptId || null, revision: next.revision, document: json(next), updatedAt: new Date(next.updatedAt) },
     });
     if (!result.count) {
       const current = await this.read(id, { ownerId });
       throw new AppError('REVISION_CONFLICT', `Expected revision ${existing.revision}, current revision is ${current.revision}`, { status: 409, details: { expectedRevision: existing.revision, currentRevision: current.revision } });
     }
     return next;
+  }
+
+  async setScriptId(id, scriptId, { ownerId } = {}) {
+    await this.read(id, { ownerId });
+    await this.prisma.project.update({ where: { id }, data: { scriptId: scriptId || null } });
+    return this.read(id, { ownerId });
   }
 
   async list({ ownerId } = {}) {
