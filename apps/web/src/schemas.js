@@ -139,13 +139,6 @@ const imageGeneration = z.object({
   }).optional(),
 });
 
-const stylePreview = z.object({
-  projectId,
-  styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
-  commonPromptText: z.string().max(20_000).default(''),
-  provider: z.enum(['gemini', 'openai', 'dezgo', 'dezgo_flux', 'stub']).default('gemini'),
-});
-
 const videoGeneration = z.object({
   projectId,
   sceneId,
@@ -252,5 +245,5 @@ module.exports = {
   MAX_PROJECT_SCENES, audioGeneration, createProject, createScript, exportProject, fallbackPolicy,
   imageGeneration, mediaSettings, planShots, planVisuals, prepareNarration, projectDocument, projectId, publicScriptListQuery,
   regenerateAction, regenerateDialogue, regeneratePrompt, scriptVisibility, speechGeneration,
-  splitScene, stylePreview, subtitleGeneration, updateScript, updateWriterProfile, videoGeneration,
+  splitScene, subtitleGeneration, updateScript, updateWriterProfile, videoGeneration,
 };

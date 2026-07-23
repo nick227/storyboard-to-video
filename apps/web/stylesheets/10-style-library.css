@@ -267,22 +267,6 @@
   padding: 5px 10px;
   font-size: 12px;
 }
-.style-preview-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.style-preview-result {
-  margin-top: 10px;
-}
-.style-preview-result img {
-  max-width: 320px;
-  max-height: 320px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  display: block;
-}
 .style-ref-order {
   position: absolute;
   bottom: 3px;

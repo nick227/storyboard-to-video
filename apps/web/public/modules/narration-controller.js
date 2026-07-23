@@ -1,34 +1,42 @@
 import { sceneStore, uiStore, voiceStore } from './store.js';
 import { getCurrentStoryboardRecord, queueSync } from './persistence.js';
-import { computeStaleness } from './stages.js';
-import { loadProtectedAsset } from './assets.js';
+import { generateMissingOrStale } from './stages.js';
+import { api } from './api.js';
+import { adaptSceneImageShot } from './scene-shots.js';
 import {
+  commitNarrationPreparation,
+  getArchivedNarrationPlans,
+  insertBlankSceneAt,
   prepareNarration,
-  regenerateAudio,
-  regenerateDialogue,
-  splitSceneInPlace,
+  previewNarrationPreparation,
+  restoreArchivedNarrationPlan,
 } from './workflows.js';
 
-const WORDS_PER_MINUTE = 150;
+function composedGuidance(record, elements) {
+  return String(elements.guidance.value || '').trim();
+}
+
+function narrationModeKey(enrich) {
+  return enrich ? 'enriched' : 'literal';
+}
+
+function customNarrationPrompt(record, enrich) {
+  return String(record?.narrationPromptOverrides?.[narrationModeKey(enrich)] || '').trim();
+}
 
 function hasNarrationChanges(record, elements) {
   const last = record?.lastNarrationInputs;
   if (!sceneStore.get().scenes.length) return Boolean(elements.scriptText.value.trim());
-  if (!last) return false; // Legacy planned projects remain usable until explicitly re-prepared.
+  if (!last) return false;
+  const maxShots = elements.appElements.settingsShotLimitSelect
+    ? Number(elements.appElements.settingsShotLimitSelect.value) || null
+    : null;
   return String(last.scriptText || '').trim() !== String(elements.scriptText.value || '').trim()
     || String(last.textProvider || '') !== String(elements.textProvider.value || '')
     || Boolean(last.enrich) !== Boolean(elements.enrichNarration.checked)
-    || String(last.guidance || '') !== String(elements.guidance.value || '').trim();
-}
-
-function estimatedSeconds(text) {
-  const words = String(text || '').match(/\S+/g)?.length || 0;
-  return Math.max(0, Math.round((words / WORDS_PER_MINUTE) * 60));
-}
-
-function durationLabel(seconds) {
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+    || String(last.guidance || '') !== composedGuidance(record, elements)
+    || String(last.narrationPromptText || '') !== customNarrationPrompt(record, elements.enrichNarration.checked)
+    || (last.maxShots || null) !== maxShots;
 }
 
 function persistScenes(scenes, setStatus) {
@@ -39,22 +47,53 @@ function persistScenes(scenes, setStatus) {
   queueSync(record, setStatus);
 }
 
-function appendGuidance(current, helper) {
-  const value = String(current || '').trim();
-  return value ? `${value} ${helper}` : helper;
+function mediaCount(scenes) {
+  return (scenes || []).reduce((count, scene) => count
+    + (scene.audioVersions?.length || 0)
+    + (scene.subtitleVersions?.length || 0)
+    + (scene.versions?.length || scene.shots?.[0]?.versions?.length || 0)
+    + (scene.videoVersions?.length || scene.shots?.[0]?.videoVersions?.length || 0), 0);
+}
+
+function renumber(scenes) {
+  return scenes.map((scene, index) => adaptSceneImageShot({
+    ...scene,
+    sceneNumber: index + 1,
+    title: !scene.title || /^Scene \d+$/.test(scene.title) ? `Scene ${index + 1}` : scene.title,
+  }));
 }
 
 export function initNarrationController(elements, services = {}) {
-  const editTimers = new Map();
+  const undoStack = [];
   const setStatus = services.setStatus || (() => {});
-  let skipNextSceneRender = false;
+  let pendingPreparation = null;
+  let narrationPromptDefaults = { literal: '', enriched: '' };
+  let narrationPromptDefaultsState = 'loading';
+
+  const pushUndo = (label) => {
+    const record = getCurrentStoryboardRecord();
+    undoStack.push({
+      label,
+      scenes: structuredClone(sceneStore.get().scenes),
+      archivedDeletedScenes: structuredClone(record?.archivedDeletedScenes || []),
+      structureReviewRecommended: Boolean(record?.structureReviewRecommended),
+    });
+    if (undoStack.length > 10) undoStack.shift();
+    elements.undoBtn.hidden = false;
+    elements.undoBtn.textContent = `Undo ${label}`;
+  };
 
   const syncControls = () => {
     elements.mode.value = elements.enrichNarration.checked ? 'enriched' : 'literal';
-    elements.textProviderMirror.value = elements.textProvider.value;
-    elements.audioProviderMirror.value = voiceStore.get().audioProvider;
     const record = getCurrentStoryboardRecord();
     if (document.activeElement !== elements.guidance) elements.guidance.value = record?.narrationGuidance || '';
+    const modeKey = narrationModeKey(elements.enrichNarration.checked);
+    const customPrompt = customNarrationPrompt(record, elements.enrichNarration.checked);
+    if (document.activeElement !== elements.promptText) {
+      elements.promptText.value = customPrompt || narrationPromptDefaults[modeKey] || '';
+    }
+    elements.promptReset.disabled = !customPrompt;
+
   };
 
   const saveNarrationSettings = () => {
@@ -64,208 +103,282 @@ export function initNarrationController(elements, services = {}) {
     services.saveProject?.(false);
   };
 
-  const updateNarrationText = (sceneId, value) => {
-    const scenes = sceneStore.get().scenes.map((scene) => scene.id === sceneId
-      ? { ...scene, narrationText: value, narrationIsFallback: false }
-      : scene);
-    skipNextSceneRender = true;
-    sceneStore.set({ scenes });
-    clearTimeout(editTimers.get(sceneId));
-    editTimers.set(sceneId, setTimeout(() => {
-      const record = getCurrentStoryboardRecord();
-      if (record) {
-        record.scenes = sceneStore.get().scenes;
-        queueSync(record, setStatus);
-      }
-      editTimers.delete(sceneId);
-    }, 300));
+  const saveNarrationPrompt = () => {
+    const record = getCurrentStoryboardRecord();
+    if (!record) return;
+    const modeKey = narrationModeKey(elements.enrichNarration.checked);
+    const value = elements.promptText.value.trim();
+    record.narrationPromptOverrides = { ...(record.narrationPromptOverrides || {}) };
+    if (value && value !== narrationPromptDefaults[modeKey]) record.narrationPromptOverrides[modeKey] = value;
+    else delete record.narrationPromptOverrides[modeKey];
+    elements.promptReset.disabled = !record.narrationPromptOverrides[modeKey];
+    if (sceneStore.get().scenes.length) elements.staleNotice.hidden = false;
+    services.saveProject?.(false);
   };
 
-  const mergeWithNext = (index) => {
+  const deleteScene = (sceneId) => {
     const scenes = sceneStore.get().scenes;
-    if (!scenes[index] || !scenes[index + 1]) return;
-    if (!window.confirm(`Merge scenes ${index + 1} and ${index + 2}? Existing media is retained as archived version history and will be stale for the merged narration.`)) return;
-    const first = scenes[index];
-    const second = scenes[index + 1];
-    const merged = {
-      ...first,
-      sourceScriptFragment: [first.sourceScriptFragment || first.scriptFragment, second.sourceScriptFragment || second.scriptFragment].filter(Boolean).join('\n\n'),
-      scriptFragment: [first.sourceScriptFragment || first.scriptFragment, second.sourceScriptFragment || second.scriptFragment].filter(Boolean).join('\n\n'),
-      narrationText: [first.narrationText, second.narrationText].filter(Boolean).join('\n\n'),
-      narrationIsFallback: Boolean(first.narrationIsFallback || second.narrationIsFallback),
-      archivedMergedScenes: [...(first.archivedMergedScenes || []), second],
-    };
-    const next = [...scenes.slice(0, index), merged, ...scenes.slice(index + 2)]
-      .map((scene, sceneIndex) => ({ ...scene, sceneNumber: sceneIndex + 1, title: `Scene ${sceneIndex + 1}` }));
-    persistScenes(next, setStatus);
-    setStatus(`Merged scenes ${index + 1} and ${index + 2}. Visuals and audio should be regenerated.`);
+    const index = scenes.findIndex((scene) => scene.id === sceneId);
+    const scene = scenes[index];
+    if (!scene) return;
+    const versions = mediaCount([scene]);
+    const excerpt = String(scene.narrationText || scene.sourceScriptFragment || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    const description = excerpt ? `“${excerpt}${excerpt.length === 140 ? '…' : ''}”` : 'This scene is currently empty.';
+    if (!window.confirm(`Delete scene ${index + 1} from the story?\n\n${description}\n\nThis removes it from Narration, Storyboard, and Timeline. ${versions} generated media version(s) will be archived, not deleted. Neighboring visual plans will be marked stale for continuity review. Undo will be available in Narration.`)) return;
+    pushUndo('scene deletion');
+    const record = getCurrentStoryboardRecord();
+    if (record) {
+      record.archivedDeletedScenes = [{
+        id: crypto.randomUUID(),
+        deletedAt: new Date().toISOString(),
+        originalIndex: index,
+        scene: structuredClone(scene),
+      }, ...(record.archivedDeletedScenes || [])].slice(0, 20);
+      record.structureReviewRecommended = true;
+      record.structureEditedAt = new Date().toISOString();
+    }
+    const retained = scenes.filter((candidate) => candidate.id !== sceneId).map((candidate, retainedIndex, all) => {
+      const wasAdjacent = retainedIndex === Math.max(0, index - 1) || retainedIndex === Math.min(index, all.length - 1);
+      return wasAdjacent ? { ...candidate, structuralContextStale: true } : candidate;
+    });
+    const nextScenes = renumber(retained);
+    persistScenes(nextScenes, setStatus);
+    uiStore.set({ selectedSceneId: nextScenes[Math.min(index, nextScenes.length - 1)]?.id || null });
+    setStatus(`Deleted scene ${index + 1}. Its media is archived; review the neighboring scenes for story continuity or use Undo scene deletion.`);
+  };
+
+  const restoreDeletedScene = (archiveId) => {
+    const record = getCurrentStoryboardRecord();
+    const archived = record?.archivedDeletedScenes || [];
+    const entry = archived.find((item) => item.id === archiveId);
+    if (!record || !entry?.scene) return;
+    pushUndo('scene restore');
+    record.archivedDeletedScenes = archived.filter((item) => item.id !== archiveId);
+    record.structureReviewRecommended = true;
+    record.structureEditedAt = new Date().toISOString();
+    const scenes = [...sceneStore.get().scenes];
+    const insertAt = Math.min(Math.max(Number(entry.originalIndex) || 0, 0), scenes.length);
+    scenes.splice(insertAt, 0, { ...structuredClone(entry.scene), structuralContextStale: true });
+    const withStaleNeighbors = scenes.map((scene, index) =>
+      Math.abs(index - insertAt) <= 1 ? { ...scene, structuralContextStale: true } : scene);
+    const nextScenes = renumber(withStaleNeighbors);
+    persistScenes(nextScenes, setStatus);
+    uiStore.set({ selectedSceneId: nextScenes[insertAt]?.id || null });
+    setStatus(`Restored the deleted scene at position ${insertAt + 1}. Review it and its neighbors for continuity.`);
+  };
+
+  const openAddSceneDialog = (surface) => {
+    const scenes = sceneStore.get().scenes;
+    if (scenes.length >= 200) {
+      setStatus('This project already has the maximum of 200 scenes.');
+      return;
+    }
+    const selectedIndex = scenes.findIndex((scene) => scene.id === uiStore.get().selectedSceneId);
+    const defaultInsertAt = surface === 'storyboard' && selectedIndex >= 0
+      ? selectedIndex + 1
+      : scenes.length;
+    const options = Array.from({ length: scenes.length + 1 }, (_, insertAt) => {
+      const option = document.createElement('option');
+      option.value = String(insertAt);
+      option.textContent = insertAt === 0
+        ? 'At beginning'
+        : insertAt === scenes.length ? 'At end' : `After scene ${insertAt}`;
+      return option;
+    });
+    elements.addScenePosition.replaceChildren(...options);
+    elements.addScenePosition.value = String(defaultInsertAt);
+    if (typeof elements.addSceneDialog.showModal === 'function') elements.addSceneDialog.showModal();
+  };
+
+  const addBlankScene = () => {
+    if (uiStore.get().operation) return;
+    pushUndo('scene insertion');
+    const { scenes, insertedScene, insertAt } = insertBlankSceneAt(
+      sceneStore.get().scenes,
+      elements.addScenePosition.value,
+    );
+    const record = getCurrentStoryboardRecord();
+    if (record) {
+      record.structureReviewRecommended = true;
+      record.structureEditedAt = new Date().toISOString();
+    }
+    persistScenes(scenes, setStatus);
+    uiStore.set({ selectedSceneId: insertedScene.id });
+    elements.addSceneDialog.close();
+    setStatus(`Added empty scene ${insertAt + 1}. Add narration or a visual prompt when you are ready; generation stays blocked until its required input exists.`);
+  };
+
+  const renderHistory = () => {
+    const plans = getArchivedNarrationPlans();
+    const deletedScenes = getCurrentStoryboardRecord()?.archivedDeletedScenes || [];
+    const historyCount = plans.length + deletedScenes.length;
+    elements.historyToggle.textContent = `Narration history${historyCount ? ` (${historyCount})` : ''}`;
+    if (!historyCount) {
+      const empty = document.createElement('p');
+      empty.className = 'narration-history-empty';
+      empty.textContent = 'No earlier narration plans have been archived yet.';
+      elements.historyList.replaceChildren(empty);
+      return;
+    }
+    const planNodes = plans.map((plan) => {
+      const item = document.createElement('div');
+      item.className = 'narration-history-item';
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      const date = Number.isNaN(new Date(plan.createdAt).getTime()) ? '' : new Date(plan.createdAt).toLocaleString();
+      summary.textContent = `${plan.label || 'Narration plan'} · ${plan.scenes.length} scenes${date ? ` · ${date}` : ''}`;
+      const comparison = document.createElement('p');
+      const currentScenes = sceneStore.get().scenes;
+      const currentContent = new Set(currentScenes.map((scene) =>
+        `${String(scene.sourceScriptFragment || '').trim()}\u0000${String(scene.narrationText || '').trim()}`));
+      const exactOverlap = plan.scenes.filter((scene) =>
+        currentContent.has(`${String(scene.sourceScriptFragment || '').trim()}\u0000${String(scene.narrationText || '').trim()}`)).length;
+      const delta = plan.scenes.length - currentScenes.length;
+      comparison.textContent = `${delta >= 0 ? '+' : ''}${delta} scenes versus current · ${exactOverlap} exact scene${exactOverlap === 1 ? '' : 's'} overlap · ${mediaCount(plan.scenes)} preserved media versions`;
+      details.append(summary, comparison);
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.className = 'secondary';
+      restore.textContent = 'Restore';
+      restore.addEventListener('click', () => {
+        if (!window.confirm(`Restore this ${plan.scenes.length}-scene narration plan? The current plan will be archived and no generated media will be deleted.`)) return;
+        restoreArchivedNarrationPlan(plan.id, setStatus);
+      });
+      item.append(details, restore);
+      return item;
+    });
+    const deletedNodes = deletedScenes.map((entry) => {
+      const item = document.createElement('div');
+      item.className = 'narration-history-item';
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = `Deleted scene · formerly ${Number(entry.originalIndex) + 1} · ${new Date(entry.deletedAt).toLocaleString()}`;
+      const comparison = document.createElement('p');
+      const excerpt = String(entry.scene?.narrationText || entry.scene?.sourceScriptFragment || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+      comparison.textContent = `${excerpt}${excerpt.length === 180 ? '…' : ''} · ${mediaCount([entry.scene])} preserved media versions`;
+      details.append(summary, comparison);
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.className = 'secondary';
+      restore.textContent = 'Restore scene';
+      restore.addEventListener('click', () => restoreDeletedScene(entry.id));
+      item.append(details, restore);
+      return item;
+    });
+    elements.historyList.replaceChildren(...planNodes, ...deletedNodes);
   };
 
   const render = () => {
     syncControls();
     const scenes = sceneStore.get().scenes;
-    const operation = uiStore.get().operation;
     const record = getCurrentStoryboardRecord();
-    const totalSeconds = scenes.reduce((sum, scene) => sum + estimatedSeconds(scene.narrationText), 0);
-    elements.sceneCount.textContent = `${scenes.length} scene${scenes.length === 1 ? '' : 's'}`;
-    elements.totalDuration.textContent = `About ${durationLabel(totalSeconds)}`;
-    elements.staleNotice.hidden = !hasNarrationChanges(record, {
-      ...elements,
-      textProvider: elements.textProvider,
-      enrichNarration: elements.enrichNarration,
-    });
-    elements.empty.hidden = scenes.length > 0;
-    elements.rows.hidden = scenes.length === 0;
+    const operation = uiStore.get().operation;
+    elements.staleNotice.hidden = !hasNarrationChanges(record, elements);
     elements.prepareBtn.disabled = Boolean(operation) || !elements.scriptText.value.trim();
     elements.prepareBtn.textContent = scenes.length ? 'Regenerate narration' : 'Prepare narration';
+    elements.addSceneButtons.forEach((button) => { button.disabled = Boolean(operation) || scenes.length >= 200; });
+    elements.addSceneConfirm.disabled = Boolean(operation) || scenes.length >= 200;
+    renderHistory();
+  };
 
-    const nodes = scenes.map((scene, index) => {
-      const row = document.createElement('article');
-      row.className = 'narration-row';
-      row.dataset.sceneId = scene.id;
-
-      const header = document.createElement('div');
-      header.className = 'narration-row-header';
-      const heading = document.createElement('div');
-      heading.className = 'narration-row-heading';
-      const sceneNumber = document.createElement('span');
-      sceneNumber.className = 'narration-row-number';
-      sceneNumber.textContent = String(index + 1);
-      const title = document.createElement('strong');
-      title.textContent = scene.title || `Scene ${index + 1}`;
-      heading.append(sceneNumber, title);
-
-      const statuses = document.createElement('div');
-      statuses.className = 'narration-row-statuses';
-      const freshness = computeStaleness(scene);
-      const activeAudio = scene.audioVersions?.[scene.activeAudioVersionIndex];
-      const audioState = !activeAudio?.path ? 'Missing audio' : freshness.audioStale ? 'Audio stale' : 'Audio ready';
-      const audioBadge = document.createElement('span');
-      audioBadge.className = `narration-status ${!activeAudio?.path ? 'is-missing' : freshness.audioStale ? 'is-stale' : 'is-ready'}`;
-      audioBadge.textContent = audioState;
-      const visualBadge = document.createElement('span');
-      visualBadge.className = `narration-status ${!scene.prompt ? 'is-missing' : freshness.promptStale ? 'is-stale' : 'is-ready'}`;
-      visualBadge.textContent = !scene.prompt ? 'Visuals not planned' : freshness.promptStale ? 'Visuals stale' : 'Storyboard ready';
-      statuses.append(audioBadge, visualBadge);
-      header.append(heading, statuses);
-
-      const body = document.createElement('div');
-      body.className = 'narration-row-body';
-      const source = document.createElement('details');
-      source.className = 'narration-source';
-      const sourceSummary = document.createElement('summary');
-      sourceSummary.textContent = 'Source excerpt';
-      const sourceText = document.createElement('p');
-      sourceText.textContent = scene.sourceScriptFragment || scene.scriptFragment || 'No source excerpt recorded.';
-      source.append(sourceSummary, sourceText);
-
-      const editor = document.createElement('div');
-      editor.className = 'narration-editor';
-      const textarea = document.createElement('textarea');
-      textarea.value = scene.narrationText || '';
-      textarea.rows = 4;
-      textarea.disabled = Boolean(operation);
-      textarea.setAttribute('aria-label', `Narration for scene ${index + 1}`);
-      const meta = document.createElement('small');
-      const updateMeta = () => {
-        const words = textarea.value.match(/\S+/g)?.length || 0;
-        meta.textContent = `${words} word${words === 1 ? '' : 's'} · about ${durationLabel(estimatedSeconds(textarea.value))}`;
-      };
-      updateMeta();
-      textarea.addEventListener('input', () => {
-        updateMeta();
-        updateNarrationText(scene.id, textarea.value);
-      });
-      textarea.addEventListener('blur', render, { once: true });
-      editor.append(textarea, meta);
-
-      const actions = document.createElement('div');
-      actions.className = 'narration-row-actions';
-      const instruction = document.createElement('input');
-      instruction.type = 'text';
-      instruction.maxLength = 500;
-      instruction.placeholder = 'Optional rewrite instruction';
-      instruction.setAttribute('aria-label', `Rewrite instruction for scene ${index + 1}`);
-      instruction.disabled = Boolean(operation);
-      const regenerate = document.createElement('button');
-      regenerate.type = 'button';
-      regenerate.className = 'secondary';
-      regenerate.textContent = 'Regenerate';
-      regenerate.disabled = Boolean(operation);
-      regenerate.addEventListener('click', () => regenerateDialogue(index, elements.appElements, setStatus, instruction.value.trim()));
-      const split = document.createElement('button');
-      split.type = 'button';
-      split.className = 'secondary';
-      split.textContent = 'Split';
-      split.disabled = Boolean(operation);
-      split.addEventListener('click', () => splitSceneInPlace(index, 2, elements.appElements, setStatus));
-      const merge = document.createElement('button');
-      merge.type = 'button';
-      merge.className = 'secondary';
-      merge.textContent = 'Merge next';
-      merge.disabled = Boolean(operation) || index === scenes.length - 1;
-      merge.addEventListener('click', () => mergeWithNext(index));
-      const generateAudio = document.createElement('button');
-      generateAudio.type = 'button';
-      generateAudio.className = 'primary';
-      generateAudio.textContent = activeAudio?.path ? 'Regenerate voice' : 'Generate voice';
-      generateAudio.disabled = Boolean(operation) || !scene.narrationText?.trim() || scene.narrationIsFallback;
-      generateAudio.addEventListener('click', () => regenerateAudio(index, null, elements.appElements, setStatus));
-      actions.append(instruction, regenerate, split, merge, generateAudio);
-
-      if (activeAudio?.path) {
-        const audio = document.createElement('audio');
-        audio.controls = true;
-        audio.preload = 'metadata';
-        audio.className = 'narration-row-audio';
-        loadProtectedAsset(activeAudio.path).then((url) => {
-          if (url && row.isConnected) audio.src = url;
-        }).catch(() => {});
-        actions.append(audio);
-      }
-
-      body.append(source, editor, actions);
-      row.append(header, body);
-      return row;
+  const showPreparationPreview = (preparation) => {
+    pendingPreparation = preparation;
+    const changed = preparation.displaced.length;
+    const affectedMedia = mediaCount(preparation.displaced);
+    const deletedCount = getCurrentStoryboardRecord()?.archivedDeletedScenes?.length || 0;
+    const list = document.createElement('ul');
+    [
+      `${preparation.priorScenes.length} current scenes → ${preparation.nextScenes.length} preview scenes`,
+      `${preparation.reusedCount} unchanged scene${preparation.reusedCount === 1 ? '' : 's'} will keep the same IDs and media`,
+      `${changed} changed scene${changed === 1 ? '' : 's'} will move into Previous plans`,
+      `${affectedMedia} generated media version${affectedMedia === 1 ? '' : 's'} remain preserved`,
+      ...(deletedCount ? [`${deletedCount} previously deleted scene${deletedCount === 1 ? '' : 's'} may reappear because narration is being rebuilt from the source script`] : []),
+    ].forEach((text) => {
+      const item = document.createElement('li');
+      item.textContent = text;
+      list.append(item);
     });
-    elements.rows.replaceChildren(...nodes);
+    elements.previewSummary.replaceChildren(list);
+    if (typeof elements.previewDialog.showModal === 'function') elements.previewDialog.showModal();
+    else if (window.confirm(list.textContent)) {
+      commitNarrationPreparation(preparation, setStatus);
+      generateMissingOrStale('audio', elements.appElements, setStatus)
+        .catch((error) => setStatus(`Voice run failed: ${error.message}`));
+      pendingPreparation = null;
+    }
   };
 
   elements.prepareBtn.addEventListener('click', async () => {
-    if (sceneStore.get().scenes.length
-      && !window.confirm('Regenerate narration and scene boundaries from the current script? Existing generated media will remain in storage, but the current scene structure will be replaced.')) return;
-    await prepareNarration(elements.appElements, setStatus);
+    if (!sceneStore.get().scenes.length) {
+      const scenes = await prepareNarration(elements.appElements, setStatus);
+      if (scenes && scenes.length) {
+        generateMissingOrStale('audio', elements.appElements, setStatus)
+          .catch((error) => setStatus(`Voice run failed: ${error.message}`));
+      }
+      return;
+    }
+    const preparation = await previewNarrationPreparation(elements.appElements, setStatus);
+    if (preparation) showPreparationPreview(preparation);
+  });
+  elements.previewCancel.addEventListener('click', () => {
+    pendingPreparation = null;
+    elements.previewDialog.close();
+    setStatus('Narration preview discarded; the current plan is unchanged.');
+  });
+  elements.previewApply.addEventListener('click', () => {
+    if (pendingPreparation) {
+      commitNarrationPreparation(pendingPreparation, setStatus);
+      generateMissingOrStale('audio', elements.appElements, setStatus)
+        .catch((error) => setStatus(`Voice run failed: ${error.message}`));
+    }
+    pendingPreparation = null;
+    elements.previewDialog.close();
+  });
+  elements.addSceneButtons.forEach((button) => button.addEventListener('click', () =>
+    openAddSceneDialog(button.dataset.addSceneSurface || 'narration')));
+  elements.addSceneCancel.addEventListener('click', () => elements.addSceneDialog.close());
+  elements.addSceneConfirm.addEventListener('click', addBlankScene);
+  window.addEventListener('storyboard:delete-scene', (event) => {
+    if (event.detail?.sceneId) deleteScene(event.detail.sceneId);
+  });
+  elements.undoBtn.addEventListener('click', () => {
+    const snapshot = undoStack.pop();
+    if (!snapshot) return;
+    const record = getCurrentStoryboardRecord();
+    if (record) {
+      record.archivedDeletedScenes = snapshot.archivedDeletedScenes;
+      record.structureReviewRecommended = snapshot.structureReviewRecommended;
+      record.structureEditedAt = new Date().toISOString();
+    }
+    persistScenes(snapshot.scenes, setStatus);
+    elements.undoBtn.hidden = undoStack.length === 0;
+    elements.undoBtn.textContent = undoStack.length ? `Undo ${undoStack[undoStack.length - 1].label}` : 'Undo structure change';
+    setStatus(`Undid ${snapshot.label}.`);
+  });
+  elements.historyToggle.addEventListener('click', () => {
+    elements.historyPanel.hidden = !elements.historyPanel.hidden;
+    elements.historyToggle.setAttribute('aria-expanded', String(!elements.historyPanel.hidden));
   });
   elements.mode.addEventListener('change', () => {
     elements.enrichNarration.checked = elements.mode.value === 'enriched';
     elements.enrichNarration.dispatchEvent(new Event('change', { bubbles: true }));
     render();
   });
-  elements.textProviderMirror.addEventListener('change', () => {
-    elements.textProvider.value = elements.textProviderMirror.value;
-    elements.textProvider.dispatchEvent(new Event('change', { bubbles: true }));
-    render();
-  });
-  elements.audioProviderMirror.addEventListener('change', () => {
-    elements.audioProvider.value = elements.audioProviderMirror.value;
-    elements.audioProvider.dispatchEvent(new Event('change', { bubbles: true }));
-    render();
-  });
   elements.guidance.addEventListener('input', saveNarrationSettings);
-  elements.helperButtons.forEach((button) => button.addEventListener('click', () => {
-    elements.guidance.value = appendGuidance(elements.guidance.value, button.dataset.narrationHelper);
-    saveNarrationSettings();
-    elements.guidance.focus();
-    render();
-  }));
-
-  sceneStore.subscribe(() => {
-    if (skipNextSceneRender) {
-      skipNextSceneRender = false;
-      return;
-    }
+  elements.promptText.addEventListener('input', saveNarrationPrompt);
+  elements.promptReset.addEventListener('click', () => {
+    const record = getCurrentStoryboardRecord();
+    if (!record) return;
+    const modeKey = narrationModeKey(elements.enrichNarration.checked);
+    record.narrationPromptOverrides = { ...(record.narrationPromptOverrides || {}) };
+    delete record.narrationPromptOverrides[modeKey];
+    elements.promptText.value = narrationPromptDefaults[modeKey] || '';
+    services.saveProject?.(false);
     render();
   });
+
+
+  sceneStore.subscribe(render);
   uiStore.subscribe(render);
   voiceStore.subscribe(() => {
     syncControls();
@@ -273,5 +386,17 @@ export function initNarrationController(elements, services = {}) {
     render();
   });
   render();
+  api('/api/storyboard/narration-prompts').then((data) => {
+    narrationPromptDefaults = {
+      literal: String(data?.prompts?.literal || ''),
+      enriched: String(data?.prompts?.enriched || ''),
+    };
+    narrationPromptDefaultsState = 'ready';
+    render();
+  }).catch((error) => {
+    narrationPromptDefaultsState = 'unavailable';
+    render();
+    setStatus(`Narration prompt defaults could not be loaded: ${error.message}`);
+  });
   return { render };
 }

@@ -3,7 +3,7 @@ import { getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from 
 import { loadProtectedAsset } from './assets.js';
 import { imageShot } from './scene-shots.js';
 import { api } from './api.js';
-import { previewVoice, openVoiceLibraryModal } from './voices.js';
+import { previewVoice, stopPreviewVoice, openVoiceLibraryModal } from './voices.js';
 import { computeStageStatus, getCachedJobs, getCachedSpend } from './stages.js';
 import {
   initImageLibraryModal as initImageLibraryController,
@@ -108,15 +108,20 @@ function renderStyleReferenceList(container, items, type, els, setStatus) {
     return;
   }
 
-  items.forEach((item) => {
+  items.forEach((item, index) => {
     const card = document.createElement('div');
     card.className = 'style-ref-item';
     const image = document.createElement('img');
-    
+    image.className = 'style-ref-thumb';
     loadProtectedAsset(item.url).then(url => { if (url) image.src = url; });
     image.alt = item.fileName;
     image.loading = 'lazy';
     image.decoding = 'async';
+    if (els.onStyleReferenceInspect) {
+      image.tabIndex = 0;
+      image.style.cursor = 'zoom-in';
+      image.addEventListener('click', () => els.onStyleReferenceInspect(item));
+    }
     const meta = document.createElement('div');
     meta.className = 'style-ref-meta';
     const name = document.createElement('div');
@@ -129,14 +134,53 @@ function renderStyleReferenceList(container, items, type, els, setStatus) {
     button.title = `Remove ${item.fileName}`;
     button.addEventListener('click', () => deleteStyleReference(type, item.fileName, els, setStatus));
     meta.append(name);
-    
+
     const badge = document.createElement('span');
     badge.className = `style-ref-badge ${item.isUserUploaded ? 'user' : 'system'}`;
     badge.textContent = item.isUserUploaded ? 'User' : 'System';
-    
+
     card.append(image, meta, button, badge);
+
+    if (els.onStyleReferenceReorder) {
+      const order = document.createElement('div');
+      order.className = 'style-ref-order';
+      const up = document.createElement('button');
+      up.type = 'button';
+      up.className = 'ref-order-btn';
+      up.textContent = '↑';
+      up.setAttribute('aria-label', `Move ${item.fileName} earlier`);
+      up.disabled = index === 0;
+      up.addEventListener('click', () => els.onStyleReferenceReorder(type, item.fileName, 'up'));
+      const down = document.createElement('button');
+      down.type = 'button';
+      down.className = 'ref-order-btn';
+      down.textContent = '↓';
+      down.setAttribute('aria-label', `Move ${item.fileName} later`);
+      down.disabled = index === items.length - 1;
+      down.addEventListener('click', () => els.onStyleReferenceReorder(type, item.fileName, 'down'));
+      order.append(up, down);
+      card.append(order);
+    }
+
     container.appendChild(card);
   });
+}
+
+// Reference files have no order concept server-side (they're just files in a directory) -- display
+// order is a purely client-side project-document field (record.styleReferenceOrder), so a stable
+// sort here is the only place that needs to know about it.
+function sortReferencesByOrder(items, order) {
+  if (!Array.isArray(order) || !order.length) return items;
+  const rank = new Map(order.map((fileName, index) => [fileName, index]));
+  return [...items].sort((a, b) => (rank.has(a.fileName) ? rank.get(a.fileName) : Infinity) - (rank.has(b.fileName) ? rank.get(b.fileName) : Infinity));
+}
+
+function applyStyleReferenceOrder(references) {
+  const order = getCurrentStoryboardRecord()?.styleReferenceOrder || {};
+  return {
+    characters: sortReferencesByOrder(references.characters || [], order.characters),
+    world: sortReferencesByOrder(references.world || [], order.world),
+  };
 }
 
 export async function loadStyleReferences(styleId, els, setStatus) {
@@ -146,7 +190,7 @@ export async function loadStyleReferences(styleId, els, setStatus) {
   try {
     const data = await api(`/api/styles/${encodeURIComponent(styleId)}/references`);
     if (els.styleSelect.value !== styleId) return;
-    generationStore.set({ styleReferences: data.references || { characters: [], world: [] }, styleReferencesStyleId: styleId });
+    generationStore.set({ styleReferences: applyStyleReferenceOrder(data.references || { characters: [], world: [] }), styleReferencesStyleId: styleId });
     renderStyleReferences(els, setStatus);
   } catch (error) {
     if (els.styleSelect.value !== styleId) return;
@@ -169,7 +213,7 @@ export async function uploadStyleReferences(type, files, els, setStatus) {
       method: 'POST',
       body: form,
     });
-    generationStore.set({ styleReferences: data.references || { characters: [], world: [] }, styleReferencesStyleId: styleId });
+    generationStore.set({ styleReferences: applyStyleReferenceOrder(data.references || { characters: [], world: [] }), styleReferencesStyleId: styleId });
     renderStyleReferences(els, setStatus);
     if (setStatus) setStatus(`${type} references uploaded.`);
   } catch (error) {
@@ -184,7 +228,7 @@ async function deleteStyleReference(type, fileName, els, setStatus) {
       method: 'DELETE',
       body: JSON.stringify({ type, fileName }),
     });
-    generationStore.set({ styleReferences: data.references || { characters: [], world: [] }, styleReferencesStyleId: styleId });
+    generationStore.set({ styleReferences: applyStyleReferenceOrder(data.references || { characters: [], world: [] }), styleReferencesStyleId: styleId });
     renderStyleReferences(els, setStatus);
     if (setStatus) setStatus('Reference removed.');
   } catch (error) {
@@ -192,21 +236,21 @@ async function deleteStyleReference(type, fileName, els, setStatus) {
   }
 }
 
-export function renderVoicesPanel(els) {
+function renderVoicePicker(els, container) {
+  if (!container) return;
   const state = voiceStore.get();
   const provider = state.audioProvider;
   const narratorVoice = state.narratorVoice[provider] || null;
   const availableVoices = PREVIEWABLE_AUDIO_PROVIDERS.includes(provider) ? (state.availableVoices[provider] || []) : [];
 
-
-  els.voicesPanel.innerHTML = '';
+  container.innerHTML = '';
 
   if (NO_MAPPING_AUDIO_PROVIDERS.includes(provider)) {
-    els.voicesPanel.classList.remove('voice-unmapped');
+    container.classList.remove('voice-unmapped');
     const note = document.createElement('span');
     note.className = 'voice-note';
     note.textContent = 'Auto-assigned';
-    els.voicesPanel.appendChild(note);
+    container.appendChild(note);
     return;
   }
 
@@ -231,21 +275,34 @@ export function renderVoicesPanel(els) {
     select.appendChild(option);
   });
   select.value = narratorVoice?.voiceId || '';
-  els.voicesPanel.classList.toggle('voice-unmapped', !narratorVoice?.voiceId);
+  container.classList.toggle('voice-unmapped', !narratorVoice?.voiceId);
 
   const previewBtn = document.createElement('button');
   previewBtn.type = 'button';
   previewBtn.className = 'secondary text-button voice-preview-btn';
   previewBtn.textContent = '▶';
-  previewBtn.title = 'Preview this voice';
+  previewBtn.title = 'Preview voice';
   previewBtn.setAttribute('aria-label', 'Preview selected voice');
   previewBtn.disabled = !select.value || select.value === 'clone';
   previewBtn.addEventListener('click', () => {
     const chosen = availableVoices.find((voice) => voice.voiceId === select.value);
-    previewVoice(provider, chosen, (msg) => { if (els.statusText) els.statusText.textContent = msg; });
+    previewVoice(
+      provider,
+      chosen,
+      (msg) => { if (els.statusText) els.statusText.textContent = msg; },
+      () => {
+        previewBtn.textContent = '■';
+        previewBtn.title = 'Stop preview';
+      },
+      () => {
+        previewBtn.textContent = '▶';
+        previewBtn.title = 'Preview voice';
+      }
+    );
   });
 
   select.addEventListener('change', () => {
+    stopPreviewVoice();
     if (select.value === 'clone') {
       select.value = narratorVoice?.voiceId || '';
       openVoiceLibraryModal(els, (msg) => { if (els.statusText) els.statusText.textContent = msg; });
@@ -259,7 +316,7 @@ export function renderVoicesPanel(els) {
       narratorVoice: { ...s.narratorVoice, [provider]: chosen ? { voiceId: chosen.voiceId, label: chosen.label } : null },
     }));
 
-    els.voicesPanel.classList.toggle('voice-unmapped', !voiceStore.get().narratorVoice[provider]?.voiceId);
+    container.classList.toggle('voice-unmapped', !voiceStore.get().narratorVoice[provider]?.voiceId);
     const record = getCurrentStoryboardRecord();
     if (record) {
       record.narratorVoice = voiceStore.get().narratorVoice;
@@ -267,7 +324,11 @@ export function renderVoicesPanel(els) {
     }
   });
 
-  els.voicesPanel.append(select, previewBtn);
+  container.append(select, previewBtn);
+}
+
+export function renderVoicesPanel(els) {
+  renderVoicePicker(els, els.voicesPanel);
 }
 
 function stageStatusLabel(stage) {

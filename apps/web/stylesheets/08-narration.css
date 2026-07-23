@@ -1,42 +1,4 @@
 
-.narration-page {
-  display: grid;
-  gap: 16px;
-}
-.narration-page[hidden] {
-  display: none;
-}
-.narration-toolbar {
-  display: grid;
-  gap: 14px;
-}
-.narration-toolbar-heading,
-.narration-controls,
-.narration-row-header,
-.narration-row-heading,
-.narration-row-actions {
-  display: flex;
-  align-items: center;
-}
-.narration-toolbar-heading,
-.narration-row-header {
-  justify-content: space-between;
-  gap: 16px;
-}
-.narration-toolbar-heading h2 {
-  margin: 0 0 4px;
-}
-.narration-toolbar-heading p,
-.narration-empty p,
-.narration-source p {
-  margin: 0;
-  color: var(--muted);
-}
-.narration-summary {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-}
 .narration-stale-notice {
   border: 1px solid rgba(245, 158, 11, .5);
   border-radius: 9px;
@@ -44,29 +6,10 @@
   color: #fbbf24;
   padding: 10px 12px;
 }
-.narration-controls {
-  align-items: end;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.narration-controls > label,
-.narration-voice-field {
-  display: grid;
-  gap: 5px;
-  min-width: 145px;
-}
-.narration-controls > label > span,
-.narration-voice-field > span,
 .narration-guidance-field > span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 650;
-}
-.narration-voice-field {
-  min-width: 220px;
-}
-.narration-controls #prepareNarrationBtn {
-  margin-left: auto;
 }
 .narration-guidance-field {
   display: grid;
@@ -75,21 +18,6 @@
 .narration-guidance-field textarea {
   resize: vertical;
   min-height: 64px;
-}
-.narration-helper-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-.narration-helper-chips button {
-  min-height: 30px;
-  padding: 5px 10px;
-  font-size: 12px;
-}
-.narration-helper-chips button[aria-pressed="true"] {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 16%, var(--panel-2));
-  color: var(--text);
 }
 .narration-prompt-editor {
   border: 1px solid var(--line);
@@ -180,214 +108,6 @@
 .narration-history-item p { color: var(--muted); font-size: 12px; }
 .narration-preview-dialog { width: min(520px, calc(100vw - 32px)); }
 .narration-preview-dialog ul { color: var(--muted); line-height: 1.6; }
-.narration-empty {
-  padding: 48px 24px;
-  text-align: center;
-}
-.narration-empty h3 {
-  margin: 0 0 8px;
-}
-.narration-rows {
-  display: grid;
-  gap: 10px;
-}
-.narration-rows[hidden],
-.narration-empty[hidden] {
-  display: none;
-}
-.narration-row {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  overflow: hidden;
-}
-.narration-row-header {
-  border-bottom: 1px solid var(--line);
-  padding: 10px 14px;
-}
-.narration-row-heading {
-  gap: 10px;
-}
-.narration-row-number {
-  display: grid;
-  place-items: center;
-  width: 27px;
-  height: 27px;
-  border-radius: 50%;
-  background: var(--panel-2);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-.narration-row-body {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 16px;
-}
-.narration-visual-context {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  min-width: 0;
-}
-.narration-thumbnail {
-  position: relative;
-  display: grid;
-  place-items: center;
-  margin: 0;
-  overflow: hidden;
-  border: 1px dashed var(--line);
-  border-radius: 9px;
-  background: var(--panel-2);
-  color: var(--muted);
-}
-.narration-thumbnail.has-media {
-  border-style: solid;
-}
-.narration-thumbnail img,
-.narration-thumbnail video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.narration-thumbnail [hidden] {
-  display: none;
-}
-.narration-thumbnail-placeholder {
-  padding: 12px;
-  font-size: 12px;
-  text-align: center;
-}
-.narration-thumbnail figcaption {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  border-radius: 999px;
-  padding: 2px 7px;
-  background: rgba(0, 0, 0, .68);
-  color: #fff;
-  font-size: 10px;
-}
-.narration-source {
-  min-width: 0;
-}
-.narration-source summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 650;
-}
-.narration-source p {
-  margin-top: 8px;
-  white-space: pre-wrap;
-  font-size: 12px;
-  line-height: 1.5;
-}
-.narration-source-context {
-  display: block;
-  margin-top: 8px;
-  white-space: pre-wrap;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.narration-source-context mark {
-  border-radius: 3px;
-  background: rgba(245, 158, 11, .2);
-  color: var(--text);
-}
-.narration-source-provenance {
-  display: block;
-  margin-top: 7px;
-  color: var(--muted);
-  font-size: 11px;
-}
-.narration-editor {
-  display: grid;
-  gap: 8px;
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-}
-.narration-editor textarea {
-  width: 100%;
-  min-height: 160px;
-  resize: vertical;
-  font-size: 15px;
-  line-height: 1.6;
-  padding: 14px 16px;
-}
-.narration-editor small {
-  color: var(--muted);
-}
-.narration-editor-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.narration-row-secondary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 16px;
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  opacity: 0.85;
-}
-.narration-row-secondary .narration-visual-context {
-  flex: 0 0 auto;
-  width: 96px;
-}
-.narration-row-secondary .narration-thumbnail {
-  width: 72px;
-  height: 72px;
-}
-.narration-row-secondary .narration-thumbnail-placeholder {
-  padding: 4px;
-  font-size: 10px;
-}
-.narration-row-secondary .narration-source {
-  margin-top: 6px;
-  font-size: 11px;
-}
-.narration-row-secondary .narration-row-actions {
-  flex: 1 1 320px;
-  min-width: 240px;
-}
-.narration-row-actions {
-  align-content: start;
-  align-items: stretch;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-.narration-row-actions input {
-  flex: 1 0 100%;
-}
-.narration-row-actions button {
-  flex: 1 1 auto;
-}
-.narration-row-audio {
-  flex: 1 0 100%;
-  width: 100%;
-  height: 34px;
-}
-.narration-audio-version-meta,
-.narration-voice-disabled-reason {
-  flex: 1 0 100%;
-  color: var(--muted);
-  font-size: 11px;
-}
-.narration-voice-disabled-reason { color: #fbbf24; }
-@media (max-width: 980px) {
-  .narration-controls #prepareNarrationBtn {
-    margin-left: 0;
-  }
-}
 .page-transition {
   position: absolute;
   inset: 0;
@@ -444,4 +164,3 @@
   .page-transition { transition: none; }
   .page-transition-spinner { animation: none; }
 }
-

@@ -1,4 +1,4 @@
-function createStylesController(styles){
+function createStylesController({ styles }){
   return {
     list(req,res){
       res.json({styles:styles.list(req.auth?.userId)});

@@ -135,7 +135,7 @@ function registerRoutes(app, d) {
   app.use('/api/admin', adminRoutes(d.adminRepository, d.queue, d.paymentRepository, d.payments));
   app.use('/api/billing', paymentRoutes(d.paymentRepository, d.payments, d.spendSummary));
   app.use('/api/media-output', mediaOutputRoutes(d.mediaOutput));
-  app.use('/api/styles', stylesRoutes({ controller: d.controllers.styles, upload: d.upload, generationTrace: d.generationTrace }));
+  app.use('/api/styles', stylesRoutes({ controller: d.controllers.styles, upload: d.upload }));
   app.use('/api/storyboard', storyboardRoutes({ controller: d.controllers.storyboard, idempotency: d.idempotency, execute: d.execute }));
   app.use('/api/images', imagesRoutes({ controller: d.controllers.media, idempotency: d.idempotency, execute: d.execute }));
   app.use('/api/videos', videosRoutes({ controller: d.controllers.media, idempotency: d.idempotency, execute: d.execute }));

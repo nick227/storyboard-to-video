@@ -36,7 +36,6 @@ const { createDialogueService } = require('./services/dialogue.service');
 const { createSceneSplitService } = require('./services/scene-split.service');
 const { createShotPlanningService } = require('./services/shot-planning.service');
 const { createImageGenerationService } = require('./services/image-generation.service');
-const { createStylePreviewService } = require('./services/style-preview.service');
 const { createAudioGenerationService } = require('./services/audio-generation.service');
 const { createVideoGenerationService } = require('./services/video-generation.service');
 const { createSubtitleGenerationService } = require('./services/subtitle-generation.service');
@@ -120,7 +119,6 @@ function createDependencies(config, overrides = {}) {
   const sceneSplit = createSceneSplitService({ textProviders, generationCache });
   const shotPlanning = createShotPlanningService({ textProviders, generationCache });
   const images = createImageGenerationService({ config, styles, provider: imageProvider, projectStore, materializer });
-  const stylePreview = createStylePreviewService({ config, styles, provider: imageProvider, projectStore });
   const audio = createAudioGenerationService({ config, provider: audioProvider, alignmentProvider, projectStore });
   const videos = createVideoGenerationService({ config, providers: videoProviders, execution: videoExecution, projectStore, styles, attempts: videoAttemptRepository, materializer });
   const mediaOutput = createMediaOutputService({ config, projectStore, billing, videoProviders });
@@ -135,7 +133,7 @@ function createDependencies(config, overrides = {}) {
 
   return {
     config, prisma, projectStore, scriptStore, scripts, writersStore, writers, queue, providerAdmission, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, spendSummary, generationContext, identityStore,
-    styles, prompts, referenceGeneration, dialogue, sceneSplit, shotPlanning, images, stylePreview, audio, videos, subtitles, shotReferences, exports, voices, imageProvider, mediaOutput,
+    styles, prompts, referenceGeneration, dialogue, sceneSplit, shotPlanning, images, audio, videos, subtitles, shotReferences, exports, voices, imageProvider, mediaOutput,
     upload: createUpload(config),
     auth,
     authenticate: auth.middleware(),
@@ -145,7 +143,7 @@ function createDependencies(config, overrides = {}) {
     controllers: {
       storyboard: createStoryboardController({ styles, prompts, dialogue, sceneSplit, shotPlanning, config }),
       media,
-      styles: createStylesController({ styles, stylePreview }),
+      styles: createStylesController({ styles }),
       voices: createVoiceController(voices),
       assets: createAssetsController({ config, projectStore, styles }),
     },
