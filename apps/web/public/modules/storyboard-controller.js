@@ -75,14 +75,20 @@ export function initStoryboardController(elements, {
   ]);
 
   let downloadResolve = null;
+  const VIEW_STORAGE_KEY = 'storyboardViewMode';
   let view = 'grid';
+  try {
+    const stored = localStorage.getItem(VIEW_STORAGE_KEY);
+    if (stored === 'slider' || stored === 'grid') view = stored;
+  } catch (_) {}
   const sliderPrev = elements.slider.querySelector('.storyboard-slider-prev');
   const sliderNext = elements.slider.querySelector('.storyboard-slider-next');
   const sliderStage = elements.slider.querySelector('.storyboard-slider-stage');
   const filmstrip = elements.slider.querySelector('.storyboard-filmstrip');
 
-  const setView = (nextView) => {
+  const setView = (nextView, { focus = true } = {}) => {
     view = nextView === 'slider' ? 'slider' : 'grid';
+    try { localStorage.setItem(VIEW_STORAGE_KEY, view); } catch (_) {}
     const sliderActive = view === 'slider';
     elements.grid.hidden = sliderActive;
     elements.slider.hidden = !sliderActive;
@@ -95,8 +101,9 @@ export function initStoryboardController(elements, {
       button.disabled = sliderActive;
     });
     renderScenes?.();
-    if (sliderActive) elements.slider.focus({ preventScroll: true });
+    if (focus && sliderActive) elements.slider.focus({ preventScroll: true });
   };
+  setView(view, { focus: false });
 
   const selectRelativeScene = (offset) => {
     const scenes = sceneStore.get().scenes || [];
