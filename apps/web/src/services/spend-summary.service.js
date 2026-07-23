@@ -135,6 +135,7 @@ function aggregateEvents(events, prices = []) {
       modalityGroup.count += count;
       modelGroup.count += count;
       modelGroup.extra.bytes = (modelGroup.extra.bytes || 0) + Number(usage.outputBytes || 0);
+      modelGroup.extra.seconds = (modelGroup.extra.seconds || 0) + Number(usage.seconds || 0);
     } else if (modality === 'video') {
       const count = Number(usage.videos || 1);
       modalityGroup.count += count;

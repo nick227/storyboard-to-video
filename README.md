@@ -148,13 +148,64 @@ A zero-shot, commercial-safe cloning daemon located in `apps/voice-service/`. Re
 
 ---
 
-## Storage & API Operations
+## Storage Design
 
-- **Storyboard/Project Assets**: Storyboards are stored in `apps/web/data/projects/<project-id>/project.json` and generated assets are saved under `/assets/<type>`.
-- **API Jobs**: Responses include an `X-Generation-Job-Id`. Management endpoints:
-  - `GET /api/jobs` (list active)
-  - `DELETE /api/jobs/:jobId` (cancel)
-- **Cleanup**: `POST /api/projects/:projectId/cleanup` garbage-collects orphaned assets.
+Committed project media (images, audio, video, subtitles, exports, references) goes through a **BlobStore** persistence boundary. Generation APIs that need filesystem paths use a separate **AssetMaterializer** — temp/cache only, never the source of truth.
+
+```text
+staging / provider temp / LTX_SHARED_DIR     → ephemeral local disk
+committed project assets                     → BlobStore (local today, optional R2)
+provider needs a file path                   → AssetMaterializer → temp or borrowed local path
+```
+
+| Layer | Role | Key modules |
+| :--- | :--- | :--- |
+| **BlobStore** | `put` / `getStream` / `delete` / `exists` | `src/storage/blob-store.js`, `r2-blob-store.js`, `dual-blob-store.js`, `read-fallback-blob-store.js` |
+| **AssetMaterializer** | `materialize(storageKey)` → local path + `release()` | `src/storage/asset-materializer.js` |
+| **Metadata** | Prisma `Asset` rows (`storageKey`, `publicPath`, quotas) | `prisma-project.repository.js` |
+
+Public asset URLs stay auth-gated (`/projects/:id/assets/...`). Serving and ZIP export stream via `getStream(storageKey)`, not raw disk paths.
+
+### Backends (`STORAGE_BACKEND`)
+
+| Value | Writes | Reads / `exists` | When to use |
+| :--- | :--- | :--- | :--- |
+| unset / `local` | Local disk under `apps/web/data/projects/` | Local | Default; no Cloudflare account needed |
+| `dual` | Local first, then mirror to R2 (R2 failures are logged, not fatal) | Local only | Safe first step once you have an R2 bucket |
+| `r2` | R2 only | R2 first, then legacy local fallback | After `dual` is validated |
+
+`dual` / `r2` **fail startup** unless every `R2_*` variable below is set (no silent fall-back to local on a typo).
+
+### Environment variables
+
+Set these in `apps/web/.env` (see also `apps/web/.env.example`):
+
+```dotenv
+# local (default) | dual | r2
+STORAGE_BACKEND=local
+
+# Required when STORAGE_BACKEND is dual or r2:
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET=
+R2_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com
+
+# Unrelated quotas (still apply):
+PROJECT_MAX_FILES=500
+PROJECT_MAX_BYTES=2147483648
+```
+
+**Recommended rollout:** leave unset → create R2 bucket/token → set `STORAGE_BACKEND=dual` + all `R2_*` → smoke-test generate / view / video / ZIP / delete → later switch to `r2`. Old on-disk assets need no backfill; `r2` mode still reads legacy local files when the object is missing from the bucket.
+
+### Still on local disk (by design)
+
+Style reference images, generation staging dirs (`data/generated`, `data/videos`, …), job/idempotency/cache JSON, and `LTX_SHARED_DIR` are **not** in BlobStore.
+
+### API Operations
+
+- Responses include an `X-Generation-Job-Id`. Management: `GET /api/jobs`, `DELETE /api/jobs/:jobId`.
+- `POST /api/projects/:projectId/cleanup` garbage-collects orphaned committed assets.
 
 ---
 
@@ -190,7 +241,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 
 - **`apps/web` (Railway)**: Project `storyboard-to-video` at https://storyboard-to-video.up.railway.app. Dashboard **Root Directory** is `apps/web` (so `apps/web/Dockerfile` + `apps/web/railway.toml` are the live build/deploy config).
   - **Postgres**: Provision a Railway Postgres plugin (or external DB) and set `DATABASE_URL`. Migrations run automatically via `preDeployCommand` (`npm run prisma:migrate:deploy`) before each deploy goes live.
-  - **Persistent media (required)**: Volumes are not configurable in `railway.toml`. In the Railway dashboard (or `railway volume add --mount-path /app/data`), attach **one** volume to the web service with mount path **`/app/data`**. That path is where the app stores projects, generated images/audio/video, jobs, and caches (`config.paths` under `data/`). Without it, every redeploy wipes user media. Railway sets `RAILWAY_VOLUME_MOUNT_PATH=/app/data` automatically when attached.
+  - **Persistent media (required for local/dual)**: Volumes are not configurable in `railway.toml`. In the Railway dashboard (or `railway volume add --mount-path /app/data`), attach **one** volume to the web service with mount path **`/app/data`**. That path holds projects metadata staging, jobs/caches, and local BlobStore bytes (`config.paths` under `data/`). Without it, every redeploy wipes local media. With `STORAGE_BACKEND=r2`, committed media lives in R2, but `/app/data` is still needed for jobs, caches, and staging. See [Storage Design](#storage-design). Railway sets `RAILWAY_VOLUME_MOUNT_PATH=/app/data` automatically when attached.
   - **Voice services**: Railway's **prod** service must point at the **`prod`** Modal Environment's URLs, never `dev`'s — set `SPARK_TTS_URL` + `SPARK_SERVICE_TOKEN` and `PIPER_SERVICE_URL` + `PIPER_SERVICE_TOKEN` to the `prod` Environment's `*.modal.run` URLs (copy them from the Modal dashboard after the first `prod` deploy — see below). Local/dev web instances should use the `dev` Environment's URLs, or a locally-run service (`apps/web/.env.example` defaults to `http://localhost:8001`). Defaults point at localhost and will not work in production.
 - **Modal Environments (`dev` / `prod`)**: `apps/voice-service` and `apps/piper-service` each deploy into two separate Modal Environments, not one shared deployment — `dev` is redeployed automatically on every push to `main` that passes tests; `prod` only changes when a human explicitly runs the manual workflow (below). This is what stops routine pushes from ever overwriting whatever is currently serving real customer traffic. One-time setup, before the first deploy of either service:
     ```bash

@@ -86,6 +86,19 @@ test('a customer_metered-tier event is costed and included in totalCostUSD, not 
   assert.equal(providers.openai.modalities.image.models['gpt-image-1'].billingTier, 'customer_metered');
 });
 
+test('audio duration is aggregated as measured usage instead of inferred from model names and byte counts', () => {
+  const events = [
+    { provider: 'piper', modality: 'audio', model: 'piper-local', usage: { characters: 100, outputBytes: 44_100, seconds: 1 } },
+    { provider: 'piper', modality: 'audio', model: 'piper-local', usage: { characters: 50, outputBytes: 22_050, seconds: 0.5 } },
+  ];
+  const prices = [{ ...flatPrice('piper', 'audio', 'piper-local', 10_000, 'characters'), billingTier: 'platform_overhead' }];
+  const { providers } = aggregateEvents(events, prices);
+  const model = providers.piper.modalities.audio.models['piper-local'];
+  assert.equal(model.count, 150);
+  assert.equal(model.extra.bytes, 66_150);
+  assert.equal(model.extra.seconds, 1.5);
+});
+
 test('unpriced events across multiple providers are each reported with their own count', () => {
   const events = [
     { provider: 'minimax', modality: 'video', model: 'video-01', usage: {} },

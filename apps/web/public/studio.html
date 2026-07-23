@@ -191,12 +191,6 @@
       </div>
       <div id="storyboardGrid" class="storyboard-grid" data-columns="6"></div>
       <div id="storyboardSlider" class="storyboard-slider" aria-label="Scene editor" tabindex="0" hidden>
-        <div class="storyboard-slider-toolbar">
-          <div class="storyboard-slider-position" aria-live="polite">
-            <span class="storyboard-slider-current">Scene 1</span>
-            <span class="storyboard-slider-count"></span>
-          </div>
-        </div>
         <div class="storyboard-slider-stage-shell">
           <button type="button" class="storyboard-slider-nav storyboard-slider-prev" aria-label="Previous scene">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -207,7 +201,12 @@
           </button>
         </div>
         <div class="storyboard-filmstrip is-grab-scroll" role="listbox" aria-label="Storyboard scenes"></div>
-        <p class="storyboard-slider-hint">Drag the stage or filmstrip, or use the arrow keys to move between scenes.</p>
+        <div class="storyboard-slider-toolbar">
+          <div class="storyboard-slider-position" aria-live="polite">
+            <span class="storyboard-slider-current">Scene 1</span>
+            <span class="storyboard-slider-count"></span>
+          </div>
+        </div>
       </div>
     </section>
 

@@ -264,7 +264,7 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
   planning.done = Math.max(0, planning.done);
 
   const images = mediaTally(scenes, {
-    hasVersion: (scene) => Boolean((scene.versions || [])[scene.activeVersionIndex]?.path),
+    hasVersion: (scene) => { const shot = imageShot(scene); return Boolean(shot.versions[shot.activeVersionIndex]?.path); },
     isStale: (scene) => computeStaleness(scene).imageStale,
     jobType: MEDIA_JOB_TYPE.images,
     recentJobs,
@@ -419,7 +419,7 @@ export async function replanStory(els, setStatus) {
 const MEDIA_STAGE_CONFIG = {
   images: {
     regenerate: regenerateImage,
-    hasVersion: (scene) => Boolean((scene.versions || [])[scene.activeVersionIndex]?.path),
+    hasVersion: (scene) => { const shot = imageShot(scene); return Boolean(shot.versions[shot.activeVersionIndex]?.path); },
     isStale: (scene) => computeStaleness(scene).imageStale,
   },
   audio: {

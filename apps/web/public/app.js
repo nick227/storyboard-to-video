@@ -1,8 +1,8 @@
 import { projectStore, sceneStore, voiceStore, uiStore, batchStore, spendStore } from './modules/store.js';
 import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope } from './modules/persistence.js';
-import { initRendering, renderScenes } from './modules/rendering.js';
+import { initRendering, renderScenes, renderEntityOperationState } from './modules/rendering.js';
 import { initTimeline } from './modules/timeline.js';
-import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, renderStageBar, initImageLibraryModal, populateTokensInfoModal } from './modules/ui.js';
+import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, renderStageBar, renderStyleReferenceOperationState, initImageLibraryModal, populateTokensInfoModal } from './modules/ui.js';
 import { downloadZip } from './modules/workflows.js';
 import { initializeAuth } from './modules/auth.js';
 import { refreshRecentJobs, refreshSpend, replanStory, regenerateAllStage, runCreateStoryFlow } from './modules/stages.js';
@@ -62,6 +62,8 @@ const els = {
   generationSummaryText: document.getElementById('generationSummaryText'),
   storyboardSection: document.getElementById('storyboardSection'),
   storyboardGrid: document.getElementById('storyboardGrid'),
+  storyboardSlider: document.getElementById('storyboardSlider'),
+  storyboardViewToggle: document.querySelector('.view-type'),
   resizeSceneList: document.querySelector('.resize-scene-list'),
   sceneCardTemplate: document.getElementById('sceneCardTemplate'),
   characterRefLibraryBtn: document.getElementById('characterRefLibraryBtn'),
@@ -332,6 +334,8 @@ function initControllers() {
     newBtn: els.newStoryboardBtn,
     saveBtn: els.saveStateBtn,
     grid: els.storyboardGrid,
+    slider: els.storyboardSlider,
+    viewToggle: els.storyboardViewToggle,
     resizeList: els.resizeSceneList,
     downloadBtn: els.downloadZipBtn,
     downloadModal: els.downloadConfirmModal,
@@ -347,6 +351,7 @@ function initControllers() {
     saveProject: (immediate) => saveStoryboard(els, immediate),
     renderPicker: () => renderStoryboardPicker(els),
     loadStoryboardIntoUI,
+    renderScenes,
     downloadProject: () => downloadZip(setStatus),
   });
   const mediaSettings = initMediaSettings({
@@ -464,7 +469,11 @@ function initControllers() {
 
   // Watchers for basic UI updates
   sceneStore.subscribe(() => renderStageBar(els));
-  uiStore.subscribe(() => renderStageBar(els));
+  uiStore.subscribe(() => {
+    renderStageBar(els);
+    renderStyleReferenceOperationState(els);
+    renderEntityOperationState();
+  });
   batchStore.subscribe(() => renderStageBar(els));
   spendStore.subscribe(() => {
     renderStageBar(els);
@@ -474,7 +483,7 @@ function initControllers() {
 
 async function init() {
   assertElements('Studio shell', els, [
-    'statusText', 'storyboardGrid', 'sceneCardTemplate', 'storyboardTitle',
+    'statusText', 'storyboardGrid', 'storyboardSlider', 'storyboardViewToggle', 'sceneCardTemplate', 'storyboardTitle',
     'storyboardPickerToggle', 'storyboardPickerList', 'newStoryboardBtn',
     'saveStateBtn', 'resizeSceneList', 'downloadZipBtn', 'downloadConfirmModal',
     'downloadConfirmCloseBtn', 'downloadConfirmCancelBtn', 'downloadConfirmRunBtn',
