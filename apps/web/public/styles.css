@@ -1543,6 +1543,14 @@ button.text-button {
 
 .start-run-anchor { margin: 0 0 16px; font-size: 14px; font-weight: 700; color: var(--text); }
 .start-run-anchor span { color: #a9c5ff; }
+.start-run-regen-option {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
 .start-run-range {
   display: flex;
   gap: 8px;

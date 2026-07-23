@@ -177,6 +177,8 @@ async function runTests() {
     assert(indexSource.includes('id="startRunSceneLabel"') && indexSource.includes('id="startRunSceneTotal"'), 'The Start modal should show "Start from Scene N / Total"');
     assert(indexSource.includes('id="startRunRangeAll"') && indexSource.includes('id="startRunRangeNext"') && indexSource.includes('id="startRunNextCount"'), 'The Start modal should offer an All-remaining / Next-N range picker');
     assert(indexSource.includes('id="startRunPlanningCheck"') && indexSource.includes('id="startRunImagesCheck"') && indexSource.includes('id="startRunAudioCheck"') && indexSource.includes('id="startRunVideoCheck"'), 'The Start modal should hold the Planning/Images/Audio/Video checkable rows');
+    assert(indexSource.includes('id="startRunRegenerateIfExists"'), 'The Start modal should offer a Regenerate if exists checkbox (unchecked by default skips existing fresh versions)');
+    assert(runControllerSource.includes('regenerateIfExists') && runControllerSource.includes('forceStages'), 'Start should pass forceStages when Regenerate if exists is checked');
     assert(stagesSource.includes('export function computeStageStatus'), 'stages.js should expose stage status derivation');
     assert(stagesSource.includes('export async function generateMissingOrStale') && stagesSource.includes('export async function regenerateAllStage'), 'stages.js should expose missing/stale and regenerate-all orchestration');
     assert(stagesSource.includes('export async function startPlanning'), 'stages.js should expose Planning orchestration');

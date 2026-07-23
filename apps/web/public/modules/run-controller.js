@@ -69,7 +69,7 @@ export function initRunController(elements, {
     'subtitleStyle', 'confirmModal', 'confirmTitle', 'confirmIntro',
     'confirmBullets', 'confirmCloseBtn', 'confirmCancelBtn', 'confirmRunBtn',
     'startModal', 'sceneLabel', 'sceneTotal', 'rangeAll', 'rangeNext',
-    'nextCount', 'startCloseBtn', 'startCancelBtn', 'startConfirmBtn',
+    'nextCount', 'regenerateIfExists', 'startCloseBtn', 'startCancelBtn', 'startConfirmBtn',
     'planningCheck', 'planningStatus', 'imagesCheck', 'imagesStatus',
     'audioCheck', 'audioStatus', 'videoCheck', 'videoStatus',
     'subtitlesCheck', 'subtitlesStatus', 'replanBtn', 'regenerateImagesBtn',
@@ -139,6 +139,7 @@ export function initRunController(elements, {
       elements.rangeNext.checked = true;
       elements.nextCount.value = String(DEFAULT_NEXT_COUNT);
     }
+    elements.regenerateIfExists.checked = false;
     renderStartModal();
     elements.startModal.returnValue = '';
     elements.startModal.showModal();
@@ -218,7 +219,11 @@ export function initRunController(elements, {
     const selection = getStageSelection(selectionStatus);
     const stages = STAGES.filter((stage) => selection[stage]);
     if (!stages.length) return setStatus('Nothing selected to start — check a step above.');
-    const forceStages = computeForceStages(rowStatus, selection);
+    // Default: skip scenes that already have a fresh version (fill missing/stale only).
+    // "Regenerate if exists" forces every selected stage to replace existing work in range.
+    const forceStages = elements.regenerateIfExists.checked
+      ? stages
+      : computeForceStages(rowStatus, selection);
     setStatus('Starting...');
     const result = await runFlow({ stages, range, forceStages });
     if (!result.stoppedAt) setStatus('Done.');

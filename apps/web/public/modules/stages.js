@@ -605,9 +605,8 @@ export function stopCreateStoryFlow() {
 // buildBatchFns) and scopes Planning's stale-only path the same way; Planning's full-sequence path
 // never accepts a range (see updateStalePlanning above). `forceStages` names stages that must
 // process their whole range unconditionally rather than skipping already-fresh scenes — this is
-// what makes checking a box that has nothing missing/stale in range (e.g. a fully-complete project)
-// actually regenerate something; see buildRunRowStatus for how the caller decides which stages
-// qualify.
+// set when the Start modal's "Regenerate if exists" is checked, or when a stage box is checked
+// despite having nothing missing/stale (see buildRunRowStatus / computeForceStages).
 export async function runCreateStoryFlow(preset, els, setStatus, { stages: customStages, range, forceStages = [] } = {}) {
   flowStopRequested = false;
   const stages = preset === 'custom' ? (customStages || []) : PRESET_STAGES[preset];
