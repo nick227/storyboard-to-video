@@ -2,8 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const controllerPromise = import(path.join(__dirname, '..', 'public', 'modules', 'image-library-controller.js'));
-const storePromise = import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+const controllerPromise = import(path.join(__dirname, '..', 'public', 'js', 'studio', 'image-library-controller.js'));
+const storePromise = import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
 
 test('image library request contexts reject stale modal and project responses', async () => {
   const [{ ImageLibraryController }, { projectStore }] = await Promise.all([controllerPromise, storePromise]);

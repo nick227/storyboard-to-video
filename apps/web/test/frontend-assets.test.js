@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const assetsPromise = import(path.join(__dirname, '..', 'public', 'modules', 'assets.js'));
+const assetsPromise = import(path.join(__dirname, '..', 'public', 'js', 'core', 'assets.js'));
 
 function deferred() {
   let resolve;

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Convert a script into editable scenes, generated images, narration, and video in one workspace." />
+  <title>Storyboarder — Script to narrated video</title>
+  <link rel="icon" type="image/png" href="/images/favicon.png" />
+  <link rel="stylesheet" href="/css/landing.css" />
+  <link rel="stylesheet" href="/css/topbar.css" />
+  <script src="/js/shared/topbar.js"></script>
+</head>
+
+<body>
+  <storyboarder-topbar></storyboarder-topbar>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Script-to-video workspace</p>
+        <h1>Turn a script into a narrated video sequence.</h1>
+        <p>Paste a story or screenplay. Generate scenes, images, narration, and motion. Preview the complete sequence, then export its media files.</p>
+        <div class="actions">
+          <a class="button" href="/login.html?mode=register&redirect=%2Fstudio">Create a project</a>
+          <a class="secondary-link" href="#workflow">View the workflow</a>
+        </div>
+      </div>
+
+      <div class="studio-preview" aria-label="Storyboarder project preview">
+        <div class="preview-top"><strong>Sample project</strong><span><i></i> 6 scenes</span></div>
+        <div class="preview-image">
+          <span class="moon"></span><span class="hill back"></span><span class="hill front"></span>
+          <span class="person"><i></i><b></b></span>
+        </div>
+        <div class="preview-controls">
+          <span class="play">▶</span>
+          <div class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <small>Image + voice + video</small>
+        </div>
+        <div class="preview-tag reference"><small>Image input</small><strong>2 reference images</strong></div>
+        <div class="preview-tag narrator"><small>Audio input</small><strong>Recorded narrator voice</strong></div>
+      </div>
+    </section>
+
+    <section id="workflow" class="section">
+      <header class="section-header">
+        <p class="eyebrow">Workflow</p>
+        <h2>One project from source text to exported media.</h2>
+      </header>
+      <div class="steps">
+        <article>
+          <span>01</span>
+          <h3>Import the script</h3>
+          <p>Paste a story or screenplay. Gemini or OpenAI converts it into editable scene beats, image prompts, and narration text.</p>
+        </article>
+        <article>
+          <span>02</span>
+          <h3>Generate scene images</h3>
+          <p>Select a built-in style or upload character and environment references. Generate each frame with Gemini, OpenAI, or Dezgo.</p>
+        </article>
+        <article>
+          <span>03</span>
+          <h3>Create narration</h3>
+          <p>Use Piper or ElevenLabs text-to-speech, or record a sample and clone your narrator voice with the Spark-TTS service.</p>
+        </article>
+        <article>
+          <span>04</span>
+          <h3>Add motion and export</h3>
+          <p>Convert scene images into clips with LTX-Video. Preview clips with narration, reorder scenes, and download the project assets.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="providers" class="section providers">
+      <header class="section-header">
+        <p class="eyebrow">Supported services</p>
+        <h2>Choose a provider for each generation step.</h2>
+      </header>
+      <div class="provider-grid">
+        <article><span class="provider-icon">T</span><div><h3>Text and scene planning</h3><p>Google Gemini · OpenAI · local stub</p></div></article>
+        <article><span class="provider-icon">I</span><div><h3>Image generation</h3><p>Google Gemini · OpenAI Images · Dezgo</p></div></article>
+        <article><span class="provider-icon">A</span><div><h3>Narration and voice</h3><p>Spark-TTS voice cloning · Piper · ElevenLabs</p></div></article>
+        <article><span class="provider-icon">V</span><div><h3>Image-to-video</h3><p>LTX-Video with subtle, medium, or high motion</p></div></article>
+      </div>
+    </section>
+
+    <section class="section controls">
+      <div>
+        <p class="eyebrow">Per-scene control</p>
+        <h2>Review and replace individual outputs.</h2>
+        <p>Edit scene text and prompts, regenerate one image or audio clip, retain previous versions, reorder the timeline, and resume stopped batch jobs.</p>
+      </div>
+      <ul>
+        <li><span>✓</span> Editable prompts and narration</li>
+        <li><span>✓</span> Character and environment references</li>
+        <li><span>✓</span> Image, audio, and video version history</li>
+        <li><span>✓</span> Combined timeline preview and ZIP export</li>
+      </ul>
+    </section>
+
+    <section class="cta">
+      <div><p class="eyebrow">Start a project</p><h2>Import a script and generate the first scene.</h2></div>
+      <a class="button" href="/login.html?mode=register&redirect=%2Fstudio">Open studio</a>
+    </section>
+  </main>
+
+  <footer><a class="brand" href="/">Storyboarder</a><p>Storyboard, image, narration, and video generation in one workspace.</p><a href="/login.html?redirect=%2Fstudio">Sign in</a></footer>
+</body>
+
+</html>

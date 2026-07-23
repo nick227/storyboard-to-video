@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const renderingPromise = import(path.join(__dirname, '..', 'public', 'modules', 'rendering.js'));
+const renderingPromise = import(path.join(__dirname, '..', 'public', 'js', 'studio', 'rendering.js'));
 
 function fakeEventTarget(properties = {}) {
   const listeners = new Map();

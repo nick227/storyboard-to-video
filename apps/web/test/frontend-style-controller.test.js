@@ -2,8 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const controllerPromise = import(path.join(__dirname, '..', 'public', 'modules', 'style-controller.js'));
-const storePromise = import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+const controllerPromise = import(path.join(__dirname, '..', 'public', 'js', 'studio', 'style-controller.js'));
+const storePromise = import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
 
 function element(extra = {}) {
   return {

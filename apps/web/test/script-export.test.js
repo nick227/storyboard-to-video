@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-const moduleUrl = pathToFileURL(path.join(__dirname, '../public/modules/script-export.js')).href;
+const moduleUrl = pathToFileURL(path.join(__dirname, '../public/js/scripts/export.js')).href;
 
 const sample = `INT. OFFICE - DAY
 
@@ -48,7 +48,7 @@ test('structured JSON is a versioned export artifact with explicit line formats'
   const exported = JSON.parse(toStructuredScriptJson(sample));
 
   assert.equal(exported.schemaVersion, 1);
-  assert.equal(exported.type, 'storyframe-screenplay');
+  assert.equal(exported.type, 'storyboarder-screenplay');
   assert.deepEqual(exported.lines.slice(0, 4).map((line) => line.format), ['header', 'speaker', 'directions', 'dialog']);
   assert.equal(exported.lines[3].content, 'We should begin.');
 });

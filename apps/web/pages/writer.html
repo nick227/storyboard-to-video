@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Writer — Storyboarder</title>
+  <link rel="icon" type="image/png" href="/images/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/topbar.css" />
+  <link rel="stylesheet" href="/css/scripts-public.css" />
+  <script src="/js/shared/topbar.js"></script>
+</head>
+<body class="scripts-shell">
+  <storyboarder-topbar></storyboarder-topbar>
+  <main class="scripts-page">
+    <div id="scriptsBreadcrumbs" class="scripts-crumbs-slot"></div>
+    <p id="writerStatus" class="scripts-status" role="status">Loading writer…</p>
+    <section id="writerProfile" class="writer-profile" hidden>
+      <header class="writer-profile-header">
+        <p class="scripts-kicker">Writer</p>
+        <h1 id="writerName"></h1>
+        <p id="writerBio" class="writer-bio"></p>
+        <div class="writer-profile-meta">
+          <span id="writerFollowers"></span>
+          <button type="button" id="writerFollowBtn" class="script-reader-action" hidden>Follow</button>
+          <span id="writerFollowStatus" class="script-reader-toolbar-status" role="status"></span>
+        </div>
+      </header>
+      <h2 class="writer-scripts-heading">Public screenplays</h2>
+      <div id="writerGrid" class="scripts-grid"></div>
+    </section>
+  </main>
+  <script type="module" src="/js/pages/writer-page.js"></script>
+</body>
+</html>

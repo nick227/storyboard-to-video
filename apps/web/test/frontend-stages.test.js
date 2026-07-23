@@ -1,5 +1,5 @@
-// Exercises the pure derivation functions in public/modules/stages.js and
-// public/modules/scene-count.js directly via dynamic import — these are browser ES modules with no
+// Exercises the pure derivation functions in public/js/generation/stages.js and
+// public/js/generation/scene-count.js directly via dynamic import — these are browser ES modules with no
 // top-level DOM/network access, so they load fine under plain Node as long as no function that
 // touches document/localStorage/fetch is actually invoked (computeStaleness/computeStageStatus/
 // suggestSceneCountFromNarration never do).
@@ -7,10 +7,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const stagesPromise = import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
-const sceneCountPromise = import(path.join(__dirname, '..', 'public', 'modules', 'scene-count.js'));
-const storePromise = import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
-const manifestPromise = import(path.join(__dirname, '..', 'public', 'modules', 'generation-manifest.js'));
+const stagesPromise = import(path.join(__dirname, '..', 'public', 'js', 'generation', 'stages.js'));
+const sceneCountPromise = import(path.join(__dirname, '..', 'public', 'js', 'generation', 'scene-count.js'));
+const storePromise = import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+const manifestPromise = import(path.join(__dirname, '..', 'public', 'js', 'generation', 'generation-manifest.js'));
 
 function scene(overrides = {}) {
   return {
@@ -37,6 +37,12 @@ test('computeStaleness: prompt is stale when narration changed and the prompt wa
   assert.equal(computeStaleness(narrationSourced).promptStale, false);
   const changedNarration = scene({ narrationText: 'Mara bursts in, breathless.', promptGeneratedFromNarration: 'Mara steps in.' });
   assert.equal(computeStaleness(changedNarration).promptStale, true);
+});
+
+test('computeStaleness: a neighboring scene is visually stale after a structural edit', async () => {
+  const { computeStaleness } = await stagesPromise;
+  const neighbor = scene({ structuralContextStale: true });
+  assert.equal(computeStaleness(neighbor).promptStale, true);
 });
 
 test('computeStaleness: image is stale when its stored generation prompt no longer matches the scene prompt', async () => {
@@ -99,6 +105,30 @@ test('computeStaleness: audio is stale when its stored provider no longer matche
   } finally {
     voiceStore.set({ audioProvider: 'stub' });
   }
+});
+
+test('computeStaleness: audio is stale when the selected narrator voice changes', async () => {
+  const { computeStaleness } = await stagesPromise;
+  const { voiceStore } = await storePromise;
+  voiceStore.set({ audioProvider: 'piper', narratorVoice: { ...voiceStore.get().narratorVoice, piper: { voiceId: 'amy', label: 'Amy' } } });
+  const voiced = scene({ narrationText: 'Mara steps in.', audioVersions: [{ path: '/a.mp3', narrationText: 'Mara steps in.', provider: 'piper', voice: { voiceId: 'amy', label: 'Amy' } }], activeAudioVersionIndex: 0 });
+  assert.equal(computeStaleness(voiced).audioStale, false);
+  voiceStore.set({ narratorVoice: { ...voiceStore.get().narratorVoice, piper: { voiceId: 'ryan', label: 'Ryan' } } });
+  assert.equal(computeStaleness(voiced).audioStale, true);
+});
+
+test('computeStaleness: subtitles inherit stale state from narration-derived audio', async () => {
+  const { computeStaleness } = await stagesPromise;
+  const stale = scene({
+    narrationText: 'The revised narration.',
+    audioVersions: [{ path: '/a.mp3', narrationText: 'The old narration.', provider: 'stub' }],
+    activeAudioVersionIndex: 0,
+    subtitleVersions: [{ path: '/a.srt', sourceAudioPath: '/a.mp3' }],
+    activeSubtitleVersionIndex: 0,
+  });
+  const freshness = computeStaleness(stale);
+  assert.equal(freshness.audioStale, true);
+  assert.equal(freshness.subtitleStale, true);
 });
 
 test('computeStaleness: a user recording remains fresh when the selected TTS provider changes', async () => {
@@ -510,7 +540,7 @@ test('classifyPlanningRun is the shared full/stale/current workflow decision', a
 
 test('computeStageStatus: sets planning.hasChanges based on hasPlanningChanges', async () => {
   const { computeStageStatus } = await stagesPromise;
-  const { projectStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+  const { projectStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
   
   const record = {
     id: 'p1',

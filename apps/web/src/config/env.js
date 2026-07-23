@@ -14,7 +14,8 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
   const env = process.env;
   const paths = {
     root,
-    public: path.join(root, 'public'), styles: path.join(root, 'styles'), styleReferences: path.join(root, 'style-references'),
+    pages: path.join(root, 'pages'), public: path.join(root, 'public'),
+    styles: path.join(root, 'styles'), styleReferences: path.join(root, 'style-references'),
     userStyleReferences: path.join(root, 'data', 'user-style-references'),
     generated: path.join(root, 'data', 'generated'), audio: path.join(root, 'data', 'audio'), videos: path.join(root, 'data', 'videos'),
     subtitles: path.join(root, 'data', 'subtitles'),

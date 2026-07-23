@@ -49,8 +49,31 @@ function registerMiddleware(app, { config, auth, payments }) {
   app.use(express.json({ limit: config.limits.json }));
   app.use(requestId);
   app.use(pageGuard(auth));
+  registerPageRoutes(app, config);
   app.get('/favicon.ico', (req, res) => res.redirect('/images/favicon.png'));
-  app.use(express.static(config.paths.public, { extensions: ['html'] }));
+  app.use(express.static(config.paths.public, { index: false }));
+}
+
+function registerPageRoutes(app, config) {
+  const sendPage = (filename) => (req, res) => res.sendFile(path.join(config.paths.pages, filename));
+  const pages = [
+    [['/', '/index.html'], 'index.html'],
+    [['/login', '/login.html'], 'login.html'],
+    [['/studio', '/studio.html'], 'studio.html'],
+    [['/admin', '/admin.html'], 'admin.html'],
+    [['/credits', '/credits.html'], 'credits.html'],
+    [['/text-to-speech', '/text-to-speech.html'], 'text-to-speech.html'],
+    [['/scripts', '/scripts.html'], 'scripts.html'],
+    [['/scripts-browse.html'], 'scripts-browse.html'],
+    [['/script-reader.html'], 'script-reader.html'],
+    [['/writer.html'], 'writer.html'],
+  ];
+  for (const [routes, filename] of pages) app.get(routes, sendPage(filename));
+
+  if (config.env?.NODE_ENV !== 'production') {
+    app.get(['/test', '/test.html'], sendPage(path.join('dev', 'test.html')));
+    app.get('/dev/screenplay-editor', sendPage(path.join('dev', 'screenplay-editor.html')));
+  }
 }
 
 // Server-rendered guard for the authenticated HTML entry points, so an unauthenticated
@@ -60,6 +83,7 @@ function pageGuard(auth) {
   const ADMIN_PATHS = new Set(['/admin', '/admin.html']);
   const CUSTOMER_PATHS = new Set(['/credits', '/credits.html']);
   const TOOL_PATHS = new Set(['/text-to-speech', '/text-to-speech.html']);
+  const LOGIN_PATHS = new Set(['/login', '/login.html']);
   const LOGIN_PATH = '/login.html';
   const safeRedirectTarget = (value) => (typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') ? value : '/');
 
@@ -69,7 +93,7 @@ function pageGuard(auth) {
     const isAdminPage = ADMIN_PATHS.has(req.path);
     const isCustomerPage = CUSTOMER_PATHS.has(req.path);
     const isToolPage = TOOL_PATHS.has(req.path);
-    const isLoginPage = req.path === LOGIN_PATH;
+    const isLoginPage = LOGIN_PATHS.has(req.path);
     if (!isAppPage && !isLoginPage && !isAdminPage && !isCustomerPage && !isToolPage) return next();
 
     let identity = null;
@@ -108,19 +132,19 @@ function pageGuard(auth) {
 function registerRoutes(app, d) {
   app.get('/writers/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
-    return res.sendFile(path.join(d.config.paths.public, 'writer.html'));
+    return res.sendFile(path.join(d.config.paths.pages, 'writer.html'));
   });
   app.get('/scripts/category/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
-    return res.sendFile(path.join(d.config.paths.public, 'scripts-browse.html'));
+    return res.sendFile(path.join(d.config.paths.pages, 'scripts-browse.html'));
   });
   app.get('/scripts/tag/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
-    return res.sendFile(path.join(d.config.paths.public, 'scripts-browse.html'));
+    return res.sendFile(path.join(d.config.paths.pages, 'scripts-browse.html'));
   });
   app.get('/scripts/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
-    return res.sendFile(path.join(d.config.paths.public, 'script-reader.html'));
+    return res.sendFile(path.join(d.config.paths.pages, 'script-reader.html'));
   });
   app.use(assetsRoutes(d.controllers.assets));
   app.use('/api/projects', createProjectRouter({

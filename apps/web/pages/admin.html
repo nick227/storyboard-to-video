@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Storyboarder Admin</title>
+  <link rel="icon" type="image/png" href="/images/favicon.png" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="/css/admin.css" />
+  <link rel="stylesheet" href="/css/topbar.css" />
+  <script src="/js/shared/topbar.js"></script>
+</head>
+<body>
+  <storyboarder-topbar></storyboarder-topbar>
+  <main class="admin-shell">
+    <header class="admin-heading"><div><div class="eyebrow">Internal operations</div><h1>Admin console</h1></div><button id="adminRefresh" class="secondary">Refresh</button></header>
+    <nav class="admin-tabs" aria-label="Admin sections">
+      <button data-tab="overview" class="active">Overview</button><button data-tab="users">Users</button><button data-tab="commerce">Pricing &amp; sales</button><button data-tab="generations">Generations</button><button data-tab="audit">Audit</button>
+    </nav>
+    <p id="adminMessage" class="admin-message" role="status"></p>
+
+    <section id="tab-overview" class="admin-view">
+      <article class="panel overview-intro">
+        <div class="overview-intro-copy">
+          <h2>Platform snapshot</h2>
+          <p>How much customers bought, how much they created, and whether generations succeeded — for the selected time window.</p>
+        </div>
+        <div class="period-picker" role="group" aria-label="Time period">
+          <button type="button" data-period="7">Last 7 days</button>
+          <button type="button" data-period="30" class="active">Last 30 days</button>
+          <button type="button" data-period="90">Last 90 days</button>
+          <button type="button" data-period="all">All time</button>
+        </div>
+      </article>
+      <p id="overviewPeriodLabel" class="overview-period-label"></p>
+      <section class="overview-section">
+        <h3>Revenue</h3>
+        <div id="overviewRevenue" class="overview-metrics"></div>
+      </section>
+      <section class="overview-section">
+        <h3>Activity</h3>
+        <div id="overviewActivity" class="overview-metrics"></div>
+      </section>
+      <section class="overview-section">
+        <h3>Billing sanity check</h3>
+        <p class="admin-hint">Customer-metered spend vs. platform-overhead spend, plus health signals worth watching before expanding live charging.</p>
+        <div id="overviewBillingSanity" class="overview-metrics"></div>
+      </section>
+      <section class="overview-section">
+        <h3>Live billing status</h3>
+        <p class="admin-hint">Is live charging actually configured and healthy right now -- the two gates, the price catalog, and the Stripe purchase path.</p>
+        <div id="overviewLiveBillingStatus" class="overview-metrics"></div>
+      </section>
+      <div class="admin-grid-two">
+        <article class="panel">
+          <h2>What people made</h2>
+          <p class="admin-hint">Share of AI work by content type.</p>
+          <div id="overviewTypes" class="breakdown-list"></div>
+        </article>
+        <article class="panel">
+          <h2>Did it work?</h2>
+          <p class="admin-hint">How generations finished — failed runs may need support follow-up.</p>
+          <div id="overviewStatuses" class="breakdown-list"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="tab-users" class="admin-view" hidden>
+      <div class="admin-filter-row"><label>Search<input id="userSearch" placeholder="Email or name" /></label><label>Status<select id="userStatus"><option value="">All</option><option>active</option><option>disabled</option></select></label><label>Role<select id="userRole"><option value="">All</option><option>user</option><option>admin</option><option>super_admin</option></select></label><button id="usersApply">Search</button></div>
+      <div class="table-wrap"><table><thead><tr><th>User</th><th>Tenant</th><th>Credits</th><th>Usage</th><th>Status</th><th>Role</th><th>Actions</th></tr></thead><tbody id="usersBody"></tbody></table></div>
+    </section>
+
+    <section id="tab-commerce" class="admin-view" hidden>
+      <article class="panel">
+        <h2>Site economics</h2>
+        <p class="admin-hint">Markup and credit value apply to all billable generations. Base provider costs are fixed; adjust economics here.</p>
+        <div class="economics-summary">
+          <p>Markup: <strong id="activeMarkup">—</strong></p>
+          <p>Credit value: <strong id="activeCreditRate">—</strong></p>
+          <p>Welcome credits (new users): <strong id="activeWelcomeCredits">—</strong></p>
+        </div>
+        <form id="markupForm" class="admin-form"><label>Markup percent<input name="percent" type="number" min="0" step="0.01" required /></label><button>Update markup</button></form>
+        <form id="creditRateForm" class="admin-form separated"><label>USD per site credit<input name="usdPerCredit" type="number" min="0.000001" step="0.000001" required /></label><button>Update credit value</button></form>
+        <form id="welcomeCreditForm" class="admin-form separated"><label>Welcome credits for new users<input name="credits" type="number" min="0" step="0.01" required /></label><button>Update welcome grant</button></form>
+      </article>
+      <article class="panel">
+        <h2>Provider prices</h2>
+        <p class="admin-hint">Vendor base costs live in <code>pricing/canonical-prices.js</code> and are refreshed with <code>node scripts/seed-canonical-pricing.js --apply</code> after vendor price changes. Toggle billable here once verified.</p>
+        <div class="admin-filter-row"><label>Tier<select id="priceTierFilter"><option value="">All</option><option value="customer_metered">Customer-metered</option><option value="platform_overhead">Platform-overhead</option><option value="untagged">Untagged</option></select></label><label>Billable<select id="priceBillableFilter"><option value="">All</option><option value="true">Billable</option><option value="false">Not billable</option></select></label><button id="pricesApply">Apply</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Provider</th><th>Model</th><th>Type</th><th>Base rate</th><th>Reservation</th><th>Tier</th><th>Billable</th><th></th></tr></thead><tbody id="pricesBody"></tbody></table></div>
+      </article>
+      <article class="panel"><h2>Stripe credit packs</h2><p>Draft packs become immutable when published with a Stripe Price ID.</p><div class="table-wrap"><table><thead><tr><th>Pack</th><th>USD price</th><th>Credits</th><th>Tax</th><th>Status</th><th>Stripe Price</th><th>Action</th></tr></thead><tbody id="creditPacksBody"></tbody></table></div></article>
+      <article class="panel"><h2>Recent sales</h2><div class="table-wrap"><table><thead><tr><th>When</th><th>Customer</th><th>Cash</th><th>Credits</th><th>Provider/reference</th><th>Status</th><th>Recorded by</th><th>Action</th></tr></thead><tbody id="salesBody"></tbody></table></div></article>
+    </section>
+
+    <section id="tab-generations" class="admin-view" hidden>
+      <div class="admin-filter-row"><label>Type<select id="generationType"><option value="">All</option><option>text</option><option>image</option><option>audio</option><option>video</option></select></label><label>Status<select id="generationStatus"><option value="">All</option><option>started</option><option>completed</option><option>failed</option></select></label><label>Provider<input id="generationProvider" placeholder="gemini" /></label><button id="generationsApply">Apply</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Started</th><th>User</th><th>Type/provider</th><th>Status</th><th>Usage</th><th>Provider cost</th><th>Charge</th><th>Margin</th><th>Job</th></tr></thead><tbody id="generationsBody"></tbody></table></div>
+    </section>
+
+    <section id="tab-audit" class="admin-view" hidden><div class="table-wrap"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Reason</th></tr></thead><tbody id="auditBody"></tbody></table></div></section>
+  </main>
+  <script type="module" src="/js/pages/admin.js"></script>
+</body>
+</html>

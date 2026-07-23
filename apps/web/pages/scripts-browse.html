@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Browse — Storyboarder</title>
+  <link rel="icon" type="image/png" href="/images/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/topbar.css" />
+  <link rel="stylesheet" href="/css/scripts-public.css" />
+  <script src="/js/shared/topbar.js"></script>
+</head>
+<body class="scripts-shell">
+  <storyboarder-topbar></storyboarder-topbar>
+  <main class="scripts-page">
+    <div id="scriptsBreadcrumbs" class="scripts-crumbs-slot"></div>
+    <header class="scripts-page-header">
+      <p class="scripts-kicker" id="browseKicker">Browse</p>
+      <h1 id="browseTitle">Library</h1>
+      <p id="browseSubtitle"></p>
+    </header>
+    <div id="categoryNav"></div>
+    <p id="scriptsStatus" class="scripts-status" role="status">Loading…</p>
+    <div id="scriptsGrid" class="scripts-grid" hidden></div>
+  </main>
+  <script type="module" src="/js/pages/scripts-browse.js"></script>
+</body>
+</html>

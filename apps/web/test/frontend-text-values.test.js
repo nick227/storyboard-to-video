@@ -2,8 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const textValuesPromise = import(path.join(__dirname, '..', 'public', 'modules', 'text-values.js'));
-const sceneShotsPromise = import(path.join(__dirname, '..', 'public', 'modules', 'scene-shots.js'));
+const textValuesPromise = import(path.join(__dirname, '..', 'public', 'js', 'core', 'text-values.js'));
+const sceneShotsPromise = import(path.join(__dirname, '..', 'public', 'js', 'core', 'scene-shots.js'));
 
 test('textValue never renders arbitrary objects as object Object', async () => {
   const { textValue } = await textValuesPromise;

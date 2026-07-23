@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const controllerPromise = import(path.join(__dirname, '..', 'public', 'modules', 'settings-controller.js'));
+const controllerPromise = import(path.join(__dirname, '..', 'public', 'js', 'studio', 'settings-controller.js'));
 
 test('settings controller validates its required feature controls', async () => {
   const { initSettingsController } = await controllerPromise;
@@ -23,8 +23,7 @@ test('settings controller owns planning-mode synchronization and a single settin
   });
   const names = [
     'settingsBtn', 'settingsModal', 'planningMode', 'shotCount', 'shotLimit',
-    'enrichNarration', 'commonPrompt', 'textProvider', 'videoMotionIntensity',
-    'styleSelect', 'stageStyleSelect', 'characterRefInput', 'worldRefInput',
+    'enrichNarration', 'textProvider', 'videoMotionIntensity',
     'audioProvider', 'voiceLibraryModal', 'closeVoiceLibraryBtn',
     'voiceMicSelect', 'voiceRecordBtn', 'voiceSaveBtn', 'voiceNameInput',
     'tokensInfoBtn', 'tokensInfoModal', 'tokensCloseBtn', 'tokensDoneBtn',
@@ -39,9 +38,6 @@ test('settings controller owns planning-mode synchronization and a single settin
     refreshVoices: async () => {},
     renderVoices: noop,
     renderStageBar: noop,
-    prefillCommonPrompt: noop,
-    loadStyleReferences: async () => {},
-    uploadStyleReferences: noop,
     setAudioProvider: noop,
     closeVoiceLibrary: noop,
     switchMicrophone: noop,

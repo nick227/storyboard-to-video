@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const tokenDetailsPromise = import(path.join(__dirname, '..', 'public', 'modules', 'token-details.js'));
+const tokenDetailsPromise = import(path.join(__dirname, '..', 'public', 'js', 'billing', 'token-details.js'));
 
 test('token details view model pivots providers and uses measured audio duration', async () => {
   const { buildTokenDetailsViewModel } = await tokenDetailsPromise;

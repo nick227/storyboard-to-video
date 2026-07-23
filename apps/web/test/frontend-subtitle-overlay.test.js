@@ -1,10 +1,10 @@
-// Exercises the pure word-window-picking logic in public/modules/subtitle-overlay.js directly via
+// Exercises the pure word-window-picking logic in public/js/media/subtitle-overlay.js directly via
 // dynamic import -- see frontend-stages.test.js for why this works under plain Node.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const overlayPromise = import(path.join(__dirname, '..', 'public', 'modules', 'subtitle-overlay.js'));
+const overlayPromise = import(path.join(__dirname, '..', 'public', 'js', 'media', 'subtitle-overlay.js'));
 
 function words() {
   return [

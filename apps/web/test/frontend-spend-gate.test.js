@@ -25,11 +25,11 @@ test('Full Production preset never starts image/audio/video generation when shot
   const calledUrls = [];
   const originalFetch = global.fetch;
 
-  global.fetch = async (url) => {
+  global.fetch = async (url, options) => {
     calledUrls.push(String(url));
     const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
 
-    if (String(url).startsWith('/api/storyboard/plan-shots')) {
+    if (String(url).startsWith('/api/storyboard/prepare-narration')) {
       return json({ error: 'provider unavailable' }, 502);
     }
     if (String(url).startsWith('/api/images/generate') || String(url).startsWith('/api/audio/generate') || String(url).startsWith('/api/videos/generate')) {
@@ -41,8 +41,8 @@ test('Full Production preset never starts image/audio/video generation when shot
   };
 
   try {
-    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
-    const { runCreateStoryFlow } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+    const { runCreateStoryFlow } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'stages.js'));
 
     const record = { id: 'spend-gate-test-project', title: 'Spend Gate Test', revision: 1, scenes: [], enrich: true };
     projectStore.set({ currentId: record.id, storyboards: [record] });
@@ -70,23 +70,26 @@ test('Full Production preset never starts image/audio/video generation when shot
   }
 });
 
-test('Planning stage lands on however many shots plan-shots actually returns, with no separate scene-count or reconciliation call', async () => {
+test('Planning stage prepares narration boundaries, then plans visuals over those exact scenes', async () => {
   installLocalStorageShim();
   const calledUrls = [];
   const originalFetch = global.fetch;
 
-  global.fetch = async (url) => {
+  global.fetch = async (url, options) => {
     calledUrls.push(String(url));
     const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
 
-    if (String(url).startsWith('/api/storyboard/plan-shots')) {
-      // Five shots back from one call -- nothing upstream requested five, and nothing downstream
-      // needs to reconcile that against a guess.
+    if (String(url).startsWith('/api/storyboard/prepare-narration')) {
       const scenes = Array.from({ length: 5 }, (_, i) => ({
-        sceneNumber: i + 1, title: `Scene ${i + 1}`, scriptFragment: `Shot ${i + 1} narration.`,
-        narrationText: `Shot ${i + 1} narration.`, beat: `Action ${i + 1}.`, prompt: `Prompt ${i + 1}.`,
+        id: `scene-${i + 1}`, sceneNumber: i + 1, title: `Scene ${i + 1}`,
+        sourceScriptFragment: `Source ${i + 1}.`, scriptFragment: `Source ${i + 1}.`,
+        narrationText: `Shot ${i + 1} narration.`, beat: '', prompt: '',
       }));
       return json({ scenes, narrationText: 'Full narration.', usedFallback: false, warning: '' });
+    }
+    if (String(url).startsWith('/api/storyboard/plan-visuals')) {
+      const scenes = JSON.parse(options?.body || '{}').scenes || [];
+      return json({ scenes: scenes.map((scene, i) => ({ ...scene, beat: `Action ${i + 1}.`, prompt: `Prompt ${i + 1}.` })), usedFallback: false, warning: '' });
     }
     if (String(url).startsWith('/api/images/generate') || String(url).startsWith('/api/audio/generate') || String(url).startsWith('/api/videos/generate')) {
       return json({ ok: true });
@@ -95,8 +98,8 @@ test('Planning stage lands on however many shots plan-shots actually returns, wi
   };
 
   try {
-    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
-    const { runPlanning } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+    const { runPlanning } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'stages.js'));
 
     const record = { id: 'plan-shots-test-project', title: 'Plan Shots Test', revision: 1, scenes: [], enrich: true };
     projectStore.set({ currentId: record.id, storyboards: [record] });
@@ -118,7 +121,8 @@ test('Planning stage lands on however many shots plan-shots actually returns, wi
     assert.equal(result.stoppedAt, null, 'planning should run straight through with nothing to decide');
     assert.equal(result.finalCount, 5, 'the final count is simply how many shots the call returned');
     assert.equal(sceneStore.get().scenes.length, 5);
-    assert.equal(calledUrls.filter((url) => url.startsWith('/api/storyboard/plan-shots')).length, 1, 'exactly one planning call, no follow-up recount/reconcile request');
+    assert.equal(calledUrls.filter((url) => url.startsWith('/api/storyboard/prepare-narration')).length, 1);
+    assert.equal(calledUrls.filter((url) => url.startsWith('/api/storyboard/plan-visuals')).length, 1);
     assert.equal(calledUrls.some((url) => url.includes('create-scenes') || url.includes('generate-prompts') || url.includes('generate-dialogue')), false, 'the old multi-step scene-count flow must not be invoked');
   } finally {
     global.fetch = originalFetch;
@@ -126,7 +130,7 @@ test('Planning stage lands on however many shots plan-shots actually returns, wi
   }
 });
 
-test('explicitly selecting an up-to-date Planning row forces a complete replan', async () => {
+test('explicitly selecting an up-to-date Planning row refreshes visuals without rewriting narration boundaries', async () => {
   installLocalStorageShim();
   const originalFetch = global.fetch;
   let planningCalls = 0;
@@ -136,18 +140,19 @@ test('explicitly selecting an up-to-date Planning row forces a complete replan',
     beat: `Action ${number}.`, prompt: `Prompt ${number}.`,
   }));
 
-  global.fetch = async (url) => {
+  global.fetch = async (url, options) => {
     const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
-    if (String(url).startsWith('/api/storyboard/plan-shots')) {
+    if (String(url).startsWith('/api/storyboard/plan-visuals')) {
       planningCalls += 1;
-      return json({ scenes: plannedScenes, narrationText: 'Narration 1. Narration 2.', usedFallback: false, warning: '' });
+      const scenes = JSON.parse(options?.body || '{}').scenes || [];
+      return json({ scenes: scenes.map((scene, index) => ({ ...scene, beat: `Action ${index + 1}.`, prompt: `Prompt ${index + 1}.` })), usedFallback: false, warning: '' });
     }
     return json({ project: { revision: 2, scenes: [] }, jobs: [] });
   };
 
   try {
-    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
-    const { runCreateStoryFlow } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+    const { runCreateStoryFlow } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'stages.js'));
     const oldScene = {
       id: 'bad-scene', title: 'Scene 1', scriptFragment: '[object Object]', narrationText: '[object Object]',
       narrationIsFallback: true, beat: 'Fallback action.', prompt: 'Fallback prompt.',
@@ -169,33 +174,37 @@ test('explicitly selecting an up-to-date Planning row forces a complete replan',
 
     const result = await runCreateStoryFlow('custom', els, () => {}, { stages: ['planning'], forceStages: ['planning'] });
     assert.equal(result.stoppedAt, null);
-    assert.equal(planningCalls, 1, 'explicit Planning selection must call plan-shots even when status looked up to date');
-    assert.equal(sceneStore.get().scenes.length, 2);
+    assert.equal(planningCalls, 1, 'explicit Planning selection must call visual planning even when status looked up to date');
+    assert.equal(sceneStore.get().scenes.length, 1);
+    assert.equal(sceneStore.get().scenes[0].narrationText, '[object Object]');
   } finally {
     global.fetch = originalFetch;
     delete global.localStorage;
   }
 });
 
-test('replanStory reuses plan-shots and requests no target count -- the fresh plan\'s own shot count is authoritative', async () => {
+test('replanStory explicitly rebuilds narration boundaries, then plans visuals over the rebuilt scenes', async () => {
   installLocalStorageShim();
   const calledUrls = [];
-  const planShotsBodies = [];
+  const prepareBodies = [];
   const originalFetch = global.fetch;
 
   global.fetch = async (url, options) => {
     calledUrls.push(String(url));
     const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
 
-    if (String(url).startsWith('/api/storyboard/plan-shots')) {
-      if (options?.body) planShotsBodies.push(JSON.parse(options.body));
-      // A different count than whatever the project started with -- replan must accept this as-is,
-      // not reconcile it against a prior count or a requested target.
+    if (String(url).startsWith('/api/storyboard/prepare-narration')) {
+      if (options?.body) prepareBodies.push(JSON.parse(options.body));
       const scenes = Array.from({ length: 3 }, (_, i) => ({
-        sceneNumber: i + 1, title: `Scene ${i + 1}`, scriptFragment: `Shot ${i + 1}.`,
-        narrationText: `Shot ${i + 1}.`, beat: `Action ${i + 1}.`, prompt: `Prompt ${i + 1}.`,
+        id: `scene-${i + 1}`, sceneNumber: i + 1, title: `Scene ${i + 1}`,
+        sourceScriptFragment: `Source ${i + 1}.`, scriptFragment: `Source ${i + 1}.`,
+        narrationText: `Shot ${i + 1}.`, beat: '', prompt: '',
       }));
       return json({ scenes, narrationText: 'Full narration.', usedFallback: false, warning: '' });
+    }
+    if (String(url).startsWith('/api/storyboard/plan-visuals')) {
+      const scenes = JSON.parse(options?.body || '{}').scenes || [];
+      return json({ scenes: scenes.map((scene, i) => ({ ...scene, beat: `Action ${i + 1}.`, prompt: `Prompt ${i + 1}.` })) });
     }
     if (String(url).includes('create-scenes') || String(url).includes('generate-prompts') || String(url).includes('generate-dialogue')) {
       throw new Error(`${url} must never be called by replanStory -- it should use plan-shots exclusively`);
@@ -204,8 +213,8 @@ test('replanStory reuses plan-shots and requests no target count -- the fresh pl
   };
 
   try {
-    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
-    const { replanStory } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+    const { replanStory } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'stages.js'));
 
     const record = { id: 'replan-test-project', title: 'Replan Test', revision: 1, scenes: [{ id: 'old-1' }, { id: 'old-2' }], enrich: true };
     projectStore.set({ currentId: record.id, storyboards: [record] });
@@ -224,8 +233,9 @@ test('replanStory reuses plan-shots and requests no target count -- the fresh pl
 
     await replanStory(els, () => {});
 
-    assert.equal(calledUrls.filter((url) => url.startsWith('/api/storyboard/plan-shots')).length, 1, 'replan should call plan-shots exactly once');
-    assert.equal('sceneCount' in planShotsBodies[0], false, 'the plan-shots request body must not carry a requested/target shot count');
+    assert.equal(calledUrls.filter((url) => url.startsWith('/api/storyboard/prepare-narration')).length, 1);
+    assert.equal(calledUrls.filter((url) => url.startsWith('/api/storyboard/plan-visuals')).length, 1);
+    assert.equal('sceneCount' in prepareBodies[0], false, 'narration preparation must not carry a requested/target scene count');
     assert.equal(sceneStore.get().scenes.length, 3, 'the resulting shot count is whatever the fresh plan produced, not the old count or a request');
   } finally {
     global.fetch = originalFetch;
@@ -233,23 +243,27 @@ test('replanStory reuses plan-shots and requests no target count -- the fresh pl
   }
 });
 
-test('the shot-limit select threads maxShots into the plan-shots request as a ceiling, and "Unlimited" omits it entirely', async () => {
+test('the shot-limit select threads maxShots into narration segmentation as a ceiling, and "Unlimited" omits it', async () => {
   installLocalStorageShim();
-  const planShotsBodies = [];
+  const prepareBodies = [];
   const originalFetch = global.fetch;
 
   global.fetch = async (url, options) => {
     const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
-    if (String(url).startsWith('/api/storyboard/plan-shots')) {
-      if (options?.body) planShotsBodies.push(JSON.parse(options.body));
-      return json({ scenes: [{ sceneNumber: 1, title: 'Scene 1', scriptFragment: 'One shot.', narrationText: 'One shot.', beat: 'Action.', prompt: 'Prompt.' }], narrationText: 'One shot.', usedFallback: false, warning: '' });
+    if (String(url).startsWith('/api/storyboard/prepare-narration')) {
+      if (options?.body) prepareBodies.push(JSON.parse(options.body));
+      return json({ scenes: [{ id: 'one', sceneNumber: 1, title: 'Scene 1', sourceScriptFragment: 'Source.', scriptFragment: 'Source.', narrationText: 'One shot.', beat: '', prompt: '' }], narrationText: 'One shot.', usedFallback: false, warning: '' });
+    }
+    if (String(url).startsWith('/api/storyboard/plan-visuals')) {
+      const scenes = JSON.parse(options?.body || '{}').scenes || [];
+      return json({ scenes: scenes.map((scene) => ({ ...scene, beat: 'Action.', prompt: 'Prompt.' })) });
     }
     return json({ ok: true, project: { revision: 1, scenes: [] }, jobs: [], revision: 1 });
   };
 
   try {
-    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
-    const { planShots } = await import(path.join(__dirname, '..', 'public', 'modules', 'workflows.js'));
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+    const { planShots } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'workflows.js'));
 
     const record = { id: 'shot-limit-test-project', title: 'Shot Limit Test', revision: 1, scenes: [], enrich: true };
     projectStore.set({ currentId: record.id, storyboards: [record] });
@@ -266,11 +280,11 @@ test('the shot-limit select threads maxShots into the plan-shots request as a ce
 
     sceneStore.set({ scenes: [] }); uiStore.set({ operation: null });
     await planShots({ ...baseEls, settingsShotLimitSelect: { value: '25' } }, () => {});
-    assert.equal(planShotsBodies[0].maxShots, 25, 'a selected limit should be sent as maxShots');
+    assert.equal(prepareBodies[0].maxShots, 25, 'a selected limit should be sent as maxShots');
 
     sceneStore.set({ scenes: [] }); uiStore.set({ operation: null });
     await planShots({ ...baseEls, settingsShotLimitSelect: { value: '' } }, () => {});
-    assert.equal('maxShots' in planShotsBodies[1], false, '"Unlimited" (empty value) should omit maxShots entirely, not send a falsy value');
+    assert.equal('maxShots' in prepareBodies[1], false, '"Unlimited" (empty value) should omit maxShots entirely, not send a falsy value');
   } finally {
     global.fetch = originalFetch;
     delete global.localStorage;
@@ -283,23 +297,28 @@ test('the shot-limit select threads maxShots into the plan-shots request as a ce
 // without it, so every real planning/replan call in the running app would have failed. No earlier
 // test caught this because they all mock fetch and never assert on the request headers actually
 // sent.
-test('planShots sends a valid Idempotency-Key header on every request, matching what the server\'s idempotency middleware requires', async () => {
+test('planning sends valid Idempotency-Key headers for narration preparation and visual planning', async () => {
   installLocalStorageShim();
   const seenHeaders = [];
   const originalFetch = global.fetch;
 
   global.fetch = async (url, options) => {
     const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
-    if (String(url).startsWith('/api/storyboard/plan-shots')) {
+    if (String(url).startsWith('/api/storyboard/prepare-narration')) {
       seenHeaders.push(options?.headers || {});
-      return json({ scenes: [{ sceneNumber: 1, title: 'Scene 1', scriptFragment: 'One shot.', narrationText: 'One shot.', beat: 'Action.', prompt: 'Prompt.' }], narrationText: 'One shot.', usedFallback: false, warning: '' });
+      return json({ scenes: [{ id: 'one', sceneNumber: 1, title: 'Scene 1', sourceScriptFragment: 'Source.', scriptFragment: 'Source.', narrationText: 'One shot.', beat: '', prompt: '' }], narrationText: 'One shot.', usedFallback: false, warning: '' });
+    }
+    if (String(url).startsWith('/api/storyboard/plan-visuals')) {
+      seenHeaders.push(options?.headers || {});
+      const scenes = JSON.parse(options?.body || '{}').scenes || [];
+      return json({ scenes: scenes.map((scene) => ({ ...scene, beat: 'Action.', prompt: 'Prompt.' })) });
     }
     return json({ ok: true, project: { revision: 1, scenes: [] }, jobs: [], revision: 1 });
   };
 
   try {
-    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
-    const { planShots } = await import(path.join(__dirname, '..', 'public', 'modules', 'workflows.js'));
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+    const { planShots } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'workflows.js'));
 
     const record = { id: 'idempotency-test-project', title: 'Idempotency Test', revision: 1, scenes: [], enrich: true };
     projectStore.set({ currentId: record.id, storyboards: [record] });
@@ -318,9 +337,11 @@ test('planShots sends a valid Idempotency-Key header on every request, matching 
 
     await planShots(els, () => {});
 
-    assert.equal(seenHeaders.length, 1);
-    const key = seenHeaders[0]['Idempotency-Key'];
-    assert.match(String(key || ''), /^[a-zA-Z0-9_.:-]{8,200}$/, 'the header must be present and match the exact pattern src/middleware/idempotency.js requires, or the server rejects the request with 400');
+    assert.equal(seenHeaders.length, 2);
+    for (const headers of seenHeaders) {
+      const key = headers['Idempotency-Key'];
+      assert.match(String(key || ''), /^[a-zA-Z0-9_.:-]{8,200}$/, 'the header must be present and match the exact pattern src/middleware/idempotency.js requires, or the server rejects the request with 400');
+    }
   } finally {
     global.fetch = originalFetch;
     delete global.localStorage;
@@ -335,7 +356,7 @@ test('subtitle generation receives the idempotency key required by its server ro
     return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true }) };
   };
   try {
-    const { api } = await import(path.join(__dirname, '..', 'public', 'modules', 'api.js'));
+    const { api } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'api.js'));
     await api('/api/subtitles/generate', { method: 'POST', body: JSON.stringify({}) });
     assert.match(String(seenHeaders['Idempotency-Key'] || ''), /^[a-zA-Z0-9_.:-]{8,200}$/);
   } finally {
@@ -344,7 +365,7 @@ test('subtitle generation receives the idempotency key required by its server ro
 });
 
 test('logical generation idempotency keys are stable for retries and change with logical input', async () => {
-  const { logicalIdempotencyKey } = await import(path.join(__dirname, '..', 'public', 'modules', 'api.js'));
+  const { logicalIdempotencyKey } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'api.js'));
   const first = await logicalIdempotencyKey('subtitle', { projectId: 'p', sceneId: 's', versionCount: 2, style: 'classic' });
   const reordered = await logicalIdempotencyKey('subtitle', { style: 'classic', versionCount: 2, sceneId: 's', projectId: 'p' });
   const nextVersion = await logicalIdempotencyKey('subtitle', { projectId: 'p', sceneId: 's', versionCount: 3, style: 'classic' });
@@ -354,7 +375,7 @@ test('logical generation idempotency keys are stable for retries and change with
 });
 
 test('ZIP downloads use a safe project title and timestamp filename', async () => {
-  const { zipDownloadFilename } = await import(path.join(__dirname, '..', 'public', 'modules', 'workflows.js'));
+  const { zipDownloadFilename } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'workflows.js'));
   assert.equal(zipDownloadFilename('The Odyssey', new Date('2026-07-21T17:42:09.000Z')), 'The-Odyssey-2026-07-21_17-42-09.zip');
   assert.equal(zipDownloadFilename('  Story: One / Two?  ', new Date('2026-01-02T03:04:05.000Z')), 'Story-One-Two-2026-01-02_03-04-05.zip');
 });

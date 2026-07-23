@@ -54,7 +54,7 @@ test('Gemini and OpenAI clamp through the neutral planner while stub records non
 });
 
 test('browser and server reference planners produce the same manifest-facing plan', async () => {
-  const browser = await import(path.join(__dirname, '..', 'public', 'modules', 'image-reference-plan.js'));
+  const browser = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'image-reference-plan.js'));
   const candidates = references(10).map(({ localPath, ...reference }) => reference);
   for (const provider of ['gemini', 'openai', 'dezgo', 'dezgo_flux', 'stub']) {
     assert.deepEqual(browser.resolveImageReferencePlan(provider, candidates), resolveImageReferencePlan(provider, candidates));

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const webRoot = path.join(__dirname, '..');
-const renderingPromise = import(path.join(webRoot, 'public', 'modules', 'rendering.js'));
+const renderingPromise = import(path.join(webRoot, 'public', 'js', 'studio', 'rendering.js'));
 
 test('regeneration confirmation uses the entity-specific provider selection', async () => {
   const { regenerationProviderSelection } = await renderingPromise;
@@ -21,12 +21,12 @@ test('regeneration confirmation uses the entity-specific provider selection', as
 });
 
 test('hidden regeneration summaries cannot leak the previous video provider', () => {
-  const css = fs.readFileSync(path.join(webRoot, 'public', 'styles.css'), 'utf8');
+  const css = fs.readFileSync(path.join(webRoot, 'public', 'css', 'styles.css'), 'utf8');
   assert.match(css, /\.confirm-video-summary\[hidden\][\s\S]*?display:\s*none/);
 });
 
 test('planning confirmation names the normalized LLM provider', async () => {
-  const { buildGenerationPreflight } = await import(path.join(webRoot, 'public', 'modules', 'run-controller.js'));
+  const { buildGenerationPreflight } = await import(path.join(webRoot, 'public', 'js', 'studio', 'run-controller.js'));
   const confirmation = buildGenerationPreflight('planningReplan', {
     scenes: [{ id: 'shot-1' }],
     labels: { textProvider: 'OpenAI' },
@@ -35,7 +35,7 @@ test('planning confirmation names the normalized LLM provider', async () => {
 });
 
 test('run controller wires the subtitles selection alongside every other stage', async () => {
-  const { initRunController } = await import(path.join(webRoot, 'public', 'modules', 'run-controller.js'));
+  const { initRunController } = await import(path.join(webRoot, 'public', 'js', 'studio', 'run-controller.js'));
   const element = (extra = {}) => ({
     listeners: {},
     addEventListener(type, handler) { this.listeners[type] = handler; },
@@ -51,7 +51,7 @@ test('run controller wires the subtitles selection alongside every other stage',
     'subtitleStyle', 'confirmModal', 'confirmTitle', 'confirmIntro',
     'confirmBullets', 'confirmCloseBtn', 'confirmCancelBtn', 'confirmRunBtn',
     'startModal', 'sceneLabel', 'sceneTotal', 'rangeAll', 'rangeNext',
-    'nextCount', 'startCloseBtn', 'startCancelBtn', 'startConfirmBtn',
+    'nextCount', 'regenerateIfExists', 'startCloseBtn', 'startCancelBtn', 'startConfirmBtn',
     'planningCheck', 'planningStatus', 'imagesCheck', 'imagesStatus',
     'audioCheck', 'audioStatus', 'videoCheck', 'videoStatus',
     'subtitlesCheck', 'subtitlesStatus', 'replanBtn', 'regenerateImagesBtn',

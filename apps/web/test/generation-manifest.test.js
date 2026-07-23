@@ -51,7 +51,7 @@ test('manifest hashing is canonical and snapshots mutable inputs', async () => {
   assert.equal(hashCanonical({ b: 2, a: 1 }), hashCanonical({ a: 1, b: 2 }));
   assert.notEqual(hashCanonical({ a: 1 }), hashCanonical({ a: 2 }));
 
-  const browser = await import(path.join(__dirname, '..', 'public', 'modules', 'generation-manifest.js'));
+  const browser = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'generation-manifest.js'));
   assert.equal(browser.hashCanonical(manifest.inputs), manifest.manifestHash, 'browser and server hashes must agree');
 });
 

@@ -43,8 +43,15 @@ To minimize response latencies and avoid context window bloat:
   - `src/services/` — Business logic (`dialogue.service.js`, `prompt-generation.service.js`, `generation-cache.service.js`, `styles.service.js`).
   - `src/storage/` — Persistence layer (`project-store.js`, `prisma-project.repository.js`).
   - `prisma/` — Database schema (`prisma/schema.prisma`).
-  - `public/` — Vanilla JS frontend app (`app.js`, `studio.html`, `index.html`, `styles.css`).
-  - `public/modules/` — Modular ES frontend modules (`store.js`, `api.js`, `ui.js`, `workflows.js`, `rendering.js`, `batch.js`, `voices.js`, `persistence.js`, `assets.js`).
+  - `public/` — Static browser assets organized under `js/`, `css/`, and `images/`.
+  - `public/js/pages/` — Standalone page entry points.
+  - `public/js/shared/` — Browser components shared across independent pages.
+  - `public/js/billing/` — Credit balances, provider-price formatting, and token-spend presentation.
+  - `public/js/core/` — Shared browser foundations: API, authentication, state, persistence, DOM contracts, and scene primitives.
+  - `public/js/generation/` — Batch execution, manifests, reference planning, stage orchestration, and generation workflows.
+  - `public/js/media/` — Voice handling, scene recording, media settings, and subtitle overlays.
+  - `public/js/studio/` — Rendering, timeline, UI composition, and authenticated-studio feature controllers.
+  - `pages/` — HTML entry-point templates served through explicit Express routes.
   - `test/` — Unit and integration tests (Node native `--test` runner).
 - **`apps/voice-service/`**: Python/FastAPI Spark-TTS voice cloning service (`main.py`, `test_main.py`).
 - **`apps/alignment-service/`**: Python/FastAPI WhisperX forced-alignment daemon (`main.py`, `test_main.py`).
@@ -87,5 +94,5 @@ apps/alignment-service/venv/bin/python -m pytest apps/alignment-service/test_mai
 ## 🎨 Code Conventions & Design Patterns
 
 1. **Dependency Injection**: Services and repositories are wired in `apps/web/src/dependencies.js`. When adding new services or handlers, register them in `dependencies.js`.
-2. **Frontend Architecture**: No React/Vite/Webpack bundler. Vanilla JS ES Modules served statically by Express (`/public`). State is managed via subscriber store in `public/modules/store.js`.
+2. **Frontend Architecture**: No React/Vite/Webpack bundler. HTML templates in `pages/` are served through explicit Express routes, while browser assets are served statically from `/public`. State is managed via the subscriber store in `public/js/core/store.js`.
 3. **Database & Fallbacks**: Prisma client is wrapped; file-system JSON stores act as fallbacks or cache layers (`apps/web/src/storage/`).

@@ -84,14 +84,49 @@ const CANONICAL_PRICE_FIXTURES = {
 };
 
 test('public home introduces the product while the studio remains authenticated', async () => {
-  await request(app).get('/').expect(200).expect(/Turn a script into a narrated video sequence/).expect(/<storyframe-topbar>/);
+  await request(app).get('/').expect(200).expect(/Turn a script into a narrated video sequence/).expect(/<storyboarder-topbar>/);
   await request(app).get('/studio').expect(302).expect('Location', /login\.html\?redirect=%2Fstudio/);
+  await request(app).get('/studio.html').expect(302).expect('Location', /login\.html/);
   await request(app).get('/studio.html').set(auth('bob-token')).expect(302).expect('Location', '/studio');
-  await request(app).get('/studio').set(auth('bob-token')).expect(200).expect(/id="storyboardTitle"/).expect(/<storyframe-topbar>/);
+  await request(app).get('/studio').set(auth('bob-token')).expect(200).expect(/id="storyboardTitle"/).expect(/<storyboarder-topbar>/);
+});
+
+test('page templates are routed explicitly and public contains assets only', async () => {
+  await request(app).get('/index.html').expect(200).expect(/Turn a script into a narrated video sequence/);
+  await request(app).get('/scripts').expect(200).expect(/id="scriptsGrid"/);
+  await request(app).get('/scripts/category/drama').expect(200).expect(/id="browseTitle"/);
+  await request(app).get('/writers/example').expect(200).expect(/id="writerProfile"/);
+  await request(app).get('/scripts/example').expect(200).expect(/id="readerArticle"/);
+
+  await request(app).get('/css/styles.css').expect(200).expect('Content-Type', /text\/css/);
+  await request(app).get('/js/app.js').expect(200).expect('Content-Type', /javascript/);
+  await request(app).get('/js/billing/credit-balance.js').expect(200).expect('Content-Type', /javascript/);
+  await request(app).get('/js/core/store.js').expect(200).expect('Content-Type', /javascript/);
+  await request(app).get('/js/generation/stages.js').expect(200).expect('Content-Type', /javascript/);
+  await request(app).get('/js/media/voices.js').expect(200).expect('Content-Type', /javascript/);
+  await request(app).get('/js/shared/topbar.js').expect(200).expect('Content-Type', /javascript/);
+  await request(app).get('/js/pages/scripts-index.js').expect(200).expect('Content-Type', /javascript/);
+  await request(app).get('/js/scripts/api.js').expect(200).expect('Content-Type', /javascript/);
+  await request(app).get('/js/screenplay-editor/js/ScreenplayEditor.js').expect(200).expect('Content-Type', /javascript/);
+  await request(app).get('/js/studio/rendering.js').expect(200).expect('Content-Type', /javascript/);
+  await request(app).get('/images/favicon.png').expect(200).expect('Content-Type', /image\/png/);
+
+  await request(app).get('/pages/studio.html').expect(404);
+  await request(app).get('/styles.css').expect(404);
+  await request(app).get('/app.js').expect(404);
+  await request(app).get('/js/modules/credit-balance.js').expect(404);
+  await request(app).get('/js/modules/rendering.js').expect(404);
+  await request(app).get('/js/modules/stages.js').expect(404);
+  await request(app).get('/js/modules/store.js').expect(404);
+  await request(app).get('/js/modules/voices.js').expect(404);
+  await request(app).get('/js/modules/topbar.js').expect(404);
+  await request(app).get('/js/modules/scripts-index.js').expect(404);
+  await request(app).get('/js/modules/scripts/api.js').expect(404);
+  await request(app).get('/js/modules/screenplay-editor/js/ScreenplayEditor.js').expect(404);
 });
 
 test('admin console and API require a platform administrator', async () => {
-  await request(app).get('/admin').set(auth('alice-token')).expect(200).expect(/Admin console/).expect(/<storyframe-topbar>/);
+  await request(app).get('/admin').set(auth('alice-token')).expect(200).expect(/Admin console/).expect(/<storyboarder-topbar>/);
   await request(app).get('/admin.html').set(auth('alice-token')).expect(302).expect('Location', '/admin');
   await request(app).get('/admin').set(auth('bob-token')).expect(403);
   await request(app).get('/api/admin/overview').set(auth('alice-token')).expect(200).expect((response) => assert.equal(response.body.ok, true));
@@ -128,7 +163,7 @@ test('the admin billing sanity report is admin-gated and splits customer-billabl
 test('credit purchase pages require login and Stripe webhooks bypass user auth', async () => {
   await request(app).get('/credits').expect(302).expect('Location', /login\.html/);
   await request(app).get('/credits.html').set(auth('bob-token')).expect(302).expect('Location', '/credits');
-  await request(app).get('/credits').set(auth('bob-token')).expect(200).expect(/Site credits/).expect(/<storyframe-topbar>/);
+  await request(app).get('/credits').set(auth('bob-token')).expect(200).expect(/Site credits/).expect(/<storyboarder-topbar>/);
   await request(app).get('/api/billing/purchase-options').set(auth('bob-token')).expect(200).expect((response) => {
     assert.equal(response.body.minimumAmount, 100);
     assert.equal(response.body.defaultAmount, 1000);
@@ -139,7 +174,7 @@ test('credit purchase pages require login and Stripe webhooks bypass user auth',
 test('text-to-speech page requires login and the speech endpoint generates a downloadable clip with no project', async () => {
   await request(app).get('/text-to-speech').expect(302).expect('Location', /login\.html/);
   await request(app).get('/text-to-speech.html').set(auth('bob-token')).expect(302).expect('Location', '/text-to-speech');
-  await request(app).get('/text-to-speech').set(auth('bob-token')).expect(200).expect(/Text to speech/).expect(/<storyframe-topbar>/);
+  await request(app).get('/text-to-speech').set(auth('bob-token')).expect(200).expect(/Text to speech/).expect(/<storyboarder-topbar>/);
 
   await request(app).post('/api/audio/speech').send({ text: 'Hello there' }).expect(401);
 

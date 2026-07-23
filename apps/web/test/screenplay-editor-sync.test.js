@@ -12,8 +12,8 @@ function normalize(text = '') {
 }
 
 async function loadAdapters() {
-  const rawAdapterPath = pathToFileURL(path.join(__dirname, '..', 'public', 'modules', 'screenplay-editor', 'js', 'adapters', 'RawScriptAdapter.js')).href;
-  const fountainAdapterPath = pathToFileURL(path.join(__dirname, '..', 'public', 'modules', 'screenplay-editor', 'js', 'adapters', 'FountainAdapter.js')).href;
+  const rawAdapterPath = pathToFileURL(path.join(__dirname, '..', 'public', 'js', 'screenplay-editor', 'js', 'adapters', 'RawScriptAdapter.js')).href;
+  const fountainAdapterPath = pathToFileURL(path.join(__dirname, '..', 'public', 'js', 'screenplay-editor', 'js', 'adapters', 'FountainAdapter.js')).href;
 
   const { RawScriptAdapter } = await import(rawAdapterPath);
   const { FountainAdapter } = await import(fountainAdapterPath);
@@ -78,7 +78,7 @@ test('Fountain parsing classifies headers, speakers, dialogue, directions, actio
 });
 
 test('PageManager exposes page count, page elements, and page query API', async () => {
-  const pageManagerPath = pathToFileURL(path.join(__dirname, '..', 'public', 'modules', 'screenplay-editor', 'js', 'page', 'PageManager.js')).href;
+  const pageManagerPath = pathToFileURL(path.join(__dirname, '..', 'public', 'js', 'screenplay-editor', 'js', 'page', 'PageManager.js')).href;
   const { PageManager } = await import(pageManagerPath);
 
   const pm = new PageManager({});

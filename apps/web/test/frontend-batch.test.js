@@ -1,4 +1,4 @@
-// Exercises public/modules/batch.js's real start/stop/resume state machine directly (no DOM/fetch
+// Exercises public/js/generation/batch.js's real start/stop/resume state machine directly (no DOM/fetch
 // needed — batchController only touches batchStore/uiStore and whatever generateFn/getScenes the
 // caller supplies), covering the pause/resume-with-mixed-outcomes scenario required by the plan:
 // scene 1 already complete, scene 2's last attempt failed, scene 3 never attempted — resume must
@@ -10,8 +10,8 @@ const path = require('node:path');
 async function freshBatchController() {
   // batchStore/uiStore module-level state persists across dynamic imports of the SAME resolved
   // module within one process, so give each test a clean slate rather than relying on import order.
-  const { batchController } = await import(path.join(__dirname, '..', 'public', 'modules', 'batch.js'));
-  const { batchStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
+  const { batchController } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'batch.js'));
+  const { batchStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
   batchStore.set({
     images: { state: 'idle', currentIndex: 0, generating: false, stopRequested: false },
     audio: { state: 'idle', currentIndex: 0, generating: false, stopRequested: false },
@@ -94,9 +94,9 @@ test('regression: getScenes() must return id-bearing objects, not raw id strings
   // during a batch run, even though the batch is genuinely in progress. This exercises stages.js's
   // real generateMissingOrStale() (not a hand-rolled fixture) by intercepting batchController.start
   // to capture exactly what it was given, without needing to run the real regenerate pipeline.
-  const { batchController } = await import(path.join(__dirname, '..', 'public', 'modules', 'batch.js'));
-  const { sceneStore, uiStore, batchStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
-  const { generateMissingOrStale } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+  const { batchController } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'batch.js'));
+  const { sceneStore, uiStore, batchStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+  const { generateMissingOrStale } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'stages.js'));
 
   sceneStore.set({ scenes: [{ id: 'scene-a' }, { id: 'scene-b' }] });
   uiStore.set({ operation: null });
@@ -126,9 +126,9 @@ test('regression: getScenes() must return id-bearing objects, not raw id strings
 // must distinguish: committed-then-stopped, stopped-before-committing, and ran-to-completion.
 
 test('landing scene: a Stop that lands after the in-flight scene commits selects the NEXT scene', async () => {
-  const { batchController } = await import(path.join(__dirname, '..', 'public', 'modules', 'batch.js'));
-  const { sceneStore, uiStore, batchStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
-  const { generateMissingOrStale } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+  const { batchController } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'batch.js'));
+  const { sceneStore, uiStore, batchStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+  const { generateMissingOrStale } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'stages.js'));
 
   sceneStore.set({ scenes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }] });
   uiStore.set({ operation: null, selectedSceneId: null });
@@ -151,9 +151,9 @@ test('landing scene: a Stop that lands after the in-flight scene commits selects
 });
 
 test('landing scene: a Stop whose in-flight scene never committed (e.g. its request was cancelled) selects that SAME scene again', async () => {
-  const { batchController } = await import(path.join(__dirname, '..', 'public', 'modules', 'batch.js'));
-  const { sceneStore, uiStore, batchStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
-  const { generateMissingOrStale } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+  const { batchController } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'batch.js'));
+  const { sceneStore, uiStore, batchStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+  const { generateMissingOrStale } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'stages.js'));
 
   sceneStore.set({ scenes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }] });
   uiStore.set({ operation: null, selectedSceneId: null });
@@ -176,9 +176,9 @@ test('landing scene: a Stop whose in-flight scene never committed (e.g. its requ
 });
 
 test('landing scene: natural completion selects the LAST scene actually processed', async () => {
-  const { batchController } = await import(path.join(__dirname, '..', 'public', 'modules', 'batch.js'));
-  const { sceneStore, uiStore, batchStore } = await import(path.join(__dirname, '..', 'public', 'modules', 'store.js'));
-  const { generateMissingOrStale } = await import(path.join(__dirname, '..', 'public', 'modules', 'stages.js'));
+  const { batchController } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'batch.js'));
+  const { sceneStore, uiStore, batchStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+  const { generateMissingOrStale } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'stages.js'));
 
   sceneStore.set({ scenes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }] });
   uiStore.set({ operation: null, selectedSceneId: null });

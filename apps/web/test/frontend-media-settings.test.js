@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const modulePromise = import(path.join(__dirname, '..', 'public', 'modules', 'media-settings.js'));
+const modulePromise = import(path.join(__dirname, '..', 'public', 'js', 'media', 'media-settings.js'));
 
 test('selectedMediaSettings normalizes the media controls into an output intent', async () => {
   const { selectedMediaSettings } = await modulePromise;

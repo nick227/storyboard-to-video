@@ -150,7 +150,7 @@ test('new video generations append to shots[0] and survive reload without dual-w
 });
 
 test('active image switching updates shots[0] and serialization omits compatibility fields', async () => {
-  const helpers = await import(path.join(__dirname, '..', 'public', 'modules', 'scene-shots.js'));
+  const helpers = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'scene-shots.js'));
   const scene = helpers.adaptSceneImageShot({
     id: 'scene-1',
     prompt: 'Legacy prompt',
@@ -179,7 +179,7 @@ test('active image switching updates shots[0] and serialization omits compatibil
 });
 
 test('active video switching updates shots[0] while legacy reads remain compatible', async () => {
-  const helpers = await import(path.join(__dirname, '..', 'public', 'modules', 'scene-shots.js'));
+  const helpers = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'scene-shots.js'));
   const scene = helpers.adaptSceneImageShot({
     id: 'scene-1',
     shots: [{
@@ -197,7 +197,7 @@ test('active video switching updates shots[0] while legacy reads remain compatib
 });
 
 test('start and end frame selections reference image versions without duplicating assets', async () => {
-  const helpers = await import(path.join(__dirname, '..', 'public', 'modules', 'scene-shots.js'));
+  const helpers = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'scene-shots.js'));
   const scene = helpers.adaptSceneImageShot({
     id: 'scene-1',
     versions: [{ path: '/first.png' }, { path: '/second.png' }],

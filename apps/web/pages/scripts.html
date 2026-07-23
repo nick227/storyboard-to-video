@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Browse public screenplays on Storyboarder." />
+  <title>Library — Storyboarder</title>
+  <link rel="icon" type="image/png" href="/images/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/topbar.css" />
+  <link rel="stylesheet" href="/css/scripts-public.css" />
+  <script src="/js/shared/topbar.js"></script>
+</head>
+<body class="scripts-shell">
+  <storyboarder-topbar></storyboarder-topbar>
+  <main class="scripts-page">
+    <div id="scriptsBreadcrumbs" class="scripts-crumbs-slot"></div>
+    <div id="categoryNav"></div>
+    <p id="scriptsStatus" class="scripts-status" role="status">Loading scripts…</p>
+    <div id="scriptsGrid" class="scripts-grid" hidden></div>
+  </main>
+  <script type="module" src="/js/pages/scripts-index.js"></script>
+</body>
+</html>

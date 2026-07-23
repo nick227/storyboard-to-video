@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Standalone Screenplay Editor UX Demo</title>
+    <!-- Standalone CSS bundle without any external dependencies -->
+    <link rel="stylesheet" href="/css/screenplay-editor/screenplay-editor-standalone.css">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: #1a1d21;
+            color: #ffffff;
+        }
+
+        .app-header {
+            height: 40px;
+            background: #111315;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            font-weight: 600;
+            font-size: 14px;
+            border-bottom: 1px solid #2d3238;
+        }
+
+        .main-layout {
+            display: flex;
+            height: calc(100vh - 41px);
+            width: 100%;
+        }
+
+        .editor-pane {
+            flex: 1;
+            height: 100%;
+            border-right: 1px solid #2d3238;
+        }
+
+        .raw-script-pane {
+            width: 380px;
+            height: 100%;
+            background: #14171a;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            box-sizing: border-box;
+        }
+
+        .raw-script-pane h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            color: #8a94a0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        textarea#raw-output {
+            flex: 1;
+            background: #0d0f11;
+            color: #33ff77;
+            border: 1px solid #2d3238;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: 'Courier Prime', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            resize: none;
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-header">
+        🎬 Standalone Portable Screenplay Editor Component
+    </div>
+
+    <div class="main-layout">
+        <!-- Portable Screenplay Editor Container -->
+        <div id="screenplay-editor-container" class="editor-pane"></div>
+
+        <!-- Raw Script Stream Output Panel (Host App Integration View) -->
+        <div class="raw-script-pane">
+            <h3>Clean Raw Script Output (Fountain)</h3>
+            <textarea id="raw-output" readonly placeholder="Type in the screenplay editor to see clean raw script updates..."></textarea>
+        </div>
+    </div>
+
+    <script type="module" src="/js/screenplay-editor/demo.js"></script>
+</body>
+</html>
