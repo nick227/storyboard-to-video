@@ -10,6 +10,8 @@ function parseTagSlugs(value = '') {
 export function initScriptPublishControls(elements, { setStatus } = {}) {
   const toggle = elements.scriptVisibilityToggle;
   const shareBtn = elements.scriptShareBtn;
+  const metaBtn = elements.scriptMetaBtn;
+  const modal = elements.scriptMetaModal;
   if (!toggle || !shareBtn) return { syncFromRecord() {} };
 
   let busy = false;
@@ -82,6 +84,16 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
     return response.script;
   }
 
+  function closeMetaModal() {
+    modal?.close();
+  }
+
+  async function openMetaModal() {
+    if (!modal) return;
+    await syncFromRecord();
+    modal.showModal();
+  }
+
   toggle.addEventListener('change', async () => {
     if (busy) return;
     const record = getCurrentStoryboardRecord();
@@ -121,6 +133,13 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
     }
   });
 
+  metaBtn?.addEventListener('click', () => { openMetaModal().catch((error) => setStatus?.(error.message || 'Could not open publishing details.')); });
+  elements.scriptMetaCloseBtn?.addEventListener('click', closeMetaModal);
+  elements.scriptMetaCancelBtn?.addEventListener('click', closeMetaModal);
+  modal?.addEventListener('click', (event) => {
+    if (event.target === modal) closeMetaModal();
+  });
+
   elements.scriptMetaSaveBtn?.addEventListener('click', async () => {
     const record = getCurrentStoryboardRecord();
     if (!record) return;
@@ -133,6 +152,7 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
       });
       applyScript(response.script);
       setStatus?.('Publishing details saved.');
+      closeMetaModal();
     } catch (error) {
       setStatus?.(error.message || 'Could not save publishing details.');
     }

@@ -55,6 +55,14 @@
                 <input type="checkbox" id="scriptVisibilityToggle" />
                 <span>Public</span>
               </label>
+              <button type="button" id="scriptMetaBtn" class="script-icon-button" aria-label="Publishing details"
+                title="Publishing details" aria-haspopup="dialog" aria-controls="scriptMetaModal">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 7h16M4 12h10M4 17h7" />
+                  <circle cx="18" cy="12" r="2" />
+                  <circle cx="15" cy="17" r="2" />
+                </svg>
+              </button>
               <button type="button" id="scriptShareBtn" class="script-icon-button" aria-label="Copy share link"
                 title="Copy share link" disabled>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -93,27 +101,6 @@
         </div>
         <textarea id="scriptText" class="script-textarea" rows="7"
           placeholder="Paste story or script here..."></textarea>
-        <details class="script-meta-panel" id="scriptMetaPanel">
-          <summary>Publishing details</summary>
-          <div class="script-meta-fields">
-            <label>
-              <span>Logline</span>
-              <textarea id="scriptLogline" maxlength="280" rows="2" placeholder="One or two sentences that sell the story"></textarea>
-            </label>
-            <label>
-              <span>Category</span>
-              <select id="scriptCategorySelect">
-                <option value="">Uncategorized</option>
-              </select>
-            </label>
-            <label>
-              <span>Tags</span>
-              <input id="scriptTagsInput" type="text" maxlength="200" placeholder="noir, heist, coming-of-age" />
-            </label>
-            <p id="scriptStatsLine" class="script-stats-line" hidden></p>
-            <button type="button" id="scriptMetaSaveBtn" class="secondary">Save publishing details</button>
-          </div>
-        </details>
         <div id="screenplayEditorContainer" class="screenplay-editor-container" hidden></div>
       </article>
 
@@ -848,6 +835,39 @@
     <div class="settings-modal-footer">
       <span class="settings-modal-save-note">Saved</span>
       <button type="button" class="primary" data-close-settings>Done</button>
+    </div>
+  </dialog>
+
+  <dialog id="scriptMetaModal" class="settings-modal script-meta-modal" aria-labelledby="scriptMetaModalTitle">
+    <div class="settings-modal-header">
+      <div>
+        <h2 id="scriptMetaModalTitle">Publishing details</h2>
+      </div>
+      <button type="button" class="secondary text-button settings-modal-close" id="scriptMetaCloseBtn"
+        aria-label="Close publishing details">✕</button>
+    </div>
+    <div class="settings-modal-body">
+      <div class="script-meta-fields">
+        <label>
+          <span>Logline</span>
+          <textarea id="scriptLogline" maxlength="280" rows="2" placeholder="One or two sentences that sell the story"></textarea>
+        </label>
+        <label>
+          <span>Category</span>
+          <select id="scriptCategorySelect">
+            <option value="">Uncategorized</option>
+          </select>
+        </label>
+        <label>
+          <span>Tags</span>
+          <input id="scriptTagsInput" type="text" maxlength="200" placeholder="noir, heist, coming-of-age" />
+        </label>
+        <p id="scriptStatsLine" class="script-stats-line" hidden></p>
+      </div>
+    </div>
+    <div class="settings-modal-footer">
+      <button type="button" class="secondary" id="scriptMetaCancelBtn">Cancel</button>
+      <button type="button" id="scriptMetaSaveBtn" class="primary">Save</button>
     </div>
   </dialog>
 

@@ -58,18 +58,11 @@
 .script-visibility-toggle input {
   margin: 0;
 }
-.script-meta-panel {
-  margin-top: 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel-2);
-  padding: 0 12px 12px;
+.script-meta-modal {
+  width: min(480px, calc(100vw - 24px));
 }
-.script-meta-panel > summary {
-  cursor: pointer;
-  padding: 10px 0;
-  color: var(--muted);
-  font-weight: 650;
+.script-meta-modal .settings-modal-body {
+  padding-top: 16px;
 }
 .script-meta-fields {
   display: grid;
@@ -80,6 +73,10 @@
   margin-bottom: 4px;
   color: var(--muted);
   font-size: 12px;
+}
+.script-meta-modal.settings-modal textarea {
+  min-height: 72px;
+  resize: vertical;
 }
 .script-stats-line {
   margin: 0;
