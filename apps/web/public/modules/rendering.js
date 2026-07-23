@@ -20,6 +20,15 @@ let els = {};
 let activeScenePlayback = null;
 let scenePlaybackCleanups = new Map();
 
+export function renderEntityOperationState() {
+  const busy = Boolean(uiStore.get().operation);
+  els.sceneUploadedReferences?.querySelectorAll('.ref-delete-btn').forEach((button) => { button.disabled = busy; });
+  els.entityModalHistoryList?.querySelectorAll('.version-thumb').forEach((button) => { button.disabled = busy; });
+  els.entityModalHistoryList?.querySelectorAll('.audio-version-select').forEach((button) => {
+    button.disabled = busy || button.classList.contains('is-current');
+  });
+}
+
 const debouncedQueueSync = debounce(() => {
   const record = getCurrentStoryboardRecord();
   if (record) { queueSync(record, (t) => els.statusText.textContent = t); }
@@ -92,8 +101,8 @@ const ENTITY_CONFIG = {
   image: {
     title: 'Image',
     kind: 'image',
-    versions: (scene) => scene.versions || [],
-    activeIndex: (scene) => scene.activeVersionIndex,
+    versions: (scene) => imageShot(scene).versions,
+    activeIndex: (scene) => imageShot(scene).activeVersionIndex,
     selectVersion: (scene, vIndex) => { setActiveImageVersion(scene, vIndex); scene.activeVisualType = 'image'; },
     // regenerate* throws deliberately on unmet prerequisites so the caller "has to consciously deal
     // with it" rather than silently no-op-ing — surface that via the same setStatus callback used
@@ -405,6 +414,7 @@ function renderSceneReferencesModal() {
     els.sceneUploadedReferences.appendChild(card);
   });
   els.sceneReferenceInput.disabled = uploaded.length >= 8;
+  renderEntityOperationState();
 }
 
 function replaceSceneFromReferenceResponse(data) {
@@ -843,7 +853,7 @@ function setupEntityModal() {
     if (index === -1) return;
     const scene = sceneStore.get().scenes[index];
     els.entityModal.close();
-    import('./ui.js').then(({ openImageLibrary }) => {
+    import('./image-library-controller.js').then(({ openImageLibrary }) => {
       openImageLibrary({
         mode: 'scene-image',
         sceneId: scene.id,
@@ -978,7 +988,7 @@ export function initRendering(domEls) {
   setupEntityModal();
   setupSceneReferencesModal();
 
-  els.storyboardGrid.addEventListener('click', (e) => {
+  const handleSceneCardClick = (e) => {
     const card = e.target.closest('.scene-card');
     if (!card) return;
     const sceneId = card.dataset.sceneId;
@@ -999,7 +1009,9 @@ export function initRendering(domEls) {
     if (iconBtn && !iconBtn.disabled) {
       openEntityModal(index, iconBtn.dataset.status);
     }
-  });
+  };
+  els.storyboardGrid.addEventListener('click', handleSceneCardClick);
+  els.storyboardSlider.addEventListener('click', handleSceneCardClick);
 
   sceneStore.subscribe(() => { renderScenes(); renderEntityModal(); renderSceneReferencesModal(); });
   generationStore.subscribe(() => renderSceneReferencesModal());
@@ -1119,7 +1131,7 @@ export function renderScenes() {
   els.storyboardSection.hidden = scenes.length === 0;
 
 
-  const existingCards = Array.from(els.storyboardGrid.querySelectorAll('.scene-card'));
+  const existingCards = Array.from(els.storyboardSection.querySelectorAll('.scene-card'));
   const existingNodesMap = new Map(existingCards.map(node => [node.dataset.sceneId, node]));
 
   const nextScenePlaybackCleanups = new Map();
@@ -1164,7 +1176,7 @@ export function renderScenes() {
     const shot = imageShot(scene);
     const sceneStatus = {
       prompt: Boolean(String(scene.prompt || '').trim()),
-      image: (scene.versions || []).some((version) => Boolean(version?.path)),
+      image: shot.versions.some((version) => Boolean(version?.path)),
       dialogue: Boolean(String(scene.narrationText || '').trim()),
       audio: (scene.audioVersions || []).some((version) => Boolean(version?.path)),
       video: (shot.videoVersions || []).some((version) => Boolean(version?.path)),
@@ -1295,4 +1307,71 @@ export function renderScenes() {
   scenePlaybackCleanups = nextScenePlaybackCleanups;
   
   els.storyboardGrid.replaceChildren(...nextNodes);
+  renderStoryboardSlider(scenes, selectedIndex);
+}
+
+function renderStoryboardSlider(scenes, selectedIndex) {
+  const slider = els.storyboardSlider;
+  if (!slider || slider.hidden) return;
+
+  const safeIndex = Math.min(Math.max(selectedIndex, 0), Math.max(scenes.length - 1, 0));
+  const activeScene = scenes[safeIndex];
+  const stage = slider.querySelector('.storyboard-slider-stage');
+  const current = slider.querySelector('.storyboard-slider-current');
+  const count = slider.querySelector('.storyboard-slider-count');
+  const previous = slider.querySelector('.storyboard-slider-prev');
+  const next = slider.querySelector('.storyboard-slider-next');
+  const filmstrip = slider.querySelector('.storyboard-filmstrip');
+
+  current.textContent = activeScene?.title || `Scene ${safeIndex + 1}`;
+  count.textContent = scenes.length ? `${safeIndex + 1} of ${scenes.length}` : 'No scenes';
+  previous.disabled = safeIndex <= 0;
+  next.disabled = safeIndex >= scenes.length - 1;
+
+  const activeCard = activeScene
+    ? Array.from(els.storyboardGrid.children).find((card) => card.dataset.sceneId === activeScene.id)
+    : null;
+  stage.replaceChildren(...(activeCard ? [activeCard] : []));
+
+  const previousSelection = slider.dataset.sceneId || '';
+  const existingThumbnails = new Map(
+    Array.from(filmstrip.querySelectorAll('.storyboard-filmstrip-item'))
+      .map((button) => [button.dataset.sceneId, button]),
+  );
+  const thumbnails = scenes.map((scene, index) => {
+    const button = existingThumbnails.get(scene.id) || document.createElement('button');
+    if (!button.classList.contains('storyboard-filmstrip-item')) {
+      button.type = 'button';
+      button.className = 'storyboard-filmstrip-item';
+      button.append(document.createElement('span'), document.createElement('span'));
+    }
+    button.dataset.sceneId = scene.id;
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', String(index === safeIndex));
+    button.setAttribute('aria-label', `Open scene ${index + 1}: ${scene.title || `Scene ${index + 1}`}`);
+
+    const visual = button.firstElementChild;
+    visual.className = 'storyboard-filmstrip-visual';
+    const shot = imageShot(scene);
+    const imagePath = shot.versions?.[shot.activeVersionIndex]?.path || '';
+    if (imagePath) {
+      const image = visual.querySelector('img') || document.createElement('img');
+      image.alt = '';
+      image.draggable = false;
+      if (!image.isConnected) visual.replaceChildren(image);
+      setElementProtectedAsset(image, 'src', imagePath, 'asset');
+    } else {
+      visual.textContent = String(index + 1).padStart(2, '0');
+    }
+
+    const label = button.lastElementChild;
+    label.className = 'storyboard-filmstrip-label';
+    label.textContent = `${String(index + 1).padStart(2, '0')} · ${scene.title || `Scene ${index + 1}`}`;
+    return button;
+  });
+  filmstrip.replaceChildren(...thumbnails);
+  slider.dataset.sceneId = activeScene?.id || '';
+  if (previousSelection !== slider.dataset.sceneId) {
+    filmstrip.querySelector('[aria-selected="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }
 }

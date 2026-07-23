@@ -984,6 +984,7 @@ details > summary::marker { color: var(--muted); }
     radial-gradient(circle at 50% 0, rgba(79, 140, 255, .12), transparent 40%),
     #080b10;
   box-shadow: 0 22px 60px rgba(0, 0, 0, .34);
+  margin-bottom: 160px;
 }
 .storyboard-slider:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .storyboard-slider-toolbar {
@@ -1066,6 +1067,12 @@ details > summary::marker { color: var(--muted); }
 .is-grab-scroll {
   touch-action: pan-y;
   scrollbar-width: thin;
+}
+.is-grab-stage img,
+.is-grab-stage video,
+.is-grab-scroll img {
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 .storyboard-slider-stage .scene-card {
   width: 100%;
