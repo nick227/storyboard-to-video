@@ -31,7 +31,8 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: Inter, system-ui, Arial, sans-serif;
+  /* Inter is loaded by topbar.css (shared across all app shells). */
+  font-family: var(--sf-font, Inter, system-ui, Arial, sans-serif);
   background: var(--bg);
   color: var(--text);
 }
