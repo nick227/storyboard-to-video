@@ -32,6 +32,9 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
         working-directory: apps/web
+      - name: Build CSS from stylesheets/*.css (canonical source; public/*.css are generated)
+        run: npm run css:build
+        working-directory: apps/web
       - run: npm run check
         working-directory: apps/web
       - run: npm run prisma:migrate:deploy
