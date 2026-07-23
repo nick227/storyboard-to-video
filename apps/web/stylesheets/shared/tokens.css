@@ -37,7 +37,8 @@
 
   /* chrome */
   --overlay: color-mix(in srgb, var(--bg) 72%, transparent);
-  --glass: color-mix(in srgb, #fff 5%, transparent);
+  --glass-ink: #ffffff;
+  --glass: color-mix(in srgb, var(--glass-ink) 5%, transparent);
   --topbar-bg: color-mix(in srgb, var(--bg) 96%, transparent);
 
   /* type */
@@ -61,5 +62,50 @@
   --radius-lg: 16px;
   --radius-round: 999px;
 
+  --tag-violet: #a78bfa;
+  --tag-pink: #ec4899;
+  --surface-deep: #11161e;
+  --border-hover: #596678;
+
   --max-script-height: 69vh;
+}
+
+/* Light theme — flip surfaces/ink; brand + status stay semantic. */
+[data-theme="light"] {
+  --bg: #f6f8fa;
+  --panel: #ffffff;
+  --panel-2: #f3f4f6;
+  --surface-input: #ffffff;
+  --surface-button: #eaeef2;
+
+  --text: #1f2328;
+  --muted: #656d76;
+  --muted-strong: #8c959f;
+  --on-accent: #ffffff;
+
+  --line: #d0d7de;
+  --line-strong: #afb8c1;
+  --border: var(--line);
+
+  --accent: #0969da;
+  --accent-2: #8250df;
+  --accent-hover: #0550ae;
+  --accent-ink: #0550ae;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --accent-ring: color-mix(in srgb, var(--accent) 55%, transparent);
+
+  --danger: #cf222e;
+  --danger-soft: color-mix(in srgb, var(--danger) 12%, transparent);
+  --warning: #9a6700;
+  --success: #1a7f37;
+
+  --overlay: color-mix(in srgb, #1f2328 45%, transparent);
+  --glass-ink: #1f2328;
+  --glass: color-mix(in srgb, var(--glass-ink) 5%, transparent);
+  --topbar-bg: color-mix(in srgb, var(--panel) 92%, transparent);
+
+  --tag-violet: #8250df;
+  --tag-pink: #bf3989;
+  --surface-deep: #eaeef2;
+  --border-hover: #afb8c1;
 }

@@ -43,8 +43,8 @@ storyboarder-topbar { display: block; min-height: 57px; }
 .sf-nav-link { display: inline-flex; align-items: center; min-height: 34px; padding: 0 10px; border-radius: 7px; color: var(--muted); font-size: 12px; font-weight: 650; text-decoration: none; white-space: nowrap; }
 .sf-nav-link:hover, .sf-nav-link[aria-current="page"] { color: var(--text); background: var(--glass); }
 .sf-account { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.sf-credits { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--text); background: color-mix(in srgb, #fff 3%, transparent); font-size: 12px; font-weight: 650; text-decoration: none; white-space: nowrap; }
-.sf-credits:hover { color: var(--text); border-color: var(--muted); background: color-mix(in srgb, #fff 6%, transparent); }
+.sf-credits { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--text); background: color-mix(in srgb, var(--glass-ink) 3%, transparent); font-size: 12px; font-weight: 650; text-decoration: none; white-space: nowrap; }
+.sf-credits:hover { color: var(--text); border-color: var(--muted); background: color-mix(in srgb, var(--glass-ink) 6%, transparent); }
 .sf-credits-label { color: var(--muted); font-weight: 600; }
 .sf-credits strong { color: var(--accent); font: inherit; }
 .sf-account[hidden] { display: none; }

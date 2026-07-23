@@ -4,7 +4,7 @@
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(900px 500px at 15% -10%, rgba(79, 140, 255, 0.16), transparent 60%),
+    radial-gradient(900px 500px at 15% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
     radial-gradient(700px 500px at 100% 0%, rgba(143, 107, 255, 0.12), transparent 55%),
     var(--bg);
 }

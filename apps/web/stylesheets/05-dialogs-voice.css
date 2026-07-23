@@ -133,11 +133,11 @@
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 11px;
-  background: rgba(255,255,255,.02);
+  background: var(--glass);
 }
 .generation-confirm-details section.generation-confirm-impact {
-  border-color: rgba(79, 140, 255, .42);
-  background: rgba(79, 140, 255, .08);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .generation-confirm-label {
   margin-bottom: 5px;
@@ -148,7 +148,7 @@
   text-transform: uppercase;
 }
 .generation-confirm-details p { margin: 0; font-size: 12px; line-height: 1.55; }
-#generationConfirmSlideCountSection { border-color: rgba(79, 140, 255, .42); }
+#generationConfirmSlideCountSection { border-color: color-mix(in srgb, var(--accent) 42%, transparent); }
 #generationConfirmAddScenesBtn { margin-top: 10px; }
 .generation-confirm-actions {
   display: flex;
@@ -200,7 +200,7 @@
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 11px;
-  background: rgba(255,255,255,.02);
+  background: var(--glass);
 }
 .start-run-range-option { display: flex; gap: 8px; font-size: 13px; }
 .start-run-range-option input[type="number"] {
@@ -223,7 +223,7 @@
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 11px;
-  background: rgba(255,255,255,.02);
+  background: var(--glass);
   cursor: pointer;
 }
 .start-run-row input[type="checkbox"] { margin-top: 3px; }
@@ -471,7 +471,7 @@
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 8px 10px;
-  background: rgba(255,255,255,0.02);
+  background: var(--glass);
 }
 .voice-library-name {
   font-weight: 700;
@@ -497,7 +497,7 @@
   height: 60px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #0b0f14;
+  background: var(--surface-input);
 }
 .voice-library-record > small.field-note {
   display: block;

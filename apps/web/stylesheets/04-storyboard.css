@@ -53,7 +53,7 @@
   border: 1px solid var(--line-strong);
   border-radius: 18px;
   background:
-    radial-gradient(circle at 50% 0, rgba(79, 140, 255, .12), transparent 40%),
+    radial-gradient(circle at 50% 0, var(--accent-soft), transparent 40%),
     #080b10;
   box-shadow: 0 22px 60px rgba(0, 0, 0, .34);
   margin-bottom: 160px;
@@ -161,7 +161,7 @@
   flex-direction: row;
   align-items: center;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, .025);
+  background: var(--glass);
 }
 .storyboard-slider-stage .scene-heading { display: block; }
 .storyboard-slider-stage .scene-status { flex-wrap: wrap; }
@@ -189,11 +189,11 @@
   padding: 6px;
   border: 1px solid var(--line-strong);
   border-radius: 10px;
-  background: #11161e;
+  background: var(--surface-deep);
   color: var(--muted);
   text-align: left;
 }
-.storyboard-filmstrip-item:hover { border-color: #596678; color: var(--text); }
+.storyboard-filmstrip-item:hover { border-color: var(--border-hover); color: var(--text); }
 .storyboard-filmstrip-item[aria-selected="true"] {
   border-color: var(--warning);
   box-shadow: 0 0 0 2px rgba(242, 181, 68, .18);
@@ -285,7 +285,7 @@
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--glass);
   color: var(--muted-strong);
   transition: color 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
   opacity: 0.45;
@@ -301,7 +301,7 @@
   stroke-linejoin: round;
 }
 .scene-status-icon.is-present {
-  color: #8fb5ff;
+  color: var(--accent-ink);
   background: transparent;
   opacity: 1;
   cursor: pointer;
@@ -320,13 +320,13 @@
 }
 .scene-status-icon:hover:not(:disabled) {
   border-color: var(--muted-strong);
-  background: color-mix(in srgb, #fff 8%, transparent);
+  background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
   opacity: 0.85;
 }
 .scene-status-icon.is-present:hover:not(:disabled) {
-  border-color: #8fb5ff;
-  background: rgba(79, 140, 255, 0.14);
-  box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.18);
+  border-color: var(--accent-ink);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
   opacity: 1;
 }
 .scene-status-icon:disabled {
@@ -378,7 +378,7 @@
   width: 13px;
   height: 13px;
   flex: 0 0 auto;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid color-mix(in srgb, var(--glass-ink) 30%, transparent);
   border-top-color: currentColor;
   border-radius: 50%;
   animation: spin 0.75s linear infinite;
@@ -411,7 +411,7 @@
   border-radius: 10px;
   background: var(--panel-2);
 }
-.scene-reference-item img { width: 100%; height: 88px; object-fit: cover; background: rgba(255,255,255,.03); }
+.scene-reference-item img { width: 100%; height: 88px; object-fit: cover; background: color-mix(in srgb, var(--glass-ink) 3%, transparent); }
 .scene-reference-item label, .scene-reference-name {
   display: flex;
   align-items: center;
@@ -527,7 +527,7 @@
   display: block;
   width: 28px;
   height: 28px;
-  border: 3px solid rgba(255,255,255,0.22);
+  border: 3px solid color-mix(in srgb, var(--glass-ink) 22%, transparent);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.75s linear infinite;
@@ -548,7 +548,7 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  border: 1px solid rgba(79, 140, 255, 0.45);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   border-radius: 10px;
   color: var(--muted);
   background: var(--accent-soft);
@@ -584,7 +584,7 @@ button.text-button {
   border: 2px solid transparent;
   border-radius: 10px;
   overflow: hidden;
-  background: #0b0f14;
+  background: var(--surface-input);
   cursor: pointer;
   padding: 0;
 }
@@ -611,9 +611,9 @@ button.text-button {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 9px;
-  background: #0b0f14;
+  background: var(--surface-input);
 }
-.audio-version-thumb.active { border-color: rgba(79,140,255,.75); background: var(--accent-soft); }
+.audio-version-thumb.active { border-color: color-mix(in srgb, var(--accent) 75%, transparent); background: var(--accent-soft); }
 .audio-version-meta { margin: 0; }
 .audio-version-meta strong { color: var(--text); }
 .audio-version-thumb audio { width: 100%; height: 32px; }
