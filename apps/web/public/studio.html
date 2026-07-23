@@ -173,12 +173,42 @@
     <section class="storyboard-section" id="storyboardSection" hidden>
       <div class="storyboard-heading">
         <div class="row resize-scene-list" role="group" aria-label="Scenes per row">
+          <button class="view-type" type="button" aria-label="Switch to scene slider"
+            title="Edit one scene at a time" aria-pressed="false" aria-controls="storyboardGrid storyboardSlider">
+            <span class="view-type-icon" aria-hidden="true">
+              <svg class="view-type-icon-grid" viewBox="0 0 24 24">
+                <path d="M3 3h8v8H3V3Zm10 0h8v8h-8V3ZM3 13h8v8H3v-8Zm10 0h8v8h-8v-8Z" />
+              </svg>
+              <svg class="view-type-icon-list" viewBox="0 0 24 24">
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </span>
+          </button>
           <button class="resize-scenes" type="button" data-columns="1" aria-label="Show 1 scene per row" aria-pressed="false">1</button>
           <button class="resize-scenes" type="button" data-columns="3" aria-label="Show 3 scenes per row" aria-pressed="false">3</button>
           <button class="resize-scenes is-active" type="button" data-columns="6" aria-label="Show 6 scenes per row" aria-pressed="true">6</button>
         </div>
       </div>
       <div id="storyboardGrid" class="storyboard-grid" data-columns="6"></div>
+      <div id="storyboardSlider" class="storyboard-slider" aria-label="Scene editor" tabindex="0" hidden>
+        <div class="storyboard-slider-toolbar">
+          <div class="storyboard-slider-position" aria-live="polite">
+            <span class="storyboard-slider-current">Scene 1</span>
+            <span class="storyboard-slider-count"></span>
+          </div>
+        </div>
+        <div class="storyboard-slider-stage-shell">
+          <button type="button" class="storyboard-slider-nav storyboard-slider-prev" aria-label="Previous scene">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="storyboard-slider-stage is-grab-stage"></div>
+          <button type="button" class="storyboard-slider-nav storyboard-slider-next" aria-label="Next scene">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="storyboard-filmstrip is-grab-scroll" role="listbox" aria-label="Storyboard scenes"></div>
+        <p class="storyboard-slider-hint">Drag the stage or filmstrip, or use the arrow keys to move between scenes.</p>
+      </div>
     </section>
 
     </div>
