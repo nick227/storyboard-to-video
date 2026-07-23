@@ -8,13 +8,14 @@ function publicSummary(script) {
     slug: script.slug,
     author: script.author,
     publishedAt: script.publishedAt,
-    updatedAt: script.updatedAt,
+    likeCount: Number(script.likeCount || 0),
   };
 }
 
 function ownerView(script) {
   return {
     ...script,
+    likeCount: Number(script.likeCount || 0),
     sharePath: `/scripts/${script.slug}`,
   };
 }
@@ -52,15 +53,31 @@ function createScriptsService({ store }) {
     return (await store.listPublic(options)).map(publicSummary);
   }
 
-  async function getPublicBySlug(slug) {
+  async function getPublicBySlug(slug, { userId } = {}) {
     const script = await store.findBySlug(slug);
     if (!script || script.visibility !== 'public') {
       throw new AppError('SCRIPT_NOT_FOUND', 'Script not found', { status: 404 });
     }
+    const moreByAuthor = await store.listPublic({
+      createdByUserId: script.createdByUserId,
+      excludeId: script.id,
+      limit: 6,
+    });
     return {
       ...publicSummary(script),
       scriptText: script.scriptText,
+      createdByUserId: script.createdByUserId,
+      likedByMe: userId ? await store.hasLike(script.id, userId) : false,
+      moreByAuthor: moreByAuthor.map(publicSummary),
     };
+  }
+
+  async function toggleLike(scriptId, { userId }) {
+    const script = await store.read(scriptId);
+    if (script.visibility !== 'public') {
+      throw new AppError('SCRIPT_NOT_FOUND', 'Script not found', { status: 404 });
+    }
+    return store.toggleLike(scriptId, userId);
   }
 
   async function ensureForProject(project, { tenantId, userId, author, projectStore } = {}) {
@@ -106,7 +123,7 @@ function createScriptsService({ store }) {
   }
 
   return {
-    create, list, get, update, setVisibility, listPublic, getPublicBySlug,
+    create, list, get, update, setVisibility, listPublic, getPublicBySlug, toggleLike,
     ensureForProject, syncFromProject, listProjects, publicSummary, ownerView,
   };
 }

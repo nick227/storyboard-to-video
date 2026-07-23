@@ -1,5 +1,6 @@
 import { api } from './api.js';
 import { ensureProjectSynced, getCurrentStoryboardRecord, saveStoryboard } from './persistence.js';
+import { shareUrl } from './scripts/chrome.js';
 
 export function initScriptPublishControls(elements, { setStatus } = {}) {
   const toggle = elements.scriptVisibilityToggle;
@@ -75,10 +76,11 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
     if (!path) return;
     const url = new URL(path, window.location.origin).toString();
     try {
-      await navigator.clipboard.writeText(url);
-      setStatus?.('Share link copied.');
-    } catch {
-      setStatus?.(url);
+      const result = await shareUrl(url, { title: getCurrentStoryboardRecord()?.title || 'Screenplay' });
+      setStatus?.(result === 'shared' ? 'Shared.' : 'Share link copied.');
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      setStatus?.(error.message || url);
     }
   });
 

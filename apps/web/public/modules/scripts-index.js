@@ -1,4 +1,9 @@
-import { fetchPublicScripts, scriptCoverCard } from './scripts-public-api.js';
+import { fetchPublicScripts } from './scripts/api.js';
+import { renderBreadcrumbs, scriptCoverCard } from './scripts/chrome.js';
+
+document.getElementById('scriptsBreadcrumbs').innerHTML = renderBreadcrumbs([
+  { label: 'Scripts' },
+]);
 
 const grid = document.getElementById('scriptsGrid');
 const status = document.getElementById('scriptsStatus');
@@ -10,7 +15,7 @@ try {
   } else {
     status.hidden = true;
     grid.hidden = false;
-    grid.innerHTML = scripts.map(scriptCoverCard).join('');
+    grid.innerHTML = scripts.map((script) => scriptCoverCard(script)).join('');
   }
 } catch (error) {
   status.dataset.tone = 'error';

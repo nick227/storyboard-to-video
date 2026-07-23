@@ -25,6 +25,7 @@ model User {
   sessions           Session[]
   projects           Project[]           @relation("ProjectCreator")
   scripts            Script[]            @relation("ScriptCreator")
+  scriptLikes        ScriptLike[]
   jobs               GenerationJob[]
   assets             Asset[]
   idempotency        IdempotencyRecord[]
@@ -102,24 +103,38 @@ model Session {
 }
 
 model Script {
-  id              String    @id @db.Uuid
-  tenantId        String    @map("tenant_id") @db.Uuid
-  createdByUserId String    @map("created_by_user_id") @db.Uuid
+  id              String       @id @db.Uuid
+  tenantId        String       @map("tenant_id") @db.Uuid
+  createdByUserId String       @map("created_by_user_id") @db.Uuid
   title           String
-  slug            String    @unique
-  visibility      String    @default("private")
+  slug            String       @unique
+  visibility      String       @default("private")
   author          String
-  scriptText      String    @default("") @map("script_text") @db.Text
-  publishedAt     DateTime? @map("published_at") @db.Timestamptz(3)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  tenant          Workspace @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy       User      @relation("ScriptCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  scriptText      String       @default("") @map("script_text") @db.Text
+  publishedAt     DateTime?    @map("published_at") @db.Timestamptz(3)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant          Workspace    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy       User         @relation("ScriptCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
   projects        Project[]
+  likes           ScriptLike[]
 
   @@index([tenantId, updatedAt])
   @@index([visibility, publishedAt])
+  @@index([createdByUserId, visibility, publishedAt])
   @@map("scripts")
+}
+
+model ScriptLike {
+  scriptId  String   @map("script_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  script    Script   @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([scriptId, userId])
+  @@index([userId, createdAt])
+  @@map("script_likes")
 }
 
 model Project {

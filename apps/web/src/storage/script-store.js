@@ -9,6 +9,11 @@ function nowIso() {
 class ScriptStore {
   constructor() {
     this.scripts = new Map();
+    this.likes = new Set();
+  }
+
+  likeKey(scriptId, userId) {
+    return `${scriptId}:${userId}`;
   }
 
   map(row) {
@@ -25,6 +30,7 @@ class ScriptStore {
       publishedAt: row.publishedAt || null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      likeCount: row.likeCount || 0,
     };
   }
 
@@ -93,17 +99,43 @@ class ScriptStore {
       .map((row) => this.map(row));
   }
 
-  async listPublic({ limit = 50, offset = 0 } = {}) {
+  async listPublic({ limit = 50, offset = 0, createdByUserId, excludeId } = {}) {
     return [...this.scripts.values()]
-      .filter((row) => row.visibility === 'public')
+      .filter((row) => row.visibility === 'public'
+        && (!createdByUserId || row.createdByUserId === createdByUserId)
+        && (!excludeId || row.id !== excludeId))
       .sort((a, b) => String(b.publishedAt || b.updatedAt).localeCompare(String(a.publishedAt || a.updatedAt)))
       .slice(offset, offset + limit)
-      .map((row) => this.map(row));
+      .map((row) => this.map({ ...row, likeCount: this.countLikes(row.id) }));
   }
 
   async findBySlug(slug) {
     const row = [...this.scripts.values()].find((item) => item.slug === slug);
-    return this.map(row || null);
+    if (!row) return null;
+    return this.map({ ...row, likeCount: this.countLikes(row.id) });
+  }
+
+  countLikes(scriptId) {
+    let count = 0;
+    for (const key of this.likes) {
+      if (key.startsWith(`${scriptId}:`)) count += 1;
+    }
+    return count;
+  }
+
+  async hasLike(scriptId, userId) {
+    return this.likes.has(this.likeKey(scriptId, userId));
+  }
+
+  async toggleLike(scriptId, userId) {
+    await this.read(scriptId);
+    const key = this.likeKey(scriptId, userId);
+    if (this.likes.has(key)) {
+      this.likes.delete(key);
+      return { liked: false, likeCount: this.countLikes(scriptId) };
+    }
+    this.likes.add(key);
+    return { liked: true, likeCount: this.countLikes(scriptId) };
   }
 
   async allocateSlug(raw, { excludeId } = {}) {

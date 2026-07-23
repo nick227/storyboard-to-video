@@ -24,6 +24,7 @@ class PrismaScriptRepository extends ScriptStore {
       publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+      likeCount: row._count?.likes ?? row.likeCount ?? 0,
     };
   }
 
@@ -98,19 +99,48 @@ class PrismaScriptRepository extends ScriptStore {
     return rows.map((row) => this.map(row));
   }
 
-  async listPublic({ limit = 50, offset = 0 } = {}) {
+  async listPublic({ limit = 50, offset = 0, createdByUserId, excludeId } = {}) {
     const rows = await this.prisma.script.findMany({
-      where: { visibility: 'public' },
+      where: {
+        visibility: 'public',
+        ...(createdByUserId ? { createdByUserId } : {}),
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
       orderBy: [{ publishedAt: 'desc' }, { updatedAt: 'desc' }],
       take: Math.min(100, Math.max(1, Number(limit) || 50)),
       skip: Math.max(0, Number(offset) || 0),
+      include: { _count: { select: { likes: true } } },
     });
     return rows.map((row) => this.map(row));
   }
 
   async findBySlug(slug) {
-    const row = await this.prisma.script.findUnique({ where: { slug: String(slug || '') } });
+    const row = await this.prisma.script.findUnique({
+      where: { slug: String(slug || '') },
+      include: { _count: { select: { likes: true } } },
+    });
     return this.map(row);
+  }
+
+  async hasLike(scriptId, userId) {
+    const row = await this.prisma.scriptLike.findUnique({
+      where: { scriptId_userId: { scriptId, userId } },
+    });
+    return Boolean(row);
+  }
+
+  async toggleLike(scriptId, userId) {
+    await this.read(scriptId);
+    const existing = await this.prisma.scriptLike.findUnique({
+      where: { scriptId_userId: { scriptId, userId } },
+    });
+    if (existing) {
+      await this.prisma.scriptLike.delete({ where: { scriptId_userId: { scriptId, userId } } });
+    } else {
+      await this.prisma.scriptLike.create({ data: { scriptId, userId } });
+    }
+    const likeCount = await this.prisma.scriptLike.count({ where: { scriptId } });
+    return { liked: !existing, likeCount };
   }
 
   async allocateSlug(raw, { excludeId } = {}) {

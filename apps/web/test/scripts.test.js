@@ -29,6 +29,19 @@ test('scripts service creates slug, publishes, and 404s private on public read',
   const publicScript = await scripts.getPublicBySlug('the-odyssey');
   assert.equal(publicScript.scriptText, 'FADE IN:\n\nA wine-dark sea.');
   assert.equal(publicScript.author, 'Homer');
+  assert.equal(publicScript.likeCount, 0);
+  assert.equal(publicScript.likedByMe, false);
+  assert.deepEqual(publicScript.moreByAuthor, []);
+
+  const liked = await scripts.toggleLike(created.id, { userId: 'reader-1' });
+  assert.equal(liked.liked, true);
+  assert.equal(liked.likeCount, 1);
+  const likedView = await scripts.getPublicBySlug('the-odyssey', { userId: 'reader-1' });
+  assert.equal(likedView.likedByMe, true);
+  assert.equal(likedView.likeCount, 1);
+  const unliked = await scripts.toggleLike(created.id, { userId: 'reader-1' });
+  assert.equal(unliked.liked, false);
+  assert.equal(unliked.likeCount, 0);
 
   const listed = await scripts.listPublic();
   assert.equal(listed.length, 1);
@@ -37,6 +50,21 @@ test('scripts service creates slug, publishes, and 404s private on public read',
 
   await scripts.setVisibility(created.id, 'private', { tenantId: 'tenant-1' });
   await assert.rejects(() => scripts.getPublicBySlug('the-odyssey'), (error) => error.code === 'SCRIPT_NOT_FOUND');
+});
+
+test('public reader lists more scripts by createdByUserId not author string', async () => {
+  const store = new ScriptStore();
+  const scripts = createScriptsService({ store });
+  const first = await scripts.create({ title: 'Alpha', author: 'Pen Name', scriptText: 'A' }, { tenantId: 't1', userId: 'author-1' });
+  const second = await scripts.create({ title: 'Beta', author: 'Other Label', scriptText: 'B' }, { tenantId: 't1', userId: 'author-1' });
+  const other = await scripts.create({ title: 'Gamma', author: 'Pen Name', scriptText: 'C' }, { tenantId: 't1', userId: 'author-2' });
+  await scripts.setVisibility(first.id, 'public', { tenantId: 't1' });
+  await scripts.setVisibility(second.id, 'public', { tenantId: 't1' });
+  await scripts.setVisibility(other.id, 'public', { tenantId: 't1' });
+
+  const page = await scripts.getPublicBySlug('alpha');
+  assert.equal(page.moreByAuthor.length, 1);
+  assert.equal(page.moreByAuthor[0].slug, 'beta');
 });
 
 test('scripts service allocates unique slugs and links projects', async () => {

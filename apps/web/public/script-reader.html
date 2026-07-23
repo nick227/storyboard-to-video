@@ -12,15 +12,25 @@
 <body>
   <storyboarder-topbar></storyboarder-topbar>
   <main class="script-reader-page">
-    <p class="script-reader-nav"><a href="/scripts">← All scripts</a></p>
+    <div id="scriptsBreadcrumbs"></div>
     <p id="readerStatus" class="scripts-status" role="status">Loading script…</p>
     <article id="readerArticle" class="script-reader" hidden>
-      <header class="script-reader-cover" aria-label="Screenplay cover">
-        <p class="script-reader-cover-label">Screenplay</p>
-        <h1 id="readerTitle"></h1>
-        <p id="readerAuthor" class="script-reader-author"></p>
-      </header>
-      <div id="readerBody" class="script-reader-body"></div>
+      <div class="script-reader-toolbar">
+        <button type="button" id="scriptLikeBtn" class="script-reader-action" aria-pressed="false">
+          <span aria-hidden="true">♥</span> <span id="scriptLikeCount">0</span>
+        </button>
+        <button type="button" id="scriptShareBtn" class="script-reader-action">Share</button>
+        <button type="button" id="scriptFullscreenBtn" class="script-reader-action" aria-pressed="false">Full screen</button>
+        <span id="readerToolbarStatus" class="script-reader-toolbar-status" role="status"></span>
+      </div>
+      <div id="readerStage" class="script-reader-stage">
+        <div id="readerCover"></div>
+        <div id="readerBody" class="script-reader-body"></div>
+      </div>
+      <aside id="authorBox" class="script-author-box" hidden>
+        <h2 id="authorHeading">More by this author</h2>
+        <div id="authorGrid" class="scripts-grid is-compact"></div>
+      </aside>
     </article>
   </main>
   <script type="module" src="/modules/script-reader.js"></script>

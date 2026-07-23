@@ -38,6 +38,13 @@ function createScriptsRouter({ scripts, projectStore }) {
     });
   }));
 
+  router.post('/:scriptId/like', asyncRoute(async (req, res) => {
+    res.json({
+      ok: true,
+      ...(await scripts.toggleLike(req.params.scriptId, { userId: req.auth.userId })),
+    });
+  }));
+
   router.get('/:scriptId/projects', asyncRoute(async (req, res) => {
     res.json({
       ok: true,
@@ -51,8 +58,9 @@ function createScriptsRouter({ scripts, projectStore }) {
   return router;
 }
 
-function createPublicScriptsRouter({ scripts }) {
+function createPublicScriptsRouter({ scripts, optionalAuth }) {
   const router = express.Router();
+  if (optionalAuth) router.use(optionalAuth);
 
   router.get('/', validate(publicScriptListQuery, 'query'), asyncRoute(async (req, res) => {
     res.json({
@@ -65,7 +73,10 @@ function createPublicScriptsRouter({ scripts }) {
   }));
 
   router.get('/:slug', asyncRoute(async (req, res) => {
-    res.json({ ok: true, script: await scripts.getPublicBySlug(req.params.slug) });
+    res.json({
+      ok: true,
+      script: await scripts.getPublicBySlug(req.params.slug, { userId: req.auth?.userId }),
+    });
   }));
 
   return router;
