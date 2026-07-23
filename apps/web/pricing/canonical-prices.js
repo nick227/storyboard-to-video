@@ -66,6 +66,14 @@ const CANONICAL_PRICES = [
     reconciliationNotes: 'Dezgo SD1 linear steps pricing; validated against account transaction 2026-07-17.',
   },
   {
+    versionKey: 'dezgo-flux-1-schnell-2026-07-22',
+    provider: 'dezgo', modality: 'image', model: 'flux_1_schnell',
+    rateCard: { type: 'linear_steps', usageKey: 'steps', quantityKey: 'images', baseNanoUsd: 725_000, baseUnits: 1 },
+    reservationNanoUsd: 10_000_000n,
+    sourceReference: 'https://dev.dezgo.com/pricing/flux/',
+    reconciliationNotes: 'Dezgo Flux >=4 steps: $0.000725/MP/step. Estimated at ~1MP (1024x1024); quality default 8 steps.',
+  },
+  {
     versionKey: 'minimax-hailuo-02-2026-observability-v1',
     provider: 'minimax', modality: 'video', model: 'MiniMax-Hailuo-02',
     rateCard: { type: 'flat', quantityKey: 'videos', nanoUsdPerUnit: 270_000_000 },

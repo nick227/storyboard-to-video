@@ -38,7 +38,7 @@ test('text, image, audio, alignment, and voice API calls share provider admissio
 
     const images = createImageProviders(config, text, () => null, null, providerAdmission);
     const intent = mergeMediaIntent({ modality: 'image' });
-    await images.generate({ provider: 'dezgo', prompt: 'Draw a scene.', output: resolveImageOutput({ provider: 'dezgo', model: 'text2image', intent }) });
+    await images.generate({ provider: 'dezgo', prompt: 'Draw a scene.', output: resolveImageOutput({ provider: 'dezgo', model: 'flux_1_schnell', intent }) });
 
     const audio = createAudioProviders(config, () => null, null, providerAdmission);
     await audio.generate({ provider: 'elevenlabs', narrationText: 'Speak.', voice: { voiceId: 'voice-1' } });

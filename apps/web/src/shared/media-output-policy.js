@@ -25,6 +25,10 @@ const OPENAI_DIMENSIONS = Object.freeze({
   '3:2': Object.freeze({ width: 1536, height: 1024, providerValue: '1536x1024' }),
 });
 
+const DEZGO_FLUX_MAX_EDGE = 1536;
+const DEZGO_FLUX_MIN_EDGE = 512;
+const DEZGO_FLUX_MAX_PIXELS = 2_359_296;
+
 function outputPolicyError(message, details) {
   return new AppError('UNSUPPORTED_MEDIA_OUTPUT', message, { status: 400, details });
 }
@@ -75,6 +79,19 @@ function shortEdgeDimensions(aspectRatio, shortEdge) {
   return { width, height };
 }
 
+function snapDezgoFluxEdge(value) {
+  return Math.max(DEZGO_FLUX_MIN_EDGE, Math.floor(Number(value) / 8) * 8);
+}
+
+function fitDezgoFluxDimensions({ width, height }) {
+  let w = snapDezgoFluxEdge(Math.min(DEZGO_FLUX_MAX_EDGE, Math.max(DEZGO_FLUX_MIN_EDGE, width)));
+  let h = snapDezgoFluxEdge(Math.min(DEZGO_FLUX_MAX_EDGE, Math.max(DEZGO_FLUX_MIN_EDGE, height)));
+  const pixels = w * h;
+  if (pixels <= DEZGO_FLUX_MAX_PIXELS) return { width: w, height: h };
+  const scale = Math.sqrt(DEZGO_FLUX_MAX_PIXELS / pixels);
+  return { width: snapDezgoFluxEdge(w * scale), height: snapDezgoFluxEdge(h * scale) };
+}
+
 function resolveImageOutput({ provider, model, intent }) {
   const requested = Object.freeze({ ...intent });
   if (provider !== 'openai' && provider !== 'stub' && intent.quality !== 'medium') {
@@ -90,7 +107,10 @@ function resolveImageOutput({ provider, model, intent }) {
     dimensions = supportsTiers ? scaleGemini(intent.aspectRatio, intent.resolutionTier) : (intent.resolutionTier === 'standard' ? scaleGemini(intent.aspectRatio, 'standard') : null);
     if (dimensions) providerSettings = { imageSize: dimensions.providerValue, aspectRatio: intent.aspectRatio };
   } else if (provider === 'dezgo') {
-    dimensions = intent.resolutionTier === 'standard' ? shortEdgeDimensions(intent.aspectRatio, intent.aspectRatio === '1:1' ? 1024 : 768) : null;
+    const flux = String(model || '').toLowerCase().includes('flux');
+    const shortEdge = intent.aspectRatio === '1:1' || flux ? 1024 : 768;
+    dimensions = intent.resolutionTier === 'standard' ? shortEdgeDimensions(intent.aspectRatio, shortEdge) : null;
+    if (dimensions && flux) dimensions = fitDezgoFluxDimensions(dimensions);
     if (dimensions) providerSettings = { width: dimensions.width, height: dimensions.height };
   } else if (provider === 'stub') {
     const edge = { draft: 512, standard: 1024, high: 2048, ultra: 4096 }[intent.resolutionTier];

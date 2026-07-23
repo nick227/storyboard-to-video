@@ -52,7 +52,7 @@ async function main() {
     }
     if (config.env.DEZGO_API_KEY) {
       const intent = mergeMediaIntent({ modality: 'image' });
-      results.push(await run('dezgo-image', () => images.generate({ provider: 'dezgo', prompt: 'A simple black circle centered on a plain white background.', references: [], title: 'Reconciliation check', output: resolveImageOutput({ provider: 'dezgo', model: 'text2image', intent }) })));
+      results.push(await run('dezgo-image', () => images.generate({ provider: 'dezgo', prompt: 'A simple black circle centered on a plain white background.', references: [], title: 'Reconciliation check', output: resolveImageOutput({ provider: 'dezgo', model: 'flux_1_schnell', intent }) })));
     }
 
     console.log(JSON.stringify(results, null, 2));

@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const { imageShot } = require('../shared/scene-shots');
 const { mergeMediaIntent, resolveImageOutput } = require('../shared/media-output-policy');
 const { VIDEO_PROVIDER_CAPABILITIES } = require('../shared/video-provider-capabilities');
+const { dezgoModel } = require('../providers/image/dezgo-settings');
 
 function createProjectRouter({ store, queue, upload, shotReferences, styles, prompts, referenceGeneration, imageProvider, identityStore, prisma, config, spendSummary }) {
   const router = express.Router();
@@ -157,7 +158,7 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
     const fullPrompt = [stylePrompt, finalPrompt].filter(Boolean).join('\n\n');
 
     const providerName = provider || 'gemini';
-    const imageModels = { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', dezgo: config.env.DEZGO_MODEL || 'text2image', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' };
+    const imageModels = { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', dezgo: dezgoModel(config.env), gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' };
     const output = resolveImageOutput({ provider: providerName, model: imageModels[providerName], intent: mergeMediaIntent({ modality: 'image', platform: config.mediaOutputDefaults, project: project.mediaSettings, override: req.body.outputIntent }) });
     const result = require('../providers/result').providerOutput(
       await imageProvider.generate({
