@@ -1,0 +1,207 @@
+.script-field textarea,
+.script-textarea { min-height: var(--max-script-height); resize: vertical; }
+
+.script-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.script-header-primary {
+  flex: 1 1 70%;
+  min-width: 0;
+  max-width: 70%;
+  min-height: 34px;
+}
+.script-header-primary.is-inactive {
+  visibility: hidden;
+  pointer-events: none;
+}
+.script-mode-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+.script-header-actions {
+  flex: 0 1 30%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.script-publish-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.script-visibility-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 8px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.script-visibility-toggle input {
+  margin: 0;
+}
+.script-meta-panel {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  padding: 0 12px 12px;
+}
+.script-meta-panel > summary {
+  cursor: pointer;
+  padding: 10px 0;
+  color: var(--muted);
+  font-weight: 650;
+}
+.script-meta-fields {
+  display: grid;
+  gap: 10px;
+}
+.script-meta-fields label > span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.script-stats-line {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.script-icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.script-mode-select,
+.script-focus-button,
+.script-icon-button {
+  height: 34px;
+  min-height: 34px;
+  box-sizing: border-box;
+}
+.script-mode-select {
+  width: auto;
+  min-width: 140px;
+  max-width: 100%;
+  padding: 0 10px;
+  font-size: 13px;
+  line-height: 1;
+  background: var(--panel-2);
+  border-radius: 6px;
+}
+@media (max-width: 960px) {
+  .script-header-row {
+    flex-wrap: wrap;
+  }
+  .script-header-primary,
+  .script-header-actions {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  .script-header-actions {
+    justify-content: flex-end;
+  }
+}
+.script-download-control { position: relative; }
+.script-icon-button {
+  display: grid;
+  width: 34px;
+  padding: 0;
+  place-items: center;
+  background: transparent;
+  color: var(--muted);
+}
+.script-icon-button:hover,
+.script-icon-button[aria-expanded="true"] { border-color: var(--accent); color: var(--text); }
+.script-icon-button svg,
+.script-focus-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.script-download-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 20;
+  width: 210px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel-2);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.38);
+}
+.script-download-menu[hidden] { display: none; }
+.script-download-menu button {
+  display: flex;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 9px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.script-download-menu button:hover,
+.script-download-menu button:focus-visible { background: var(--accent-soft); }
+.script-download-menu small { color: var(--muted); }
+.script-focus-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.script-focus-button:hover { border-color: var(--accent); color: var(--text); }
+body.script-focus-active { overflow: hidden; }
+#scriptPagePanel.is-script-focus {
+  position: fixed;
+  inset: 57px 0 0;
+  z-index: 90;
+  padding: 18px;
+  background: var(--bg);
+}
+#scriptPagePanel.is-script-focus .story-concept {
+  width: 100%;
+  height: 100%;
+  margin: 0 auto;
+}
+#scriptPagePanel.is-script-focus .script-textarea {
+  flex: 1 1 auto;
+  min-height: 0;
+  resize: none;
+}
+#scriptPagePanel.is-script-focus .screenplay-editor-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: calc(100dvh - 57px - 64px);
+}
+#scriptPagePanel.is-script-focus .screenplay-editor-wrapper {
+  --max-height: calc(100dvh - 57px - 66px);
+}
