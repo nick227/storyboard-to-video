@@ -126,20 +126,13 @@
     <section id="narrationPagePanel" class="narration-page" role="tabpanel"
       aria-labelledby="tabNarrationBtn" hidden>
       <header class="panel narration-toolbar">
-        <div class="narration-toolbar-heading">
-          <div>
-            <h2>Narration</h2>
-            <p>Prepare the spoken story and scene boundaries before planning visuals.</p>
-          </div>
-        </div>
         <div id="narrationStaleNotice" class="narration-stale-notice" hidden>
           The script or narration settings changed. Prepare narration again to update scene boundaries.
         </div>
 
         <details class="narration-prompt-editor" open>
           <summary>
-            <span id="narrationPromptLabel">Literal narration prompt</span>
-            <small id="narrationPromptStatus">Default</small>
+            <span>Narration prompt</span>
           </summary>
           <p>Edit the underlying prompt template sent to the narration model for the current mode. Reset to fall back to the built-in default.</p>
           <textarea id="narrationPromptText" rows="8"></textarea>
