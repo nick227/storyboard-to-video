@@ -15,6 +15,7 @@ const CUSTOMER_METERED_KEYS = [
   'gemini-3.5-flash-2026-07-17',
   'gemini-3.1-flash-image-2026-07-17',
   'dezgo-text2image-2026-07-17',
+  'dezgo-flux-1-schnell-2026-07-22',
   'minimax-hailuo-02-2026-observability-v1',
 ];
 

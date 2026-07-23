@@ -13,6 +13,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'openai-gpt-4.1-mini-2026-07-17',
     provider: 'openai', modality: 'text', model: 'gpt-4.1-mini',
+    billingTier: 'customer_metered',
     rateCard: { type: 'token_components', components: [
       { usageKey: 'inputTokens', subtractUsageKey: 'cachedInputTokens', nanoUsdPerMillion: 400_000_000 },
       { usageKey: 'cachedInputTokens', nanoUsdPerMillion: 100_000_000 },
@@ -25,6 +26,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'openai-gpt-image-1-2026-07-17',
     provider: 'openai', modality: 'image', model: 'gpt-image-1',
+    billingTier: 'customer_metered',
     rateCard: { type: 'token_components', components: [
       { usageKey: 'inputTextTokens', nanoUsdPerMillion: 5_000_000_000 },
       { usageKey: 'inputImageTokens', nanoUsdPerMillion: 10_000_000_000 },
@@ -37,6 +39,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'gemini-3.5-flash-2026-07-17',
     provider: 'gemini', modality: 'text', model: 'gemini-3.5-flash',
+    billingTier: 'customer_metered',
     rateCard: { type: 'token_components', components: [
       { usageKey: 'inputTokens', nanoUsdPerMillion: 1_500_000_000 },
       { usageKey: 'outputTokens', nanoUsdPerMillion: 9_000_000_000 },
@@ -48,6 +51,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'gemini-3.1-flash-image-2026-07-17',
     provider: 'gemini', modality: 'image', model: 'gemini-3.1-flash-image',
+    billingTier: 'customer_metered',
     rateCard: { type: 'token_components', components: [
       { usageKey: 'inputTokens', nanoUsdPerMillion: 500_000_000 },
       { usageKey: 'outputTextOrThinkingTokens', nanoUsdPerMillion: 3_000_000_000 },
@@ -60,6 +64,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'dezgo-text2image-2026-07-17',
     provider: 'dezgo', modality: 'image', model: 'text2image',
+    billingTier: 'customer_metered',
     rateCard: { type: 'linear_steps', usageKey: 'steps', quantityKey: 'images', baseNanoUsd: 18_100_000, baseUnits: 30 },
     reservationNanoUsd: 20_000_000n,
     sourceReference: 'https://dev.dezgo.com/pricing/sd1/',
@@ -68,6 +73,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'dezgo-flux-1-schnell-2026-07-22',
     provider: 'dezgo', modality: 'image', model: 'flux_1_schnell',
+    billingTier: 'customer_metered',
     rateCard: { type: 'linear_steps', usageKey: 'steps', quantityKey: 'images', baseNanoUsd: 725_000, baseUnits: 1 },
     reservationNanoUsd: 10_000_000n,
     sourceReference: 'https://dev.dezgo.com/pricing/flux/',
@@ -76,6 +82,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'minimax-hailuo-02-2026-observability-v1',
     provider: 'minimax', modality: 'video', model: 'MiniMax-Hailuo-02',
+    billingTier: 'customer_metered',
     rateCard: { type: 'flat', quantityKey: 'videos', nanoUsdPerUnit: 270_000_000 },
     reservationNanoUsd: 300_000_000n,
     reconciliationNotes: 'Estimated ~$0.27/video for typical 6s clip; pending vendor invoice reconciliation.',
@@ -83,6 +90,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'ltx-video-observability-v1',
     provider: 'ltx', modality: 'video', model: 'ltx-video',
+    billingTier: 'platform_overhead',
     rateCard: { type: 'flat', quantityKey: 'videos', nanoUsdPerUnit: 15_000_000 },
     reservationNanoUsd: 20_000_000n,
     reconciliationNotes: 'Self-hosted LTX estimate ~$0.015/generation.',
@@ -90,6 +98,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'piper-local-observability-v1',
     provider: 'piper', modality: 'audio', model: 'piper-local',
+    billingTier: 'platform_overhead',
     rateCard: { type: 'linear_steps', usageKey: 'seconds', baseNanoUsd: 10_000_000, baseUnits: 100 },
     reservationNanoUsd: 15_000_000n,
     reconciliationNotes: 'Local Piper TTS estimate $0.01 per 100 seconds.',
@@ -97,6 +106,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'piper-modal-observability-v1',
     provider: 'piper', modality: 'audio', model: 'piper-modal',
+    billingTier: 'platform_overhead',
     rateCard: { type: 'linear_steps', usageKey: 'seconds', baseNanoUsd: 10_000_000, baseUnits: 100 },
     reservationNanoUsd: 15_000_000n,
     reconciliationNotes: 'Modal-hosted Piper estimate $0.01 per 100 seconds.',
@@ -104,6 +114,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'spark-tts-observability-v1',
     provider: 'spark', modality: 'audio', model: 'spark-tts',
+    billingTier: 'platform_overhead',
     rateCard: { type: 'linear_steps', usageKey: 'seconds', baseNanoUsd: 50_000_000, baseUnits: 100 },
     reservationNanoUsd: 60_000_000n,
     reconciliationNotes: 'Spark TTS estimate $0.05 per 100 seconds.',
@@ -111,6 +122,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'spark-voice-clone-observability-v1',
     provider: 'spark', modality: 'audio', model: 'spark-voice-clone',
+    billingTier: 'platform_overhead',
     rateCard: { type: 'flat', quantityKey: 'clones', nanoUsdPerUnit: 500_000_000 },
     reservationNanoUsd: 600_000_000n,
     reconciliationNotes: 'Voice clone GPU job estimate ~$0.50/clone.',
@@ -118,6 +130,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'spark-preflight-observability-v1',
     provider: 'spark', modality: 'audio', model: 'spark-preflight',
+    billingTier: 'platform_overhead',
     rateCard: { type: 'flat', nanoUsdPerUnit: 0 },
     reservationNanoUsd: 0n,
     reconciliationNotes: 'Health-check ping; negligible cost.',
@@ -125,6 +138,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'spark-reference-observability-v1',
     provider: 'spark', modality: 'audio', model: 'spark-reference',
+    billingTier: 'platform_overhead',
     rateCard: { type: 'flat', nanoUsdPerUnit: 0 },
     reservationNanoUsd: 0n,
     reconciliationNotes: 'Reference audio read; negligible cost.',
@@ -132,6 +146,7 @@ const CANONICAL_PRICES = [
   {
     versionKey: 'whisperx-forced-alignment-observability-v1',
     provider: 'whisperx', modality: 'alignment', model: 'whisperx-forced-alignment',
+    billingTier: 'platform_overhead',
     rateCard: { type: 'flat', nanoUsdPerUnit: 2_000_000 },
     reservationNanoUsd: 3_000_000n,
     reconciliationNotes: 'WhisperX forced-alignment estimate ~$0.002/call.',

@@ -111,7 +111,8 @@ async function seedCanonicalPrices(prisma, billingRepo, apply) {
     }
     row = await billingRepo.configurePrice(row.id, {
       active: true,
-      billable: true,
+      billable: canonical.billingTier === 'customer_metered',
+      billingTier: canonical.billingTier,
       evidenceStatus: 'dashboard_reconciled',
       reconciledAt: RECONCILED_AT,
       reconciliationNotes: canonical.reconciliationNotes,
