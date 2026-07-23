@@ -62,19 +62,19 @@
 
 .screenplay-editor-wrapper.theme-light,
 .screenplay-toolbar.theme-light {
-    --color-bg-workspace: #f6f8fa;
-    --color-bg-page: #ffffff;
-    --color-text-main: #1f2328;
-    --color-bg-toolbar: #ffffff;
-    --color-toolbar-border: #d0d7de;
-    --color-chip-bg: #f3f4f6;
-    --color-chip-border: #d0d7de;
-    --color-chip-text: #24292f;
-    --color-chip-active-bg: #0969da;
-    --color-chip-active-border: #0969da;
-    --color-chip-active-text: #ffffff;
-    --color-focus-bg: rgba(9, 105, 218, 0.08);
-    --color-selection-bg: rgba(9, 105, 218, 0.18);
+    --color-bg-workspace: var(--bg);
+    --color-bg-page: var(--panel-2);
+    --color-text-main: var(--text);
+    --color-bg-toolbar: var(--panel);
+    --color-toolbar-border: var(--line);
+    --color-chip-bg: var(--surface-button);
+    --color-chip-border: var(--line);
+    --color-chip-text: var(--text);
+    --color-chip-active-bg: var(--accent);
+    --color-chip-active-border: var(--accent);
+    --color-chip-active-text: var(--on-accent);
+    --color-focus-bg: var(--accent-soft);
+    --color-selection-bg: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .screenplay-editor-wrapper *,
@@ -426,10 +426,10 @@
 }
 
 .screenplay-help-modal.theme-light {
-    --color-bg-page: #ffffff;
-    --color-text-main: #1f2328;
-    --color-toolbar-border: #d0d7de;
-    --color-chip-text: #24292f;
+    --color-bg-page: var(--panel-2);
+    --color-text-main: var(--text);
+    --color-toolbar-border: var(--line);
+    --color-chip-text: var(--text);
 }
 
 .screenplay-help-modal::backdrop {

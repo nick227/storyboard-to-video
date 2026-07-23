@@ -1,46 +1,8 @@
 /*
  * Shared design tokens — single theme surface for all CSS bundles.
- * Override on :root or [data-theme] to retheme the app.
+ * Default is dark. Set data-theme="light" | "dark" on <html> to switch.
  */
 :root {
-  /* surfaces */
-  --bg: #0d1117;
-  --panel: #161b22;
-  --panel-2: #1f2630;
-  --surface-input: #0b0f14;
-  --surface-button: #222a35;
-
-  /* ink */
-  --text: #e6edf3;
-  --muted: #9da7b3;
-  --muted-strong: #59636f;
-  --on-accent: #ffffff;
-
-  /* lines */
-  --line: #30363d;
-  --line-strong: #303846;
-  --border: var(--line);
-
-  /* brand */
-  --accent: #4f8cff;
-  --accent-2: #8f6bff;
-  --accent-hover: #3d7ce8;
-  --accent-ink: #a9c5ff;
-  --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
-  --accent-ring: color-mix(in srgb, var(--accent) 70%, transparent);
-
-  /* status */
-  --danger: #ff6b6b;
-  --danger-soft: color-mix(in srgb, var(--danger) 15%, transparent);
-  --warning: #fbbf24;
-  --success: #73d99a;
-
-  /* chrome */
-  --overlay: color-mix(in srgb, var(--bg) 72%, transparent);
-  --glass-ink: #ffffff;
-  --glass: color-mix(in srgb, var(--glass-ink) 5%, transparent);
-  --topbar-bg: color-mix(in srgb, var(--bg) 96%, transparent);
-
   /* type */
   --sf-font: Inter, system-ui, Arial, sans-serif;
   --text-xs: 10px;
@@ -62,50 +24,86 @@
   --radius-lg: 16px;
   --radius-round: 999px;
 
+  --max-script-height: 69vh;
+}
+
+/* Dark — studio chrome (default) */
+:root,
+[data-theme="dark"] {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --panel-2: #1f2630;
+  --surface-input: #0b0f14;
+  --surface-button: #222a35;
+
+  --text: #e6edf3;
+  --muted: #9da7b3;
+  --muted-strong: #59636f;
+  --on-accent: #ffffff;
+
+  --line: #30363d;
+  --line-strong: #303846;
+  --border: var(--line);
+
+  --accent: #4f8cff;
+  --accent-2: #8f6bff;
+  --accent-hover: #3d7ce8;
+  --accent-ink: #a9c5ff;
+  --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
+  --accent-ring: color-mix(in srgb, var(--accent) 70%, transparent);
+
+  --danger: #ff6b6b;
+  --danger-soft: color-mix(in srgb, var(--danger) 15%, transparent);
+  --warning: #fbbf24;
+  --success: #73d99a;
+
+  --overlay: color-mix(in srgb, var(--bg) 72%, transparent);
+  --glass-ink: #ffffff;
+  --glass: color-mix(in srgb, var(--glass-ink) 5%, transparent);
+  --topbar-bg: color-mix(in srgb, var(--bg) 96%, transparent);
+
   --tag-violet: #a78bfa;
   --tag-pink: #ec4899;
   --surface-deep: #11161e;
   --border-hover: #596678;
-
-  --max-script-height: 69vh;
 }
 
-/* Light theme — flip surfaces/ink; brand + status stay semantic. */
+/* Light — screenplay desk: warm paper, ink, slate accent */
 [data-theme="light"] {
-  --bg: #f6f8fa;
-  --panel: #ffffff;
-  --panel-2: #f3f4f6;
-  --surface-input: #ffffff;
-  --surface-button: #eaeef2;
+  --bg: #e8e4db;
+  --panel: #f7f4ee;
+  --panel-2: #fffdf8;
+  --surface-input: #fffef9;
+  --surface-button: #ddd6c8;
 
-  --text: #1f2328;
-  --muted: #656d76;
-  --muted-strong: #8c959f;
+  --text: #1a1814;
+  --muted: #6b6560;
+  --muted-strong: #8a847c;
   --on-accent: #ffffff;
 
-  --line: #d0d7de;
-  --line-strong: #afb8c1;
+  --line: #d2cbbd;
+  --line-strong: #c0b8a8;
   --border: var(--line);
 
-  --accent: #0969da;
-  --accent-2: #8250df;
-  --accent-hover: #0550ae;
-  --accent-ink: #0550ae;
+  --accent: #2f5d8c;
+  --accent-2: #5c4d7a;
+  --accent-hover: #244a70;
+  --accent-ink: #2f5d8c;
   --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
-  --accent-ring: color-mix(in srgb, var(--accent) 55%, transparent);
+  --accent-ring: color-mix(in srgb, var(--accent) 50%, transparent);
 
-  --danger: #cf222e;
+  --danger: #b42318;
   --danger-soft: color-mix(in srgb, var(--danger) 12%, transparent);
-  --warning: #9a6700;
-  --success: #1a7f37;
+  --warning: #8a6a12;
+  --success: #2f6f4e;
 
-  --overlay: color-mix(in srgb, #1f2328 45%, transparent);
-  --glass-ink: #1f2328;
+  --overlay: color-mix(in srgb, #1a1814 40%, transparent);
+  --glass-ink: #1a1814;
   --glass: color-mix(in srgb, var(--glass-ink) 5%, transparent);
   --topbar-bg: color-mix(in srgb, var(--panel) 92%, transparent);
 
-  --tag-violet: #8250df;
-  --tag-pink: #bf3989;
-  --surface-deep: #eaeef2;
-  --border-hover: #afb8c1;
+  --tag-violet: #5c4d7a;
+  --tag-pink: #9b4d6b;
+  --surface-deep: #ddd6c8;
+  --border-hover: #a39e94;
 }
