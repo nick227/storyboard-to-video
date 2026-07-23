@@ -102,7 +102,7 @@ function registerRoutes(app, d) {
   }));
   app.use('/api/jobs', createJobRouter({ queue: d.queue, store: d.projectStore, videoAttempts: d.videoAttemptRepository, videoExecution: d.videoExecution }));
   app.use('/api/admin/usage', usageRoutes(d.usageRepository));
-  app.use('/api/admin/billing', billingRoutes(d.billingRepository, d.billing, d.adminRepository, d.spendSummary));
+  app.use('/api/admin/billing', billingRoutes(d.billingRepository, d.billing, d.adminRepository, d.spendSummary, d.payments));
   app.use('/api/admin', adminRoutes(d.adminRepository, d.queue, d.paymentRepository, d.payments));
   app.use('/api/billing', paymentRoutes(d.paymentRepository, d.payments, d.spendSummary));
   app.use('/api/media-output', mediaOutputRoutes(d.mediaOutput));

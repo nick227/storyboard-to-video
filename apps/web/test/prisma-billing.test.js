@@ -307,3 +307,48 @@ test('flipping a customer_metered price to billable:false blocks new customer se
     await prisma.$disconnect();
   }
 });
+
+test('sanityReport tallies charging-enabled tenants and billable/included price counts correctly', { skip: !enabled }, async () => {
+  const prisma = createPrismaClient(process.env.DATABASE_URL);
+  const billing = new PrismaBillingRepository(prisma);
+  const account = await (new PrismaIdentityRepository(prisma)).createUserWithPersonalWorkspace({ email: `sanity-report-${crypto.randomUUID()}@example.com`, displayName: 'Sanity Report Test', passwordHash: 'test-only' });
+  const suffix = crypto.randomUUID();
+  const customerMeteredProvider = `sanity-cm-${suffix}`;
+  const platformOverheadProvider = `sanity-po-${suffix}`;
+  try {
+    // Everything here is a fresh, uniquely-suffixed synthetic provider/tenant, so this test
+    // asserts on *deltas* (before vs. after), not absolute counts -- the shared dev DB has real,
+    // ongoing production data these counts also reflect.
+    const before = await billing.sanityReport({});
+
+    await billing.setChargingEnabled({ tenantId: account.tenant.id, enabled: true, actorUserId: account.user.id, idempotencyKey: `sanity-report-charging:${suffix}` });
+    await billing.createPriceVersion({
+      versionKey: `sanity-report-cm-${suffix}`, provider: customerMeteredProvider, modality: 'text', model: 'test', currency: 'USD',
+      rateCard: { type: 'flat', nanoUsdPerUnit: 1 }, reservationNanoUsd: 1n, evidenceStatus: 'documented',
+      billingTier: 'customer_metered', billable: true, reconciledAt: new Date(), active: true,
+    });
+    await billing.createPriceVersion({
+      versionKey: `sanity-report-po-${suffix}`, provider: platformOverheadProvider, modality: 'audio', model: 'test', currency: 'USD',
+      rateCard: { type: 'flat', nanoUsdPerUnit: 1 }, reservationNanoUsd: 1n, evidenceStatus: 'estimated',
+      billingTier: 'platform_overhead', billable: false, active: true,
+    });
+
+    const after = await billing.sanityReport({});
+    assert.equal(after.chargingEnabledTenantCount, before.chargingEnabledTenantCount + 1);
+    assert.equal(after.billableCustomerMeteredCount, before.billableCustomerMeteredCount + 1);
+    assert.equal(after.includedPlatformOverheadCount, before.includedPlatformOverheadCount + 1);
+    assert.ok(after.customerMeteredProviders.includes(customerMeteredProvider));
+    assert.ok(!after.customerMeteredProviders.includes(platformOverheadProvider));
+  } finally {
+    await prisma.providerPriceVersion.deleteMany({ where: { provider: { in: [customerMeteredProvider, platformOverheadProvider] } } });
+    await prisma.$transaction(async (db) => {
+      await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries DISABLE TRIGGER USER');
+      await db.creditLedgerEntry.deleteMany({ where: { tenantId: account.tenant.id } });
+      await db.creditAccount.deleteMany({ where: { tenantId: account.tenant.id } });
+      await db.workspace.deleteMany({ where: { id: account.tenant.id } });
+      await db.user.deleteMany({ where: { id: account.user.id } });
+      await db.$executeRawUnsafe('ALTER TABLE credit_ledger_entries ENABLE TRIGGER USER');
+    });
+    await prisma.$disconnect();
+  }
+});

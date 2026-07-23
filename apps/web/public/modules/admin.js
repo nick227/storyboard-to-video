@@ -130,6 +130,36 @@ async function loadOverview() {
     overviewCard('Failed settlements', sanity.failedSettlements.toLocaleString(), 'Reservations tied to a provider failure (released or failed_not_charged)'),
     overviewCard('Refunds issued', `${sanity.refundsIssued.count.toLocaleString()}`, `${credit(sanity.refundsIssued.creditMicros)} credits refunded to customers`),
   ].join('');
+
+  $('overviewLiveBillingStatus').innerHTML = [
+    overviewCard('Global charging flag', sanity.globalChargingEnabled ? 'ON' : 'OFF', sanity.globalChargingEnabled ? 'BILLING_CUSTOMER_CHARGING_ENABLED=true' : 'All new reservations are monitoring-only; nothing is charged'),
+    overviewCard('Charging-enabled tenants', sanity.chargingEnabledTenantCount.toLocaleString(), sanity.chargingEnabledTenantCount ? 'Tenants actually being charged live' : 'No tenant has charging enabled yet'),
+    overviewCard('Billable customer-metered', sanity.billableCustomerMeteredCount.toLocaleString(), 'Provider prices actually charged to customers'),
+    overviewCard('Included platform-overhead', sanity.includedPlatformOverheadCount.toLocaleString(), 'Tracked internally, never charged, by design'),
+    overviewCard('Failed settlements', sanity.failedSettlements.toLocaleString(), 'Reservations tied to a provider failure (released or failed_not_charged)'),
+    overviewCard('Stuck reservations', sanity.reservationsHeld.toLocaleString(), sanity.reservationsHeld ? 'Live reservations not yet settled or released' : 'Nothing stuck mid-flight'),
+    overviewCard('Unpriced customer-metered usage', sanity.unpricedCustomerMeteredCount.toLocaleString(), sanity.unpricedCustomerMeteredCount ? `Real gap: ${sanity.unpricedCustomerMetered.map((item) => `${item.provider}/${item.model}`).join(', ')}` : 'Every customer-metered generation resolved to a price'),
+    overviewCard('Stripe status', stripeStatusLabel(sanity), stripeStatusNote(sanity)),
+  ].join('');
+}
+
+function stripeStatusLabel(sanity) {
+  if (!sanity.paymentsEnabled) return 'Disabled';
+  const health = sanity.stripeWebhookHealth;
+  if (!health || health.error) return 'Unknown';
+  if (!health.endpointFound) return 'No webhook';
+  if (health.missingEvents?.length) return 'Incomplete';
+  return 'OK';
+}
+
+function stripeStatusNote(sanity) {
+  if (!sanity.paymentsEnabled) return 'STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET not configured -- purchases are disabled';
+  const health = sanity.stripeWebhookHealth;
+  if (!health) return 'Webhook health unavailable';
+  if (health.error) return `Webhook check failed: ${health.error}`;
+  if (!health.endpointFound) return `No enabled webhook endpoint found for ${health.webhookUrl}`;
+  if (health.missingEvents?.length) return `Endpoint ${health.endpointId} is missing events: ${health.missingEvents.join(', ')}`;
+  return `Endpoint ${health.endpointId} enabled, all required events subscribed`;
 }
 
 async function loadUsers() {

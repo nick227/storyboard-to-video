@@ -206,14 +206,27 @@ class PrismaBillingRepository {
     const range = { ...(startAt ? { gte: startAt } : {}), ...(endAt ? { lt: endAt } : {}) };
     const reservationWhere = Object.keys(range).length ? { createdAt: range } : {};
     const ledgerWhere = Object.keys(range).length ? { createdAt: range } : {};
-    const [reservationsHeld, failedSettlements, purchaseRefunds] = await Promise.all([
+    const [reservationsHeld, failedSettlements, purchaseRefunds, globalChargingEnabledCount, activePrices] = await Promise.all([
       this.prisma.creditReservation.count({ where: { ...reservationWhere, status: 'reserved' } }),
       this.prisma.creditReservation.count({ where: { ...reservationWhere, status: { in: ['released', 'failed_not_charged'] } } }),
       this.prisma.creditLedgerEntry.aggregate({ where: { ...ledgerWhere, type: 'purchase_refund' }, _count: true, _sum: { availableDeltaCreditMicros: true } }),
+      this.prisma.creditAccount.count({ where: { chargingEnabled: true } }),
+      this.prisma.providerPriceVersion.findMany({ where: { active: true }, select: { provider: true, billingTier: true, billable: true } }),
     ]);
+    // Every provider this app has ever tagged a price for (active or retired), for classifying
+    // `unpriced` usage (no active price match at all, by definition -- so there's nothing to read
+    // a billingTier off of directly): a provider normally customer_metered but showing up unpriced
+    // is a real gap worth flagging; a provider normally platform_overhead showing up unpriced was
+    // never going to be billed anyway, lower urgency.
+    const taggedProviders = await this.prisma.providerPriceVersion.groupBy({ by: ['provider', 'billingTier'], where: { billingTier: { not: null } } });
+    const customerMeteredProviders = [...new Set(taggedProviders.filter((row) => row.billingTier === 'customer_metered').map((row) => row.provider))];
     return {
       reservationsHeld,
       failedSettlements,
+      chargingEnabledTenantCount: globalChargingEnabledCount,
+      billableCustomerMeteredCount: activePrices.filter((p) => p.billingTier === 'customer_metered' && p.billable).length,
+      includedPlatformOverheadCount: activePrices.filter((p) => p.billingTier === 'platform_overhead').length,
+      customerMeteredProviders,
       purchaseRefundsIssued: {
         count: purchaseRefunds._count,
         creditMicros: -(purchaseRefunds._sum.availableDeltaCreditMicros || 0n),

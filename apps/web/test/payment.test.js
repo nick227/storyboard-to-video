@@ -52,3 +52,40 @@ test('amount checkout uses server-prepared dynamic pricing and tags the integrat
   assert.equal('payment_method_types' in checkoutParams, false);
   assert.equal('automatic_tax' in checkoutParams, false);
 });
+
+test('checkWebhookHealth reports no endpoint found when Stripe has none matching this app\'s real URL', async () => {
+  const stripe = { webhookEndpoints: { list: async () => ({ data: [] }) } };
+  const service = createPaymentService({ repository: {}, stripe, webhookSecret: 'whsec_test', publicAppUrl: 'https://storyboard-to-video.up.railway.app' });
+  const health = await service.checkWebhookHealth();
+  assert.equal(health.endpointFound, false);
+  assert.equal(health.webhookUrl, 'https://storyboard-to-video.up.railway.app/api/webhooks/stripe');
+  assert.deepEqual(health.missingEvents, ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.expired', 'refund.created', 'charge.dispute.created']);
+});
+
+test('checkWebhookHealth finds a real, enabled endpoint and reports any missing event subscriptions', async () => {
+  const stripe = { webhookEndpoints: { list: async () => ({ data: [
+    { id: 'we_1', url: 'https://storyboard-to-video.up.railway.app/api/webhooks/stripe', status: 'enabled', enabled_events: ['checkout.session.completed', 'refund.created'] },
+  ] }) } };
+  const service = createPaymentService({ repository: {}, stripe, webhookSecret: 'whsec_test', publicAppUrl: 'https://storyboard-to-video.up.railway.app' });
+  const health = await service.checkWebhookHealth();
+  assert.equal(health.endpointFound, true);
+  assert.equal(health.endpointId, 'we_1');
+  assert.deepEqual(health.missingEvents, ['checkout.session.async_payment_succeeded', 'checkout.session.expired', 'charge.dispute.created']);
+});
+
+test('checkWebhookHealth ignores a disabled endpoint even if the URL matches', async () => {
+  const stripe = { webhookEndpoints: { list: async () => ({ data: [
+    { id: 'we_2', url: 'https://storyboard-to-video.up.railway.app/api/webhooks/stripe', status: 'disabled', enabled_events: ['*'] },
+  ] }) } };
+  const service = createPaymentService({ repository: {}, stripe, webhookSecret: 'whsec_test', publicAppUrl: 'https://storyboard-to-video.up.railway.app' });
+  const health = await service.checkWebhookHealth();
+  assert.equal(health.endpointFound, false);
+});
+
+test('checkWebhookHealth reports not configured when Stripe is not wired up at all', async () => {
+  const service = createPaymentService({ repository: {}, stripe: null, webhookSecret: '', publicAppUrl: 'https://storyboard-to-video.up.railway.app' });
+  const health = await service.checkWebhookHealth();
+  assert.equal(health.configured, false);
+  assert.equal(health.secretConfigured, false);
+  assert.equal(health.endpointFound, false);
+});

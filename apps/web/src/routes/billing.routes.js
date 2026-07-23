@@ -32,7 +32,7 @@ function jsonSafe(value) {
 function tenantFilter(value) { return value == null || value === '' ? undefined : uuid.parse(String(value)); }
 function date(value) { return value ? new Date(String(value)) : undefined; }
 
-function billingRoutes(repository, billing, adminRepository = null, spendSummary = null) {
+function billingRoutes(repository, billing, adminRepository = null, spendSummary = null, payments = null) {
   const router = express.Router();
   const audit = (req, event) => adminRepository?.recordAudit({ actorUserId: req.auth.userId, requestId: req.id, ...event });
   router.use(styleAdmin);
@@ -54,20 +54,30 @@ function billingRoutes(repository, billing, adminRepository = null, spendSummary
     if (!repository) throw new AppError('BILLING_UNAVAILABLE', 'Billing persistence is unavailable', { status: 503 });
     const startAt = date(req.query.startAt);
     const endAt = date(req.query.endAt);
-    const [spend, health] = await Promise.all([
+    const [spend, health, webhookHealth] = await Promise.all([
       spendSummary ? spendSummary.getPlatformSpend({ startAt, endAt }) : { totalCostUSD: 0, platformCostUSD: 0, unpriced: [] },
       repository.sanityReport({ startAt, endAt }),
+      payments?.checkWebhookHealth ? payments.checkWebhookHealth().catch((error) => ({ configured: false, error: error.message })) : null,
     ]);
+    const unpricedCustomerMetered = spend.unpriced.filter((item) => health.customerMeteredProviders.includes(item.provider));
     const unpricedUsageCount = spend.unpriced.reduce((sum, item) => sum + item.count, 0);
     res.json(jsonSafe({
       ok: true,
+      globalChargingEnabled: billing?.chargingEnabled === true,
+      chargingEnabledTenantCount: health.chargingEnabledTenantCount,
+      billableCustomerMeteredCount: health.billableCustomerMeteredCount,
+      includedPlatformOverheadCount: health.includedPlatformOverheadCount,
       customerBillableSpendUSD: spend.totalCostUSD,
       platformIncludedSpendUSD: spend.platformCostUSD,
       unpricedUsageCount,
       unpriced: spend.unpriced,
+      unpricedCustomerMeteredCount: unpricedCustomerMetered.reduce((sum, item) => sum + item.count, 0),
+      unpricedCustomerMetered,
       reservationsHeld: health.reservationsHeld,
       failedSettlements: health.failedSettlements,
       refundsIssued: health.purchaseRefundsIssued,
+      paymentsEnabled: payments?.enabled === true,
+      stripeWebhookHealth: webhookHealth,
     }));
   }));
   router.post('/credits/grant', express.json(), asyncRoute(async (req, res) => {

@@ -111,6 +111,24 @@ function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl,
       const sale = await repository.applyRefund(received.event.id, refund);
       return { refund, sale, duplicate: received.duplicate };
     },
+
+    // A configured STRIPE_WEBHOOK_SECRET proves nothing about whether Stripe actually has a real
+    // endpoint registered to send events here -- exactly the gap found during the live-billing
+    // launch (a secret was set, but zero webhook endpoints existed on the account). Checks Stripe
+    // directly for one pointed at this app's real webhook URL, enabled, listening for the event
+    // types the handler processes.
+    async checkWebhookHealth() {
+      const webhookUrl = `${String(publicAppUrl || '').replace(/\/+$/, '')}/api/webhooks/stripe`;
+      const requiredEvents = ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.expired', 'refund.created', 'charge.dispute.created'];
+      if (!stripe) return { configured: false, secretConfigured: Boolean(webhookSecret), webhookUrl, endpointFound: false, missingEvents: requiredEvents };
+      const endpoints = await stripeCall(() => stripe.webhookEndpoints.list({ limit: 100 }));
+      const match = endpoints.data.find((endpoint) => endpoint.url === webhookUrl && endpoint.status === 'enabled');
+      const missingEvents = match ? requiredEvents.filter((event) => !match.enabled_events.includes(event) && !match.enabled_events.includes('*')) : requiredEvents;
+      return {
+        configured: Boolean(stripe && webhookSecret), secretConfigured: Boolean(webhookSecret), webhookUrl,
+        endpointFound: Boolean(match), endpointId: match?.id || null, endpointStatus: match?.status || null, missingEvents,
+      };
+    },
   };
 }
 
