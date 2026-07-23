@@ -1,6 +1,11 @@
 import { api } from './api.js';
 import { ensureProjectSynced, getCurrentStoryboardRecord, saveStoryboard } from './persistence.js';
 import { shareUrl } from './scripts/chrome.js';
+import { fetchCategories, fetchScriptStats, updateScriptMeta } from './scripts/api.js';
+
+function parseTagSlugs(value = '') {
+  return [...new Set(String(value).split(/[,#]+/).map((part) => part.trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean))].slice(0, 8);
+}
 
 export function initScriptPublishControls(elements, { setStatus } = {}) {
   const toggle = elements.scriptVisibilityToggle;
@@ -8,6 +13,35 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
   if (!toggle || !shareBtn) return { syncFromRecord() {} };
 
   let busy = false;
+  let categoriesLoaded = false;
+
+  async function ensureCategories() {
+    if (categoriesLoaded || !elements.scriptCategorySelect) return;
+    const categories = await fetchCategories();
+    const select = elements.scriptCategorySelect;
+    select.innerHTML = '<option value="">Uncategorized</option>'
+      + categories.map((category) => `<option value="${category.id}">${category.name}</option>`).join('');
+    categoriesLoaded = true;
+  }
+
+  function applyMetaFields(script) {
+    if (elements.scriptLogline) elements.scriptLogline.value = script?.logline || '';
+    if (elements.scriptCategorySelect) elements.scriptCategorySelect.value = script?.categoryId || script?.category?.id || '';
+    if (elements.scriptTagsInput) {
+      elements.scriptTagsInput.value = (script?.tags || []).map((tag) => tag.slug || tag.name).join(', ');
+    }
+  }
+
+  async function refreshStats(scriptId) {
+    if (!elements.scriptStatsLine || !scriptId) return;
+    try {
+      const { stats } = await fetchScriptStats(scriptId);
+      elements.scriptStatsLine.hidden = false;
+      elements.scriptStatsLine.textContent = `${stats.viewCount || 0} views · ${stats.likeCount || 0} likes`;
+    } catch (_) {
+      elements.scriptStatsLine.hidden = true;
+    }
+  }
 
   function applyScript(script) {
     const record = getCurrentStoryboardRecord();
@@ -20,9 +54,12 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
     toggle.checked = isPublic;
     shareBtn.disabled = !isPublic || !script?.slug;
     shareBtn.dataset.sharePath = script?.sharePath || (script?.slug ? `/scripts/${script.slug}` : '');
+    applyMetaFields(script);
+    if (script?.id) refreshStats(script.id);
   }
 
-  function syncFromRecord(record = getCurrentStoryboardRecord()) {
+  async function syncFromRecord(record = getCurrentStoryboardRecord()) {
+    await ensureCategories().catch(() => {});
     applyScript(record?.script || null);
   }
 
@@ -81,6 +118,23 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
     } catch (error) {
       if (error?.name === 'AbortError') return;
       setStatus?.(error.message || url);
+    }
+  });
+
+  elements.scriptMetaSaveBtn?.addEventListener('click', async () => {
+    const record = getCurrentStoryboardRecord();
+    if (!record) return;
+    try {
+      const script = await ensureScript(record);
+      const response = await updateScriptMeta(script.id, {
+        logline: elements.scriptLogline?.value || '',
+        categoryId: elements.scriptCategorySelect?.value || null,
+        tagSlugs: parseTagSlugs(elements.scriptTagsInput?.value || ''),
+      });
+      applyScript(response.script);
+      setStatus?.('Publishing details saved.');
+    } catch (error) {
+      setStatus?.(error.message || 'Could not save publishing details.');
     }
   });
 

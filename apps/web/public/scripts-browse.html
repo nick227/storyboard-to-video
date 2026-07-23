@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Browse public screenplays on Storyboarder." />
-  <title>Scripts — Storyboarder</title>
+  <title>Browse — Storyboarder</title>
   <link rel="icon" type="image/png" href="/images/favicon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -18,14 +17,14 @@
   <main class="scripts-page">
     <div id="scriptsBreadcrumbs" class="scripts-crumbs-slot"></div>
     <header class="scripts-page-header">
-      <p class="scripts-kicker">Library</p>
-      <h1>Scripts</h1>
-      <p>Public screenplays from Storyboarder.</p>
+      <p class="scripts-kicker" id="browseKicker">Browse</p>
+      <h1 id="browseTitle">Scripts</h1>
+      <p id="browseSubtitle"></p>
     </header>
     <div id="categoryNav"></div>
-    <p id="scriptsStatus" class="scripts-status" role="status">Loading scripts…</p>
+    <p id="scriptsStatus" class="scripts-status" role="status">Loading…</p>
     <div id="scriptsGrid" class="scripts-grid" hidden></div>
   </main>
-  <script type="module" src="/modules/scripts-index.js"></script>
+  <script type="module" src="/modules/scripts-browse.js"></script>
 </body>
 </html>

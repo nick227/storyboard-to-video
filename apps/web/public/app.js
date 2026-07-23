@@ -20,6 +20,7 @@ import { assertElements } from './modules/dom-contract.js';
 import { initStoryboardController } from './modules/storyboard-controller.js';
 import { initSettingsController } from './modules/settings-controller.js';
 import { initNarrationController } from './modules/narration-controller.js';
+import { initStyleController } from './modules/style-controller.js';
 
 export { getZipSummary } from './modules/storyboard-controller.js';
 
@@ -36,6 +37,11 @@ const els = {
   scriptDownloadMenu: document.getElementById('scriptDownloadMenu'),
   scriptVisibilityToggle: document.getElementById('scriptVisibilityToggle'),
   scriptShareBtn: document.getElementById('scriptShareBtn'),
+  scriptLogline: document.getElementById('scriptLogline'),
+  scriptCategorySelect: document.getElementById('scriptCategorySelect'),
+  scriptTagsInput: document.getElementById('scriptTagsInput'),
+  scriptMetaSaveBtn: document.getElementById('scriptMetaSaveBtn'),
+  scriptStatsLine: document.getElementById('scriptStatsLine'),
 
   // Studio page navigation
   pageTabs: document.querySelector('.page-tabs'),
@@ -46,20 +52,47 @@ const els = {
   narrationPagePanel: document.getElementById('narrationPagePanel'),
   narrationRows: document.getElementById('narrationRows'),
   narrationEmpty: document.getElementById('narrationEmpty'),
-  narrationSceneCount: document.getElementById('narrationSceneCount'),
-  narrationTotalDuration: document.getElementById('narrationTotalDuration'),
   narrationStaleNotice: document.getElementById('narrationStaleNotice'),
   narrationModeSelect: document.getElementById('narrationModeSelect'),
   narrationTextProvider: document.getElementById('narrationTextProvider'),
   narrationAudioProvider: document.getElementById('narrationAudioProvider'),
   narrationVoicesPanel: document.getElementById('narrationVoicesPanel'),
   narrationGuidance: document.getElementById('narrationGuidance'),
-  narrationHelperButtons: Array.from(document.querySelectorAll('[data-narration-helper]')),
-  prepareNarrationBtn: document.getElementById('prepareNarrationBtn'),
+  narrationPromptText: document.getElementById('narrationPromptText'),
+  narrationPromptLabel: document.getElementById('narrationPromptLabel'),
+  narrationPromptStatus: document.getElementById('narrationPromptStatus'),
+  narrationPromptReset: document.getElementById('narrationPromptReset'),
 
+  prepareNarrationBtn: document.getElementById('prepareNarrationBtn'),
+  narrationGenerateAudioBtn: document.getElementById('narrationGenerateAudioBtn'),
+  narrationStopAudioBtn: document.getElementById('narrationStopAudioBtn'),
+  narrationAudioProgress: document.getElementById('narrationAudioProgress'),
+  narrationUndoBtn: document.getElementById('narrationUndoBtn'),
+  narrationHistoryToggle: document.getElementById('narrationHistoryToggle'),
+  narrationHistoryPanel: document.getElementById('narrationHistoryPanel'),
+  narrationHistoryList: document.getElementById('narrationHistoryList'),
+  narrationPreviewDialog: document.getElementById('narrationPreviewDialog'),
+  narrationPreviewSummary: document.getElementById('narrationPreviewSummary'),
+  narrationPreviewCancel: document.getElementById('narrationPreviewCancel'),
+  narrationPreviewApply: document.getElementById('narrationPreviewApply'),
+  narrationAddSceneBtn: document.getElementById('narrationAddSceneBtn'),
+  storyboardAddSceneBtn: document.getElementById('storyboardAddSceneBtn'),
+  addSceneDialog: document.getElementById('addSceneDialog'),
+  addScenePosition: document.getElementById('addScenePosition'),
+  addSceneCancel: document.getElementById('addSceneCancel'),
+  addSceneConfirm: document.getElementById('addSceneConfirm'),
+
+  stylePagePanel: document.getElementById('stylePagePanel'),
   styleSelect: document.getElementById('styleSelect'),
   stageStyleSelect: document.getElementById('stageStyleSelect'),
   commonPromptText: document.getElementById('commonPromptText'),
+
+  previewStyleBtn: document.getElementById('previewStyleBtn'),
+  stylePreviewResult: document.getElementById('stylePreviewResult'),
+  stylePreviewImage: document.getElementById('stylePreviewImage'),
+  stylePreviewStatus: document.getElementById('stylePreviewStatus'),
+  styleRefLightbox: document.getElementById('styleRefLightbox'),
+  styleRefLightboxImage: document.getElementById('styleRefLightboxImage'),
   textProvider: document.getElementById('textProvider'),
   imageProvider: document.getElementById('imageProvider'),
   mediaAspectRatio: document.getElementById('mediaAspectRatio'),
@@ -327,6 +360,11 @@ function initControllers() {
     scriptText: els.scriptText,
     scriptVisibilityToggle: els.scriptVisibilityToggle,
     scriptShareBtn: els.scriptShareBtn,
+    scriptLogline: els.scriptLogline,
+    scriptCategorySelect: els.scriptCategorySelect,
+    scriptTagsInput: els.scriptTagsInput,
+    scriptMetaSaveBtn: els.scriptMetaSaveBtn,
+    scriptStatsLine: els.scriptStatsLine,
   }, { setStatus });
   scriptController = initScriptController({
     scriptText: els.scriptText,
@@ -451,13 +489,8 @@ function initControllers() {
     shotCount: els.settingsShotCountDisplay,
     shotLimit: els.settingsShotLimitSelect,
     enrichNarration: els.enrichNarration,
-    commonPrompt: els.commonPromptText,
     textProvider: els.textProvider,
     videoMotionIntensity: els.videoMotionIntensity,
-    styleSelect: els.styleSelect,
-    stageStyleSelect: els.stageStyleSelect,
-    characterRefInput: els.characterRefInput,
-    worldRefInput: els.worldRefInput,
     audioProvider: els.audioProvider,
     voiceLibraryModal: els.voiceLibraryModal,
     closeVoiceLibraryBtn: els.closeVoiceLibraryBtn,
@@ -476,9 +509,6 @@ function initControllers() {
     refreshVoices: () => refreshVoicesForCurrentProvider(setStatus),
     renderVoices: () => renderVoicesPanel(els),
     renderStageBar: () => renderStageBar(els),
-    prefillCommonPrompt: (styleId) => prefillCommonPrompt(styleId, els),
-    loadStyleReferences: (styleId) => loadStyleReferences(styleId, els, setStatus),
-    uploadStyleReferences: (kind, files) => uploadStyleReferences(kind, files, els, setStatus),
     setAudioProvider: (audioProvider) => voiceStore.set({ audioProvider }),
     closeVoiceLibrary: () => closeVoiceLibraryCleanup(els),
     switchMicrophone: (deviceId) => switchMicrophone(deviceId, els),
@@ -495,15 +525,33 @@ function initControllers() {
     pagePanel: els.narrationPagePanel,
     rows: els.narrationRows,
     empty: els.narrationEmpty,
-    sceneCount: els.narrationSceneCount,
-    totalDuration: els.narrationTotalDuration,
     staleNotice: els.narrationStaleNotice,
     mode: els.narrationModeSelect,
     textProviderMirror: els.narrationTextProvider,
     audioProviderMirror: els.narrationAudioProvider,
     guidance: els.narrationGuidance,
+    promptText: els.narrationPromptText,
+    promptLabel: els.narrationPromptLabel,
+    promptStatus: els.narrationPromptStatus,
+    promptReset: els.narrationPromptReset,
     helperButtons: els.narrationHelperButtons,
     prepareBtn: els.prepareNarrationBtn,
+    generateAudioBtn: els.narrationGenerateAudioBtn,
+    stopAudioBtn: els.narrationStopAudioBtn,
+    audioProgress: els.narrationAudioProgress,
+    undoBtn: els.narrationUndoBtn,
+    historyToggle: els.narrationHistoryToggle,
+    historyPanel: els.narrationHistoryPanel,
+    historyList: els.narrationHistoryList,
+    previewDialog: els.narrationPreviewDialog,
+    previewSummary: els.narrationPreviewSummary,
+    previewCancel: els.narrationPreviewCancel,
+    previewApply: els.narrationPreviewApply,
+    addSceneButtons: [els.narrationAddSceneBtn, els.storyboardAddSceneBtn],
+    addSceneDialog: els.addSceneDialog,
+    addScenePosition: els.addScenePosition,
+    addSceneCancel: els.addSceneCancel,
+    addSceneConfirm: els.addSceneConfirm,
     scriptText: els.scriptText,
     textProvider: els.textProvider,
     audioProvider: els.audioProvider,
@@ -514,6 +562,19 @@ function initControllers() {
     saveProject: (immediate) => saveStoryboard(els, immediate),
     refreshVoices: () => refreshVoicesForCurrentProvider(setStatus),
     renderVoices: () => renderVoicesPanel(els),
+  });
+
+  // Passed as the shared `els` object itself (not a remapped wrapper, unlike other controllers
+  // here) because it sets els.onStyleReferenceReorder/onStyleReferenceInspect callbacks that
+  // ui.js's renderStyleReferenceList reads off the same `els` instance passed to renderStyleReferences.
+  initStyleController(els, {
+    setStatus,
+    saveProject: (immediate) => saveStoryboard(els, immediate),
+    renderStageBar: () => renderStageBar(els),
+    prefillCommonPrompt: (styleId) => prefillCommonPrompt(styleId, els),
+    loadStyleReferences: (styleId) => loadStyleReferences(styleId, els, setStatus),
+    uploadStyleReferences: (kind, files) => uploadStyleReferences(kind, files, els, setStatus),
+    getImageProvider: () => els.imageProvider.value,
   });
 
   // Watchers for basic UI updates
@@ -542,11 +603,20 @@ async function init() {
     'videoMotionIntensity', 'enrichNarration', 'styleSelect',
     'narrationPagePanel', 'narrationRows', 'narrationEmpty',
     'narrationModeSelect', 'narrationTextProvider', 'narrationAudioProvider',
-    'narrationVoicesPanel', 'narrationGuidance', 'prepareNarrationBtn',
+    'narrationVoicesPanel', 'narrationGuidance', 'narrationPromptText',
+    'narrationPromptLabel', 'narrationPromptStatus', 'narrationPromptReset', 'prepareNarrationBtn',
+    'narrationGenerateAudioBtn', 'narrationStopAudioBtn', 'narrationAudioProgress',
+    'narrationUndoBtn', 'narrationHistoryToggle', 'narrationHistoryPanel',
+    'narrationHistoryList', 'narrationPreviewDialog', 'narrationPreviewSummary',
+    'narrationPreviewCancel', 'narrationPreviewApply', 'narrationAddSceneBtn',
+    'storyboardAddSceneBtn', 'addSceneDialog', 'addScenePosition', 'addSceneCancel',
+    'addSceneConfirm',
     'characterRefInput', 'worldRefInput', 'audioProvider', 'voiceLibraryModal',
     'closeVoiceLibraryBtn', 'voiceMicSelect', 'voiceRecordBtn', 'voiceSaveBtn',
     'voiceNameInput', 'tokensInfoBtn', 'tokensInfoModal',
     'tokensInfoModalCloseBtn', 'tokensInfoModalDoneBtn',
+    'stylePagePanel', 'previewStyleBtn', 'stylePreviewResult',
+    'stylePreviewImage', 'stylePreviewStatus', 'styleRefLightbox', 'styleRefLightboxImage',
   ]);
   initRendering(els);
   initTimeline(els);
@@ -575,7 +645,8 @@ async function init() {
   if (restored && loaded) setStatus('Ready. Saved.');
 }
 
-if (window.location.pathname !== '/test.html') {
+const isTestPage = window.location.pathname === '/test.html' || window.location.pathname === '/test';
+if (!isTestPage) {
   init().catch(err => {
     console.error("Failed to init app:", err);
     setStatus("Failed to initialize app.");

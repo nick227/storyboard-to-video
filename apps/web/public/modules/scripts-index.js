@@ -1,5 +1,5 @@
-import { fetchPublicScripts } from './scripts/api.js';
-import { renderBreadcrumbs, scriptCoverCard } from './scripts/chrome.js';
+import { fetchCategories, fetchPublicScripts } from './scripts/api.js';
+import { renderBreadcrumbs, renderCategoryNav, scriptCoverCard } from './scripts/chrome.js';
 
 document.getElementById('scriptsBreadcrumbs').innerHTML = renderBreadcrumbs([
   { label: 'Scripts' },
@@ -7,9 +7,11 @@ document.getElementById('scriptsBreadcrumbs').innerHTML = renderBreadcrumbs([
 
 const grid = document.getElementById('scriptsGrid');
 const status = document.getElementById('scriptsStatus');
+const categoryNav = document.getElementById('categoryNav');
 
 try {
-  const scripts = await fetchPublicScripts();
+  const [scripts, categories] = await Promise.all([fetchPublicScripts(), fetchCategories()]);
+  if (categoryNav) categoryNav.innerHTML = renderCategoryNav(categories);
   if (!scripts.length) {
     status.dataset.tone = 'empty';
     status.textContent = 'No public screenplays yet. Publish one from Studio to appear here.';

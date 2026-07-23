@@ -37,7 +37,9 @@ function createWritersService({ store, scripts }) {
   }
 
   async function toggleFollow(followingUserId, { followerUserId }) {
-    return store.toggleFollow(followerUserId, followingUserId);
+    const result = await store.toggleFollow(followerUserId, followingUserId);
+    const followerCount = await store.countFollowers(followingUserId);
+    return { ...result, followerCount };
   }
 
   return { getPublicProfile, getMe, updateProfile, toggleFollow };

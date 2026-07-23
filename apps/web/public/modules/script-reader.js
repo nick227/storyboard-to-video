@@ -1,18 +1,14 @@
 import { RawScriptAdapter } from './screenplay-editor/js/adapters/RawScriptAdapter.js';
 import { fetchPublicScript, toggleScriptLike } from './scripts/api.js';
 import {
-  bindFullscreen, bindShareButton, escapeHtml, flashStatus, renderBreadcrumbs,
-  scriptCoverCard, scriptCoverPage,
+  bindFullscreen, bindShareButton, escapeHtml, flashStatus, loginRedirect,
+  renderBreadcrumbs, scriptCoverCard, scriptCoverPage, scriptTrail,
 } from './scripts/chrome.js';
 
 function renderBody(scriptText = '') {
   return RawScriptAdapter.parse(scriptText, 'fountain').lines.map((line) => (
     `<p class="${escapeHtml(line.format)}">${escapeHtml(line.content.trim())}</p>`
   )).join('\n');
-}
-
-function loginRedirect() {
-  window.location.href = `/login.html?redirect=${encodeURIComponent(window.location.pathname)}`;
 }
 
 const slug = decodeURIComponent(window.location.pathname.replace(/^\/scripts\//, '').replace(/\/$/, ''));
@@ -34,10 +30,7 @@ bindFullscreen(fullscreenBtn, stage);
 try {
   const script = await fetchPublicScript(slug);
   document.title = `${script.title || 'Script'} — Storyboarder`;
-  breadcrumbs.innerHTML = renderBreadcrumbs([
-    { label: 'Scripts', href: '/scripts' },
-    { label: script.title || 'Untitled' },
-  ]);
+  breadcrumbs.innerHTML = renderBreadcrumbs(scriptTrail(script));
 
   document.getElementById('readerCover').innerHTML = scriptCoverPage(script);
   document.getElementById('readerBody').innerHTML = renderBody(script.scriptText || '');
@@ -50,7 +43,7 @@ try {
   bindShareButton(shareBtn, {
     getUrl: url,
     title: script.title || 'Screenplay',
-    text: `Written by ${script.author || 'Anonymous'}`,
+    text: script.logline || `Written by ${script.author || 'Anonymous'}`,
     onStatus: (message) => flashStatus(toolbarStatus, message),
   });
 
@@ -69,7 +62,10 @@ try {
 
   const others = script.moreByAuthor || [];
   if (others.length) {
-    authorHeading.textContent = `More by ${script.author || 'this author'}`;
+    const writerLink = script.writer?.profileSlug
+      ? ` <a href="/writers/${encodeURIComponent(script.writer.profileSlug)}">View profile</a>`
+      : '';
+    authorHeading.innerHTML = `More by ${escapeHtml(script.author || 'this author')}${writerLink}`;
     authorGrid.innerHTML = others.map((item) => scriptCoverCard(item, { compact: true })).join('');
     authorBox.hidden = false;
   }
