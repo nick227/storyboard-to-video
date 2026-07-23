@@ -34,7 +34,7 @@
 }
 
 .screenplay-editor-container {
-    height: var(--max-height);
+    height: 90vh;
     border: 1px solid var(--line);
     border-radius: 10px;
     background: #0b0f14;
@@ -174,7 +174,7 @@
 .screenplay-page-float {
     position: absolute;
     right: 18px;
-    bottom: 18px;
+    top: 18px;
     z-index: 6;
     pointer-events: none;
     padding: 4px 9px;

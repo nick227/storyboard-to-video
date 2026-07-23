@@ -243,6 +243,7 @@ export function resetVoiceRecordingUI(els) {
   els.voiceRecordPreview.removeAttribute('src');
   els.voiceDurationNote.hidden = true;
   els.voiceDurationNote.textContent = '';
+  els.voiceSaveBtn.closest('.voice-record-save').hidden = true;
   els.voiceSaveBtn.disabled = true;
   els.voiceNameInput.value = '';
   voiceRecordingState.recordedBlob = null;
@@ -322,6 +323,7 @@ export function toggleVoiceRecording(els) {
         ? `Recorded ${seconds.toFixed(1)}s${seconds < 10 ? ' — for best quality, aim for 10-15s' : ''}`
         : '';
     }, { once: true });
+    els.voiceSaveBtn.closest('.voice-record-save').hidden = false;
     els.voiceSaveBtn.disabled = false;
     els.voiceRecordBtn.textContent = 'Record';
   };

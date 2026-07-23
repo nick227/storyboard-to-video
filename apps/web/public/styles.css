@@ -129,7 +129,7 @@ label > span {
   border: 0;
   border-radius: 0;
   background-color: transparent;
-  font-size: clamp(24px, 3vw, 34px);
+  font-size: 25px;
   font-weight: 750;
   line-height: 1.2;
   margin-right: 10px;
@@ -1921,7 +1921,7 @@ button.text-button {
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
-  max-height: 480px;
+  max-height: 720px;
   margin: 0 auto 12px;
   border-radius: 12px;
   overflow: hidden;
@@ -2015,9 +2015,6 @@ button.text-button {
 .timeline-toggle[data-state="playing"] .timeline-icon-pause,
 .timeline-toggle[data-state="ended"] .timeline-icon-replay { display: block; }
 
-.timeline-section {
-  margin-top: 40px;
-}
 .timeline-track-wrap {
   overflow-x: auto;
   overflow-y: hidden;

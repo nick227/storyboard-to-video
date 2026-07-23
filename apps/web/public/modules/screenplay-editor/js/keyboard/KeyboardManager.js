@@ -2,6 +2,7 @@ import { getNextFormat } from '../constants/formats.js';
 import { KeyboardEditController } from './KeyboardEditController.js';
 import { KeyboardSelectionController } from './KeyboardSelectionController.js';
 import { EditorCaretManager } from '../handlers/EditorCaretManager.js';
+import { LineMultiSelect } from '../selection/LineMultiSelect.js';
 
 export class KeyboardManager {
     constructor (options = {}) {
@@ -19,6 +20,11 @@ export class KeyboardManager {
             pageManager: this.pageManager
         });
 
+        this.multiSelect = new LineMultiSelect({
+            pageManager: this.pageManager,
+            contentManager: this.contentManager
+        });
+
         this._boundHandlers = {
             keydown: this._handleKeyDown.bind(this)
         };
@@ -28,6 +34,7 @@ export class KeyboardManager {
         if (!editorArea) return;
         this.editorArea = editorArea;
         this.selectionController.setEditorArea(editorArea);
+        this.multiSelect.initialize(editorArea);
         this.editorArea.addEventListener('keydown', this._boundHandlers.keydown);
     }
 
@@ -35,6 +42,7 @@ export class KeyboardManager {
         if (this.editorArea) {
             this.editorArea.removeEventListener('keydown', this._boundHandlers.keydown);
         }
+        this.multiSelect.destroy();
         this.selectionController.destroy();
         this.editController.destroy();
     }
@@ -45,35 +53,37 @@ export class KeyboardManager {
 
         const selection = window.getSelection();
 
-        // 1. Enter key: Advance format flow
+        if ((e.key === 'Backspace' || e.key === 'Delete') && this.multiSelect.hasSelection()) {
+            e.preventDefault();
+            this.multiSelect.deleteSelected();
+            return;
+        }
+
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
+            this.multiSelect.setAnchor(activeLine);
             this.editController.handleEnter(activeLine);
             return;
         }
 
-        // 2. Tab / Shift+Tab key: Cycle line formats
         if (e.key === 'Tab') {
             e.preventDefault();
-            const currentFormat = activeLine.getAttribute('data-format') || 'action';
-            const direction = e.shiftKey ? -1 : 1;
-            const nextFormat = getNextFormat(currentFormat, direction);
-            activeLine.setAttribute('data-format', nextFormat);
-
-            if (this.contentManager && typeof this.contentManager.emit === 'function') {
-                this.contentManager.emit('editor:content-changed', {});
-            }
+            this._cycleFormat(activeLine, e.shiftKey ? -1 : 1);
             return;
         }
 
-        // 3. Backspace key: Line merge / empty line deletion
+        if (e.ctrlKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            e.preventDefault();
+            this._cycleFormat(activeLine, e.key === 'ArrowRight' ? 1 : -1);
+            return;
+        }
+
         if (e.key === 'Backspace') {
             if (selection && !selection.isCollapsed && this._isMultiLineSelection(selection)) {
                 e.preventDefault();
                 this.editController.handleMultiLineDelete(selection);
                 return;
             }
-
             const pos = EditorCaretManager.getCaretPosition(activeLine);
             if (pos === 0) {
                 e.preventDefault();
@@ -82,14 +92,12 @@ export class KeyboardManager {
             }
         }
 
-        // 4. Delete key: Merge next line into current
         if (e.key === 'Delete') {
             if (selection && !selection.isCollapsed && this._isMultiLineSelection(selection)) {
                 e.preventDefault();
                 this.editController.handleMultiLineDelete(selection);
                 return;
             }
-
             const textLen = activeLine.textContent ? activeLine.textContent.length : 0;
             const pos = EditorCaretManager.getCaretPosition(activeLine);
             if (pos >= textLen) {
@@ -99,11 +107,24 @@ export class KeyboardManager {
             }
         }
 
-        // 5. Arrow Up / Down navigation
-        if (e.key === 'ArrowDown') {
-            this.selectionController.navigateLine(activeLine, 'next');
-        } else if (e.key === 'ArrowUp') {
-            this.selectionController.navigateLine(activeLine, 'previous');
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            const direction = e.key === 'ArrowDown' ? 'next' : 'previous';
+            if (e.shiftKey) {
+                e.preventDefault();
+                this.multiSelect.navigateWithShift(activeLine, direction);
+                return;
+            }
+            this.multiSelect.setAnchor(
+                this.selectionController.navigateLine(activeLine, direction) || activeLine
+            );
+        }
+    }
+
+    _cycleFormat (line, direction) {
+        const currentFormat = line.getAttribute('data-format') || 'action';
+        line.setAttribute('data-format', getNextFormat(currentFormat, direction));
+        if (this.contentManager?.emit) {
+            this.contentManager.emit('editor:content-changed', {});
         }
     }
 
