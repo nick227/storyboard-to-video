@@ -1,0 +1,171 @@
+/* Tokens Info Button & Modal */
+.stage-button-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: all 0.2s ease;
+  margin-left: 8px;
+  align-self: center;
+}
+.stage-button-info:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
+  box-shadow: 0 0 8px var(--accent-soft);
+}
+
+.tokens-spend-container, .tokens-pricing-container {
+  margin-top: 12px;
+}
+
+.tokens-empty {
+  padding: 30px 10px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.tokens-spend-summary {
+  margin-bottom: 12px;
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tokens-spend-summary span:first-child strong {
+  color: var(--accent);
+  font-size: 15px;
+}
+
+.tokens-unpriced-warning {
+  margin-bottom: 12px;
+  padding: 8px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tokens-muted,
+.tokens-model-name {
+  color: var(--muted);
+}
+
+.tokens-model-name {
+  font-size: 11px;
+  font-weight: normal;
+}
+
+.tokens-modality {
+  text-transform: capitalize;
+}
+
+.tokens-spend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.tokens-spend-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.015);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: border-color 0.2s ease;
+}
+.tokens-spend-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.tokens-spend-card h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: capitalize;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: 6px;
+}
+
+.tokens-spend-card h4 span.cost {
+  color: var(--accent);
+}
+
+.tokens-spend-card-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tokens-spend-provider-row {
+  font-size: 12px;
+}
+
+.tokens-spend-provider-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.tokens-spend-model-list {
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tokens-spend-model-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.tokens-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+  margin-top: 10px;
+}
+
+.tokens-table th, .tokens-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tokens-table th {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.tokens-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.pricing-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 16px 0 8px 0;
+  color: var(--muted);
+}

@@ -1,0 +1,45 @@
+@media (max-width: 900px) {
+  .storyboard-topbar { display: grid; grid-template-columns: 1fr; }
+  .concept-grid { grid-template-columns: 1fr; }
+  .production-settings-grid { grid-template-columns: 1fr; }
+  .top-actions { justify-content: start; }
+  .production-bar-heading { align-items: flex-start; flex-direction: column; }
+  .batch-actions { justify-content: flex-start; }
+  .storyboard-grid[data-columns="4"],
+  .storyboard-grid[data-columns="5"],
+  .storyboard-grid[data-columns="6"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .app-shell { padding: 12px; }
+  .storyboard-title-row { align-items: stretch; flex-direction: column; }
+  .storyboard-combo { max-width: 100%; }
+  .story-setup-grid, .settings-fields, .compact-fields { grid-template-columns: 1fr; }
+  .section-heading { align-items: flex-start; flex-direction: column; }
+  .section-heading button { width: 100%; }
+  .batch-actions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .voice-record-controls { flex-wrap: wrap; }
+  .voice-library-item { flex-wrap: wrap; }
+  .settings-modal { max-height: calc(100vh - 24px); }
+  .settings-modal-header, .settings-modal-body { padding: 16px; }
+  .settings-modal-footer { align-items: stretch; flex-direction: column; padding: 12px 16px; }
+  .settings-modal-footer button { width: 100%; }
+  .settings-modal-section-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .audio-settings-compact { grid-template-columns: 1fr; }
+  .generation-confirm-header, .generation-confirm-body { padding: 16px; }
+  .generation-confirm-actions { padding: 12px 16px; }
+  .storyboard-heading { align-items: flex-start; flex-direction: column; }
+  .storyboard-grid[data-columns] { grid-template-columns: minmax(0, 1fr); }
+  .storyboard-slider-stage-shell {
+    width: calc(100% - 12px);
+    gap: 6px;
+  }
+  .storyboard-slider-nav {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+  }
+  .storyboard-slider-stage { min-height: 220px; }
+  .storyboard-slider-stage .scene-header { align-items: flex-start; flex-direction: column; }
+  .storyboard-filmstrip { padding: 12px 10px; }
+  .storyboard-filmstrip-item { flex-basis: 126px; }
+}

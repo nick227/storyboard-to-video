@@ -1,0 +1,301 @@
+.app-shell {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 20px;
+}
+.storyboard-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 2px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.brand-block { min-width: 0; flex: 1; }
+.storyboard-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.storyboard-combo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  border-bottom: 1px solid transparent;
+  background-color: transparent !important;
+}
+.storyboard-combo:hover { border-bottom-color: var(--line); }
+.storyboard-combo:focus-within { border-bottom-color: var(--line); background-color: rgba(255,255,255,0.03); }
+.storyboard-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  font-size: 25px;
+  font-weight: 750;
+  line-height: 1.2;
+  margin-right: 10px;
+}
+.storyboard-picker-toggle {
+  flex: 0 0 auto;
+  padding: 0;
+  font-size: 30px;
+  min-width: 50px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 650;
+}
+.storyboard-picker-toggle:hover { color: var(--text); }
+.storyboard-picker-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 240px;
+  max-width: 100%;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.storyboard-picker-list[hidden] { display: none; }
+.storyboard-picker-list li {
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.storyboard-picker-list li:hover { background-color: rgba(255,255,255,0.06); }
+.storyboard-picker-list li[aria-selected="true"] {
+  background-color: rgba(255,255,255,0.1);
+  font-weight: 600;
+}
+.top-actions { flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; }
+#newStoryboardBtn {
+  width: 100%;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.panel-tight { padding: 12px 16px; }
+.concept-grid {
+  display: grid;
+  grid-template-columns: 70% 29%;
+  gap: 1%;
+  align-items: start;
+}
+.concept-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 80px;
+}
+.panel.concept-column {
+  min-height: 55px;
+}
+.concept-heading h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.concept-description {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.compact-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.full-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+
+}
+.generation-toolbar {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: var(--panel);
+  scrollbar-width: thin;
+}
+.generation-group {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0 14px;
+  border-left: 1px solid var(--line);
+}
+.generation-group:first-child { padding-left: 0; border-left: 0; }
+.generation-group:last-child { padding-right: 0; }
+.generation-group-label {
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.generation-group-actions { display: flex; align-items: center; gap: 6px; }
+.generation-scene-count {
+  width: 58px;
+  height: 34px;
+  padding: 5px 7px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.generation-action {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 12px;
+}
+.generation-action:hover:not(:disabled) { border-color: #596678; background: rgba(255,255,255,.035); }
+.generation-action-icon,
+.generation-action-lock {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.generation-action-icon { color: #a9c5ff; }
+.generation-action-lock { display: none; width: 12px; height: 12px; color: var(--muted); }
+.generation-action.is-locked { color: #7f8995; border-style: dashed; cursor: help; }
+.generation-action.is-locked .generation-action-icon { opacity: .55; }
+.generation-action.is-locked .generation-action-lock { display: block; }
+.generation-action.is-active { border-color: rgba(79,140,255,.65); background: var(--accent-soft); }
+.generation-action.was-clicked { background: rgba(129, 132, 130, 0.08); color: gray; }
+.generation-action.was-clicked .generation-action-icon { color: gray; }
+
+.generation-action.was-clicked:hover:not(:disabled) { background: rgba(79, 140, 255, 0.12); }
+.generation-action.danger { border-color: var(--danger); background: var(--danger); color: #fff; }
+.generation-action.danger .generation-action-icon { color: inherit; }
+
+/* Stage bar: Planning / Images / Audio / Video, one primary action, pause/cancel, Create Story. */
+.stage-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--panel);
+}
+.stage-bar-stages { display: flex; flex-wrap: wrap; gap: 8px; }
+.stage-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 110px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  opacity: 0.55;
+}
+.stage-button:hover:not(:disabled) { border-color: #596678; background: rgba(255,255,255,.035); }
+.stage-button-top { display: flex; align-items: center; gap: 8px; }
+.stage-button-label { font-size: 12px; font-weight: 700; }
+.stage-button-status { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.stage-button-spinner {
+  display: none;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+/* Status color (what kind of work is outstanding) — kept to 3 states so it reads at a glance.
+   Read-only strip: selection lives only in the Start modal now, so these are status indicators,
+   not toggles — opacity tracks "is there something noteworthy here", not selection. */
+.stage-button.status-actionable { border-color: rgba(79,140,255,.5); color: var(--accent); opacity: 1; }
+.stage-button.status-actionable .stage-button-label { color: var(--text); }
+.stage-button.status-failed { border-color: var(--danger); color: var(--danger); opacity: 1; }
+.stage-button.status-failed .stage-button-label { color: var(--text); }
+.stage-button:disabled { cursor: default; }
+.stage-button.is-running { border-color: rgba(79,140,255,.65); background: var(--accent-soft); opacity: 1; }
+.stage-button.is-running .stage-button-spinner { display: block; }
+.stage-button.is-paused .stage-button-status { color: var(--accent); }
+.stage-bar-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
+.stage-style-select {
+  height: 38px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  cursor: pointer;
+  max-width: 170px;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.stage-style-select:hover,
+.stage-style-select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.icon-link {
+  cursor: pointer;
+}
+.icon-link:hover {
+  color: white;
+}
+
+/* Settings modal: visual planning mode + scene-count recommendation policy + danger zone —
+   these replaced the removed Planning modal and per-stage dialog, per-run choices become
+   pre-configured settings instead of extra dialogs mid-flow. */
+.planning-mode-field,
+.scene-count-policy-field { display: flex; gap: 6px; margin: 12px 0; padding: 0; border: 0; }
+.radio-field { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.radio-field span { white-space: nowrap; }
+.scene-count-policy-custom input[type="number"] { width: 56px; height: 30px; text-align: center; font-variant-numeric: tabular-nums; }
+.settings-danger-zone { display: flex; flex-wrap: wrap; gap: 8px; }

@@ -1,0 +1,183 @@
+.timeline-hint { color: var(--muted); font-size: 12px; }
+.timeline-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 720px;
+  margin: 0 auto 12px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+}
+.timeline-stage-video,
+.timeline-stage-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+.timeline-stage-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+#timelineAudio, #timelineAudioB { display: none; }
+.timeline-toggle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  z-index: 10;
+  width: 64px;
+  height: 64px;
+  min-height: 64px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(22, 27, 34, 0.82);
+  backdrop-filter: blur(8px);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease, background 220ms ease, border-color 220ms ease;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  padding: 0;
+}
+.timeline-toggle:disabled {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.timeline-stage:hover .timeline-toggle,
+.timeline-stage:focus-within .timeline-toggle,
+.timeline-toggle:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+.timeline-toggle:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: translate(-50%, -50%) scale(1.08);
+}
+.timeline-toggle:active:not(:disabled) {
+  transform: translate(-50%, -50%) scale(0.95);
+}
+.timeline-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.timeline-icon {
+  width: 28px;
+  height: 28px;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.timeline-icon-pause,
+.timeline-icon-replay {
+  display: none;
+  fill: none;
+}
+.timeline-toggle[data-state="playing"] .timeline-icon-play,
+.timeline-toggle[data-state="ended"] .timeline-icon-play { display: none; }
+.timeline-toggle[data-state="playing"] .timeline-icon-pause,
+.timeline-toggle[data-state="ended"] .timeline-icon-replay { display: block; }
+
+.timeline-track-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0b0f14;
+  padding: 10px;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.timeline-track-inner {
+  position: relative;
+  min-width: 100%;
+}
+.timeline-thumbs {
+  display: flex;
+  height: 64px;
+}
+.timeline-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+  background: #05070a;
+}
+.timeline-thumb:last-child { border-right: 0; }
+.timeline-thumb img,
+.timeline-thumb video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.timeline-thumb-empty { background: var(--panel-2); }
+.timeline-thumb-label {
+  position: absolute;
+  left: 4px;
+  bottom: 2px;
+  font-size: 10px;
+  color: var(--text);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+.timeline-waveform-canvas {
+  display: block;
+  width: 100%;
+  height: 48px;
+  margin-top: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  will-change: transform;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+@keyframes shimmer { to { background-position-x: -220%; } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner, button.is-loading::before, .empty-image-target { animation-duration: 1.8s; }
+}
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.hidden {
+  display: none !important;
+}
+.w-full {
+  width: 100% !important;
+}
+.studio-page-stage {
+  position: relative;
+  min-height: 260px;
+}
