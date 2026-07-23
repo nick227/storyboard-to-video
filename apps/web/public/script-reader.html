@@ -7,8 +7,9 @@
   <link rel="icon" type="image/png" href="/images/favicon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/topbar.css" />
+  <link rel="stylesheet" href="/modules/screenplay-editor/css/screenplay-editor-standalone.css" />
   <link rel="stylesheet" href="/scripts-public.css" />
   <script src="/modules/topbar.js"></script>
 </head>
@@ -35,8 +36,14 @@
       </div>
       <div id="readerStage" class="script-reader-stage">
         <div id="readerCover"></div>
-        <div class="script-reader-sheet">
-          <div id="readerBody" class="script-reader-body"></div>
+        <div id="readerBody" class="screenplay-editor-wrapper theme-light is-reader">
+          <div id="readerWorkspace" class="screenplay-workspace">
+            <div id="readerScaleShell" class="screenplay-scale-shell">
+              <div id="readerScaleTarget" class="screenplay-scale-target">
+                <div id="readerPage" class="script-page"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <aside id="authorBox" class="script-author-box" hidden>

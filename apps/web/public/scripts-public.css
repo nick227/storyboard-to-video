@@ -379,29 +379,19 @@ body.scripts-shell {
   font-size: 0.9rem;
 }
 
-.script-reader-sheet {
-  width: min(100%, 52rem);
-  margin: 0 auto;
-  padding: 1.75rem 1.25rem 2.25rem;
-  background: #fffdf8;
-  border: 1px solid var(--scripts-line);
-  box-shadow: 0 14px 36px rgba(55, 40, 15, 0.07);
+/* Reader chrome only — page/line formatting comes from screenplay-editor-standalone.css */
+.screenplay-editor-wrapper.is-reader {
+  --max-height: none;
+  height: auto;
+  overflow: visible;
+  border-radius: 0;
 }
 
-.script-reader-body {
-  max-width: 6.5in;
-  margin: 0 auto;
-  font: 12.25pt/1.2 var(--scripts-mono);
-  white-space: pre-wrap;
+.screenplay-editor-wrapper.is-reader .screenplay-workspace {
+  height: auto;
+  padding: 0 0 1.5rem;
+  background: transparent;
 }
-
-.script-reader-body p { margin: 0 0 1em; }
-.script-reader-body .header { margin-top: 1.15em; text-transform: uppercase; }
-.script-reader-body .speaker { margin: 1em 0 0 2.2in; text-transform: uppercase; }
-.script-reader-body .dialog { margin: 0 1.5in 1em 1in; }
-.script-reader-body .directions { margin: 0 2in 0 1.6in; }
-.script-reader-body .transition { margin: 1em 0 1em 4.5in; text-align: right; text-transform: uppercase; }
-.script-reader-body .chapter-break { margin-top: 3in; text-align: center; text-transform: uppercase; }
 
 .script-author-box {
   margin-top: 2.75rem;
@@ -516,15 +506,5 @@ body.scripts-shell {
   .script-cover-page {
     min-height: 68vh;
     padding: 1.5rem 1.15rem 1.35rem;
-  }
-
-  .script-reader-sheet { padding: 1.2rem 0.85rem 1.75rem; }
-
-  .script-reader-body .speaker,
-  .script-reader-body .dialog,
-  .script-reader-body .directions,
-  .script-reader-body .transition {
-    margin-left: 0;
-    margin-right: 0;
   }
 }

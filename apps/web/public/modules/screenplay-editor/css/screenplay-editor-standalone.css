@@ -2,7 +2,9 @@
 
 /*
  * Canonical US Letter screenplay geometry (always used for layout/print/export).
- * On-screen responsiveness is visual scale only — not percentage indents.
+ * Single source of truth for .script-page / .script-line[data-format] formatting.
+ * Consumers: Studio editor, public script reader, print/PDF.
+ * On-screen responsiveness is visual scale (or .is-fluid) — not percentage indents.
  */
 .screenplay-editor-wrapper {
     --font-script: 'Courier Prime', 'Courier New', Courier, monospace;

@@ -1,13 +1,14 @@
 import { RawScriptAdapter } from './screenplay-editor/js/adapters/RawScriptAdapter.js';
+import { ViewportScaler } from './screenplay-editor/js/ui/ViewportScaler.js';
 import { fetchPublicScript, toggleScriptLike } from './scripts/api.js';
 import {
   bindFullscreen, bindShareButton, escapeHtml, flashStatus, loginRedirect,
   renderBreadcrumbs, scriptCoverCard, scriptCoverPage, scriptTrail,
 } from './scripts/chrome.js';
 
-function renderBody(scriptText = '') {
+function renderLines(scriptText = '') {
   return RawScriptAdapter.parse(scriptText, 'fountain').lines.map((line) => (
-    `<p class="${escapeHtml(line.format)}">${escapeHtml(line.content.trim())}</p>`
+    `<div class="script-line" data-format="${escapeHtml(line.format)}">${escapeHtml(line.content.trim())}</div>`
   )).join('\n');
 }
 
@@ -24,6 +25,11 @@ const authorGrid = document.getElementById('authorGrid');
 const authorHeading = document.getElementById('authorHeading');
 const breadcrumbs = document.getElementById('scriptsBreadcrumbs');
 const toolbarStatus = document.getElementById('readerToolbarStatus');
+const readerBody = document.getElementById('readerBody');
+const readerWorkspace = document.getElementById('readerWorkspace');
+const readerScaleShell = document.getElementById('readerScaleShell');
+const readerScaleTarget = document.getElementById('readerScaleTarget');
+const readerPage = document.getElementById('readerPage');
 
 bindFullscreen(fullscreenBtn, stage);
 
@@ -33,7 +39,15 @@ try {
   breadcrumbs.innerHTML = renderBreadcrumbs(scriptTrail(script));
 
   document.getElementById('readerCover').innerHTML = scriptCoverPage(script);
-  document.getElementById('readerBody').innerHTML = renderBody(script.scriptText || '');
+  readerPage.innerHTML = renderLines(script.scriptText || '');
+
+  const scaler = new ViewportScaler({
+    wrapper: readerBody,
+    workspace: readerWorkspace,
+    shell: readerScaleShell,
+    target: readerScaleTarget,
+  });
+  scaler.start();
 
   likeCount.textContent = String(script.likeCount || 0);
   likeBtn.setAttribute('aria-pressed', String(Boolean(script.likedByMe)));
@@ -72,6 +86,7 @@ try {
 
   status.hidden = true;
   article.hidden = false;
+  scaler.scheduleUpdate();
 } catch (error) {
   status.dataset.tone = 'error';
   status.textContent = error.code === 'SCRIPT_NOT_FOUND' ? 'Script not found.' : (error.message || 'Failed to load script.');
