@@ -5,7 +5,7 @@ const { IMAGE_PROVIDER_CAPABILITIES, imageProviderCapabilities } = require('../.
 const fs = require('node:fs');
 const { estimatedUsage } = require('../../shared/media-output-policy');
 const { AppError } = require('../../errors');
-const { DEZGO_SD1_DEFAULT_STEPS, DEZGO_SD1_MODEL, dezgoModel, dezgoSteps, isDezgoFlux } = require('./dezgo-settings');
+const { DEZGO_SD1_MODEL, dezgoModel, dezgoSteps, isDezgoFlux } = require('./dezgo-settings');
 
 function fileBlob(file) {
   const extension = file.split('.').pop()?.toLowerCase();
@@ -151,12 +151,7 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
     if (!config.env.DEZGO_API_KEY) throw new Error('DEZGO_API_KEY missing');
     const model = dezgoModel(config.env);
     // Flux has no image2image on Dezgo — keep SD1 for reference-anchored generations.
-    if (references.length) {
-      const sd1Steps = config.env.DEZGO_STEPS != null && String(config.env.DEZGO_STEPS).trim() !== ''
-        ? Number(config.env.DEZGO_STEPS)
-        : DEZGO_SD1_DEFAULT_STEPS;
-      return dezgoSd1Image2Image(prompt, references[0], output, sd1Steps);
-    }
+    if (references.length) return dezgoSd1Image2Image(prompt, references[0], output, dezgoSteps(config.env, DEZGO_SD1_MODEL));
     const steps = dezgoSteps(config.env, model);
     if (isDezgoFlux(model)) return dezgoFlux(prompt, output, model, steps);
     return dezgoSd1Text2Image(prompt, output, steps);

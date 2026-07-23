@@ -67,15 +67,23 @@ test('Dezgo with references still uses SD1 image2image', async () => {
     return new Response(Buffer.from('png'), { status: 200, headers: { 'Content-Type': 'image/png' } });
   };
   try {
-    const providers = createImageProviders({ env: { DEZGO_API_KEY: 'key' } }, { geminiParts: () => [] });
+    const providers = createImageProviders({ env: { DEZGO_API_KEY: 'key', DEZGO_STEPS: '8' } }, { geminiParts: () => [] });
     const intent = mergeMediaIntent({ modality: 'image' });
     const output = resolveImageOutput({ provider: 'dezgo', model: DEZGO_FLUX_MODEL, intent });
     const result = await providers.generate({ provider: 'dezgo', prompt: 'Prompt', references: [reference], output });
     assert.equal(calls[0].url, 'https://api.dezgo.com/image2image');
     assert.equal(result.model, 'text2image');
     assert.equal(result.settings.mode, 'image_to_image');
+    assert.equal(result.settings.steps, 30);
+    assert.ok(result.settings.steps >= 10);
   } finally {
     global.fetch = original;
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('SD1 steps stay in range when Flux DEZGO_STEPS is configured', () => {
+  assert.equal(dezgoSteps({ DEZGO_MODEL: DEZGO_FLUX_MODEL, DEZGO_STEPS: '8' }, 'text2image'), 30);
+  assert.equal(dezgoSteps({ DEZGO_MODEL: DEZGO_FLUX_MODEL, DEZGO_SD1_STEPS: '25' }, 'text2image'), 25);
+  assert.equal(dezgoSteps({ DEZGO_MODEL: 'text2image', DEZGO_STEPS: '8' }, 'text2image'), 10);
 });
