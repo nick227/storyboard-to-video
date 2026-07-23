@@ -19,6 +19,7 @@ const { adminRoutes } = require('./routes/admin.routes');
 const { paymentRoutes, stripeWebhookHandler } = require('./routes/payment.routes');
 const { mediaOutputRoutes } = require('./routes/media-output.routes');
 const { createScriptsRouter, createPublicScriptsRouter } = require('./routes/scripts.routes');
+const { createWritersRouter, createPublicWritersRouter } = require('./routes/writers.routes');
 const { isPlatformAdmin } = require('./middleware/style-admin');
 const path = require('node:path');
 
@@ -31,6 +32,10 @@ function createApp(dependencies) {
   app.use('/api/auth', authRoutes(dependencies.auth));
   app.use('/api/public/scripts', createPublicScriptsRouter({
     scripts: dependencies.scripts,
+    optionalAuth: dependencies.auth.middleware({ optional: true }),
+  }));
+  app.use('/api/public/writers', createPublicWritersRouter({
+    writers: dependencies.writers,
     optionalAuth: dependencies.auth.middleware({ optional: true }),
   }));
   app.use(['/api', '/projects', '/style-references', '/user-style-references'], dependencies.authenticate);
@@ -101,6 +106,18 @@ function pageGuard(auth) {
 }
 
 function registerRoutes(app, d) {
+  app.get('/writers/:slug', (req, res, next) => {
+    if (req.params.slug.includes('.')) return next();
+    return res.sendFile(path.join(d.config.paths.public, 'writer.html'));
+  });
+  app.get('/scripts/category/:slug', (req, res, next) => {
+    if (req.params.slug.includes('.')) return next();
+    return res.sendFile(path.join(d.config.paths.public, 'scripts-browse.html'));
+  });
+  app.get('/scripts/tag/:slug', (req, res, next) => {
+    if (req.params.slug.includes('.')) return next();
+    return res.sendFile(path.join(d.config.paths.public, 'scripts-browse.html'));
+  });
   app.get('/scripts/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
     return res.sendFile(path.join(d.config.paths.public, 'script-reader.html'));
@@ -111,6 +128,7 @@ function registerRoutes(app, d) {
     styles: d.styles, prompts: d.prompts, referenceGeneration: d.referenceGeneration, imageProvider: d.imageProvider, identityStore: d.identityStore, prisma: d.prisma, config: d.config, spendSummary: d.spendSummary, scripts: d.scripts,
   }));
   app.use('/api/scripts', createScriptsRouter({ scripts: d.scripts, projectStore: d.projectStore }));
+  app.use('/api/writers', createWritersRouter({ writers: d.writers }));
   app.use('/api/jobs', createJobRouter({ queue: d.queue, store: d.projectStore, videoAttempts: d.videoAttemptRepository, videoExecution: d.videoExecution }));
   app.use('/api/admin/usage', usageRoutes(d.usageRepository));
   app.use('/api/admin/billing', billingRoutes(d.billingRepository, d.billing, d.adminRepository, d.spendSummary, d.payments));

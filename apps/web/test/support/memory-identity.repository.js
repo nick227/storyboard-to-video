@@ -11,12 +11,18 @@ class MemoryIdentityRepository {
 
   async createUserWithPersonalWorkspace({ email, displayName, passwordHash }) {
     if (this.users.some((user) => user.email === email)) throw new AppError('EMAIL_IN_USE', 'An account with that email already exists', { status: 409 });
-    const user = { id: crypto.randomUUID(), email, displayName, passwordHash, status: 'active' };
+    const { slugify } = require('../../src/shared/text');
+    const id = crypto.randomUUID();
+    let profileSlug = slugify(displayName || 'writer') || 'writer';
+    if (this.users.some((u) => u.profileSlug === profileSlug)) {
+      profileSlug = `${profileSlug.slice(0, 60)}-${id.replace(/-/g, '').slice(0, 8)}`;
+    }
+    const user = { id, email, displayName, passwordHash, status: 'active', profileSlug, bio: '' };
     const tenant = { id: crypto.randomUUID(), name: `${displayName}'s workspace`, type: 'personal' };
     this.users.push(user);
     this.workspaces.push(tenant);
     this.memberships.push({ userId: user.id, tenantId: tenant.id, role: 'owner' });
-    return { user: { id: user.id, email, displayName, status: user.status }, tenant, role: 'owner' };
+    return { user: { id: user.id, email, displayName, profileSlug, bio: '', status: user.status }, tenant, role: 'owner' };
   }
 
   async ensureLegacyIdentity(legacyId) {

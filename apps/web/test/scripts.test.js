@@ -101,3 +101,42 @@ test('scripts service allocates unique slugs and links projects', async () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('public summary includes logline, category filter, and view recording', async () => {
+  const store = new ScriptStore();
+  const scripts = createScriptsService({ store });
+  const categories = await scripts.listCategories();
+  assert.ok(categories.some((c) => c.slug === 'feature'));
+  const feature = categories.find((c) => c.slug === 'feature');
+
+  const created = await scripts.create({
+    title: 'Harbor Night',
+    logline: 'A dockworker finds a letter that should not exist.',
+    categoryId: feature.id,
+    tagSlugs: ['noir', 'mystery'],
+    scriptText: 'FADE IN:',
+  }, { tenantId: 't1', userId: 'author-1' });
+  assert.equal(created.logline, 'A dockworker finds a letter that should not exist.');
+  assert.equal(created.category.slug, 'feature');
+  assert.equal(created.tags.length, 2);
+
+  await scripts.setVisibility(created.id, 'public', { tenantId: 't1' });
+  const listed = await scripts.listPublicByCategory('feature');
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].logline, 'A dockworker finds a letter that should not exist.');
+  assert.equal(listed[0].viewCount, 0);
+  assert.ok(listed[0].tags.some((t) => t.slug === 'noir'));
+
+  const byTag = await scripts.listPublicByTag('noir');
+  assert.equal(byTag.length, 1);
+
+  const page = await scripts.getPublicBySlug('harbor-night');
+  assert.equal(page.viewCount, 1);
+  assert.equal(page.breadcrumb.category.slug, 'feature');
+  const again = await scripts.getPublicBySlug('harbor-night');
+  assert.equal(again.viewCount, 2);
+
+  const stats = await scripts.getOwnerStats(created.id, { tenantId: 't1' });
+  assert.equal(stats.viewCount, 2);
+  assert.equal(stats.likeCount, 0);
+});

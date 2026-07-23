@@ -60,6 +60,7 @@ const prepareNarration = z.object({
   fallbackPolicy,
   enrich: z.boolean().default(true),
   guidance: z.string().max(500).default(''),
+  narrationPromptText: z.string().max(12_000).default(''),
   maxShots: z.coerce.number().int().min(1).max(200).optional(),
   bypassCache: z.boolean().default(false),
 });
@@ -138,6 +139,13 @@ const imageGeneration = z.object({
   }).optional(),
 });
 
+const stylePreview = z.object({
+  projectId,
+  styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
+  commonPromptText: z.string().max(20_000).default(''),
+  provider: z.enum(['gemini', 'openai', 'dezgo', 'dezgo_flux', 'stub']).default('gemini'),
+});
+
 const videoGeneration = z.object({
   projectId,
   sceneId,
@@ -195,16 +203,22 @@ const regenerateDialogue = z.object({
   scene: z.record(z.any()),
   sceneIndex: z.coerce.number().int().min(0).max(MAX_PROJECT_SCENES - 1).default(0),
   instruction: z.string().max(500).default(''),
+  narrationPromptText: z.string().max(12_000).default(''),
   provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
   fallbackPolicy,
   enrich: z.boolean().default(true),
   bypassCache: z.boolean().default(false),
 });
 
+const tagSlugItem = z.string().trim().min(1).max(40);
+
 const createScript = z.object({
   title: z.string().trim().min(1).max(200).default('Untitled'),
   slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
   author: z.string().trim().max(200).optional(),
+  logline: z.string().trim().max(280).optional(),
+  categoryId: z.string().uuid().optional().nullable(),
+  tagSlugs: z.array(tagSlugItem).max(8).optional(),
   scriptText: z.string().max(200_000).default(''),
   visibility: z.enum(['private', 'public']).default('private'),
 }).default({});
@@ -213,6 +227,9 @@ const updateScript = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
   author: z.string().trim().max(200).optional(),
+  logline: z.string().trim().max(280).optional(),
+  categoryId: z.string().uuid().optional().nullable(),
+  tagSlugs: z.array(tagSlugItem).max(8).optional(),
   scriptText: z.string().max(200_000).optional(),
 }).default({});
 
@@ -225,9 +242,15 @@ const publicScriptListQuery = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 }).default({});
 
+const updateWriterProfile = z.object({
+  displayName: z.string().trim().min(1).max(200).optional(),
+  profileSlug: z.string().trim().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
+  bio: z.string().trim().max(500).optional(),
+}).default({});
+
 module.exports = {
   MAX_PROJECT_SCENES, audioGeneration, createProject, createScript, exportProject, fallbackPolicy,
   imageGeneration, mediaSettings, planShots, planVisuals, prepareNarration, projectDocument, projectId, publicScriptListQuery,
   regenerateAction, regenerateDialogue, regeneratePrompt, scriptVisibility, speechGeneration,
-  splitScene, subtitleGeneration, updateScript, videoGeneration,
+  splitScene, stylePreview, subtitleGeneration, updateScript, updateWriterProfile, videoGeneration,
 };

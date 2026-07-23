@@ -20,6 +20,13 @@ function createScriptsRouter({ scripts, projectStore }) {
     res.status(201).json({ ok: true, script });
   }));
 
+  router.get('/:scriptId/stats', asyncRoute(async (req, res) => {
+    res.json({
+      ok: true,
+      stats: await scripts.getOwnerStats(req.params.scriptId, { tenantId: req.auth.tenantId }),
+    });
+  }));
+
   router.get('/:scriptId', asyncRoute(async (req, res) => {
     res.json({ ok: true, script: await scripts.get(req.params.scriptId, { tenantId: req.auth.tenantId }) });
   }));
@@ -66,6 +73,30 @@ function createPublicScriptsRouter({ scripts, optionalAuth }) {
     res.json({
       ok: true,
       scripts: await scripts.listPublic({
+        limit: req.query.limit,
+        offset: req.query.offset,
+      }),
+    });
+  }));
+
+  router.get('/categories', asyncRoute(async (req, res) => {
+    res.json({ ok: true, categories: await scripts.listCategories() });
+  }));
+
+  router.get('/category/:slug', validate(publicScriptListQuery, 'query'), asyncRoute(async (req, res) => {
+    res.json({
+      ok: true,
+      scripts: await scripts.listPublicByCategory(req.params.slug, {
+        limit: req.query.limit,
+        offset: req.query.offset,
+      }),
+    });
+  }));
+
+  router.get('/tag/:slug', validate(publicScriptListQuery, 'query'), asyncRoute(async (req, res) => {
+    res.json({
+      ok: true,
+      scripts: await scripts.listPublicByTag(req.params.slug, {
         limit: req.query.limit,
         offset: req.query.offset,
       }),

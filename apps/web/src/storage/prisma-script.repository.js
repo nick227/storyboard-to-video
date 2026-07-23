@@ -4,6 +4,13 @@ const { AppError } = require('../errors');
 const { ScriptStore } = require('./script-store');
 const { slugify, cleanText } = require('../shared/text');
 
+const SCRIPT_INCLUDE = {
+  category: true,
+  tags: { include: { tag: true } },
+  createdBy: { select: { id: true, profileSlug: true, displayName: true } },
+  _count: { select: { likes: true, views: true } },
+};
+
 class PrismaScriptRepository extends ScriptStore {
   constructor(prisma) {
     super();
@@ -12,6 +19,14 @@ class PrismaScriptRepository extends ScriptStore {
 
   map(row) {
     if (!row) return null;
+    const tags = (row.tags || [])
+      .map((st) => st.tag)
+      .filter(Boolean)
+      .map((t) => ({ id: t.id, slug: t.slug, name: t.name }))
+      .sort((a, b) => a.slug.localeCompare(b.slug));
+    const writer = row.createdBy
+      ? { id: row.createdBy.id, profileSlug: row.createdBy.profileSlug, displayName: row.createdBy.displayName }
+      : row.writer || null;
     return {
       id: row.id,
       tenantId: row.tenantId,
@@ -20,11 +35,17 @@ class PrismaScriptRepository extends ScriptStore {
       slug: row.slug,
       visibility: row.visibility,
       author: row.author,
+      logline: row.logline || '',
+      categoryId: row.categoryId || null,
+      category: row.category ? { id: row.category.id, slug: row.category.slug, name: row.category.name } : null,
+      tags,
       scriptText: row.scriptText,
       publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
+      createdAt: row.createdAt.toISOString?.() || row.createdAt,
+      updatedAt: row.updatedAt.toISOString?.() || row.updatedAt,
       likeCount: row._count?.likes ?? row.likeCount ?? 0,
+      viewCount: row._count?.views ?? row.viewCount ?? 0,
+      writer,
     };
   }
 
@@ -33,6 +54,7 @@ class PrismaScriptRepository extends ScriptStore {
     const slug = await this.allocateSlug(input.slug || input.title || 'untitled', { excludeId: id });
     const visibility = input.visibility === 'public' ? 'public' : 'private';
     const now = new Date();
+    const tags = Array.isArray(input.tagSlugs) ? await this.ensureTags(input.tagSlugs) : [];
     try {
       const row = await this.prisma.script.create({
         data: {
@@ -43,11 +65,15 @@ class PrismaScriptRepository extends ScriptStore {
           slug,
           visibility,
           author: cleanText(input.author || 'Anonymous', 200) || 'Anonymous',
+          logline: cleanText(input.logline || '', 280),
+          categoryId: input.categoryId || null,
           scriptText: String(input.scriptText || ''),
           publishedAt: visibility === 'public' ? (input.publishedAt ? new Date(input.publishedAt) : now) : null,
           createdAt: now,
           updatedAt: now,
+          ...(tags.length ? { tags: { create: tags.map((t) => ({ tagId: t.id })) } } : {}),
         },
+        include: SCRIPT_INCLUDE,
       });
       return this.map(row);
     } catch (cause) {
@@ -59,7 +85,7 @@ class PrismaScriptRepository extends ScriptStore {
   }
 
   async read(id, { tenantId } = {}) {
-    const row = await this.prisma.script.findUnique({ where: { id } });
+    const row = await this.prisma.script.findUnique({ where: { id }, include: SCRIPT_INCLUDE });
     if (!row || (tenantId && row.tenantId !== tenantId)) {
       throw new AppError('SCRIPT_NOT_FOUND', 'Script not found', { status: 404 });
     }
@@ -72,7 +98,9 @@ class PrismaScriptRepository extends ScriptStore {
     if (patch.title != null) data.title = cleanText(patch.title, 200) || 'Untitled';
     if (patch.author != null) data.author = cleanText(patch.author, 200) || 'Anonymous';
     if (patch.scriptText != null) data.scriptText = String(patch.scriptText);
+    if (patch.logline != null) data.logline = cleanText(patch.logline, 280);
     if (patch.slug != null) data.slug = await this.allocateSlug(patch.slug, { excludeId: id });
+    if (patch.categoryId !== undefined) data.categoryId = patch.categoryId || null;
     if (patch.visibility === 'public') {
       data.visibility = 'public';
       data.publishedAt = existing.publishedAt ? new Date(existing.publishedAt) : new Date();
@@ -81,7 +109,11 @@ class PrismaScriptRepository extends ScriptStore {
       data.publishedAt = null;
     }
     try {
-      const row = await this.prisma.script.update({ where: { id }, data });
+      if (Array.isArray(patch.tagSlugs)) {
+        const tags = await this.ensureTags(patch.tagSlugs);
+        await this.setScriptTags(id, tags.map((t) => t.id));
+      }
+      const row = await this.prisma.script.update({ where: { id }, data, include: SCRIPT_INCLUDE });
       return this.map(row);
     } catch (cause) {
       if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002') {
@@ -95,21 +127,24 @@ class PrismaScriptRepository extends ScriptStore {
     const rows = await this.prisma.script.findMany({
       where: tenantId ? { tenantId } : {},
       orderBy: { updatedAt: 'desc' },
+      include: SCRIPT_INCLUDE,
     });
     return rows.map((row) => this.map(row));
   }
 
-  async listPublic({ limit = 50, offset = 0, createdByUserId, excludeId } = {}) {
+  async listPublic({ limit = 50, offset = 0, createdByUserId, excludeId, categorySlug, tagSlug } = {}) {
     const rows = await this.prisma.script.findMany({
       where: {
         visibility: 'public',
         ...(createdByUserId ? { createdByUserId } : {}),
         ...(excludeId ? { id: { not: excludeId } } : {}),
+        ...(categorySlug ? { category: { slug: categorySlug } } : {}),
+        ...(tagSlug ? { tags: { some: { tag: { slug: tagSlug } } } } : {}),
       },
       orderBy: [{ publishedAt: 'desc' }, { updatedAt: 'desc' }],
       take: Math.min(100, Math.max(1, Number(limit) || 50)),
       skip: Math.max(0, Number(offset) || 0),
-      include: { _count: { select: { likes: true } } },
+      include: SCRIPT_INCLUDE,
     });
     return rows.map((row) => this.map(row));
   }
@@ -117,9 +152,61 @@ class PrismaScriptRepository extends ScriptStore {
   async findBySlug(slug) {
     const row = await this.prisma.script.findUnique({
       where: { slug: String(slug || '') },
-      include: { _count: { select: { likes: true } } },
+      include: SCRIPT_INCLUDE,
     });
     return this.map(row);
+  }
+
+  async listCategories() {
+    const rows = await this.prisma.category.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+    return rows.map((c) => ({ id: c.id, slug: c.slug, name: c.name, sortOrder: c.sortOrder }));
+  }
+
+  async findCategoryBySlug(slug) {
+    return this.prisma.category.findUnique({ where: { slug: String(slug || '') } });
+  }
+
+  async ensureTags(slugs = []) {
+    const out = [];
+    for (const raw of slugs) {
+      const slug = slugify(String(raw || '')).slice(0, 40);
+      if (!slug) continue;
+      const name = cleanText(String(raw), 40) || slug;
+      const tag = await this.prisma.tag.upsert({
+        where: { slug },
+        update: {},
+        create: { id: crypto.randomUUID(), slug, name },
+      });
+      out.push(tag);
+    }
+    return out;
+  }
+
+  async setScriptTags(scriptId, tagIds = []) {
+    await this.prisma.$transaction([
+      this.prisma.scriptTag.deleteMany({ where: { scriptId } }),
+      ...(tagIds.length
+        ? [this.prisma.scriptTag.createMany({ data: tagIds.map((tagId) => ({ scriptId, tagId })), skipDuplicates: true })]
+        : []),
+    ]);
+  }
+
+  async recordView(scriptId, viewerUserId = null) {
+    await this.read(scriptId);
+    await this.prisma.scriptView.create({
+      data: { id: crypto.randomUUID(), scriptId, viewerUserId: viewerUserId || null },
+    });
+    const viewCount = await this.prisma.scriptView.count({ where: { scriptId } });
+    return { viewCount };
+  }
+
+  async getStats(scriptId) {
+    await this.read(scriptId);
+    const [likeCount, viewCount] = await Promise.all([
+      this.prisma.scriptLike.count({ where: { scriptId } }),
+      this.prisma.scriptView.count({ where: { scriptId } }),
+    ]);
+    return { likeCount, viewCount };
   }
 
   async hasLike(scriptId, userId) {

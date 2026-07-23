@@ -15,6 +15,8 @@ model User {
   id                 String              @id @db.Uuid
   email              String              @unique
   displayName        String              @map("display_name")
+  profileSlug        String?             @unique @map("profile_slug")
+  bio                String              @default("") @db.VarChar(500)
   passwordHash       String              @map("password_hash")
   status             String              @default("active")
   platformRole       String              @default("user") @map("platform_role")
@@ -26,6 +28,9 @@ model User {
   projects           Project[]           @relation("ProjectCreator")
   scripts            Script[]            @relation("ScriptCreator")
   scriptLikes        ScriptLike[]
+  scriptViews        ScriptView[]
+  following          WriterFollow[]      @relation("WriterFollowing")
+  followers          WriterFollow[]      @relation("WriterFollowers")
   jobs               GenerationJob[]
   assets             Asset[]
   idempotency        IdempotencyRecord[]
@@ -106,23 +111,84 @@ model Script {
   id              String       @id @db.Uuid
   tenantId        String       @map("tenant_id") @db.Uuid
   createdByUserId String       @map("created_by_user_id") @db.Uuid
+  categoryId      String?      @map("category_id") @db.Uuid
   title           String
   slug            String       @unique
   visibility      String       @default("private")
   author          String
+  logline         String       @default("") @db.VarChar(280)
   scriptText      String       @default("") @map("script_text") @db.Text
   publishedAt     DateTime?    @map("published_at") @db.Timestamptz(3)
   createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
   tenant          Workspace    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy       User         @relation("ScriptCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  category        Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   projects        Project[]
   likes           ScriptLike[]
+  tags            ScriptTag[]
+  views           ScriptView[]
 
   @@index([tenantId, updatedAt])
   @@index([visibility, publishedAt])
   @@index([createdByUserId, visibility, publishedAt])
+  @@index([categoryId, visibility, publishedAt])
   @@map("scripts")
+}
+
+model Category {
+  id        String   @id @db.Uuid
+  slug      String   @unique
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  scripts   Script[]
+
+  @@map("categories")
+}
+
+model Tag {
+  id      String      @id @db.Uuid
+  slug    String      @unique
+  name    String
+  scripts ScriptTag[]
+
+  @@map("tags")
+}
+
+model ScriptTag {
+  scriptId String @map("script_id") @db.Uuid
+  tagId    String @map("tag_id") @db.Uuid
+  script   Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  tag      Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([scriptId, tagId])
+  @@index([tagId])
+  @@map("script_tags")
+}
+
+model WriterFollow {
+  followerUserId  String   @map("follower_user_id") @db.Uuid
+  followingUserId String   @map("following_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  follower        User     @relation("WriterFollowing", fields: [followerUserId], references: [id], onDelete: Cascade)
+  following       User     @relation("WriterFollowers", fields: [followingUserId], references: [id], onDelete: Cascade)
+
+  @@id([followerUserId, followingUserId])
+  @@index([followingUserId, createdAt])
+  @@map("writer_follows")
+}
+
+model ScriptView {
+  id           String   @id @db.Uuid
+  scriptId     String   @map("script_id") @db.Uuid
+  viewerUserId String?  @map("viewer_user_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  script       Script   @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  viewer       User?    @relation(fields: [viewerUserId], references: [id], onDelete: SetNull)
+
+  @@index([scriptId, createdAt])
+  @@index([viewerUserId, createdAt])
+  @@map("script_views")
 }
 
 model ScriptLike {
