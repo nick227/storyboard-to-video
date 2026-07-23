@@ -28,20 +28,29 @@ export function renderBreadcrumbs(crumbs = []) {
 
 export function scriptCoverCard(script, { compact = false } = {}) {
   const classes = compact ? 'script-cover-card is-compact' : 'script-cover-card';
+  const likes = Number(script.likeCount || 0);
+  const meta = compact ? '' : `<p class="cover-meta">${likes ? `${likes} like${likes === 1 ? '' : 's'}` : 'New'}</p>`;
   return `<a class="${classes}" href="/scripts/${encodeURIComponent(script.slug)}">
     <p class="cover-label">Screenplay</p>
     <h2 class="cover-title">${escapeHtml(script.title || 'Untitled')}</h2>
     <p class="cover-author">${escapeHtml(script.author || 'Anonymous')}</p>
+    ${meta}
   </a>`;
 }
 
 export function scriptCoverPage(script) {
   const date = formatPublishedDate(script.publishedAt);
   return `<header class="script-cover-page" aria-label="Screenplay cover">
-    <p class="script-cover-page-label">Screenplay</p>
-    <h1>${escapeHtml(script.title || 'Untitled')}</h1>
-    <p class="script-cover-page-author">Written by ${escapeHtml(script.author || 'Anonymous')}</p>
-    ${date ? `<p class="script-cover-page-date">${escapeHtml(date)}</p>` : ''}
+    <div class="script-cover-page-top">
+      <p class="script-cover-page-label">Screenplay</p>
+    </div>
+    <div class="script-cover-page-mid">
+      <h1>${escapeHtml(script.title || 'Untitled')}</h1>
+      <p class="script-cover-page-author">Written by<br><strong>${escapeHtml(script.author || 'Anonymous')}</strong></p>
+    </div>
+    <div class="script-cover-page-bottom">
+      ${date ? `<p class="script-cover-page-date">${escapeHtml(date)}</p>` : ''}
+    </div>
   </header>`;
 }
 
@@ -56,14 +65,17 @@ export async function shareUrl(url, { title = 'Screenplay', text = '' } = {}) {
 
 export function bindFullscreen(button, target) {
   if (!button || !target) return;
+  const label = button.querySelector('[data-fullscreen-label]') || button;
   const sync = () => {
     const active = document.fullscreenElement === target;
     button.setAttribute('aria-pressed', String(active));
-    button.textContent = active ? 'Exit full screen' : 'Full screen';
+    label.textContent = active ? 'Exit' : 'Full screen';
   };
   button.addEventListener('click', async () => {
-    if (document.fullscreenElement === target) await document.exitFullscreen();
-    else await target.requestFullscreen();
+    try {
+      if (document.fullscreenElement === target) await document.exitFullscreen();
+      else await target.requestFullscreen();
+    } catch (_) {}
   });
   document.addEventListener('fullscreenchange', sync);
   sync();
@@ -76,10 +88,18 @@ export function bindShareButton(button, { getUrl, title, text, onStatus } = {}) 
     if (!url) return;
     try {
       const result = await shareUrl(url, { title, text });
-      onStatus?.(result === 'shared' ? 'Shared.' : 'Link copied.');
+      onStatus?.(result === 'shared' ? 'Shared' : 'Link copied');
     } catch (error) {
       if (error?.name === 'AbortError') return;
-      onStatus?.(error.message || 'Could not share.');
+      onStatus?.(error.message || 'Could not share');
     }
   });
+}
+
+export function flashStatus(el, message, ms = 2200) {
+  if (!el) return;
+  el.textContent = message || '';
+  clearTimeout(el._scriptsStatusTimer);
+  if (!message) return;
+  el._scriptsStatusTimer = setTimeout(() => { el.textContent = ''; }, ms);
 }

@@ -1,7 +1,7 @@
 import { RawScriptAdapter } from './screenplay-editor/js/adapters/RawScriptAdapter.js';
 import { fetchPublicScript, toggleScriptLike } from './scripts/api.js';
 import {
-  bindFullscreen, bindShareButton, escapeHtml, renderBreadcrumbs,
+  bindFullscreen, bindShareButton, escapeHtml, flashStatus, renderBreadcrumbs,
   scriptCoverCard, scriptCoverPage,
 } from './scripts/chrome.js';
 
@@ -12,8 +12,7 @@ function renderBody(scriptText = '') {
 }
 
 function loginRedirect() {
-  const target = `/login.html?redirect=${encodeURIComponent(window.location.pathname)}`;
-  window.location.href = target;
+  window.location.href = `/login.html?redirect=${encodeURIComponent(window.location.pathname)}`;
 }
 
 const slug = decodeURIComponent(window.location.pathname.replace(/^\/scripts\//, '').replace(/\/$/, ''));
@@ -47,12 +46,12 @@ try {
   likeBtn.setAttribute('aria-pressed', String(Boolean(script.likedByMe)));
   likeBtn.classList.toggle('is-liked', Boolean(script.likedByMe));
 
-  const shareUrl = new URL(`/scripts/${script.slug}`, window.location.origin).toString();
+  const url = new URL(`/scripts/${script.slug}`, window.location.origin).toString();
   bindShareButton(shareBtn, {
-    getUrl: shareUrl,
+    getUrl: url,
     title: script.title || 'Screenplay',
     text: `Written by ${script.author || 'Anonymous'}`,
-    onStatus: (message) => { toolbarStatus.textContent = message; },
+    onStatus: (message) => flashStatus(toolbarStatus, message),
   });
 
   likeBtn.addEventListener('click', async () => {
@@ -61,9 +60,10 @@ try {
       likeBtn.setAttribute('aria-pressed', String(result.liked));
       likeBtn.classList.toggle('is-liked', result.liked);
       likeCount.textContent = String(result.likeCount || 0);
+      flashStatus(toolbarStatus, result.liked ? 'Liked' : 'Like removed');
     } catch (error) {
       if (error.status === 401 || error.code === 'UNAUTHENTICATED') return loginRedirect();
-      toolbarStatus.textContent = error.message || 'Could not update like.';
+      flashStatus(toolbarStatus, error.message || 'Could not update like');
     }
   });
 

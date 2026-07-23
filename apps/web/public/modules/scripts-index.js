@@ -11,7 +11,8 @@ const status = document.getElementById('scriptsStatus');
 try {
   const scripts = await fetchPublicScripts();
   if (!scripts.length) {
-    status.textContent = 'No public scripts yet.';
+    status.dataset.tone = 'empty';
+    status.textContent = 'No public screenplays yet. Publish one from Studio to appear here.';
   } else {
     status.hidden = true;
     grid.hidden = false;

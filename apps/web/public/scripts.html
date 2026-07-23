@@ -6,17 +6,21 @@
   <meta name="description" content="Browse public screenplays on Storyboarder." />
   <title>Scripts — Storyboarder</title>
   <link rel="icon" type="image/png" href="/images/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/topbar.css" />
   <link rel="stylesheet" href="/scripts-public.css" />
   <script src="/modules/topbar.js"></script>
 </head>
-<body>
+<body class="scripts-shell">
   <storyboarder-topbar></storyboarder-topbar>
   <main class="scripts-page">
-    <div id="scriptsBreadcrumbs"></div>
+    <div id="scriptsBreadcrumbs" class="scripts-crumbs-slot"></div>
     <header class="scripts-page-header">
+      <p class="scripts-kicker">Library</p>
       <h1>Scripts</h1>
-      <p>Public screenplays shared from Storyboarder.</p>
+      <p>Public screenplays from Storyboarder.</p>
     </header>
     <p id="scriptsStatus" class="scripts-status" role="status">Loading scripts…</p>
     <div id="scriptsGrid" class="scripts-grid" hidden></div>
