@@ -8,10 +8,27 @@ function getAdditionalCommonPrompt(stylePrompt, commonPrompt, max = 20_000) {
   return common.startsWith(style) ? common.slice(style.length).trim() : common;
 }
 function extractJson(text) { if (!text) return null; try { return JSON.parse(text); } catch (_) {} const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/); if (!match) return null; try { return JSON.parse(match[0]); } catch (_) { return null; } }
+function readTextField(value, preferredKeys = [], maxLength) {
+  if (typeof value === 'string') return cleanText(value, maxLength);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  for (const key of preferredKeys) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    const nested = readTextField(value[key], preferredKeys, maxLength);
+    if (nested) return nested;
+  }
+  return '';
+}
+/** Parse provider JSON and pull the first usable string from preferred keys (or a bare JSON string). */
+function extractTextField(raw, preferredKeys = ['prompt'], maxLength = 20_000) {
+  const parsed = extractJson(raw);
+  if (parsed == null) return '';
+  if (typeof parsed === 'string') return cleanText(parsed, maxLength);
+  return readTextField(parsed, preferredKeys, maxLength);
+}
 function compactWords(value, maxWords) {
   return cleanText(value, 5_000).split(/\s+/).filter(Boolean).slice(0, maxWords).join(' ');
 }
 function compactAction(value, fallback = 'Subject moves.') {
   return compactWords(value, 24) || fallback;
 }
-module.exports = { clampSceneCount, cleanText, extractJson, getAdditionalCommonPrompt, slugify, compactWords, compactAction };
+module.exports = { clampSceneCount, cleanText, extractJson, extractTextField, getAdditionalCommonPrompt, slugify, compactWords, compactAction };

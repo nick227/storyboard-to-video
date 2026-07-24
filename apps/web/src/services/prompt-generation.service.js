@@ -1,5 +1,5 @@
 const { AppError } = require('../errors');
-const { cleanText, extractJson, getAdditionalCommonPrompt, compactAction } = require('../shared/text');
+const { cleanText, extractJson, extractTextField, getAdditionalCommonPrompt, compactAction } = require('../shared/text');
 const { chunk } = require('../shared/batching');
 const { providerOutput } = require('../providers/result');
 const { imageShot } = require('../shared/scene-shots');
@@ -156,8 +156,12 @@ function createPromptGenerationService({ textProviders, limits, generationCache 
 
     const generateFn = async () => {
       const request = `Return strict JSON only: {"prompt":"..."}. Create a brand-new Visual Prompt from the canonical source below. Do not rewrite, preserve, or infer wording from any previous visual prompt. Show this physical action: ${scene.beat || ''}. State subject, pose, important object, location, and composition. Use the selected style context to shape the visual interpretation. ${CONTINUITY_RULE} ${sourceBlock}. Optional user instruction: ${extraPromptText || 'none'}. Selected style context: ${style.promptText}. Additional style direction: ${getAdditionalCommonPrompt(style.promptText, commonPromptText) || 'none'}.`;
-      const value = cleanText(extractJson(providerOutput(await textProviders.call(provider, request)))?.prompt, limits.prompt);
-      if (!value) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid prompt data', { status: 502 });
+      const raw = providerOutput(await textProviders.call(provider, request));
+      const value = extractTextField(raw, ['prompt', 'visualPrompt', 'visual_prompt', 'text', 'content'], limits.prompt);
+      if (!value) {
+        const hint = !String(raw || '').trim() ? 'empty response' : 'missing prompt field';
+        throw new AppError('INVALID_PROVIDER_RESPONSE', `The text provider returned invalid prompt data (${hint})`, { status: 502 });
+      }
       return {
         prompt: value,
         usedFallback: false,
@@ -213,7 +217,8 @@ function createPromptGenerationService({ textProviders, limits, generationCache 
 ${BEAT_RULES}
 This scene's exact script excerpt: ${source}
 Existing action: ${scene?.beat || 'none'}.`;
-      const value = compactAction(extractJson(providerOutput(await textProviders.call(provider, request)))?.beat, '');
+      const raw = providerOutput(await textProviders.call(provider, request));
+      const value = compactAction(extractTextField(raw, ['beat', 'action', 'text', 'content'], 5_000), '');
       if (!value) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid action data', { status: 502 });
       return { beat: value, usedFallback: false, warning: '' };
     };
