@@ -38,9 +38,6 @@ const els = {
   scriptFocusBtnLabel: document.getElementById('scriptFocusBtnLabel'),
   scriptDownloadBtn: document.getElementById('scriptDownloadBtn'),
   scriptDownloadMenu: document.getElementById('scriptDownloadMenu'),
-  scriptVisibilityToggle: document.getElementById('scriptVisibilityToggle'),
-  storyboardVisibilityToggle: document.getElementById('storyboardVisibilityToggle'),
-  timelineVisibilityToggle: document.getElementById('timelineVisibilityToggle'),
   scriptShareBtn: document.getElementById('scriptShareBtn'),
   workVisibilityToggle: document.getElementById('workVisibilityToggle'),
   workShareBtn: document.getElementById('workShareBtn'),
@@ -360,9 +357,6 @@ async function loadStoryboardIntoUI() {
 function initControllers(getSession) {
   scriptPublishControls = initScriptPublishControls({
     scriptText: els.scriptText,
-    scriptVisibilityToggle: els.scriptVisibilityToggle,
-    storyboardVisibilityToggle: els.storyboardVisibilityToggle,
-    timelineVisibilityToggle: els.timelineVisibilityToggle,
     scriptShareBtn: els.scriptShareBtn,
     workVisibilityToggle: els.workVisibilityToggle,
     workShareBtn: els.workShareBtn,
@@ -396,6 +390,9 @@ function initControllers(getSession) {
     setStatus,
     getCurrentRecord: getCurrentStoryboardRecord,
     getSession,
+    onPageChange: () => {
+      scriptPublishControls?.syncFromRecord(getCurrentStoryboardRecord());
+    },
     onScriptChange: () => {
       saveStoryboard(els, false);
       renderStageBar(els);

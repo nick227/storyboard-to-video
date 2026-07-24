@@ -25,19 +25,14 @@ function artifactSharePath(script, artifact = 'screenplay') {
     || workPath(script.writer?.profileSlug || 'anonymous', script.slug, artifact);
 }
 
-function resolveToggleArtifact(toggle, getArtifact) {
-  return toggle?.dataset?.artifact || getArtifact();
+function artifactLabel(artifact) {
+  return artifact.charAt(0).toUpperCase() + artifact.slice(1);
 }
 
 export function initScriptPublishControls(elements, { setStatus, getArtifact = activeArtifact } = {}) {
-  const toggleBindings = [
-    [elements.scriptVisibilityToggle, 'screenplay'],
-    [elements.storyboardVisibilityToggle, 'storyboard'],
-    [elements.timelineVisibilityToggle, 'timeline'],
-    [elements.workVisibilityToggle, null],
-  ].filter(([el]) => el);
+  const toggle = elements.workVisibilityToggle;
   const shareBtns = [elements.scriptShareBtn, elements.workShareBtn].filter(Boolean);
-  if (!toggleBindings.length && !shareBtns.length) return { syncFromRecord() {} };
+  if (!toggle && !shareBtns.length) return { syncFromRecord() {} };
 
   let busy = false;
   let categoriesLoaded = false;
@@ -77,20 +72,21 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
       record.script = script;
       if (script.scriptText != null) record.scriptText = script.scriptText;
     }
-    const routeArtifact = getArtifact();
-    for (const [toggle, fixed] of toggleBindings) {
-      const artifact = fixed || routeArtifact;
-      if (!fixed) toggle.dataset.artifact = artifact;
-      toggle.checked = artifactVisibility(script, artifact) === 'public';
+    const artifact = getArtifact();
+    const isPublic = artifactVisibility(script, artifact) === 'public';
+    const path = artifactSharePath(script, artifact);
+    if (toggle) {
+      toggle.checked = isPublic;
+      toggle.dataset.artifact = artifact;
+      const label = toggle.closest('label');
+      if (label) label.title = `Make this ${artifact} publicly viewable`;
     }
     for (const shareBtn of shareBtns) {
-      const artifact = shareBtn === elements.workShareBtn || shareBtn === elements.scriptShareBtn
-        ? (shareBtn === elements.scriptShareBtn ? 'screenplay' : routeArtifact)
-        : (shareBtn.dataset.artifact || routeArtifact);
-      const isPublic = artifactVisibility(script, artifact) === 'public';
-      shareBtn.disabled = !isPublic || !script?.slug;
-      shareBtn.dataset.sharePath = artifactSharePath(script, artifact);
-      shareBtn.dataset.artifact = artifact;
+      const shareArtifact = shareBtn === elements.scriptShareBtn ? 'screenplay' : artifact;
+      const sharePublic = artifactVisibility(script, shareArtifact) === 'public';
+      shareBtn.disabled = !sharePublic || !script?.slug;
+      shareBtn.dataset.sharePath = artifactSharePath(script, shareArtifact);
+      shareBtn.dataset.artifact = shareArtifact;
     }
     applyMetaFields(script);
     if (script?.id) refreshStats(script.id);
@@ -130,40 +126,38 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
     elements.scriptMetaModal.showModal();
   }
 
-  async function onVisibilityChange(sourceToggle) {
-    if (busy) return;
+  async function onVisibilityChange() {
+    if (!toggle || busy) return;
     const record = getCurrentStoryboardRecord();
     if (!record) {
-      sourceToggle.checked = false;
+      toggle.checked = false;
       return;
     }
-    const artifact = resolveToggleArtifact(sourceToggle, getArtifact);
-    const desiredVisibility = sourceToggle.checked ? 'public' : 'private';
+    const artifact = getArtifact();
+    const desiredVisibility = toggle.checked ? 'public' : 'private';
     busy = true;
-    for (const [toggle] of toggleBindings) toggle.disabled = true;
+    toggle.disabled = true;
     try {
       const script = await ensureScript(record);
-      sourceToggle.checked = desiredVisibility === 'public';
+      toggle.checked = desiredVisibility === 'public';
       const response = await api(`/api/scripts/${encodeURIComponent(script.id)}/visibility`, {
         method: 'POST',
         body: JSON.stringify({ visibility: desiredVisibility, artifact }),
       });
       applyScript(response.script);
-      const label = artifact.charAt(0).toUpperCase() + artifact.slice(1);
-      setStatus?.(desiredVisibility === 'public' ? `${label} is public.` : `${label} is private.`);
+      setStatus?.(desiredVisibility === 'public'
+        ? `${artifactLabel(artifact)} is public.`
+        : `${artifactLabel(artifact)} is private.`);
     } catch (error) {
       applyScript(getCurrentStoryboardRecord()?.script || null);
       setStatus?.(error.message || 'Could not update visibility.');
     } finally {
-      for (const [toggle] of toggleBindings) toggle.disabled = false;
+      toggle.disabled = false;
       busy = false;
     }
   }
 
-  for (const [toggle, fixed] of toggleBindings) {
-    if (fixed) toggle.dataset.artifact = fixed;
-    toggle.addEventListener('change', () => onVisibilityChange(toggle));
-  }
+  toggle?.addEventListener('change', () => onVisibilityChange());
 
   async function onShareClick(shareBtn) {
     const path = shareBtn.dataset.sharePath;

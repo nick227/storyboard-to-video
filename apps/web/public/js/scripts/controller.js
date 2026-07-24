@@ -8,7 +8,7 @@ import {
 
 const STUDIO_PAGE_STORAGE_KEY = 'storyboarder.activeStudioPage';
 
-export function initScriptController(elements, { setStatus, onScriptChange, getCurrentRecord, getSession } = {}) {
+export function initScriptController(elements, { setStatus, onScriptChange, onPageChange, getCurrentRecord, getSession } = {}) {
   assertElements('Script controller', elements, [
     'scriptText', 'modeSelect', 'editorContainer', 'pagePanel', 'focusBtn',
     'downloadBtn', 'downloadMenu', 'pageTabs', 'pageTabButtons', 'pagePanels',
@@ -67,14 +67,18 @@ export function initScriptController(elements, { setStatus, onScriptChange, getC
 
   const syncTabHrefs = (slug = currentSlug()) => {
     const author = currentAuthor();
+    const projectId = getCurrentRecord?.()?.id;
     elements.pageTabButtons.forEach((button) => {
       const artifact = button.dataset.artifact || PAGE_TO_ARTIFACT[button.dataset.page] || DEFAULT_ARTIFACT;
-      button.setAttribute('href', workPath(author, slug || 'untitled', artifact, { edit: true }));
+      const url = new URL(workPath(author, slug || 'untitled', artifact, { edit: true }), window.location.origin);
+      if (projectId) url.searchParams.set('project', projectId);
+      button.setAttribute('href', `${url.pathname}${url.search}`);
     });
     const download = document.getElementById('downloadZipBtn');
     if (download) {
       const artifact = PAGE_TO_ARTIFACT[activePage] || DEFAULT_ARTIFACT;
       const url = new URL(workPath(author, slug || 'untitled', artifact, { edit: true }), window.location.origin);
+      if (projectId) url.searchParams.set('project', projectId);
       url.searchParams.set('download', '1');
       download.setAttribute('href', `${url.pathname}${url.search}`);
     }
@@ -106,6 +110,7 @@ export function initScriptController(elements, { setStatus, onScriptChange, getC
       history.replaceState(history.state, '', next);
     }
     if (page === 'script' && elements.modeSelect.value === 'screenplay' && !editor) setEditorMode('screenplay');
+    onPageChange?.(page);
   };
 
   const switchPage = async (page, { instant = false } = {}) => {

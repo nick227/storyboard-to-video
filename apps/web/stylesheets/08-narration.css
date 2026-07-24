@@ -148,24 +148,6 @@
   color: var(--muted);
   text-align: center;
 }
-.timeline-status-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-}
-.timeline-status-bar-label {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
 .timeline-page-empty p { max-width: 440px; margin: 0; }
 .timeline-page-empty-icon {
   display: grid;
