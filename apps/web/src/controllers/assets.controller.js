@@ -4,26 +4,53 @@ const { pipeline } = require('node:stream/promises');
 const { AppError } = require('../errors');
 const { buildProjectAssetStorageKey } = require('../storage/blob-store');
 
-function createAssetsController({ projectStore, styles }) {
-  return {
-    async project(req, res) {
-      const file = path.basename(req.params.fileName);
-      if (file !== req.params.fileName) throw new AppError('INVALID_PATH', 'Invalid asset path', { status: 400 });
+function createAssetsController({ projectStore, styles, scripts }) {
+  async function resolveProjectAsset(req) {
+    const file = path.basename(req.params.fileName);
+    if (file !== req.params.fileName) throw new AppError('INVALID_PATH', 'Invalid asset path', { status: 400 });
 
-      let storageKey;
-      let mimeType = null;
-      if (projectStore.findAsset) {
-        const asset = await projectStore.findAsset(req.params.projectId, req.params.type, file, { ownerId: req.auth.tenantId });
-        storageKey = asset.storageKey;
-        mimeType = asset.mimeType || null;
-      } else {
-        await projectStore.read(req.params.projectId, { ownerId: req.auth.tenantId });
-        storageKey = buildProjectAssetStorageKey(req.params.projectId, req.params.type, file);
+    const ownerId = req.auth?.tenantId || null;
+    if (ownerId) {
+      try {
+        if (projectStore.findAsset) {
+          const asset = await projectStore.findAsset(req.params.projectId, req.params.type, file, { ownerId });
+          return { storageKey: asset.storageKey, mimeType: asset.mimeType || null };
+        }
+        await projectStore.read(req.params.projectId, { ownerId });
+        const storageKey = buildProjectAssetStorageKey(req.params.projectId, req.params.type, file);
         if (!await projectStore.blobStore.exists(storageKey)) {
           throw new AppError('ASSET_NOT_FOUND', 'Asset not found', { status: 404 });
         }
+        return { storageKey, mimeType: null };
+      } catch (error) {
+        if (error.code !== 'PROJECT_NOT_FOUND' && error.status !== 404) throw error;
       }
+    }
 
+    const allowed = scripts?.canPublicReadProjectMedia
+      ? await scripts.canPublicReadProjectMedia(req.params.projectId)
+      : false;
+    if (!allowed) {
+      throw new AppError(ownerId ? 'ASSET_NOT_FOUND' : 'UNAUTHENTICATED',
+        ownerId ? 'Asset not found' : 'Authentication is required',
+        { status: ownerId ? 404 : 401 });
+    }
+
+    if (projectStore.findAsset) {
+      const asset = await projectStore.findAsset(req.params.projectId, req.params.type, file, {});
+      return { storageKey: asset.storageKey, mimeType: asset.mimeType || null };
+    }
+    await projectStore.read(req.params.projectId);
+    const storageKey = buildProjectAssetStorageKey(req.params.projectId, req.params.type, file);
+    if (!await projectStore.blobStore.exists(storageKey)) {
+      throw new AppError('ASSET_NOT_FOUND', 'Asset not found', { status: 404 });
+    }
+    return { storageKey, mimeType: null };
+  }
+
+  return {
+    async project(req, res) {
+      const { storageKey, mimeType } = await resolveProjectAsset(req);
       const stream = await projectStore.blobStore.getStream(storageKey);
       if (mimeType) res.type(mimeType);
       await pipeline(stream, res);

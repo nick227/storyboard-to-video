@@ -382,6 +382,12 @@ class ProjectStore {
     }).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   }
 
+  findLatestByScriptId(scriptId) {
+    if (!scriptId) return null;
+    const matches = this.list({}).filter((project) => project.scriptId === scriptId);
+    return matches[0] || null;
+  }
+
   async resolveAsset(projectId, publicPath, { ownerId } = {}) {
     await this.read(projectId, { ownerId });
     const match = String(publicPath || '').match(/^\/projects\/([^/]+)\/assets\/([^/]+)\/([^/]+)$/);

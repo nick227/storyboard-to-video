@@ -85,6 +85,15 @@ class PrismaProjectRepository extends ProjectStore {
     return rows.map((row) => this.map(row));
   }
 
+  async findLatestByScriptId(scriptId) {
+    if (!scriptId) return null;
+    const row = await this.prisma.project.findFirst({
+      where: { scriptId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return this.map(row);
+  }
+
   async acquireLease(id, { ownerId, userId } = {}) {
     const document = await this.read(id, { ownerId });
     return Object.freeze({ projectId: id, incarnationId: document.incarnationId, ownerId: document.tenantId, userId: userId || null });

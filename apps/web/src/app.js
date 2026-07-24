@@ -10,8 +10,10 @@ const { audioRoutes } = require('./routes/audio.routes');
 const { videosRoutes } = require('./routes/videos.routes');
 const { subtitlesRoutes } = require('./routes/subtitles.routes');
 const { stylesRoutes } = require('./routes/styles.routes');
+const { customStylesRoutes } = require('./routes/custom-styles.routes');
 const { exportsRoutes } = require('./routes/exports.routes');
 const { assetsRoutes } = require('./routes/assets.routes');
+const { asyncRoute } = require('./routes/helpers');
 const { authRoutes } = require('./routes/auth.routes');
 const { usageRoutes } = require('./routes/usage.routes');
 const { billingRoutes } = require('./routes/billing.routes');
@@ -45,6 +47,12 @@ function createApp(dependencies) {
     writers: dependencies.writers,
     optionalAuth: dependencies.auth.middleware({ optional: true }),
   }));
+  // Public storyboard/timeline viewers need unauthenticated media when the artifact is published.
+  app.get(
+    '/projects/:projectId/assets/:type/:fileName',
+    dependencies.auth.middleware({ optional: true }),
+    asyncRoute((req, res) => dependencies.controllers.assets.project(req, res)),
+  );
   app.use(['/api', '/projects', '/style-references', '/user-style-references'], dependencies.authenticate);
   registerRoutes(app, dependencies);
   registerErrorHandler(app);
@@ -98,7 +106,7 @@ function registerPageRoutes(app, config) {
     return sendPage('studio.html')(req, res);
   });
 
-  // Public artifact: screenplay → reader; storyboard/timeline → reader shell for now
+  // Public artifact: screenplay reader; storyboard/timeline read-only viewers (no cover)
   app.get(`/:author/:slug/:artifact(${ARTIFACT_PARAM})`, (req, res, next) => {
     if (req.params.author.includes('.') || req.params.slug.includes('.')) return next();
     return sendPage('script-reader.html')(req, res);
@@ -219,6 +227,7 @@ function registerRoutes(app, d) {
   app.use('/api/billing', paymentRoutes(d.paymentRepository, d.payments, d.spendSummary));
   app.use('/api/media-output', mediaOutputRoutes(d.mediaOutput));
   app.use('/api/styles', stylesRoutes({ controller: d.controllers.styles, upload: d.upload }));
+  app.use('/api/custom-styles', customStylesRoutes({ controller: d.controllers.styles, upload: d.upload }));
   app.use('/api/storyboard', storyboardRoutes({ controller: d.controllers.storyboard, idempotency: d.idempotency, execute: d.execute }));
   app.use('/api/images', imagesRoutes({ controller: d.controllers.media, idempotency: d.idempotency, execute: d.execute }));
   app.use('/api/videos', videosRoutes({ controller: d.controllers.media, idempotency: d.idempotency, execute: d.execute }));

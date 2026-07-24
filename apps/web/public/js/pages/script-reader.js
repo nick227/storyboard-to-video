@@ -1,6 +1,7 @@
 import { RawScriptAdapter } from '../screenplay-editor/js/adapters/RawScriptAdapter.js';
 import { ViewportScaler } from '../screenplay-editor/js/ui/ViewportScaler.js';
 import { fetchPublicScript, toggleScriptLike } from '../scripts/api.js';
+import { renderStoryboardView, renderTimelineView } from '../scripts/artifact-viewer.js';
 import {
   bindFullscreen, bindShareButton, escapeHtml, flashStatus, loginRedirect,
   renderBreadcrumbs, scriptCoverCard, scriptCoverPage, scriptTrail,
@@ -35,6 +36,10 @@ const readerWorkspace = document.getElementById('readerWorkspace');
 const readerScaleShell = document.getElementById('readerScaleShell');
 const readerScaleTarget = document.getElementById('readerScaleTarget');
 const readerPage = document.getElementById('readerPage');
+const artifactView = document.getElementById('artifactView');
+const storyboardView = document.getElementById('storyboardView');
+const timelineView = document.getElementById('timelineView');
+const readerCover = document.getElementById('readerCover');
 
 bindFullscreen(fullscreenBtn, stage);
 initWorkbar({
@@ -61,26 +66,30 @@ try {
     { label: script.title || 'Untitled' },
   ]);
 
-  if (artifact !== 'screenplay') {
-    document.getElementById('readerCover').innerHTML = `
-      <header class="script-cover-page" aria-label="${escapeHtml(label)} cover">
-        <div class="script-cover-page-top">
-          <p class="script-cover-page-label">${escapeHtml(label)}</p>
-        </div>
-        <div class="script-cover-page-mid">
-          <h1>${escapeHtml(script.title || 'Untitled')}</h1>
-          ${script.logline ? `<p class="script-cover-page-logline">${escapeHtml(script.logline)}</p>` : ''}
-          <p class="script-cover-page-author">By<br><strong>${escapeHtml(script.author || 'Anonymous')}</strong></p>
-        </div>
-        <div class="script-cover-page-bottom">
-          <p class="script-cover-page-date">Public preview coming soon</p>
-        </div>
-      </header>`;
+  const scenes = script.project?.scenes || [];
+
+  if (artifact === 'storyboard') {
+    readerCover.replaceChildren();
     readerBody.hidden = true;
-    likeBtn.hidden = true;
-    fullscreenBtn.hidden = true;
+    artifactView.hidden = false;
+    storyboardView.hidden = false;
+    timelineView.hidden = true;
+    renderStoryboardView(storyboardView, scenes);
+    likeBtn.hidden = false;
+    fullscreenBtn.hidden = false;
+  } else if (artifact === 'timeline') {
+    readerCover.replaceChildren();
+    readerBody.hidden = true;
+    artifactView.hidden = false;
+    storyboardView.hidden = true;
+    timelineView.hidden = false;
+    await renderTimelineView(timelineView, scenes);
+    likeBtn.hidden = false;
+    fullscreenBtn.hidden = false;
   } else {
-    document.getElementById('readerCover').innerHTML = scriptCoverPage(script);
+    artifactView.hidden = true;
+    readerCover.innerHTML = scriptCoverPage(script);
+    readerBody.hidden = false;
     readerPage.innerHTML = renderLines(script.scriptText || '');
 
     const scaler = new ViewportScaler({
@@ -90,26 +99,25 @@ try {
       target: readerScaleTarget,
     });
     scaler.start();
-
-    likeCount.textContent = String(script.likeCount || 0);
-    likeBtn.setAttribute('aria-pressed', String(Boolean(script.likedByMe)));
-    likeBtn.classList.toggle('is-liked', Boolean(script.likedByMe));
-
-    likeBtn.addEventListener('click', async () => {
-      try {
-        const result = await toggleScriptLike(script.id);
-        likeBtn.setAttribute('aria-pressed', String(result.liked));
-        likeBtn.classList.toggle('is-liked', result.liked);
-        likeCount.textContent = String(result.likeCount || 0);
-        flashStatus(toolbarStatus, result.liked ? 'Liked' : 'Like removed');
-      } catch (error) {
-        if (error.status === 401 || error.code === 'UNAUTHENTICATED') return loginRedirect();
-        flashStatus(toolbarStatus, error.message || 'Could not update like');
-      }
-    });
-
     scaler.scheduleUpdate();
   }
+
+  likeCount.textContent = String(script.likeCount || 0);
+  likeBtn.setAttribute('aria-pressed', String(Boolean(script.likedByMe)));
+  likeBtn.classList.toggle('is-liked', Boolean(script.likedByMe));
+
+  likeBtn.addEventListener('click', async () => {
+    try {
+      const result = await toggleScriptLike(script.id);
+      likeBtn.setAttribute('aria-pressed', String(result.liked));
+      likeBtn.classList.toggle('is-liked', result.liked);
+      likeCount.textContent = String(result.likeCount || 0);
+      flashStatus(toolbarStatus, result.liked ? 'Liked' : 'Like removed');
+    } catch (error) {
+      if (error.status === 401 || error.code === 'UNAUTHENTICATED') return loginRedirect();
+      flashStatus(toolbarStatus, error.message || 'Could not update like');
+    }
+  });
 
   const url = new URL(workPath(canonicalAuthor, script.slug, artifact), window.location.origin).toString();
   bindShareButton(shareBtn, {

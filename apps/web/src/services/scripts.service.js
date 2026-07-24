@@ -2,6 +2,7 @@ const { AppError } = require('../errors');
 const { cleanText } = require('../shared/text');
 const { sharePathFor } = require('../shared/app-paths');
 const { isArtifact, isArtifactPublic, hasAnyPublicArtifact, artifactState, artifactsFromRow, ARTIFACT_FIELDS } = require('../shared/script-artifacts');
+const { publicProjectView } = require('../shared/public-artifact-view');
 
 function publicSummary(script, { artifact = 'screenplay' } = {}) {
   const key = isArtifact(artifact) ? artifact : 'screenplay';
@@ -47,7 +48,7 @@ function ownerView(script) {
   };
 }
 
-function createScriptsService({ store }) {
+function createScriptsService({ store, projectStore } = {}) {
   function resolveAuthor(author) {
     return cleanText(author || 'Anonymous', 200) || 'Anonymous';
   }
@@ -122,7 +123,7 @@ function createScriptsService({ store }) {
       limit: 6,
     });
     const summary = publicSummary(refreshed || script, { artifact: key });
-    return {
+    const payload = {
       ...summary,
       scriptText: key === 'screenplay' ? script.scriptText : undefined,
       createdByUserId: script.createdByUserId,
@@ -133,6 +134,31 @@ function createScriptsService({ store }) {
         writer: summary.writer || null,
       },
     };
+    if (key === 'storyboard' || key === 'timeline') {
+      const project = projectStore?.findLatestByScriptId
+        ? await projectStore.findLatestByScriptId(script.id)
+        : null;
+      payload.project = publicProjectView(project);
+    }
+    return payload;
+  }
+
+  async function canPublicReadProjectMedia(projectId) {
+    if (!projectStore || !projectId) return false;
+    let project;
+    try {
+      project = await projectStore.read(projectId);
+    } catch (_) {
+      return false;
+    }
+    if (!project?.scriptId) return false;
+    let script;
+    try {
+      script = await store.read(project.scriptId);
+    } catch (_) {
+      return false;
+    }
+    return isArtifactPublic(script, 'storyboard') || isArtifactPublic(script, 'timeline');
   }
 
   async function toggleLike(scriptId, { userId }) {
@@ -202,7 +228,7 @@ function createScriptsService({ store }) {
   return {
     create, list, get, update, setVisibility, listPublic, listPublicByCategory, listPublicByTag,
     listCategories, getPublicBySlug, resolveSharePath, toggleLike, getOwnerStats, ensureForProject, syncFromProject,
-    listProjects, publicSummary, ownerView,
+    listProjects, canPublicReadProjectMedia, publicSummary, ownerView,
   };
 }
 

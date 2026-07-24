@@ -168,6 +168,7 @@ test('storyboard and timeline publish independently of screenplay', async () => 
   assert.equal(publicBoard.artifact, 'storyboard');
   assert.equal(publicBoard.scriptText, undefined);
   assert.equal(publicBoard.sharePath, '/anonymous/split-publish/storyboard');
+  assert.equal(publicBoard.project, null);
 
   const listedBoards = await scripts.listPublic({ artifact: 'storyboard' });
   assert.equal(listedBoards.length, 1);
@@ -177,4 +178,42 @@ test('storyboard and timeline publish independently of screenplay', async () => 
   await scripts.setVisibility(created.id, 'public', { tenantId: 't1', artifact: 'timeline' });
   assert.equal((await scripts.listPublic({ artifact: 'timeline' })).length, 1);
   assert.equal((await scripts.listPublic({ artifact: 'storyboard' })).length, 1);
+});
+
+test('public storyboard view returns sanitized project scenes without a cover payload', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'storyboard-public-view-'));
+  const store = new ScriptStore();
+  const projectStore = new ProjectStore(root);
+  const scripts = createScriptsService({ store, projectStore });
+  const created = await scripts.create({
+    title: 'Board View',
+    scriptText: 'FADE IN:',
+  }, { tenantId: 't1', userId: 'u1' });
+  await scripts.setVisibility(created.id, 'public', { tenantId: 't1', artifact: 'storyboard' });
+
+  const project = projectStore.create({
+    id: 'board-1',
+    title: 'Board View',
+    scriptId: created.id,
+    project: {
+      scenes: [{
+        id: 's1',
+        title: 'Open',
+        narrationText: 'She opens the door.',
+        versions: [{ path: '/projects/board-1/assets/images/a.png' }],
+        activeVersionIndex: 0,
+      }],
+    },
+  }, { ownerId: 't1', createdByUserId: 'u1' });
+
+  const publicBoard = await scripts.getPublicBySlug('board-view', { artifact: 'storyboard' });
+  assert.equal(publicBoard.project.id, project.id);
+  assert.equal(publicBoard.project.scenes.length, 1);
+  assert.equal(publicBoard.project.scenes[0].imagePath, '/projects/board-1/assets/images/a.png');
+  assert.equal(publicBoard.project.scenes[0].narrationText, 'She opens the door.');
+  assert.equal(publicBoard.project.scenes[0].versions, undefined);
+  assert.equal(await scripts.canPublicReadProjectMedia('board-1'), true);
+  assert.equal(await scripts.canPublicReadProjectMedia('missing'), false);
+
+  fs.rmSync(root, { recursive: true, force: true });
 });

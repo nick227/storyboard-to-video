@@ -69,7 +69,7 @@ export function initWorkbar(options = {}) {
       tab.href = workPath(authorSlug, workSlug, artifact, { edit: route.edit });
     }
 
-    if (downloadBtn) {
+  if (downloadBtn) {
       if (route.edit) {
         downloadBtn.hidden = false;
         const url = new URL(workPath(authorSlug, workSlug, route.artifact, { edit: true }), window.location.origin);
@@ -79,6 +79,9 @@ export function initWorkbar(options = {}) {
         downloadBtn.hidden = true;
       }
     }
+
+    const visibility = root.querySelector('.sf-work-visibility');
+    if (visibility) visibility.hidden = !route.edit;
   };
 
   const closeRecent = () => {
