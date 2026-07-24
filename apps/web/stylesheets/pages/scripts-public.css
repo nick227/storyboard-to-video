@@ -412,6 +412,18 @@ body.scripts-shell {
   font-weight: 700;
 }
 
+/* Author display:flex/grid rules beat the UA [hidden] stylesheet — force collapse. */
+.screenplay-editor-wrapper[hidden],
+.artifact-view[hidden],
+.storyboard-view[hidden],
+.timeline-view[hidden],
+.timeline-view-empty[hidden],
+.timeline-view-video[hidden],
+.timeline-view-image[hidden],
+#readerCover[hidden] {
+  display: none !important;
+}
+
 .artifact-view {
   width: min(100%, 64rem);
   margin: 0 auto;

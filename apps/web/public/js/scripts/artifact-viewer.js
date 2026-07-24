@@ -18,15 +18,37 @@ function probeDuration(path, kind) {
       clearTimeout(timer);
       el.removeAttribute('src');
       el.load();
-      resolve(Number.isFinite(value) ? value : 0);
+      resolve(Number.isFinite(value) && value > 0 ? value : 0);
     };
-    const timer = setTimeout(() => finish(0), 8000);
+    const timer = setTimeout(() => finish(0), 4000);
     el.preload = 'metadata';
     el.muted = true;
     el.addEventListener('loadedmetadata', () => finish(el.duration), { once: true });
     el.addEventListener('error', () => finish(0), { once: true });
     el.src = path;
   });
+}
+
+async function playMedia(el, offset = 0) {
+  if (!el?.src) return;
+  try {
+    if (el.readyState < 1) {
+      await new Promise((resolve, reject) => {
+        const onReady = () => { cleanup(); resolve(); };
+        const onError = () => { cleanup(); reject(new Error('media error')); };
+        const cleanup = () => {
+          el.removeEventListener('loadedmetadata', onReady);
+          el.removeEventListener('error', onError);
+        };
+        el.addEventListener('loadedmetadata', onReady, { once: true });
+        el.addEventListener('error', onError, { once: true });
+      });
+    }
+    if (Number.isFinite(offset) && offset > 0) el.currentTime = offset;
+    await el.play();
+  } catch (_) {
+    /* autoplay / seek failures stay silent in the viewer */
+  }
 }
 
 export function renderStoryboardView(root, scenes = []) {
@@ -59,9 +81,9 @@ export async function renderTimelineView(root, scenes = []) {
 
   root.innerHTML = `
     <div class="timeline-view-stage">
-      <video class="timeline-view-video" muted playsinline preload="auto"></video>
+      <video class="timeline-view-video" muted playsinline preload="auto" hidden></video>
       <img class="timeline-view-image" alt="" hidden />
-      <div class="timeline-view-empty" hidden>No preview</div>
+      <div class="timeline-view-empty">No preview</div>
       <button type="button" class="timeline-view-toggle" aria-label="Play timeline" disabled>Play</button>
     </div>
     <audio class="timeline-view-audio" preload="auto"></audio>
@@ -78,23 +100,25 @@ export async function renderTimelineView(root, scenes = []) {
   const clock = root.querySelector('.timeline-view-clock');
   const thumbs = root.querySelector('.timeline-view-thumbs');
 
-  const segments = [];
-  for (let i = 0; i < scenes.length; i += 1) {
-    const scene = scenes[i];
-    if (!scene.imagePath && !scene.videoPath && !scene.audioPath) continue;
+  const usable = scenes.filter((scene) => scene.imagePath || scene.videoPath || scene.audioPath);
+  const probed = await Promise.all(usable.map(async (scene) => {
     const [videoDuration, audioDuration] = await Promise.all([
       probeDuration(scene.videoPath, 'video'),
       probeDuration(scene.audioPath, 'audio'),
     ]);
-    const duration = Math.max(videoDuration, audioDuration) || STILL_SECONDS;
-    segments.push({ ...scene, duration, start: 0 });
-  }
+    return {
+      ...scene,
+      duration: Math.max(videoDuration, audioDuration, STILL_SECONDS),
+      start: 0,
+    };
+  }));
+
   let offset = 0;
-  for (const segment of segments) {
+  for (const segment of probed) {
     segment.start = offset;
     offset += segment.duration;
   }
-  const total = offset;
+  const segments = probed;
 
   thumbs.innerHTML = segments.map((segment, index) => (
     `<button type="button" class="timeline-view-thumb" data-index="${index}" role="listitem" aria-label="${escapeHtml(segment.title || `Scene ${index + 1}`)}">
@@ -125,6 +149,9 @@ export async function renderTimelineView(root, scenes = []) {
       }
     } else if (segment.imagePath) {
       video.pause();
+      video.removeAttribute('src');
+      video.load();
+      delete video.dataset.path;
       video.hidden = true;
       image.hidden = false;
       image.src = segment.imagePath;
@@ -139,6 +166,7 @@ export async function renderTimelineView(root, scenes = []) {
         audio.src = segment.audioPath;
       }
     } else {
+      audio.pause();
       audio.removeAttribute('src');
       audio.load();
       delete audio.dataset.path;
@@ -148,23 +176,44 @@ export async function renderTimelineView(root, scenes = []) {
   const localTime = () => {
     const segment = segments[index];
     if (!segment) return 0;
-    if (segment.videoPath && !video.paused) return video.currentTime || 0;
-    if (segment.audioPath && !audio.paused) return audio.currentTime || 0;
+    if (segment.videoPath && !video.paused && video.readyState > 0) return video.currentTime || 0;
+    if (segment.audioPath && !audio.paused && audio.readyState > 0) return audio.currentTime || 0;
     if (!playing) return stillOffset;
     return Math.min(segment.duration, stillOffset + (performance.now() - stillStartedAt) / 1000);
   };
 
   const globalTime = () => (segments[index]?.start || 0) + localTime();
 
-  const tick = () => {
+  const startMedia = async () => {
     const segment = segments[index];
     if (!segment) return;
+    stillStartedAt = performance.now();
+    const tasks = [];
+    if (segment.videoPath) tasks.push(playMedia(video, stillOffset));
+    if (segment.audioPath) tasks.push(playMedia(audio, stillOffset));
+    await Promise.all(tasks);
+  };
+
+  const stop = () => {
+    playing = false;
+    cancelAnimationFrame(raf);
+    stillOffset = localTime();
+    video.pause();
+    audio.pause();
+    const atEnd = index >= segments.length - 1 && stillOffset >= (segments[index]?.duration || 0) - 0.05;
+    toggle.textContent = atEnd ? 'Replay' : 'Play';
+    clock.textContent = formatTime(globalTime());
+  };
+
+  const tick = () => {
+    if (!playing) return;
+    const segment = segments[index];
+    if (!segment) return stop();
     clock.textContent = formatTime(globalTime());
     if (localTime() >= segment.duration - 0.05) {
       if (index + 1 < segments.length) {
         index += 1;
         stillOffset = 0;
-        stillStartedAt = performance.now();
         showSegment(segments[index]);
         startMedia();
       } else {
@@ -173,33 +222,6 @@ export async function renderTimelineView(root, scenes = []) {
       }
     }
     raf = requestAnimationFrame(tick);
-  };
-
-  const startMedia = () => {
-    const segment = segments[index];
-    if (!segment) return;
-    const tasks = [];
-    if (segment.videoPath) {
-      video.currentTime = stillOffset;
-      tasks.push(video.play().catch(() => {}));
-    }
-    if (segment.audioPath) {
-      audio.currentTime = stillOffset;
-      tasks.push(audio.play().catch(() => {}));
-    }
-    stillStartedAt = performance.now();
-  };
-
-  const stop = () => {
-    playing = false;
-    cancelAnimationFrame(raf);
-    video.pause();
-    audio.pause();
-    stillOffset = localTime();
-    toggle.textContent = index >= segments.length - 1 && stillOffset >= (segments[index]?.duration || 0) - 0.05
-      ? 'Replay'
-      : 'Play';
-    clock.textContent = formatTime(globalTime());
   };
 
   const play = () => {
@@ -229,15 +251,11 @@ export async function renderTimelineView(root, scenes = []) {
     stillOffset = 0;
     showSegment(segments[index]);
     clock.textContent = formatTime(segments[index]?.start || 0);
-    if (playing) {
-      startMedia();
-    } else {
-      toggle.textContent = 'Play';
-    }
+    if (playing) startMedia();
+    else toggle.textContent = 'Play';
   });
 
-  showSegment(segments[0]);
+  showSegment(segments[0] || null);
   clock.textContent = formatTime(0);
   toggle.textContent = 'Play';
-  void total;
 }

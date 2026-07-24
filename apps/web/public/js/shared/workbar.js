@@ -151,7 +151,12 @@ export function initWorkbar(options = {}) {
     const isPublic = script?.artifacts?.[artifact]?.visibility === 'public'
       || (artifact === 'screenplay' && script?.visibility === 'public');
     if (shareBtn && !options.manageShare) {
-      shareBtn.disabled = !isPublic || !script?.slug;
+      // View pages pass shareUrl and have no project record — keep Share enabled.
+      if (!route.edit && options.shareUrl) {
+        shareBtn.disabled = false;
+      } else {
+        shareBtn.disabled = !isPublic || !script?.slug;
+      }
       if (script?.slug) {
         shareBtn.dataset.sharePath = workPath(
           route.authorSlug || authorSlugFromRecord(record, options.session),

@@ -50,6 +50,8 @@
   font-family: var(--sf-font);
 }
 .sf-workbar[hidden] { display: none; }
+.sf-work-visibility[hidden],
+.sf-action-btn[hidden] { display: none !important; }
 .sf-workbar-inner {
   max-width: 1500px;
   min-height: 44px;

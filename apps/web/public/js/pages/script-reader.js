@@ -69,6 +69,7 @@ try {
   const scenes = script.project?.scenes || [];
 
   if (artifact === 'storyboard') {
+    readerCover.hidden = true;
     readerCover.replaceChildren();
     readerBody.hidden = true;
     artifactView.hidden = false;
@@ -78,6 +79,7 @@ try {
     likeBtn.hidden = false;
     fullscreenBtn.hidden = false;
   } else if (artifact === 'timeline') {
+    readerCover.hidden = true;
     readerCover.replaceChildren();
     readerBody.hidden = true;
     artifactView.hidden = false;
@@ -87,9 +89,12 @@ try {
     likeBtn.hidden = false;
     fullscreenBtn.hidden = false;
   } else {
+    readerCover.hidden = false;
     artifactView.hidden = true;
-    readerCover.innerHTML = scriptCoverPage(script);
+    storyboardView.hidden = true;
+    timelineView.hidden = true;
     readerBody.hidden = false;
+    readerCover.innerHTML = scriptCoverPage(script);
     readerPage.innerHTML = renderLines(script.scriptText || '');
 
     const scaler = new ViewportScaler({
