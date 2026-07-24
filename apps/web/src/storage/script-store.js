@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const { AppError } = require('../errors');
 const { slugify, cleanText } = require('../shared/text');
 const {
-  artifactsFromRow, artifactVisibilityPatch, isArtifactPublic, normalizeVisibility,
+  artifactsFromRow, artifactVisibilityPatch, isArtifactPublic, normalizeVisibility, publishedAtOrder,
 } = require('../shared/script-artifacts');
 
 const SEED_CATEGORIES = [
@@ -168,6 +168,7 @@ class ScriptStore {
   }
 
   async listPublic({ limit = 50, offset = 0, createdByUserId, excludeId, categorySlug, tagSlug, artifact = 'screenplay' } = {}) {
+    const publishedField = publishedAtOrder(artifact);
     return [...this.scripts.values()]
       .filter((row) => {
         if (!isArtifactPublic(row, artifact)) return false;
@@ -180,15 +181,7 @@ class ScriptStore {
         if (tagSlug && !this.mapTags(row.id).some((t) => t.slug === tagSlug)) return false;
         return true;
       })
-      .sort((a, b) => {
-        const aAt = artifact === 'storyboard' ? a.storyboardPublishedAt
-          : artifact === 'timeline' ? a.timelinePublishedAt
-            : a.publishedAt;
-        const bAt = artifact === 'storyboard' ? b.storyboardPublishedAt
-          : artifact === 'timeline' ? b.timelinePublishedAt
-            : b.publishedAt;
-        return String(bAt || b.updatedAt).localeCompare(String(aAt || a.updatedAt));
-      })
+      .sort((a, b) => String(b[publishedField] || b.updatedAt).localeCompare(String(a[publishedField] || a.updatedAt)))
       .slice(offset, offset + limit)
       .map((row) => this.map(row));
   }

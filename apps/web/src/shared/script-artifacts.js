@@ -18,28 +18,32 @@ function normalizeVisibility(value) {
 
 function artifactsFromRow(row = {}) {
   return {
-    screenplay: {
-      visibility: normalizeVisibility(row.visibility),
-      publishedAt: row.publishedAt || null,
-    },
-    storyboard: {
-      visibility: normalizeVisibility(row.storyboardVisibility),
-      publishedAt: row.storyboardPublishedAt || null,
-    },
-    timeline: {
-      visibility: normalizeVisibility(row.timelineVisibility),
-      publishedAt: row.timelinePublishedAt || null,
-    },
+    screenplay: artifactState(row, 'screenplay'),
+    storyboard: artifactState(row, 'storyboard'),
+    timeline: artifactState(row, 'timeline'),
   };
 }
 
-function artifactState(row, artifact = 'screenplay') {
-  const artifacts = artifactsFromRow(row);
-  return artifacts[isArtifact(artifact) ? artifact : 'screenplay'];
+/** Read one artifact's visibility state without allocating the full artifacts map. */
+function artifactState(row = {}, artifact = 'screenplay') {
+  const key = isArtifact(artifact) ? artifact : 'screenplay';
+  const fields = ARTIFACT_FIELDS[key];
+  const nested = row.artifacts?.[key];
+  return {
+    visibility: normalizeVisibility(row[fields.visibility] ?? nested?.visibility),
+    publishedAt: row[fields.publishedAt] || nested?.publishedAt || null,
+  };
 }
 
 function isArtifactPublic(row, artifact = 'screenplay') {
   return artifactState(row, artifact).visibility === 'public';
+}
+
+function hasAnyPublicArtifact(row) {
+  for (let i = 0; i < ARTIFACTS.length; i += 1) {
+    if (isArtifactPublic(row, ARTIFACTS[i])) return true;
+  }
+  return false;
 }
 
 /** Patch fields for store/prisma update when toggling one artifact's visibility. */
@@ -49,7 +53,7 @@ function artifactVisibilityPatch(artifact, visibility, existing = {}) {
   const next = normalizeVisibility(visibility);
   const patch = { [fields.visibility]: next };
   if (next === 'public') {
-    const current = existing[fields.publishedAt] || artifactState(existing, key).publishedAt;
+    const current = existing[fields.publishedAt] || existing.artifacts?.[key]?.publishedAt || null;
     patch[fields.publishedAt] = current || new Date().toISOString();
   } else {
     patch[fields.publishedAt] = null;
@@ -75,6 +79,7 @@ module.exports = {
   artifactsFromRow,
   artifactState,
   isArtifactPublic,
+  hasAnyPublicArtifact,
   artifactVisibilityPatch,
   visibilityWhere,
   publishedAtOrder,

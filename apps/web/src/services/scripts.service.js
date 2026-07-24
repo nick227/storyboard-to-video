@@ -1,7 +1,7 @@
 const { AppError } = require('../errors');
 const { cleanText } = require('../shared/text');
 const { sharePathFor } = require('../shared/app-paths');
-const { isArtifact, isArtifactPublic, artifactState, ARTIFACT_FIELDS } = require('../shared/script-artifacts');
+const { isArtifact, isArtifactPublic, hasAnyPublicArtifact, artifactState, artifactsFromRow, ARTIFACT_FIELDS } = require('../shared/script-artifacts');
 
 function publicSummary(script, { artifact = 'screenplay' } = {}) {
   const key = isArtifact(artifact) ? artifact : 'screenplay';
@@ -17,11 +17,7 @@ function publicSummary(script, { artifact = 'screenplay' } = {}) {
     artifact: key,
     visibility: state.visibility,
     publishedAt: state.publishedAt,
-    artifacts: script.artifacts || {
-      screenplay: artifactState(script, 'screenplay'),
-      storyboard: artifactState(script, 'storyboard'),
-      timeline: artifactState(script, 'timeline'),
-    },
+    artifacts: script.artifacts || artifactsFromRow(script),
     likeCount: Number(script.likeCount || 0),
     viewCount: Number(script.viewCount || 0),
     sharePath: sharePathFor(script, key),
@@ -37,14 +33,9 @@ function publicSummary(script, { artifact = 'screenplay' } = {}) {
 }
 
 function ownerView(script) {
-  const artifacts = script.artifacts || {
-    screenplay: artifactState(script, 'screenplay'),
-    storyboard: artifactState(script, 'storyboard'),
-    timeline: artifactState(script, 'timeline'),
-  };
   return {
     ...script,
-    artifacts,
+    artifacts: script.artifacts || artifactsFromRow(script),
     likeCount: Number(script.likeCount || 0),
     viewCount: Number(script.viewCount || 0),
     sharePath: sharePathFor(script, 'screenplay'),
@@ -146,9 +137,7 @@ function createScriptsService({ store }) {
 
   async function toggleLike(scriptId, { userId }) {
     const script = await store.read(scriptId);
-    if (!isArtifactPublic(script, 'screenplay')
-      && !isArtifactPublic(script, 'storyboard')
-      && !isArtifactPublic(script, 'timeline')) {
+    if (!hasAnyPublicArtifact(script)) {
       throw new AppError('SCRIPT_NOT_FOUND', 'Script not found', { status: 404 });
     }
     return store.toggleLike(scriptId, userId);

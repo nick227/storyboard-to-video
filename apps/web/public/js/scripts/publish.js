@@ -74,7 +74,6 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
     }
     const artifact = getArtifact();
     const isPublic = artifactVisibility(script, artifact) === 'public';
-    const path = artifactSharePath(script, artifact);
     if (toggle) {
       toggle.checked = isPublic;
       toggle.dataset.artifact = artifact;
@@ -83,8 +82,7 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
     }
     for (const shareBtn of shareBtns) {
       const shareArtifact = shareBtn === elements.scriptShareBtn ? 'screenplay' : artifact;
-      const sharePublic = artifactVisibility(script, shareArtifact) === 'public';
-      shareBtn.disabled = !sharePublic || !script?.slug;
+      shareBtn.disabled = artifactVisibility(script, shareArtifact) !== 'public' || !script?.slug;
       shareBtn.dataset.sharePath = artifactSharePath(script, shareArtifact);
       shareBtn.dataset.artifact = shareArtifact;
     }
@@ -98,19 +96,17 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
   }
 
   async function ensureScript(record) {
-    if (record?.script?.id || record?.scriptId) {
-      const scriptId = record.script?.id || record.scriptId;
-      const response = await api(`/api/scripts/${encodeURIComponent(scriptId)}`);
+    const existingId = record?.script?.id || record?.scriptId;
+    if (existingId) {
+      const response = await api(`/api/scripts/${encodeURIComponent(existingId)}`);
       applyScript(response.script);
       return response.script;
     }
     saveStoryboard(elements, false);
     await ensureProjectSynced();
     const fresh = getCurrentStoryboardRecord();
-    if (!fresh?.scriptId && !fresh?.script?.id) {
-      throw new Error('Save the work before publishing.');
-    }
-    const scriptId = fresh.script?.id || fresh.scriptId;
+    const scriptId = fresh?.script?.id || fresh?.scriptId;
+    if (!scriptId) throw new Error('Save the work before publishing.');
     const response = await api(`/api/scripts/${encodeURIComponent(scriptId)}`);
     applyScript(response.script);
     return response.script;
