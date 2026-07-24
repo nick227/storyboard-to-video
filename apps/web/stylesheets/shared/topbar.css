@@ -1,12 +1,13 @@
 @import "./tokens.css";
 
-storyboarder-topbar,
-storyboarder-topbar * {
+.sf-topbar,
+.sf-topbar * {
   box-sizing: border-box;
 }
 
-storyboarder-topbar { display: block; min-height: 57px; }
 .sf-topbar {
+  display: block;
+  min-height: 57px;
   position: sticky;
   top: 0;
   z-index: 100;

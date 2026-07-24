@@ -21,6 +21,7 @@ const { mediaOutputRoutes } = require('./routes/media-output.routes');
 const { createScriptsRouter, createPublicScriptsRouter } = require('./routes/scripts.routes');
 const { createWritersRouter, createPublicWritersRouter } = require('./routes/writers.routes');
 const { isPlatformAdmin } = require('./middleware/style-admin');
+const fs = require('node:fs');
 const path = require('node:path');
 
 function createApp(dependencies) {
@@ -54,8 +55,18 @@ function registerMiddleware(app, { config, auth, payments }) {
   app.use(express.static(config.paths.public, { index: false }));
 }
 
+function createSendPage(pagesDir) {
+  const topbarPartial = path.join(pagesDir, 'partials', 'topbar.html');
+  return (filename) => (req, res) => {
+    const filePath = path.isAbsolute(filename) ? filename : path.join(pagesDir, filename);
+    const topbar = fs.readFileSync(topbarPartial, 'utf8').trim();
+    const html = fs.readFileSync(filePath, 'utf8').replaceAll('<!--topbar-->', topbar);
+    res.type('html').send(html);
+  };
+}
+
 function registerPageRoutes(app, config) {
-  const sendPage = (filename) => (req, res) => res.sendFile(path.join(config.paths.pages, filename));
+  const sendPage = createSendPage(config.paths.pages);
   const pages = [
     [['/', '/index.html'], 'index.html'],
     [['/login', '/login.html'], 'login.html'],
@@ -130,21 +141,22 @@ function pageGuard(auth) {
 }
 
 function registerRoutes(app, d) {
+  const sendPage = createSendPage(d.config.paths.pages);
   app.get('/writers/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
-    return res.sendFile(path.join(d.config.paths.pages, 'writer.html'));
+    return sendPage('writer.html')(req, res);
   });
   app.get('/scripts/category/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
-    return res.sendFile(path.join(d.config.paths.pages, 'scripts-browse.html'));
+    return sendPage('scripts-browse.html')(req, res);
   });
   app.get('/scripts/tag/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
-    return res.sendFile(path.join(d.config.paths.pages, 'scripts-browse.html'));
+    return sendPage('scripts-browse.html')(req, res);
   });
   app.get('/scripts/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
-    return res.sendFile(path.join(d.config.paths.pages, 'script-reader.html'));
+    return sendPage('script-reader.html')(req, res);
   });
   app.use(assetsRoutes(d.controllers.assets));
   app.use('/api/projects', createProjectRouter({

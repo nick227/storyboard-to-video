@@ -5,126 +5,97 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const webRoot = path.join(__dirname, '..');
+const topbarHtml = fs.readFileSync(path.join(webRoot, 'pages', 'partials', 'topbar.html'), 'utf8');
 const topbarSource = fs.readFileSync(path.join(webRoot, 'public', 'js', 'shared', 'topbar.js'), 'utf8');
 
-function createNode(tagName) {
-  const attrs = Object.create(null);
-  const node = {
-    tagName: String(tagName).toUpperCase(),
-    children: [],
-    textContent: '',
-    hidden: false,
-    setAttribute(name, value) { attrs[name] = String(value); },
-    getAttribute(name) { return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null; },
-    append(...parts) {
-      for (const part of parts) {
-        if (part == null) continue;
-        if (typeof part === 'string' || typeof part === 'number') {
-          this.children.push({ text: String(part) });
-          this.textContent += String(part);
-        } else {
-          this.children.push(part);
-        }
-      }
-    },
-    replaceChildren(...parts) {
-      this.children = [];
-      this.textContent = '';
-      this.append(...parts);
-    },
+function enhance(pathname, search = '', savedPage = null) {
+  const elementsById = new Map();
+  const tabs = [];
+  const pageTabs = {
+    attrs: {},
+    setAttribute(name, value) { this.attrs[name] = String(value); },
+    getAttribute(name) { return this.attrs[name] ?? null; },
   };
-  Object.defineProperty(node, 'className', {
-    get() { return attrs.class || ''; },
-    set(value) { attrs.class = String(value); },
-  });
-  Object.defineProperty(node, 'innerHTML', {
-    get() { return this.children.map(serialize).join(''); },
-    set(value) {
-      this.children = [{ text: String(value) }];
-      this.textContent = String(value);
-    },
-  });
-  node.dataset = new Proxy(Object.create(null), {
-    set(target, key, value) {
-      target[key] = value;
-      attrs[`data-${String(key)}`] = String(value);
-      return true;
-    },
-    get(target, key) { return target[key]; },
-  });
-  node._attrs = attrs;
-  return node;
-}
 
-function serialize(node) {
-  if (node.text != null) return node.text;
-  const tag = node.tagName.toLowerCase();
-  const attrs = Object.entries(node._attrs)
-    .map(([name, value]) => (value === '' ? ` ${name}` : ` ${name}="${value}"`))
-    .join('');
-  return `<${tag}${attrs}>${node.children.map(serialize).join('')}</${tag}>`;
-}
-
-function renderTopbar(pathname, search = '', savedPage = null) {
-  let Topbar;
-  class HTMLElement {
-    constructor() {
-      this.dataset = {};
-      this.children = [];
-    }
-    replaceChildren(...parts) {
-      this.children = parts;
-    }
-    get innerHTML() {
-      return this.children.map(serialize).join('');
-    }
-    querySelector() {
-      return { hidden: false, addEventListener() {}, textContent: '', title: '' };
-    }
+  for (const match of topbarHtml.matchAll(/id="([^"]+)"/g)) {
+    elementsById.set(match[1], {
+      id: match[1],
+      hidden: false,
+      textContent: '',
+      title: '',
+      disabled: false,
+      classList: { toggle() {} },
+      setAttribute() {},
+      addEventListener() {},
+      dataset: {},
+      tabIndex: 0,
+    });
   }
-  const context = {
-    HTMLElement,
-    URLSearchParams,
-    document: { createElement: createNode },
-    window: { location: { pathname, search } },
-    localStorage: { getItem: () => savedPage },
-    customElements: {
-      get: () => null,
-      define: (_name, constructor) => { Topbar = constructor; },
+
+  for (const match of topbarHtml.matchAll(/id="(tab\w+Btn)"[^>]*data-page="([^"]+)"[^>]*data-panel="([^"]+)"/g)) {
+    const el = elementsById.get(match[1]);
+    el.dataset = { page: match[2], panel: match[3] };
+    el.classList = {
+      state: new Set(['page-tab']),
+      toggle(name, on) { if (on) this.state.add(name); else this.state.delete(name); },
+      contains(name) { return this.state.has(name); },
+    };
+    el.attrs = {};
+    el.setAttribute = (name, value) => { el.attrs[name] = String(value); };
+    tabs.push(el);
+  }
+
+  const root = { sessionReady: null };
+  const document = {
+    querySelector(sel) {
+      if (sel === '.sf-topbar') return root;
+      if (sel === '.page-tabs') return pageTabs;
+      return null;
     },
-    fetch: () => new Promise(() => {}),
+    querySelectorAll(sel) {
+      if (sel === '.page-tab[data-page]') return tabs;
+      return [];
+    },
+    getElementById(id) { return elementsById.get(id) || null; },
   };
-  vm.runInNewContext(topbarSource, context);
-  const topbar = new Topbar();
-  topbar.connectedCallback();
-  return topbar.innerHTML;
+
+  vm.runInNewContext(topbarSource, {
+    document,
+    window: { location: { pathname, search, href: 'http://localhost' } },
+    localStorage: { getItem: () => savedPage, removeItem() {} },
+    fetch: () => new Promise(() => {}),
+    URLSearchParams,
+  });
+
+  return { tabs, pageTabs };
 }
 
-test('topbar studio pages are real cross-page links outside the studio', () => {
-  const markup = renderTopbar('/admin');
-  assert.match(markup, /href="\/studio\?page=script"/);
-  assert.match(markup, /href="\/studio\?page=storyboard"/);
-  assert.match(markup, /href="\/studio\?page=timeline"/);
-  assert.match(markup, /id="downloadZipBtn"[^>]+href="\/studio\?download=1"/);
-  assert.doesNotMatch(markup, /id="tabScriptBtn"[^>]+tabindex="-1"/);
+test('topbar partial is plain HTML with editable studio links', () => {
+  assert.match(topbarHtml, /href="\/studio\?page=script"/);
+  assert.match(topbarHtml, /href="\/studio\?page=storyboard"/);
+  assert.match(topbarHtml, /href="\/studio\?page=timeline"/);
+  assert.match(topbarHtml, /id="downloadZipBtn"[^>]+href="\/studio\?download=1"/);
+  assert.doesNotMatch(topbarHtml, /tabindex="-1"/);
+  assert.doesNotMatch(topbarHtml, /customElements|innerHTML|TOPBAR/);
 });
 
-test('the Storyboard and Style tabs sit between Script and Timeline in tab order', () => {
-  const markup = renderTopbar('/admin');
-  const scriptIndex = markup.indexOf('id="tabScriptBtn"');
-  const storyboardIndex = markup.indexOf('id="tabStoryboardBtn"');
-  const styleIndex = markup.indexOf('id="tabStyleBtn"');
-  const timelineIndex = markup.indexOf('id="tabTimelineBtn"');
+test('the Storyboard tab sits between Script and Timeline in tab order', () => {
+  const scriptIndex = topbarHtml.indexOf('id="tabScriptBtn"');
+  const storyboardIndex = topbarHtml.indexOf('id="tabStoryboardBtn"');
+  const timelineIndex = topbarHtml.indexOf('id="tabTimelineBtn"');
   assert.ok(scriptIndex < storyboardIndex, 'Storyboard tab should come after Script');
-  assert.ok(storyboardIndex < styleIndex, 'Style tab should come after Storyboard');
-  assert.ok(styleIndex < timelineIndex, 'Timeline tab should come after Style');
-  assert.doesNotMatch(markup, /id="tabNarrationBtn"/);
+  assert.ok(storyboardIndex < timelineIndex, 'Timeline tab should come after Storyboard');
+  assert.doesNotMatch(topbarHtml, /id="tabNarrationBtn"/);
+  assert.doesNotMatch(topbarHtml, /id="tabStyleBtn"/);
 });
 
-test('topbar restores studio tab semantics and the saved active page in studio', () => {
-  const markup = renderTopbar('/studio', '', 'script');
-  assert.match(markup, /class="page-tabs"[^>]*role="tablist"/);
-  assert.match(markup, /id="tabScriptBtn"[^>]*class="page-tab is-active"[^>]*role="tab"[^>]*aria-selected="true"/);
+test('enhancer restores studio tab semantics and the saved active page', () => {
+  const { tabs, pageTabs } = enhance('/studio', '', 'script');
+  assert.equal(pageTabs.getAttribute('role'), 'tablist');
+  const script = tabs.find((tab) => tab.dataset.page === 'script');
+  assert.ok(script.classList.contains('is-active'));
+  assert.equal(script.attrs.role, 'tab');
+  assert.equal(script.attrs['aria-selected'], 'true');
 });
 
 test('topbar owns shared tab styling and studio retains the download confirmation action', () => {
@@ -138,4 +109,10 @@ test('topbar owns shared tab styling and studio retains the download confirmatio
 test('topbar lazy-loads credits from their current module locations', () => {
   assert.match(topbarSource, /import\('\.\.\/billing\/credit-balance\.js'\)/);
   assert.match(topbarSource, /import\('\.\.\/core\/store\.js'\)/);
+});
+
+test('pages include the topbar marker for server injection', () => {
+  const studio = fs.readFileSync(path.join(webRoot, 'pages', 'studio.html'), 'utf8');
+  assert.match(studio, /<!--topbar-->/);
+  assert.doesNotMatch(studio, /storyboarder-topbar/);
 });
