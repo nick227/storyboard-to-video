@@ -45,25 +45,41 @@ initWorkbar({
 try {
   if (!route) throw Object.assign(new Error('Not found'), { code: 'SCRIPT_NOT_FOUND' });
 
-  if (artifact !== 'screenplay') {
-    document.title = `${artifact} — Storyboarder`;
-    breadcrumbs.innerHTML = renderBreadcrumbs([
-      { label: 'Library', href: '/library?tab=community' },
-      { label: slug },
-      { label: artifact },
-    ]);
-    status.dataset.tone = 'empty';
-    status.textContent = `Public ${artifact} preview is not available yet.`;
-    status.hidden = false;
-  } else {
-    const script = await fetchPublicScript(slug);
-    const canonicalAuthor = script.writer?.profileSlug || 'anonymous';
-    if (canonicalAuthor !== authorSlug || script.slug !== slug) {
-      window.location.replace(workPath(canonicalAuthor, script.slug, 'screenplay'));
-    }
-    document.title = `${script.title || 'Script'} — Storyboarder`;
-    breadcrumbs.innerHTML = renderBreadcrumbs(scriptTrail(script));
+  const script = await fetchPublicScript(slug, { artifact });
+  const canonicalAuthor = script.writer?.profileSlug || 'anonymous';
+  if (canonicalAuthor !== authorSlug || script.slug !== slug) {
+    window.location.replace(workPath(canonicalAuthor, script.slug, artifact));
+  }
 
+  const label = artifact === 'storyboard' ? 'Storyboard'
+    : artifact === 'timeline' ? 'Timeline'
+      : 'Screenplay';
+  document.title = `${script.title || label} — Storyboarder`;
+  breadcrumbs.innerHTML = renderBreadcrumbs([
+    ...scriptTrail(script).slice(0, -1),
+    { label },
+    { label: script.title || 'Untitled' },
+  ]);
+
+  if (artifact !== 'screenplay') {
+    document.getElementById('readerCover').innerHTML = `
+      <header class="script-cover-page" aria-label="${escapeHtml(label)} cover">
+        <div class="script-cover-page-top">
+          <p class="script-cover-page-label">${escapeHtml(label)}</p>
+        </div>
+        <div class="script-cover-page-mid">
+          <h1>${escapeHtml(script.title || 'Untitled')}</h1>
+          ${script.logline ? `<p class="script-cover-page-logline">${escapeHtml(script.logline)}</p>` : ''}
+          <p class="script-cover-page-author">By<br><strong>${escapeHtml(script.author || 'Anonymous')}</strong></p>
+        </div>
+        <div class="script-cover-page-bottom">
+          <p class="script-cover-page-date">Public preview coming soon</p>
+        </div>
+      </header>`;
+    readerBody.hidden = true;
+    likeBtn.hidden = true;
+    fullscreenBtn.hidden = true;
+  } else {
     document.getElementById('readerCover').innerHTML = scriptCoverPage(script);
     readerPage.innerHTML = renderLines(script.scriptText || '');
 
@@ -79,14 +95,6 @@ try {
     likeBtn.setAttribute('aria-pressed', String(Boolean(script.likedByMe)));
     likeBtn.classList.toggle('is-liked', Boolean(script.likedByMe));
 
-    const url = new URL(workPath(canonicalAuthor, script.slug, 'screenplay'), window.location.origin).toString();
-    bindShareButton(shareBtn, {
-      getUrl: url,
-      title: script.title || 'Screenplay',
-      text: script.logline || `Written by ${script.author || 'Anonymous'}`,
-      onStatus: (message) => flashStatus(toolbarStatus, message),
-    });
-
     likeBtn.addEventListener('click', async () => {
       try {
         const result = await toggleScriptLike(script.id);
@@ -100,21 +108,32 @@ try {
       }
     });
 
-    const others = script.moreByAuthor || [];
-    if (others.length) {
-      const writerLink = script.writer?.profileSlug
-        ? ` <a href="/writers/${encodeURIComponent(script.writer.profileSlug)}">View profile</a>`
-        : '';
-      authorHeading.innerHTML = `More by ${escapeHtml(script.author || 'this author')}${writerLink}`;
-      authorGrid.innerHTML = others.map((item) => scriptCoverCard(item, { compact: true })).join('');
-      authorBox.hidden = false;
-    }
-
-    status.hidden = true;
-    article.hidden = false;
     scaler.scheduleUpdate();
   }
+
+  const url = new URL(workPath(canonicalAuthor, script.slug, artifact), window.location.origin).toString();
+  bindShareButton(shareBtn, {
+    getUrl: url,
+    title: script.title || label,
+    text: script.logline || `By ${script.author || 'Anonymous'}`,
+    onStatus: (message) => flashStatus(toolbarStatus, message),
+  });
+
+  const others = script.moreByAuthor || [];
+  if (others.length) {
+    const writerLink = script.writer?.profileSlug
+      ? ` <a href="/writers/${encodeURIComponent(script.writer.profileSlug)}">View profile</a>`
+      : '';
+    authorHeading.innerHTML = `More by ${escapeHtml(script.author || 'this author')}${writerLink}`;
+    authorGrid.innerHTML = others.map((item) => scriptCoverCard(item, { compact: true, artifact })).join('');
+    authorBox.hidden = false;
+  }
+
+  status.hidden = true;
+  article.hidden = false;
 } catch (error) {
   status.dataset.tone = 'error';
-  status.textContent = error.code === 'SCRIPT_NOT_FOUND' ? 'Script not found.' : (error.message || 'Failed to load script.');
+  status.textContent = error.code === 'SCRIPT_NOT_FOUND' || error.code === 'NOT_FOUND'
+    ? `${artifact === 'screenplay' ? 'Screenplay' : artifact} not found.`
+    : (error.message || 'Failed to load.');
 }

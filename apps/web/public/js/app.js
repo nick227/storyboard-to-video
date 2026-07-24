@@ -1,5 +1,5 @@
 import { projectStore, sceneStore, voiceStore, uiStore, batchStore, spendStore } from './core/store.js';
-import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope, findStoryboardByScriptSlug } from './core/persistence.js';
+import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope, findStoryboardForRoute } from './core/persistence.js';
 import { parseWorkPath } from './core/app-paths.js';
 import { initWorkbar } from './shared/workbar.js';
 import { initRendering, renderScenes, renderEntityOperationState } from './studio/rendering.js';
@@ -39,6 +39,8 @@ const els = {
   scriptDownloadBtn: document.getElementById('scriptDownloadBtn'),
   scriptDownloadMenu: document.getElementById('scriptDownloadMenu'),
   scriptVisibilityToggle: document.getElementById('scriptVisibilityToggle'),
+  storyboardVisibilityToggle: document.getElementById('storyboardVisibilityToggle'),
+  timelineVisibilityToggle: document.getElementById('timelineVisibilityToggle'),
   scriptShareBtn: document.getElementById('scriptShareBtn'),
   workVisibilityToggle: document.getElementById('workVisibilityToggle'),
   workShareBtn: document.getElementById('workShareBtn'),
@@ -359,6 +361,8 @@ function initControllers(getSession) {
   scriptPublishControls = initScriptPublishControls({
     scriptText: els.scriptText,
     scriptVisibilityToggle: els.scriptVisibilityToggle,
+    storyboardVisibilityToggle: els.storyboardVisibilityToggle,
+    timelineVisibilityToggle: els.timelineVisibilityToggle,
     scriptShareBtn: els.scriptShareBtn,
     workVisibilityToggle: els.workVisibilityToggle,
     workShareBtn: els.workShareBtn,
@@ -621,10 +625,14 @@ async function init() {
   initControllers(() => session);
   setPersistenceScope(session.tenant.id);
 
+  const startupParams = new URLSearchParams(window.location.search);
   const restored = await runStage('Restoring your storyboards', () => restoreStoryboardLibrary(els));
   const route = parseWorkPath(window.location.pathname);
   if (route?.workSlug) {
-    const match = findStoryboardByScriptSlug(route.workSlug);
+    const match = findStoryboardForRoute({
+      projectId: startupParams.get('project'),
+      workSlug: route.workSlug,
+    });
     if (match && match.id !== getCurrentStoryboardRecord()?.id) {
       await openStoryboard(match.id, els);
     }
@@ -645,7 +653,6 @@ async function init() {
     onShareStatus: (message) => setStatus(message),
   });
 
-  const startupParams = new URLSearchParams(window.location.search);
   if (startupParams.get('download') === '1') {
     els.downloadZipBtn.click();
     startupParams.delete('download');

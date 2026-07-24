@@ -20,8 +20,11 @@ export async function fetchPublicScripts({ artifact = 'screenplay' } = {}) {
   return (await publicJson(`/api/public/scripts${query ? `?${query}` : ''}`)).scripts || [];
 }
 
-export async function fetchPublicScript(slug) {
-  return (await publicJson(`/api/public/scripts/${encodeURIComponent(slug)}`)).script;
+export async function fetchPublicScript(slug, { artifact = 'screenplay' } = {}) {
+  const params = new URLSearchParams();
+  if (artifact && artifact !== 'screenplay') params.set('artifact', artifact);
+  const query = params.toString();
+  return (await publicJson(`/api/public/scripts/${encodeURIComponent(slug)}${query ? `?${query}` : ''}`)).script;
 }
 
 export async function fetchCategories() {

@@ -52,8 +52,8 @@
           <div id="screenplayToolbarHost" class="script-header-primary is-inactive" aria-hidden="true"></div>
           <div class="script-header-actions">
             <div class="script-publish-control" id="scriptPublishControl">
-              <label class="script-visibility-toggle" title="Publish the active artifact">
-                <input type="checkbox" id="scriptVisibilityToggle" />
+              <label class="script-visibility-toggle" title="Make this screenplay publicly viewable">
+                <input type="checkbox" id="scriptVisibilityToggle" data-artifact="screenplay" />
                 <span>Public</span>
               </label>
               <button type="button" id="scriptMetaBtn" class="script-icon-button" aria-label="Publishing details"
@@ -165,6 +165,10 @@
         </div>
 
         <div class="stage-bar-actions">
+          <label class="artifact-visibility-toggle" title="Make this storyboard publicly viewable">
+            <input type="checkbox" id="storyboardVisibilityToggle" data-artifact="storyboard" />
+            <span>Public</span>
+          </label>
           <select id="stageStyleSelect" class="stage-style-select" aria-label="Select Style" title="Select Style"></select>
           <button type="button" id="settingsBtn" class="primary" aria-haspopup="dialog"
             aria-controls="settingsModal" title="Open Settings">Settings</button>
@@ -251,6 +255,13 @@
     <!-- Start timeline -->
 
     <div id="timelinePagePanel" role="tabpanel" aria-labelledby="tabTimelineBtn" hidden>
+      <section class="timeline-status-bar" aria-label="Timeline">
+        <div class="timeline-status-bar-label">Timeline</div>
+        <label class="artifact-visibility-toggle" title="Make this timeline publicly viewable">
+          <input type="checkbox" id="timelineVisibilityToggle" data-artifact="timeline" />
+          <span>Public</span>
+        </label>
+      </section>
       <section class="panel timeline-section" id="timelineSection" hidden>
 
         <div class="timeline-stage">
@@ -557,6 +568,7 @@
             <option value="3:2">Landscape · 3:2</option>
             <option value="2:3">Portrait · 2:3</option>
           </select>
+          <small id="aspectRatioHelper" class="field-note" aria-live="polite"></small>
         </label>
         <label>
           <span>Image resolution</span>
@@ -583,6 +595,7 @@
             <option value="minimax">MiniMax</option>
             <option value="stub">Stub Preview (no API)</option>
           </select>
+          <small id="videoProviderHelper" class="field-note" aria-live="polite"></small>
         </label>
         <label>
           <span>Video resolution</span>
@@ -604,6 +617,7 @@
             <option value="10" data-base-label="10 seconds">10 seconds</option>
             <option value="12" data-base-label="12 seconds">12 seconds</option>
           </select>
+          <small id="videoDurationHelper" class="field-note" aria-live="polite"></small>
         </label>
         <label>
           <span>Motion</span>
@@ -644,6 +658,7 @@
             <option value="spark">Voice cloning</option>
             <option value="elevenlabs">ElevenLabs</option>
           </select>
+          <small id="audioProviderHelper" class="field-note" aria-live="polite"></small>
         </label>
         <div class="audio-settings-field">
           <span>Narrator voice</span>

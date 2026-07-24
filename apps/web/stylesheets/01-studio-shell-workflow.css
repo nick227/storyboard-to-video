@@ -264,6 +264,25 @@
 .stage-button.is-running .stage-button-spinner { display: block; }
 .stage-button.is-paused .stage-button-status { color: var(--accent); }
 .stage-bar-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
+.artifact-visibility-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 10px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.artifact-visibility-toggle input { margin: 0; }
+.artifact-visibility-toggle:hover { color: var(--text); border-color: var(--muted); }
 .stage-style-select {
   height: 38px;
   padding: 0 10px;
