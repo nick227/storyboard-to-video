@@ -2,6 +2,7 @@ import { api } from '../core/api.js';
 import { ensureProjectSynced, getCurrentStoryboardRecord, saveStoryboard } from '../core/persistence.js';
 import { shareUrl } from './chrome.js';
 import { fetchCategories, fetchScriptStats, updateScriptMeta } from './api.js';
+import { workPath } from '../core/app-paths.js';
 
 function parseTagSlugs(value = '') {
   return [...new Set(String(value).split(/[,#]+/).map((part) => part.trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean))].slice(0, 8);
@@ -55,7 +56,9 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
     const isPublic = script?.visibility === 'public';
     toggle.checked = isPublic;
     shareBtn.disabled = !isPublic || !script?.slug;
-    shareBtn.dataset.sharePath = script?.sharePath || (script?.slug ? `/library/${script.writer?.profileSlug || 'anonymous'}/${script.slug}` : '');
+    shareBtn.dataset.sharePath = script?.sharePath || (script?.slug
+      ? workPath(script.writer?.profileSlug || 'anonymous', script.slug, 'screenplay')
+      : '');
     applyMetaFields(script);
     if (script?.id) refreshStats(script.id);
   }

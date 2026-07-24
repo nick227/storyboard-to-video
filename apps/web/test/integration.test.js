@@ -85,12 +85,11 @@ const CANONICAL_PRICE_FIXTURES = {
 
 test('public home introduces the product while the studio remains authenticated', async () => {
   await request(app).get('/').expect(200).expect(/Turn a script into a narrated video sequence/).expect(/class="sf-topbar"/);
-  await request(app).get('/storyboard').expect(302).expect('Location', /login\.html\?redirect=%2Fstoryboard/);
-  await request(app).get('/studio').expect(302).expect('Location', /login\.html\?redirect=%2Fstudio/);
-  await request(app).get('/studio.html').set(auth('bob-token')).expect(301).expect('Location', '/storyboard');
-  await request(app).get('/studio?page=timeline').set(auth('bob-token')).expect(301).expect('Location', '/timeline');
-  await request(app).get('/storyboard').set(auth('bob-token')).expect(200).expect(/id="storyboardTitle"/).expect(/class="sf-topbar"/);
-  await request(app).get('/timeline/example-script').set(auth('bob-token')).expect(200).expect(/id="storyboardTitle"/);
+  await request(app).get('/bob/example/screenplay/edit').expect(302).expect('Location', /login\.html\?redirect=/);
+  await request(app).get('/studio').expect(301).expect('Location', /\/library/);
+  await request(app).get('/studio.html').set(auth('bob-token')).expect(301).expect('Location', '/library');
+  await request(app).get('/bob/example/storyboard/edit').set(auth('bob-token')).expect(200).expect(/id="storyboardTitle"/).expect(/class="sf-topbar"/);
+  await request(app).get('/bob/example/timeline/edit').set(auth('bob-token')).expect(200).expect(/id="storyboardTitle"/);
 });
 
 test('page templates are routed explicitly and public contains assets only', async () => {
@@ -100,7 +99,7 @@ test('page templates are routed explicitly and public contains assets only', asy
   await request(app).get('/library/category/drama').expect(200).expect(/id="browseTitle"/);
   await request(app).get('/scripts/category/drama').expect(301).expect('Location', '/library/category/drama');
   await request(app).get('/writers/example').expect(200).expect(/id="writerProfile"/);
-  await request(app).get('/library/example-author/example').expect(200).expect(/id="readerArticle"/);
+  await request(app).get('/example-author/example/screenplay').expect(200).expect(/id="readerArticle"/);
 
   await request(app).get('/css/styles.css').expect(200).expect('Content-Type', /text\/css/);
   await request(app).get('/js/app.js').expect(200).expect('Content-Type', /javascript/);

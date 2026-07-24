@@ -1,6 +1,7 @@
 import { projectStore, sceneStore, voiceStore, uiStore, batchStore, spendStore } from './core/store.js';
 import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope, findStoryboardByScriptSlug } from './core/persistence.js';
-import { parseStudioPath } from './core/app-paths.js';
+import { parseWorkPath, workPath, authorSlugFromSession, scriptSlugFromRecord } from './core/app-paths.js';
+import { initWorkbar } from './shared/workbar.js';
 import { initRendering, renderScenes, renderEntityOperationState } from './studio/rendering.js';
 import { initTimeline } from './studio/timeline.js';
 import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, renderStageBar, renderStyleReferenceOperationState, initImageLibraryModal, populateTokensInfoModal } from './studio/ui.js';
@@ -50,8 +51,8 @@ const els = {
   scriptStatsLine: document.getElementById('scriptStatsLine'),
 
   // Studio page navigation
-  pageTabs: document.querySelector('.page-tabs'),
-  pageTabButtons: Array.from(document.querySelectorAll('.page-tab[data-page]')),
+  pageTabs: document.querySelector('.sf-artifact-tabs') || document.querySelector('.page-tabs'),
+  pageTabButtons: Array.from(document.querySelectorAll('.sf-artifact-tab[data-page], .page-tab[data-page]')),
   pagePanels: Array.from(document.querySelectorAll('[role="tabpanel"]')),
   pageTransition: document.getElementById('pageTransition'),
   pageTransitionLabel: document.getElementById('pageTransitionLabel'),
@@ -352,7 +353,7 @@ async function loadStoryboardIntoUI() {
   return stylesLoaded && referencesLoaded && voicesLoaded;
 }
 
-function initControllers() {
+function initControllers(getSession) {
   scriptPublishControls = initScriptPublishControls({
     scriptText: els.scriptText,
     scriptVisibilityToggle: els.scriptVisibilityToggle,
@@ -386,6 +387,7 @@ function initControllers() {
   }, {
     setStatus,
     getCurrentRecord: getCurrentStoryboardRecord,
+    getSession,
     onScriptChange: () => {
       saveStoryboard(els, false);
       renderStageBar(els);
@@ -606,19 +608,19 @@ async function init() {
   initRendering(els);
   initTimeline(els);
   initImageLibraryModal(els, setStatus);
-  initControllers();
 
   const session = await initializeAuth();
   if (!session) {
     setStatus('Log in to open your storyboards.');
     return;
   }
+  initControllers(() => session);
   setPersistenceScope(session.tenant.id);
 
   const restored = await runStage('Restoring your storyboards', () => restoreStoryboardLibrary(els));
-  const route = parseStudioPath(window.location.pathname);
-  if (route?.scriptSlug) {
-    const match = findStoryboardByScriptSlug(route.scriptSlug);
+  const route = parseWorkPath(window.location.pathname);
+  if (route?.workSlug) {
+    const match = findStoryboardByScriptSlug(route.workSlug);
     if (match && match.id !== getCurrentStoryboardRecord()?.id) {
       await openStoryboard(match.id, els);
     }
@@ -626,6 +628,24 @@ async function init() {
   storyboardController.renderPicker();
   const loaded = await loadStoryboardIntoUI();
   scriptController?.syncRoute?.();
+  initWorkbar({
+    session,
+    getRecord: getCurrentStoryboardRecord,
+    onOpenWork: async (projectId) => {
+      await openStoryboard(projectId, els);
+      await loadStoryboardIntoUI();
+      storyboardController.renderPicker();
+      scriptController?.syncRoute?.();
+    },
+    shareUrl: () => {
+      const record = getCurrentStoryboardRecord();
+      const author = authorSlugFromSession(session);
+      const slug = scriptSlugFromRecord(record) || route?.workSlug || 'untitled';
+      const artifact = route?.artifact || 'screenplay';
+      return new URL(workPath(author, slug, artifact), window.location.origin).toString();
+    },
+    onShareStatus: (message) => setStatus(message),
+  });
 
   const startupParams = new URLSearchParams(window.location.search);
   if (startupParams.get('download') === '1') {

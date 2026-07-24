@@ -127,6 +127,11 @@ async function runTests() {
     assert(renderingSource.includes('entity-primary-action'), 'Controller rows should expose direct primary actions');
     assert(renderingSource.includes('entity-row-textarea'), 'Text entities should be editable directly in their rows');
     assert(renderingSource.includes('entity-row-media'), 'Media entities should show inline previews');
+    assert(renderingSource.includes("label: 'Never generated'"), 'Unrun entities should have an explicit status label');
+    assert(renderingSource.includes("classList.toggle('has-unrun'"), 'Scene controls should surface unrun entities');
+    for (const id of ['entityModalSummary', 'entityModalPreviousBtn', 'entityModalNextBtn', 'entityModalSourceText', 'entityControllerRows', 'entityModalDeleteBtn']) {
+      assert(document.getElementById(id), `Scene controller markup should provide #${id}`);
+    }
     addResult('Unified Scene Controller Entry', true);
 
     // Test 12: Generated scene titles are displayed without exposing an edit control.
@@ -144,7 +149,7 @@ async function runTests() {
     addResult('Minimal Scene Media Overlay', true);
 
     // Test 14: Secondary settings use consistent modal launchers instead of disclosure menus.
-    const indexSource = await (await fetch('/storyboard')).text();
+    const indexSource = await (await fetch('/library')).text();
     assert(indexSource.includes('id="sceneReferencesModal"'), 'Scene references should open in a dedicated modal');
     assert(indexSource.includes('id="settingsBtn"'), 'settingsBtn should be present');
     assert(indexSource.includes('<dialog id="settingsModal" class="settings-modal"'), 'settingsModal should use the shared settings modal');

@@ -1,22 +1,16 @@
 <header class="sf-topbar">
   <div class="sf-topbar-inner">
-    <a class="sf-brand" href="/" aria-label="Storyboarder home">
+    <a class="sf-brand" href="/library" aria-label="Storyboarder home">
       <span class="sf-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16M3 10h6M3 15h6"></path></svg></span>
       <span>Storyboarder</span>
     </a>
     <nav class="sf-nav" aria-label="Primary navigation">
-      <div class="page-tabs">
-        <a class="page-tab" href="/library">Library</a>
-        <a id="tabScriptBtn" class="page-tab" href="/script" data-page="script" data-panel="scriptPagePanel">Screenplay</a>
-        <a id="tabStoryboardBtn" class="page-tab" href="/storyboard" data-page="storyboard" data-panel="storyboardPagePanel">Storyboard</a>
-        <a id="tabTimelineBtn" class="page-tab" href="/timeline" data-page="timeline" data-panel="timelinePagePanel">Timeline</a>
-      </div>
-      <a id="downloadZipBtn" class="sf-nav-link" href="/storyboard?download=1">Download</a>
+      <a class="sf-nav-link" href="/library" data-nav="library">Library</a>
       <a id="adminConsoleLink" class="sf-nav-link sf-admin-link" href="/admin" hidden>Admin</a>
     </nav>
     <div id="authLoggedOut" class="sf-account" hidden>
-      <a class="sf-auth-link" href="/login.html?redirect=%2Fstoryboard">Sign in</a>
-      <a class="sf-auth-link primary" href="/login.html?mode=register&amp;redirect=%2Fstoryboard">Create account</a>
+      <a class="sf-auth-link" href="/login.html?redirect=%2Flibrary">Sign in</a>
+      <a class="sf-auth-link primary" href="/login.html?mode=register&amp;redirect=%2Flibrary">Create account</a>
     </div>
     <div id="authLoggedIn" class="sf-account" hidden>
       <a id="topbarCredits" class="sf-credits" href="/credits" title="Available credits" hidden>

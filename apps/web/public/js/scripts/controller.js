@@ -2,12 +2,13 @@ import { ScreenplayEditor } from '../screenplay-editor/js/ScreenplayEditor.js';
 import { toFinalDraftXml, toPlainScript, toPrintableScriptHtml, toRichTextScript, toStructuredScriptJson } from './export.js';
 import { assertElements } from '../core/dom-contract.js';
 import {
-  DEFAULT_STUDIO_PAGE, parseStudioPath, scriptSlugFromRecord, studioPath,
+  DEFAULT_ARTIFACT, PAGE_TO_ARTIFACT, authorSlugFromRecord, authorSlugFromSession,
+  parseWorkPath, scriptSlugFromRecord, workPath,
 } from '../core/app-paths.js';
 
 const STUDIO_PAGE_STORAGE_KEY = 'storyboarder.activeStudioPage';
 
-export function initScriptController(elements, { setStatus, onScriptChange, getCurrentRecord } = {}) {
+export function initScriptController(elements, { setStatus, onScriptChange, getCurrentRecord, getSession } = {}) {
   assertElements('Script controller', elements, [
     'scriptText', 'modeSelect', 'editorContainer', 'pagePanel', 'focusBtn',
     'downloadBtn', 'downloadMenu', 'pageTabs', 'pageTabButtons', 'pagePanels',
@@ -62,14 +63,18 @@ export function initScriptController(elements, { setStatus, onScriptChange, getC
   };
 
   const currentSlug = () => scriptSlugFromRecord(getCurrentRecord?.());
+  const currentAuthor = () => authorSlugFromRecord(getCurrentRecord?.(), getSession?.());
 
   const syncTabHrefs = (slug = currentSlug()) => {
+    const author = currentAuthor();
     elements.pageTabButtons.forEach((button) => {
-      button.setAttribute('href', studioPath(button.dataset.page, slug));
+      const artifact = button.dataset.artifact || PAGE_TO_ARTIFACT[button.dataset.page] || DEFAULT_ARTIFACT;
+      button.setAttribute('href', workPath(author, slug || 'untitled', artifact, { edit: true }));
     });
     const download = document.getElementById('downloadZipBtn');
     if (download) {
-      const url = new URL(studioPath(activePage, slug), window.location.origin);
+      const artifact = PAGE_TO_ARTIFACT[activePage] || DEFAULT_ARTIFACT;
+      const url = new URL(workPath(author, slug || 'untitled', artifact, { edit: true }), window.location.origin);
       url.searchParams.set('download', '1');
       download.setAttribute('href', `${url.pathname}${url.search}`);
     }
@@ -82,19 +87,22 @@ export function initScriptController(elements, { setStatus, onScriptChange, getC
       const isActive = button === activeButton;
       button.classList.toggle('is-active', isActive);
       button.setAttribute('aria-selected', String(isActive));
+      button.setAttribute('aria-current', isActive ? 'page' : 'false');
       button.tabIndex = isActive ? 0 : -1;
     });
     elements.pagePanels.forEach((panel) => {
-      panel.hidden = panel.id !== activeButton.getAttribute('aria-controls');
+      const target = activeButton.getAttribute('aria-controls') || activeButton.dataset.panel;
+      panel.hidden = panel.id !== target;
     });
     activePage = page;
     const slug = currentSlug();
     syncTabHrefs(slug);
     if (persist) {
       try { localStorage.setItem(STUDIO_PAGE_STORAGE_KEY, page); } catch (_) {}
+      const artifact = PAGE_TO_ARTIFACT[page] || DEFAULT_ARTIFACT;
       const url = new URL(window.location.href);
       url.searchParams.delete('page');
-      const next = `${studioPath(page, slug)}${url.search}${url.hash}`;
+      const next = `${workPath(currentAuthor(), slug || 'untitled', artifact, { edit: true })}${url.search}${url.hash}`;
       history.replaceState(history.state, '', next);
     }
     if (page === 'script' && elements.modeSelect.value === 'screenplay' && !editor) setEditorMode('screenplay');
@@ -187,11 +195,11 @@ export function initScriptController(elements, { setStatus, onScriptChange, getC
 
   let savedPage = activePage;
   try {
-    const fromPath = parseStudioPath(window.location.pathname)?.page;
+    const fromPath = parseWorkPath(window.location.pathname)?.page;
     const storedPage = localStorage.getItem(STUDIO_PAGE_STORAGE_KEY);
     if (elements.pageTabButtons.some((button) => button.dataset.page === fromPath)) savedPage = fromPath;
     else if (elements.pageTabButtons.some((button) => button.dataset.page === storedPage)) savedPage = storedPage;
-    else savedPage = DEFAULT_STUDIO_PAGE;
+    else savedPage = 'script';
   } catch (_) {}
   applyPage(savedPage, { persist: true });
   let savedMode = 'raw';

@@ -22,10 +22,13 @@ const { createScriptsRouter, createPublicScriptsRouter } = require('./routes/scr
 const { createWritersRouter, createPublicWritersRouter } = require('./routes/writers.routes');
 const { isPlatformAdmin } = require('./middleware/style-admin');
 const {
-  isStudioPath, studioRedirectTarget, libraryHomePath, libraryCategoryPath, libraryTagPath,
+  isEditPath, workPath, libraryHomePath, libraryCategoryPath, libraryTagPath,
+  legacyStudioRedirect, ARTIFACTS,
 } = require('./shared/app-paths');
 const fs = require('node:fs');
 const path = require('node:path');
+
+const ARTIFACT_PARAM = ARTIFACTS.join('|');
 
 function createApp(dependencies) {
   const app = express();
@@ -60,10 +63,14 @@ function registerMiddleware(app, { config, auth, payments }) {
 
 function createSendPage(pagesDir) {
   const topbarPartial = path.join(pagesDir, 'partials', 'topbar.html');
+  const workbarPartial = path.join(pagesDir, 'partials', 'workbar.html');
   return (filename) => (req, res) => {
     const filePath = path.isAbsolute(filename) ? filename : path.join(pagesDir, filename);
     const topbar = fs.readFileSync(topbarPartial, 'utf8').trim();
-    const html = fs.readFileSync(filePath, 'utf8').replaceAll('<!--topbar-->', topbar);
+    const workbar = fs.readFileSync(workbarPartial, 'utf8').trim();
+    const html = fs.readFileSync(filePath, 'utf8')
+      .replaceAll('<!--topbar-->', topbar)
+      .replaceAll('<!--workbar-->', workbar);
     res.type('html').send(html);
   };
 }
@@ -85,14 +92,27 @@ function registerPageRoutes(app, config) {
 
   app.get(['/scripts', '/scripts.html'], (req, res) => res.redirect(301, libraryHomePath()));
 
-  // Studio surfaces: /script|/storyboard|/timeline[/:slug]
-  app.get(['/script', '/script/:slug', '/storyboard', '/storyboard/:slug', '/timeline', '/timeline/:slug'], (req, res, next) => {
-    if (req.params.slug?.includes('.')) return next();
+  // Artifact editor: /{author}/{slug}/{artifact}/edit
+  app.get(`/:author/:slug/:artifact(${ARTIFACT_PARAM})/edit`, (req, res, next) => {
+    if (req.params.author.includes('.') || req.params.slug.includes('.')) return next();
     return sendPage('studio.html')(req, res);
   });
 
-  // Legacy /studio?page=… → /storyboard|script|timeline
-  app.get(['/studio', '/studio.html'], (req, res) => res.redirect(301, studioRedirectTarget(req)));
+  // Public artifact: screenplay → reader; storyboard/timeline → reader shell for now
+  app.get(`/:author/:slug/:artifact(${ARTIFACT_PARAM})`, (req, res, next) => {
+    if (req.params.author.includes('.') || req.params.slug.includes('.')) return next();
+    return sendPage('script-reader.html')(req, res);
+  });
+
+  // Legacy studio surfaces → library (entity-less) or resolved edit URL
+  app.get(['/script', '/storyboard', '/timeline'], (req, res) => res.redirect(301, libraryHomePath()));
+  app.get(['/script/:slug', '/storyboard/:slug', '/timeline/:slug'], (req, res, next) => {
+    if (req.params.slug.includes('.')) return next();
+    const artifact = req.path.startsWith('/script') ? 'screenplay'
+      : req.path.startsWith('/timeline') ? 'timeline' : 'storyboard';
+    return res.redirect(302, workPath('anonymous', req.params.slug, artifact, { edit: true }));
+  });
+  app.get(['/studio', '/studio.html'], (req, res) => res.redirect(301, legacyStudioRedirect(req)));
 
   if (config.env?.NODE_ENV !== 'production') {
     app.get(['/test', '/test.html'], sendPage(path.join('dev', 'test.html')));
@@ -112,7 +132,7 @@ function pageGuard(auth) {
 
   return async (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-    const isAppPage = isStudioPath(req.path);
+    const isAppPage = isEditPath(req.path);
     const isAdminPage = ADMIN_PATHS.has(req.path);
     const isCustomerPage = CUSTOMER_PATHS.has(req.path);
     const isToolPage = TOOL_PATHS.has(req.path);
@@ -144,7 +164,7 @@ function pageGuard(auth) {
       return next();
     }
     if (identity) return next();
-    return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || '/storyboard')}`);
+    return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || libraryHomePath())}`);
   };
 }
 
@@ -162,12 +182,13 @@ function registerRoutes(app, d) {
     if (req.params.slug.includes('.')) return next();
     return sendPage('scripts-browse.html')(req, res);
   });
+
+  // Legacy /library/:author/:script → /:author/:script/screenplay
   app.get('/library/:author/:script', (req, res, next) => {
     if (req.params.author.includes('.') || req.params.script.includes('.')) return next();
-    return sendPage('script-reader.html')(req, res);
+    return res.redirect(301, workPath(req.params.author, req.params.script, 'screenplay'));
   });
 
-  // Legacy public script paths → /library/...
   app.get('/scripts/category/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
     return res.redirect(301, libraryCategoryPath(req.params.slug));

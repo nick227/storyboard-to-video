@@ -3,28 +3,13 @@
   if (!root) return;
 
   const path = window.location.pathname.replace(/\.html$/, '') || '/';
-  const studioMatch = path.match(/^\/(script|storyboard|timeline)(?:\/[^/]+)?$/);
+  const libraryLink = root.querySelector('[data-nav="library"]');
+  if (libraryLink && (path === '/library' || path.startsWith('/library/'))) {
+    libraryLink.setAttribute('aria-current', 'page');
+  }
   const adminLink = document.getElementById('adminConsoleLink');
   if (adminLink && path === '/admin') adminLink.setAttribute('aria-current', 'page');
 
-  if (studioMatch) {
-    const page = studioMatch[1];
-    const tabs = Array.from(document.querySelectorAll('.page-tab[data-page]'));
-    const list = document.querySelector('.page-tabs');
-    list.setAttribute('role', 'tablist');
-    list.setAttribute('aria-label', 'Studio pages');
-    for (const tab of tabs) {
-      const active = tab.dataset.page === page;
-      tab.classList.toggle('is-active', active);
-      tab.setAttribute('role', 'tab');
-      tab.setAttribute('aria-controls', tab.dataset.panel);
-      tab.setAttribute('aria-selected', String(active));
-      tab.tabIndex = active ? 0 : -1;
-    }
-  }
-
-  // Pages that need the session (e.g. studio) await root.sessionReady instead of
-  // re-fetching /api/auth/session and re-implementing auth UI.
   root.sessionReady = loadSession();
 
   async function loadSession() {

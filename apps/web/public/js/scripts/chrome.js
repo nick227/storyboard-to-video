@@ -1,5 +1,5 @@
 import {
-  libraryCategoryPath, libraryHomePath, libraryScriptPath, libraryTagPath,
+  libraryCategoryPath, libraryHomePath, libraryTagPath, workPath,
 } from '../core/app-paths.js';
 
 export function escapeHtml(value = '') {
@@ -50,7 +50,7 @@ export function scriptCoverCard(script, { compact = false } = {}) {
     ? `<p class="cover-logline">${escapeHtml(script.logline)}</p>`
     : '';
   const meta = compact ? '' : `<p class="cover-meta">${likes ? `${likes} like${likes === 1 ? '' : 's'}` : 'New'}</p>`;
-  const href = libraryScriptPath(script.writer?.profileSlug, script.slug);
+  const href = workPath(script.writer?.profileSlug, script.slug, 'screenplay');
   return `<a class="${classes}" href="${escapeHtml(href)}">
     <p class="cover-label">${escapeHtml(script.category?.name || 'Screenplay')}</p>
     <h2 class="cover-title">${escapeHtml(script.title || 'Untitled')}</h2>
