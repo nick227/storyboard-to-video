@@ -21,7 +21,8 @@
     "metadata:import": "npm run prisma:build && node scripts/import-filesystem-metadata.js",
     "credits:reseed": "npm run prisma:build && node scripts/reseed-site-credit-rate-and-packs.js",
     "validate:providers": "npm run prisma:build && node scripts/validate-provider-usage.js",
-    "setup:piper": "node scripts/setup-piper.js"
+    "setup:piper": "node scripts/setup-piper.js",
+    "smoke:planning-preserve": "node --require ./test/setup.js scripts/smoke-test-planning-preserve.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1092.0",
