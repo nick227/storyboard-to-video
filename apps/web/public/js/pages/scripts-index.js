@@ -113,22 +113,24 @@ function renderPublicGrid(scripts) {
 
 function renderFilterBars(categories, tags) {
   if (categoryNav) {
-    categoryNav.hidden = false;
-    categoryNav.innerHTML = renderFilterNav(categories, {
+    const html = renderFilterNav(categories, {
       ariaLabel: 'Categories',
       activeSlug: categoryFilter,
       allHref: libraryHref({ category: '' }),
       hrefFor: (item) => libraryHref({ category: item.slug }),
     });
+    categoryNav.innerHTML = html;
+    categoryNav.hidden = !html;
   }
   if (tagNav) {
-    tagNav.hidden = false;
-    tagNav.innerHTML = renderFilterNav(tags, {
+    const html = renderFilterNav(tags, {
       ariaLabel: 'Tags',
       activeSlug: tagFilter,
       allHref: libraryHref({ tag: '' }),
       hrefFor: (item) => libraryHref({ tag: item.slug }),
     });
+    tagNav.innerHTML = html;
+    tagNav.hidden = !html;
   }
 }
 

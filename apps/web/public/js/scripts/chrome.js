@@ -114,6 +114,7 @@ export function renderFilterNav(items = [], {
   allHref = libraryHomePath(),
   hrefFor,
 } = {}) {
+  if (!items.length) return '';
   const chips = [
     `<a class="script-chip${!activeSlug ? ' is-active' : ''}" href="${escapeHtml(allHref)}">All</a>`,
     ...items.map((item) => {
