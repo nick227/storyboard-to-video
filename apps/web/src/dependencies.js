@@ -21,6 +21,7 @@ const { createPaymentService } = require('./services/payment.service');
 const { createSpendSummaryService } = require('./services/spend-summary.service');
 const Stripe = require('stripe');
 const { createStylesService } = require('./services/styles.service');
+const { PrismaCustomStyleRepository } = require('./storage/custom-style.repository');
 const { createTextProviders } = require('./providers/text');
 const { createImageProviders } = require('./providers/image');
 const { createAudioProviders } = require('./providers/audio');
@@ -106,7 +107,10 @@ function createDependencies(config, overrides = {}) {
   const spendSummary = overrides.spendSummary || (prisma ? createSpendSummaryService({ prisma, billingRepository }) : null);
   const videoAttemptRepository = overrides.videoAttemptRepository || (prisma ? new PrismaVideoGenerationAttemptRepository(prisma) : new VideoGenerationAttemptStore(config.paths.videoAttempts));
 
-  const styles = createStylesService(config);
+  const styles = createStylesService(config, {
+    customStyles: prisma ? new PrismaCustomStyleRepository(prisma) : null,
+    blobStore,
+  });
   const textProviders = createTextProviders(config, cancellation, usageTracker, providerAdmission);
   const imageProvider = createImageProviders(config, textProviders, cancellation, usageTracker, providerAdmission);
   const audioProvider = createAudioProviders(config, cancellation, usageTracker, providerAdmission);
@@ -143,7 +147,7 @@ function createDependencies(config, overrides = {}) {
     controllers: {
       storyboard: createStoryboardController({ styles, prompts, dialogue, sceneSplit, shotPlanning, config }),
       media,
-      styles: createStylesController({ styles }),
+      styles: createStylesController({ styles, imageProvider }),
       voices: createVoiceController(voices),
       assets: createAssetsController({ config, projectStore, styles, scripts }),
     },

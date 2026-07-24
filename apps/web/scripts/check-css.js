@@ -17,9 +17,11 @@ const expectedModules = [
   '06-responsive.css',
   '07-timeline-utilities.css',
   '08-narration.css',
+  '09-scene-controller.css',
   '09-auth.css',
   '10-style-library.css',
   '11-usage.css',
+  '12-custom-styles.css',
 ];
 
 function fail(message) {

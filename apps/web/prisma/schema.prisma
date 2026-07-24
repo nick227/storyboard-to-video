@@ -46,6 +46,7 @@ model User {
   welcomePoliciesCreated WelcomeCreditPolicyVersion[] @relation("WelcomeCreditPolicyCreator")
   adminAuditEvents   AdminAuditEvent[]    @relation("AdminAuditActor")
   videoGenerationAttempts VideoGenerationAttempt[]
+  customStyles       CustomStyle[]
 
   @@map("users")
 }
@@ -321,6 +322,47 @@ model Asset {
   @@index([tenantId, createdAt])
   @@index([projectId, status])
   @@map("assets")
+}
+
+model CustomStyle {
+  id         String                 @id @db.Uuid
+  userId     String                 @map("user_id") @db.Uuid
+  title      String                 @db.VarChar(120)
+  promptText String                 @default("") @map("prompt_text") @db.Text
+  status     String                 @default("active")
+  createdAt  DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  references CustomStyleReference[]
+
+  @@index([userId, status, updatedAt])
+  @@map("custom_styles")
+}
+
+model CustomStyleReference {
+  id                  String      @id @db.Uuid
+  styleId             String      @map("style_id") @db.Uuid
+  category            String
+  fileName            String      @map("file_name")
+  storageKey          String      @unique @map("storage_key")
+  mimeType            String      @map("mime_type")
+  byteSize            BigInt      @map("byte_size")
+  sortOrder           Int         @default(0) @map("sort_order")
+  status              String      @default("active")
+  idempotencyKey      String?     @map("idempotency_key")
+  source              String      @default("user_upload")
+  promptSnapshot      String?     @map("prompt_snapshot") @db.Text
+  provider            String?
+  model               String?
+  aspectRatio         String?     @map("aspect_ratio")
+  generationRequestId String?     @map("generation_request_id") @db.Uuid
+  createdAt           DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  style               CustomStyle @relation(fields: [styleId], references: [id], onDelete: Cascade)
+
+  @@unique([styleId, category, sortOrder])
+  @@unique([styleId, category, idempotencyKey])
+  @@index([styleId, category, sortOrder])
+  @@map("custom_style_references")
 }
 
 model IdempotencyRecord {

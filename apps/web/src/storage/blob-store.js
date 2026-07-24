@@ -7,6 +7,7 @@ const { createDualBlobStore } = require('./dual-blob-store');
 const { createReadFallbackBlobStore } = require('./read-fallback-blob-store');
 
 const PROJECT_ASSET_KEY_PATTERN = /^projects\/([a-zA-Z0-9][a-zA-Z0-9_-]{0,79})\/assets\/(images|audio|videos|subtitles|exports|ai-references|scene-images)\/([^/]+)$/;
+const CUSTOM_STYLE_ASSET_KEY_PATTERN = /^users\/([a-zA-Z0-9][a-zA-Z0-9_-]{0,79})\/custom-styles\/([a-zA-Z0-9][a-zA-Z0-9_-]{0,79})\/references\/([^/]+)$/;
 
 function buildProjectAssetStorageKey(projectId, type, fileName) {
   const safeName = path.basename(String(fileName || ''));
@@ -27,9 +28,24 @@ function parseProjectAssetStorageKey(storageKey) {
   return { projectId: match[1], type: match[2], fileName: match[3] };
 }
 
+function buildCustomStyleReferenceStorageKey(userId, styleId, fileName) {
+  const safeName = path.basename(String(fileName || ''));
+  const safeOwner = String(userId || '');
+  const safeStyle = String(styleId || '');
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(safeOwner)
+    || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(safeStyle)
+    || !safeName || safeName !== fileName || safeName.includes('\\')) {
+    throw new AppError('INVALID_PATH', 'Invalid custom style reference path', { status: 400 });
+  }
+  return `users/${safeOwner}/custom-styles/${safeStyle}/references/${safeName}`;
+}
+
 function localPathForStorageKey(root, storageKey) {
-  const { projectId, type, fileName } = parseProjectAssetStorageKey(storageKey);
-  return path.join(root, projectId, 'assets', type, fileName);
+  const projectMatch = String(storageKey || '').match(PROJECT_ASSET_KEY_PATTERN);
+  if (projectMatch) return path.join(root, projectMatch[1], 'assets', projectMatch[2], projectMatch[3]);
+  const styleMatch = String(storageKey || '').match(CUSTOM_STYLE_ASSET_KEY_PATTERN);
+  if (styleMatch) return path.join(root, '_users', styleMatch[1], 'custom-styles', styleMatch[2], 'references', styleMatch[3]);
+  throw new AppError('INVALID_PATH', 'Invalid asset storage key', { status: 400 });
 }
 
 function createLocalBlobStore({ root }) {
@@ -115,6 +131,7 @@ function createBlobStore(config) {
 module.exports = {
   buildProjectAssetStorageKey,
   buildProjectAssetPublicPath,
+  buildCustomStyleReferenceStorageKey,
   parseProjectAssetStorageKey,
   createLocalBlobStore,
   createR2BlobStore,

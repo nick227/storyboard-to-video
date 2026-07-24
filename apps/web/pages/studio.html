@@ -418,6 +418,7 @@
       <audio id="entityModalAudio" controls hidden></audio>
       <div id="entityModalAudioCaption" class="subtitle-karaoke-text" hidden></div>
       <div id="entityModalSubtitleOverlay" class="subtitle-karaoke-text entity-modal-subtitle-overlay" hidden></div>
+      <div id="entityModalMediaMeta" class="entity-modal-media-meta" style="font-size: 11px; color: var(--muted); margin-top: 8px; text-align: center;"></div>
       <div id="entityModalMediaEmpty" class="entity-modal-media-empty">No version yet</div>
     </div>
 
@@ -758,38 +759,38 @@
             <section>
               <div class="custom-style-reference-heading">
                 <div><strong>Character references</strong><small>Up to 4</small></div>
-                <div class="ref-actions">
+              </div>
+              <div id="customStyleCharacterRefs" class="custom-style-reference-list"></div>
+                <div class="row">
                   <button type="button" id="customStyleCharacterGenerateBtn" class="upload-chip">
                     <span>Generate</span>
                   </button>
                   <button type="button" id="customStyleCharacterLibraryBtn" class="upload-chip">
                     <span>Library</span>
                   </button>
-                  <label class="upload-chip">
-                    <input id="customStyleCharacterInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+                  <button type="button" id="customStyleCharacterUploadBtn" class="upload-chip">
                     <span>Upload</span>
-                  </label>
+                  </button>
+                  <input id="customStyleCharacterInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
                 </div>
-              </div>
-              <div id="customStyleCharacterRefs" class="custom-style-reference-list"></div>
             </section>
             <section>
               <div class="custom-style-reference-heading">
                 <div><strong>World references</strong><small>Up to 4</small></div>
-                <div class="ref-actions">
+              </div>
+              <div id="customStyleWorldRefs" class="custom-style-reference-list"></div>
+                <div class="row">
                   <button type="button" id="customStyleWorldGenerateBtn" class="upload-chip">
                     <span>Generate</span>
                   </button>
                   <button type="button" id="customStyleWorldLibraryBtn" class="upload-chip">
                     <span>Library</span>
                   </button>
-                  <label class="upload-chip">
-                    <input id="customStyleWorldInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+                  <button type="button" id="customStyleWorldUploadBtn" class="upload-chip">
                     <span>Upload</span>
-                  </label>
+                  </button>
+                  <input id="customStyleWorldInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
                 </div>
-              </div>
-              <div id="customStyleWorldRefs" class="custom-style-reference-list"></div>
             </section>
           </div>
         </div>
