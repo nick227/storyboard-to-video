@@ -10,6 +10,14 @@ import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVe
 import { REFERENCE_ROLES, REFERENCE_ROLE_LABELS, normalizeReferenceRole } from '../core/reference-roles.js';
 import { textValue } from '../core/text-values.js';
 import {
+  SCENE_ENTITY_TYPES,
+  SCENE_ENTITY_LABELS,
+  clearEntityOverride,
+  hasEntityOverride,
+  resolvedEntityConfig,
+  setEntityOverride,
+} from '../core/scene-entity-config.js';
+import {
   closeSceneAudioRecorder, openSceneAudioRecorder, previewSceneAudioRecording,
   retakeSceneAudioRecording, setSceneAudioMonitoring, setSceneAudioNoiseSuppression,
   submitSceneAudioRecording, switchSceneAudioMicrophone,
@@ -44,11 +52,11 @@ const modalState = {
   alignmentWords: [],
   captionTarget: null,
   confirmApply: null,
+  configType: null,
 };
 
 const referenceModalState = { sceneId: null };
-
-const STATUS_LABELS = { dialogue: 'Narration' };
+const MISSING_ENTITY_STATUS = Object.freeze({ key: 'missing', label: 'Never generated' });
 
 const handleAssetError = (err) => {
   if (err.name !== 'AbortError') console.error('Asset load error:', err);
@@ -81,6 +89,14 @@ function setElementProtectedAsset(element, propertyName, path, cacheKeyName = pr
 }
 
 const ENTITY_CONFIG = {
+  action: {
+    title: 'Physical Action',
+    kind: 'text',
+    fieldLabel: 'Physical action',
+    getValue: (scene) => textValue(scene.beat, ['beat']),
+    setValue: (scene, value) => { scene.beat = value; },
+    regen: (index, els, cb) => regenerateAction(index, els, cb),
+  },
   prompt: {
     title: 'Image Prompt',
     kind: 'text',
@@ -155,6 +171,107 @@ function hasExistingEntity(type, scene) {
   const config = ENTITY_CONFIG[type];
   if (config.kind === 'text') return Boolean(String(config.getValue(scene) || '').trim());
   return (config.versions(scene) || []).some((version) => Boolean(version?.path));
+}
+
+function sceneFreshnessByType(scene) {
+  const freshness = computeStaleness(scene);
+  return {
+    action: false,
+    prompt: freshness.promptStale,
+    dialogue: false,
+    image: freshness.imageStale,
+    audio: freshness.audioStale,
+    video: freshness.videoStale,
+    subtitle: freshness.subtitleStale,
+  };
+}
+
+function comparableConfig(config = {}) {
+  return Object.fromEntries(Object.entries(config)
+    .filter(([key, value]) => key !== 'generatedAt' && value !== undefined));
+}
+
+function entityStatuses(scene, operation, recentJobs = getCachedJobs(), latestJobs = null) {
+  const staleByType = sceneFreshnessByType(scene);
+  const record = getCurrentStoryboardRecord() || {};
+  const statuses = {};
+
+  for (const type of SCENE_ENTITY_TYPES) {
+    const present = hasExistingEntity(type, scene);
+    const loading = isEntityLoading(type, scene, operation);
+    const lastJob = (latestJobs?.[type] || buildLatestJobsByScene(recentJobs, type)).get(scene.id);
+    const failed = !loading && lastJob?.status === 'failed';
+    const nextConfig = resolvedEntityConfig(scene, type, { record, elements: els });
+    const previousConfig = scene.entityGenerationProvenance?.[type];
+    const configChanged = Boolean(present && previousConfig
+      && JSON.stringify(comparableConfig(previousConfig)) !== JSON.stringify(comparableConfig(nextConfig)));
+    const stale = Boolean(present && (staleByType[type] || configChanged));
+
+    let key = 'ready';
+    let label = 'Ready';
+    let reason = '';
+    if (loading) {
+      key = 'generating';
+      label = 'Generating';
+    } else if (failed) {
+      key = 'failed';
+      label = 'Issue';
+      reason = lastJob?.error || lastJob?.message || 'The latest generation attempt failed.';
+    } else if (!present) {
+      ({ key, label } = MISSING_ENTITY_STATUS);
+    } else if (stale) {
+      key = 'stale';
+      label = 'Needs update';
+      reason = configChanged ? 'Scene generation settings changed.' : 'An upstream scene input changed.';
+    }
+    statuses[type] = { type, present, loading, failed, stale, key, label, reason, config: nextConfig };
+  }
+  return statuses;
+}
+
+function sceneStatusSummary(statuses) {
+  const values = Object.values(statuses);
+  const ready = values.filter((status) => status.present && !status.stale && !status.failed).length;
+  const failed = values.filter((status) => status.failed).length;
+  const loading = values.filter((status) => status.loading).length;
+  const stale = values.filter((status) => status.stale && !status.failed).length;
+  const missing = values.filter((status) => !status.present && !status.loading && !status.failed).length;
+
+  if (failed) return `${ready}/7 ready · ${failed} issue${failed === 1 ? '' : 's'}`;
+  if (loading) return `Generating ${loading} of 7`;
+  if (stale) return `${ready}/7 ready · ${stale} update${stale === 1 ? '' : 's'}`;
+  if (missing === 7) return 'Not started';
+  if (missing) return `${ready}/7 ready · ${missing} not run`;
+  return '7/7 ready';
+}
+
+function configDescription(type, config) {
+  const values = [];
+  if (config.provider) values.push(String(config.provider));
+  if (config.model) values.push(String(config.model));
+  if (type === 'audio' && config.voice) values.push(`Voice: ${config.voice}`);
+  if (config.aspectRatio) values.push(config.aspectRatio);
+  if (config.resolutionTier) values.push(config.resolutionTier);
+  if (config.quality) values.push(config.quality);
+  if (config.durationSeconds) values.push(`${config.durationSeconds}s`);
+  if (config.motionIntensity) values.push(`${config.motionIntensity} motion`);
+  if (config.style) values.push(`${config.style} style`);
+  return values.length ? values.join(' · ') : 'Project generation settings';
+}
+
+function replaceScene(index, update) {
+  const scenes = sceneStore.get().scenes.map((scene, sceneIndex) => {
+    if (sceneIndex !== index) return scene;
+    const next = { ...scene };
+    update(next);
+    return next;
+  });
+  sceneStore.set({ scenes });
+  const record = getCurrentStoryboardRecord();
+  if (record) {
+    record.scenes = scenes;
+    queueSync(record, (message) => { if (els.statusText) els.statusText.textContent = message; });
+  }
 }
 
 function setupConfirmModal() {
@@ -339,11 +456,12 @@ function currentEntityModalSceneIndex() {
   return sceneStore.get().scenes.findIndex((s) => s.id === modalState.sceneId);
 }
 
-function openEntityModal(index, type) {
+function openEntityModal(index, type = null) {
   const scene = sceneStore.get().scenes[index];
-  if (!scene || !ENTITY_CONFIG[type]) return;
+  if (!scene || (type && !ENTITY_CONFIG[type])) return;
   modalState.sceneId = scene.id;
   modalState.type = type;
+  modalState.configType = null;
   modalState.mediaPath = undefined;
   closeSceneAudioRecorder(els);
   els.entityModal.showModal();
@@ -518,6 +636,30 @@ function renderEntityModalMedia(scene, type, config) {
   const active = versions?.[config.activeIndex(scene)];
   const path = active?.path || null;
   els.entityModalMediaEmpty.hidden = Boolean(path);
+
+  if (els.entityModalMediaMeta) {
+    if (active) {
+      const providerName = active.provider ? String(active.provider).replace(/^./, (letter) => letter.toUpperCase()) : '';
+      const styleId = active.manifest?.inputs?.style?.id || active.styleId;
+      const styleObj = styleId ? generationStore.get().styles.find((s) => s.id === styleId) : null;
+      const styleName = active.manifest?.inputs?.style?.name || styleObj?.name || '';
+      
+      const parts = [];
+      if (styleName) parts.push(`Style: <strong>${styleName}</strong>`);
+      if (providerName) parts.push(`Provider: <strong>${providerName}</strong>`);
+      if (active.manifest?.inputs?.provider?.model) parts.push(`Model: <strong>${active.manifest.inputs.provider.model}</strong>`);
+      
+      const ar = active.output?.requested?.aspectRatio || active.manifest?.inputs?.settings?.output?.requested?.aspectRatio;
+      if (ar) parts.push(`Aspect Ratio: <strong>${ar}</strong>`);
+      
+      els.entityModalMediaMeta.innerHTML = parts.join(' · ');
+      els.entityModalMediaMeta.hidden = false;
+    } else {
+      els.entityModalMediaMeta.textContent = '';
+      els.entityModalMediaMeta.hidden = true;
+    }
+  }
+
   if (path === modalState.mediaPath) return; // unchanged — don't disrupt any in-progress playback
   modalState.mediaPath = path;
 
@@ -678,14 +820,236 @@ function renderEntityModalHistory(scene, type, config, busy) {
     const meta = document.createElement('div');
     meta.className = 'version-meta';
     const providerName = version.provider ? String(version.provider).replace(/^./, (letter) => letter.toUpperCase()) : '';
-    meta.textContent = `v${vIndex + 1}${providerName ? ` · ${providerName}` : ''}`;
+    const styleId = version.manifest?.inputs?.style?.id || version.styleId;
+    const styleObj = styleId ? generationStore.get().styles.find((s) => s.id === styleId) : null;
+    const styleName = version.manifest?.inputs?.style?.name || styleObj?.name || '';
+    meta.textContent = `v${vIndex + 1}${providerName ? ` · ${providerName}` : ''}${styleName ? ` · ${styleName}` : ''}`;
     btn.append(mediaEl, meta);
 
     els.entityModalHistoryList.appendChild(btn);
   });
 }
 
-function renderEntityModal() {
+function rowMediaPreview(scene, type) {
+  const container = document.createElement('div');
+  container.className = 'entity-row-media';
+  const config = ENTITY_CONFIG[type];
+  const versions = config.versions(scene) || [];
+  const active = versions[config.activeIndex(scene)];
+  const path = active?.path;
+
+  if (!path) {
+    const empty = document.createElement('span');
+    empty.className = 'entity-row-media-empty';
+    empty.textContent = 'No media yet';
+    container.appendChild(empty);
+    return container;
+  }
+
+  let media;
+  if (type === 'audio') {
+    media = document.createElement('audio');
+    media.controls = true;
+    media.preload = 'metadata';
+  } else if (type === 'video') {
+    media = document.createElement('video');
+    media.muted = true;
+    media.playsInline = true;
+    media.preload = 'metadata';
+  } else if (type === 'subtitle') {
+    const shot = imageShot(scene);
+    const visual = scene.activeVisualType === 'video'
+      ? shot.videoVersions?.[shot.activeVideoVersionIndex]
+      : shot.versions?.[shot.activeVersionIndex];
+    media = document.createElement(scene.activeVisualType === 'video' ? 'video' : 'img');
+    path && (media.dataset.subtitlePath = path);
+    if (visual?.path) {
+      loadProtectedAsset(visual.path).then((url) => { if (url) media.src = url; }).catch(handleAssetError);
+    }
+    const caption = document.createElement('span');
+    caption.className = 'entity-row-caption-preview';
+    caption.textContent = `${active.cues?.length || active.words?.length || 0} timed captions`;
+    container.append(media, caption);
+    return container;
+  } else {
+    media = document.createElement('img');
+    media.alt = `${SCENE_ENTITY_LABELS[type]} preview`;
+  }
+  media.dataset.assetPath = path;
+  loadProtectedAsset(path).then((url) => {
+    if (url && media.dataset.assetPath === path) media.src = url;
+  }).catch(handleAssetError);
+  container.appendChild(media);
+  return container;
+}
+
+function configFieldSource(type, key) {
+  if (key === 'provider') {
+    if (['action', 'prompt', 'dialogue'].includes(type)) return els.textProvider;
+    if (type === 'image') return els.imageProvider;
+    if (type === 'audio') return els.audioProvider;
+    if (type === 'video') return els.videoProvider;
+  }
+  const sources = {
+    aspectRatio: els.mediaAspectRatio,
+    resolutionTier: type === 'image' ? els.imageResolutionTier : els.videoResolutionTier,
+    quality: els.imageQuality,
+    durationSeconds: els.videoDurationSeconds,
+    motionIntensity: els.videoMotionIntensity,
+    style: els.subtitleStyleSelect,
+  };
+  return sources[key] || null;
+}
+
+function configEditor(scene, type, config) {
+  const editor = document.createElement('div');
+  editor.className = 'entity-config-editor';
+  editor.dataset.configEditor = type;
+  const heading = document.createElement('strong');
+  heading.textContent = `${SCENE_ENTITY_LABELS[type]} settings · this scene only`;
+  editor.appendChild(heading);
+
+  for (const [key, value] of Object.entries(config)) {
+    if (value === undefined) continue;
+    const label = document.createElement('label');
+    label.className = 'entity-config-field';
+    const title = document.createElement('span');
+    title.textContent = key.replace(/([A-Z])/g, ' $1').replace(/^./, (letter) => letter.toUpperCase());
+    const source = configFieldSource(type, key);
+    let control;
+    if (source?.tagName === 'SELECT') {
+      control = document.createElement('select');
+      for (const option of source.options) control.appendChild(option.cloneNode(true));
+    } else {
+      control = document.createElement('input');
+      control.type = typeof value === 'number' ? 'number' : 'text';
+    }
+    control.name = key;
+    control.value = value ?? '';
+    label.append(title, control);
+    editor.appendChild(label);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'entity-config-actions';
+  const useDefault = document.createElement('button');
+  useDefault.type = 'button';
+  useDefault.className = 'secondary';
+  useDefault.dataset.entityUseDefault = type;
+  useDefault.textContent = 'Use project default';
+  useDefault.disabled = !hasEntityOverride(scene, type);
+  const editDefaults = document.createElement('button');
+  editDefaults.type = 'button';
+  editDefaults.className = 'secondary';
+  editDefaults.dataset.entityEditDefaults = type;
+  editDefaults.textContent = 'Edit project defaults';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'secondary';
+  cancel.dataset.entityConfigCancel = type;
+  cancel.textContent = 'Cancel';
+  const apply = document.createElement('button');
+  apply.type = 'button';
+  apply.className = 'primary';
+  apply.dataset.entityConfigApply = type;
+  apply.textContent = 'Apply to this scene';
+  actions.append(useDefault, editDefaults, cancel, apply);
+  editor.appendChild(actions);
+  return editor;
+}
+
+function entityControllerRow(scene, status) {
+  const type = status.type;
+  const config = ENTITY_CONFIG[type];
+  const row = document.createElement('section');
+  row.className = `entity-controller-row status-${status.key}`;
+  row.dataset.entityType = type;
+
+  const heading = document.createElement('div');
+  heading.className = 'entity-row-heading';
+  const title = document.createElement('strong');
+  title.textContent = SCENE_ENTITY_LABELS[type];
+  const badge = document.createElement('span');
+  badge.className = `entity-status-badge status-${status.key}`;
+  badge.textContent = status.label;
+  heading.append(title, badge);
+
+  const body = document.createElement('div');
+  body.className = 'entity-row-body';
+  const content = document.createElement('div');
+  content.className = 'entity-row-content';
+  if (config.kind === 'text') {
+    const textarea = document.createElement('textarea');
+    textarea.className = 'entity-row-textarea';
+    textarea.dataset.entityText = type;
+    textarea.value = config.getValue(scene) || '';
+    textarea.placeholder = `${SCENE_ENTITY_LABELS[type]} has not been generated`;
+    content.appendChild(textarea);
+  } else {
+    content.appendChild(rowMediaPreview(scene, type));
+  }
+
+  const meta = document.createElement('div');
+  meta.className = 'entity-row-meta';
+  const description = document.createElement('span');
+  description.textContent = configDescription(type, status.config);
+  const scope = document.createElement('span');
+  scope.textContent = ` · ${hasEntityOverride(scene, type) ? 'Scene override' : 'Project default'} · `;
+  const change = document.createElement('button');
+  change.type = 'button';
+  change.className = 'secondary entity-change-btn';
+  change.dataset.entityConfig = type;
+  change.textContent = 'Change…';
+  meta.append(description, scope, change);
+  if (status.reason) {
+    const reason = document.createElement('span');
+    reason.className = 'entity-status-reason';
+    reason.textContent = status.reason;
+    meta.appendChild(reason);
+  }
+  content.appendChild(meta);
+
+  const controls = document.createElement('div');
+  controls.className = 'entity-row-controls';
+  const generate = document.createElement('button');
+  generate.type = 'button';
+  generate.className = 'primary entity-primary-action';
+  generate.dataset.entityGenerate = type;
+  generate.textContent = status.loading ? 'Generating…' : 'Generate';
+  generate.disabled = Boolean(uiStore.get().operation);
+  controls.appendChild(generate);
+  if (config.kind !== 'text' && status.present) {
+    const details = document.createElement('button');
+    details.type = 'button';
+    details.className = 'secondary entity-row-secondary';
+    details.dataset.entityDetails = type;
+    details.textContent = 'History & tools';
+    controls.appendChild(details);
+  }
+  body.append(content, controls);
+  row.append(heading, body);
+  if (modalState.configType === type) row.appendChild(configEditor(scene, type, status.config));
+  return row;
+}
+
+function renderSceneController() {
+  if (!els.entityModal?.open) return;
+  const index = currentEntityModalSceneIndex();
+  if (index === -1) { els.entityModal.close(); return; }
+  const scene = sceneStore.get().scenes[index];
+  const statuses = entityStatuses(scene, uiStore.get().operation);
+  els.entityModalSceneLabel.textContent = `Scene ${index + 1}`;
+  els.entityModalTitle.textContent = scene.title || `Scene ${index + 1}`;
+  els.entityModalSummary.textContent = sceneStatusSummary(statuses);
+  els.entityModalPosition.textContent = `${index + 1} of ${sceneStore.get().scenes.length}`;
+  els.entityModalPreviousBtn.disabled = index === 0;
+  els.entityModalNextBtn.disabled = index === sceneStore.get().scenes.length - 1;
+  els.entityModalSourceText.textContent = scene.sourceScriptFragment || scene.scriptFragment || 'No source fragment';
+  els.entityControllerRows.replaceChildren(...SCENE_ENTITY_TYPES.map((type) => entityControllerRow(scene, statuses[type])));
+  els.entityModalDeleteBtn.disabled = Boolean(uiStore.get().operation);
+}
+
+function renderEntityDetail() {
   if (!modalState.type || !els.entityModal.open) return;
   const index = currentEntityModalSceneIndex();
   if (index === -1) { els.entityModal.close(); return; }
@@ -698,8 +1062,7 @@ function renderEntityModal() {
   const controlsBusy = busy || recorderOpen;
   const isLoading = isEntityLoading(type, scene, operation);
 
-  els.entityModalSceneLabel.textContent = `Scene ${index + 1}`;
-  els.entityModalTitle.textContent = config.title;
+  els.entityModalDetailTitle.textContent = config.title;
 
   const showBeat = type === 'prompt';
   const hasBeatRegen = Boolean(config.regenBeat);
@@ -783,6 +1146,31 @@ function renderEntityModal() {
   renderEntityModalHistory(scene, type, config, controlsBusy);
 }
 
+function renderEntityModal() {
+  if (!els.entityModal?.open) return;
+  renderSceneController();
+  els.entityModalDetail.hidden = !modalState.type;
+  if (modalState.type) renderEntityDetail();
+}
+
+function generateControllerEntity(type) {
+  const index = currentEntityModalSceneIndex();
+  if (index === -1 || !ENTITY_CONFIG[type]) return;
+  const scene = sceneStore.get().scenes[index];
+  const config = ENTITY_CONFIG[type];
+  const confirmationOptions = {
+    entityType: type,
+    ...(type === 'video' ? { videoScene: scene, sceneIndex: index } : {}),
+  };
+  confirmRegeneration(`Generate ${config.title.toLowerCase()} for scene ${index + 1}? Existing versions will remain in history.`, 'Generate', confirmationOptions)
+    .then((confirmed) => {
+      if (!confirmed) return;
+      config.regen(index, els, (message) => { els.statusText.textContent = message; })
+        .then(refreshJobsAndRerenderScenes)
+        .then(renderEntityModal);
+    });
+}
+
 function setupEntityModal() {
   const modal = els.entityModal;
   if (!modal || modal.dataset.wired) return;
@@ -804,6 +1192,90 @@ function setupEntityModal() {
   }, true);
 
   els.closeEntityModalBtn.addEventListener('click', () => modal.close());
+  els.entityModalDetailCloseBtn.addEventListener('click', () => {
+    modalState.type = null;
+    modalState.mediaPath = undefined;
+    closeSceneAudioRecorder(els);
+    renderEntityModal();
+  });
+  const moveScene = (offset) => {
+    const index = currentEntityModalSceneIndex();
+    const scene = sceneStore.get().scenes[index + offset];
+    if (!scene) return;
+    modalState.sceneId = scene.id;
+    modalState.type = null;
+    modalState.configType = null;
+    modalState.mediaPath = undefined;
+    closeSceneAudioRecorder(els);
+    renderEntityModal();
+  };
+  els.entityModalPreviousBtn.addEventListener('click', () => moveScene(-1));
+  els.entityModalNextBtn.addEventListener('click', () => moveScene(1));
+  els.entityModalDeleteBtn.addEventListener('click', () => {
+    if (uiStore.get().operation) return;
+    const sceneId = modalState.sceneId;
+    modal.close();
+    window.dispatchEvent(new CustomEvent('storyboard:delete-scene', { detail: { sceneId } }));
+  });
+  els.entityControllerRows.addEventListener('click', (event) => {
+    const generate = event.target.closest('[data-entity-generate]');
+    if (generate && !generate.disabled) {
+      generateControllerEntity(generate.dataset.entityGenerate);
+      return;
+    }
+    const details = event.target.closest('[data-entity-details]');
+    if (details) {
+      modalState.type = details.dataset.entityDetails;
+      modalState.mediaPath = undefined;
+      renderEntityModal();
+      els.entityModalDetail.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      return;
+    }
+    const change = event.target.closest('[data-entity-config]');
+    if (change) {
+      modalState.configType = modalState.configType === change.dataset.entityConfig ? null : change.dataset.entityConfig;
+      renderEntityModal();
+      return;
+    }
+    const cancel = event.target.closest('[data-entity-config-cancel]');
+    if (cancel) {
+      modalState.configType = null;
+      renderEntityModal();
+      return;
+    }
+    const useDefault = event.target.closest('[data-entity-use-default]');
+    if (useDefault) {
+      const index = currentEntityModalSceneIndex();
+      replaceScene(index, (scene) => clearEntityOverride(scene, useDefault.dataset.entityUseDefault));
+      modalState.configType = null;
+      return;
+    }
+    const editDefaults = event.target.closest('[data-entity-edit-defaults]');
+    if (editDefaults) {
+      modal.close();
+      els.settingsBtn?.click();
+      return;
+    }
+    const apply = event.target.closest('[data-entity-config-apply]');
+    if (apply) {
+      const type = apply.dataset.entityConfigApply;
+      const editor = els.entityControllerRows.querySelector(`[data-config-editor="${type}"]`);
+      const override = {};
+      for (const control of editor?.querySelectorAll('[name]') || []) {
+        override[control.name] = control.type === 'number'
+          ? (control.value === '' ? null : Number(control.value))
+          : control.value;
+      }
+      replaceScene(currentEntityModalSceneIndex(), (scene) => setEntityOverride(scene, type, override));
+      modalState.configType = null;
+    }
+  });
+  els.entityControllerRows.addEventListener('change', (event) => {
+    const textarea = event.target.closest('[data-entity-text]');
+    if (!textarea) return;
+    const type = textarea.dataset.entityText;
+    replaceScene(currentEntityModalSceneIndex(), (scene) => ENTITY_CONFIG[type].setValue(scene, textarea.value));
+  });
   modal.addEventListener('click', (event) => { if (event.target === modal) modal.close(); });
   modal.addEventListener('close', () => {
     closeSceneAudioRecorder(els);
@@ -811,6 +1283,7 @@ function setupEntityModal() {
     modalState.mediaAbortController?.abort();
     modalState.sceneId = null;
     modalState.type = null;
+    modalState.configType = null;
     modalState.mediaPath = undefined;
     els.entityModalVideo.pause();
     els.entityModalVideo.removeAttribute('src');
@@ -996,7 +1469,7 @@ export function initRendering(domEls) {
     const scene = sceneStore.get().scenes[index];
     if (!scene) return;
 
-    // Any interaction with a card — the card itself, its status icons, the library button —
+    // Any interaction with a card — the card itself or its scene controller —
     // selects it as the Start run's anchor, on top of whatever else the click does below. Locked
     // while a run is active (uiStore.operation set) so a stray click mid-run can't be mistaken for
     // changing the run's target — the run's range was already frozen at confirm time regardless, but
@@ -1005,15 +1478,9 @@ export function initRendering(domEls) {
     // actually stopped, and manual selection is free again from there.
     if (uiStore.get().operation == null && uiStore.get().selectedSceneId !== scene.id) uiStore.set({ selectedSceneId: scene.id });
 
-    const deleteBtn = e.target.closest('.scene-delete-btn');
-    if (deleteBtn && !deleteBtn.disabled) {
-      window.dispatchEvent(new CustomEvent('storyboard:delete-scene', { detail: { sceneId: scene.id } }));
-      return;
-    }
-
-    const iconBtn = e.target.closest('.scene-status-icon');
-    if (iconBtn && !iconBtn.disabled) {
-      openEntityModal(index, iconBtn.dataset.status);
+    const manageBtn = e.target.closest('.scene-manage-btn');
+    if (manageBtn && !manageBtn.disabled) {
+      openEntityModal(index);
     }
   };
   els.storyboardGrid.addEventListener('click', handleSceneCardClick);
@@ -1150,6 +1617,7 @@ export function renderScenes() {
   // lookup for every scene of a given type.
   const recentJobs = getCachedJobs();
   const latestJobsByStatus = {
+    action: buildLatestJobsByScene(recentJobs, 'action'),
     prompt: buildLatestJobsByScene(recentJobs, 'prompt'),
     image: buildLatestJobsByScene(recentJobs, 'image'),
     dialogue: buildLatestJobsByScene(recentJobs, 'dialogue'),
@@ -1172,57 +1640,26 @@ export function renderScenes() {
     const placeholderEl = node.querySelector('.scene-placeholder');
     const playbackToggleEl = node.querySelector('.scene-media-toggle');
     const playbackAudioEl = node.querySelector('.scene-audio');
-    const deleteBtn = node.querySelector('.scene-delete-btn');
+    const manageBtn = node.querySelector('.scene-manage-btn');
+    const manageSummary = node.querySelector('.scene-manage-summary');
 
     sceneIndexEl.dataset.index = String(index + 1);
     titleEl.textContent = scene.title || `Scene ${index + 1}`;
 
     const busy = operation != null;
-    deleteBtn.disabled = busy;
     const loadingByType = Object.fromEntries(Object.keys(ENTITY_CONFIG).map((type) => [type, isEntityLoading(type, scene, operation)]));
+    const statuses = entityStatuses(scene, operation, recentJobs, latestJobsByStatus);
+    const summary = sceneStatusSummary(statuses);
+    manageSummary.textContent = summary;
+    manageBtn.disabled = busy;
+    manageBtn.classList.toggle('has-unrun', Object.values(statuses).some((status) => status.key === 'missing'));
+    manageBtn.classList.toggle('needs-update', Object.values(statuses).some((status) => status.key === 'stale'));
+    manageBtn.classList.toggle('has-failure', Object.values(statuses).some((status) => status.key === 'failed'));
+    manageBtn.classList.toggle('is-loading', Object.values(statuses).some((status) => status.key === 'generating'));
+    manageBtn.setAttribute('aria-label', `Scene controls: ${summary}`);
+    manageBtn.title = summary;
 
     const shot = imageShot(scene);
-    const sceneStatus = {
-      prompt: Boolean(String(scene.prompt || '').trim()),
-      image: shot.versions.some((version) => Boolean(version?.path)),
-      dialogue: Boolean(String(scene.narrationText || '').trim()),
-      audio: (scene.audioVersions || []).some((version) => Boolean(version?.path)),
-      video: (shot.videoVersions || []).some((version) => Boolean(version?.path)),
-      subtitle: (scene.subtitleVersions || []).some((version) => Boolean(version?.path)),
-    };
-    const sceneFreshness = computeStaleness(scene);
-    const staleByType = {
-      prompt: sceneFreshness.promptStale,
-      image: sceneFreshness.imageStale,
-      dialogue: false,
-      audio: sceneFreshness.audioStale,
-      video: sceneFreshness.videoStale,
-      subtitle: sceneFreshness.subtitleStale,
-    };
-    for (const [type, isPresent] of Object.entries(sceneStatus)) {
-      const statusIcon = node.querySelector(`[data-status="${type}"]`);
-      const isLoading = loadingByType[type];
-      // A prior failed job only counts while nothing has superseded it — a scene that now has real
-      // content (isPresent) succeeded since, and a fresh attempt in flight (isLoading) shouldn't
-      // flash red for a not-yet-refreshed stale failure.
-      const isFailed = !isPresent && !isLoading && latestJobsByStatus[type]?.get(scene.id)?.status === 'failed';
-      const displayName = STATUS_LABELS[type] || `${type[0].toUpperCase()}${type.slice(1)}`;
-      const label = isLoading
-        ? `Generating ${displayName.toLowerCase()}...`
-        : isFailed
-          ? `${displayName} generation failed — click to retry`
-          : staleByType[type]
-            ? `${displayName} is stale — click to update`
-          : `Configure ${displayName.toLowerCase()}`;
-      statusIcon.classList.toggle('is-present', isPresent);
-      statusIcon.classList.toggle('is-stale', Boolean(staleByType[type]));
-      statusIcon.classList.toggle('is-loading', isLoading);
-      statusIcon.classList.toggle('is-failed', isFailed);
-      statusIcon.disabled = busy;
-      statusIcon.setAttribute('aria-label', label);
-      statusIcon.title = label;
-    }
-
 
 
     const activeVersion = shot.versions?.[shot.activeVersionIndex];

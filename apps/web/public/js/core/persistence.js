@@ -76,6 +76,37 @@ export function findStoryboardByScriptSlug(slug) {
     || null;
 }
 
+export function findStoryboardForRoute({ projectId, workSlug, storyboards } = {}) {
+  const boards = storyboards || projectStore.get().storyboards || [];
+  if (projectId) {
+    const exact = boards.find((item) => item.id === projectId);
+    if (exact) return exact;
+  }
+  if (!workSlug) return null;
+  return boards.find((item) => item.script?.slug === workSlug)
+    || boards.find((item) => scriptSlugFromRecord(item) === workSlug)
+    || boards.find((item) => slugifyName(item.title) === workSlug)
+    || null;
+}
+
+export function mergeStoryboardLibraryProjects(localProjects = [], serverProjects = []) {
+  const merged = new Map(localProjects.map((project) => [project.id, project]));
+  for (const serverProject of serverProjects) {
+    const local = merged.get(serverProject.id);
+    merged.set(serverProject.id, local ? {
+      ...serverProject,
+      ...local,
+      // URL identity is canonical server data. A cached local script object can retain an old
+      // "untitled" slug and must not make a Library Edit link resolve to the wrong work.
+      scriptId: serverProject.scriptId || local.scriptId || null,
+      script: serverProject.script || local.script || null,
+      scenes: mergeScenes(serverProject.scenes, local.scenes),
+      revision: serverProject.revision,
+    } : createStoryboardRecord(serverProject));
+  }
+  return [...merged.values()];
+}
+
 export async function ensureProjectSynced() {
   const record = getCurrentStoryboardRecord();
   if (!record) return;
@@ -265,20 +296,21 @@ function restoreStoryboardFields(els) {
   });
 }
 
-export async function restoreStoryboardLibrary(els) {
+export async function restoreStoryboardLibrary(els, { targetProjectId, targetWorkSlug } = {}) {
   initializeStoryboardLibrary();
   const response = await api('/api/projects');
   const state = projectStore.get();
-  const merged = new Map((state.storyboards || []).map((project) => [project.id, project]));
-  for (const serverProject of response.projects || []) {
-    const local = merged.get(serverProject.id);
-    merged.set(serverProject.id, local ? { ...serverProject, ...local, revision: serverProject.revision } : createStoryboardRecord(serverProject));
-  }
-  const storyboards = [...merged.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-  const currentId = storyboards.some((project) => project.id === state.currentId) ? state.currentId : storyboards[0]?.id;
+  const storyboards = mergeStoryboardLibraryProjects(state.storyboards, response.projects)
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  const target = findStoryboardForRoute({
+    projectId: targetProjectId,
+    workSlug: targetWorkSlug,
+    storyboards,
+  });
+  const currentId = target?.id
+    || (storyboards.some((project) => project.id === state.currentId) ? state.currentId : storyboards[0]?.id);
   projectStore.set({ version: 3, currentId, storyboards });
   persistStoryboardLibrary();
-  await hydrateCurrentProjectFromServer();
   restoreStoryboardFields(els);
 }
 

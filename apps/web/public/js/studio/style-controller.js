@@ -25,6 +25,16 @@ export function initStyleController(elements, services = {}) {
       elements.stageStyleSelect.value = elements.styleSelect.value;
     }
     const styleId = elements.styleSelect.value;
+    const style = generationStore.get().styles.find((item) => item.id === styleId);
+    const record = getCurrentStoryboardRecord();
+    if (record) {
+      record.styleSnapshot = style ? {
+        title: style.name,
+        promptText: style.promptText || '',
+        updatedAt: style.updatedAt || new Date().toISOString(),
+      } : null;
+      record.styleReferenceOrder = {};
+    }
     services.prefillCommonPrompt(styleId);
     services.saveProject(false);
     services.renderStageBar();

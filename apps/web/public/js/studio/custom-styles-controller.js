@@ -45,7 +45,7 @@ export function initCustomStylesController(elements, services = {}) {
   function setEditorDisabled(disabled) {
     elements.customStyleTitle.disabled = disabled;
     elements.customStylePrompt.disabled = disabled;
-    elements.customStyleSaveBtn.disabled = disabled || !state.dirty || !elements.customStyleTitle.value.trim();
+    elements.customStyleSaveBtn.disabled = disabled || !elements.customStyleTitle.value.trim();
     elements.customStyleNewBtn.disabled = disabled;
     elements.customStylesList.querySelectorAll('button').forEach((btn) => { btn.disabled = disabled; });
     elements.customStylesCloseBtn.disabled = disabled;

@@ -293,6 +293,7 @@ const els = {
   entityModalExpandText: document.getElementById('entityModalExpandText'),
   entityModalExpandBtn: document.getElementById('entityModalExpandBtn'),
   entityModalMedia: document.getElementById('entityModalMedia'),
+  entityModalMediaMeta: document.getElementById('entityModalMediaMeta'),
   entityModalImage: document.getElementById('entityModalImage'),
   entityModalVideo: document.getElementById('entityModalVideo'),
   entityModalAudio: document.getElementById('entityModalAudio'),

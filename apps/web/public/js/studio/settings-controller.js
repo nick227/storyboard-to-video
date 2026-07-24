@@ -31,6 +31,9 @@ export function initSettingsController(elements, services = {}) {
   elements.settingsModal.addEventListener('click', (event) => {
     if (event.target === elements.settingsModal) elements.settingsModal.close();
   });
+  elements.settingsModal.addEventListener('close', () => {
+    services.stopPreviewVoice?.();
+  });
 
   [elements.textProvider, elements.videoMotionIntensity, elements.enrichNarration].forEach((element) => {
     element.addEventListener('change', () => services.saveProject(false));
@@ -56,6 +59,7 @@ export function initSettingsController(elements, services = {}) {
   });
   elements.voiceLibraryModal.addEventListener('close', () => {
     services.closeVoiceLibrary();
+    services.stopPreviewVoice?.();
     services.renderVoices();
   });
   elements.voiceMicSelect.addEventListener('change', () => services.switchMicrophone(elements.voiceMicSelect.value));

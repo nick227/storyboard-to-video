@@ -168,6 +168,17 @@ export class ImageLibraryController {
 
     this.selectTab('uploads');
     this.dom.modal.showModal();
+    if (referenceMode) {
+      const isCustom = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(styleId);
+      if (isCustom) {
+        try {
+          const refsData = await api(`/api/custom-styles/${encodeURIComponent(styleId)}/references`, { signal: this.contextAbortController.signal });
+          generationStore.set({ styleReferences: refsData.references || { characters: [], world: [] }, styleReferencesStyleId: styleId });
+        } catch (error) {
+          // ignore abort
+        }
+      }
+    }
     if (projectId) await this.refreshLibraryLists(this.context());
   }
 
@@ -324,6 +335,7 @@ export class ImageLibraryController {
     if (mode === 'character-reference' || mode === 'world-reference') {
       const type = mode === 'character-reference' ? 'characters' : 'world';
       activeItems = (generationStore.get().styleReferences[type] || []).map((reference) => ({
+        id: reference.id,
         path: reference.url,
         fileName: reference.fileName,
         isActive: true,
@@ -362,7 +374,7 @@ export class ImageLibraryController {
       button.addEventListener('click', () => { if (!item.isActive) this.selectSceneVersion(item.index); });
     } else {
       button.textContent = 'Remove';
-      button.addEventListener('click', () => this.removeImageFromActive(item.fileName));
+      button.addEventListener('click', () => this.removeImageFromActive(item));
     }
     actions.append(button);
     card.append(image, actions);
@@ -488,13 +500,19 @@ export class ImageLibraryController {
   async addImageToActive(path, fileName, context = this.context()) {
     if (context.mode !== 'character-reference' && context.mode !== 'world-reference') return;
     const type = context.mode === 'character-reference' ? 'characters' : 'world';
+    const isCustom = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(context.styleId);
     try {
       const file = await this.assetFile(path, fileName || 'reference.png', context);
       if (!file) return;
       this.state.setStatus?.(`Adding to active ${type}...`);
       const form = new FormData();
       form.append('files', file);
-      const data = await api(`/api/styles/${encodeURIComponent(context.styleId)}/references/upload?type=${encodeURIComponent(type)}`, {
+      
+      const uploadUrl = isCustom
+        ? `/api/custom-styles/${encodeURIComponent(context.styleId)}/references?type=${encodeURIComponent(type)}`
+        : `/api/styles/${encodeURIComponent(context.styleId)}/references/upload?type=${encodeURIComponent(type)}`;
+
+      const data = await api(uploadUrl, {
         method: 'POST',
         signal: context.signal,
         body: form,
@@ -509,16 +527,25 @@ export class ImageLibraryController {
     }
   }
 
-  async removeImageFromActive(fileName) {
+  async removeImageFromActive(item) {
     const context = this.context();
     const type = context.mode === 'character-reference' ? 'characters' : 'world';
+    const isCustom = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(context.styleId);
     try {
       this.state.setStatus?.(`Removing from active ${type}...`);
-      const data = await api(`/api/styles/${encodeURIComponent(context.styleId)}/references`, {
-        method: 'DELETE',
-        signal: context.signal,
-        body: JSON.stringify({ type, fileName }),
-      });
+      let data;
+      if (isCustom) {
+        data = await api(`/api/custom-styles/${encodeURIComponent(context.styleId)}/references/${encodeURIComponent(item.id)}`, {
+          method: 'DELETE',
+          signal: context.signal,
+        });
+      } else {
+        data = await api(`/api/styles/${encodeURIComponent(context.styleId)}/references`, {
+          method: 'DELETE',
+          signal: context.signal,
+          body: JSON.stringify({ type, fileName: item.fileName }),
+        });
+      }
       if (!this.isCurrent(context)) return;
       generationStore.set({ styleReferences: data.references || { characters: [], world: [] }, styleReferencesStyleId: context.styleId });
       this.renderStyleReferences?.(this.state.domEls, this.state.setStatus);

@@ -101,7 +101,7 @@ export function initScriptController(elements, { setStatus, onScriptChange, onPa
     activePage = page;
     const slug = currentSlug();
     syncTabHrefs(slug);
-    if (persist) {
+    if (persist && getCurrentRecord?.()) {
       try { localStorage.setItem(STUDIO_PAGE_STORAGE_KEY, page); } catch (_) {}
       const artifact = PAGE_TO_ARTIFACT[page] || DEFAULT_ARTIFACT;
       const url = new URL(window.location.href);

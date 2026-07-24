@@ -90,7 +90,6 @@ The repository's checked-in defaults currently contain:
 | `cinematic-reality` | 1 | 1 | 2 |
 | `dark-gothic` | 1 | 1 | 2 |
 | `indie-youtuber` | 1 | 1 | 2 |
-| `money-wolf` | 1 | 1 | 2 |
 | `vox-style` | 1 | 1 | 2 |
 
 Therefore, the observation that “the same two images are used for every scene” is exactly true for five of the six checked-in styles. `basic-cartoon` currently sends four. User uploads can raise the selected style set to eight.

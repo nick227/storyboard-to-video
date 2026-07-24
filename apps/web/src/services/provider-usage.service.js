@@ -42,6 +42,9 @@ function createProviderUsageService({ repository, generationContext, billing = n
         console.error(`Billing settlement pending for generation request ${handle.request.id}: ${error.message}`);
       }
     }
+    if (result && typeof result === 'object') {
+      result.generationRequestId = handle.request.id;
+    }
     return result;
   }
 

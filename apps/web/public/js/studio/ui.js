@@ -20,7 +20,6 @@ const LEGACY_STYLE_PROMPTS = {
   'dark-gothic': 'Dark gothic illustration with moody shadows, worn architecture, ominous atmosphere, muted deep palette, dramatic contrast, melancholic tone, haunting but readable composition.',
   'indie-youtuber': 'Clean modern creator aesthetic, expressive thumbnail-friendly composition, bright contrast, approachable personality, casual environments, trendy editorial feel, punchy simplified storytelling.',
   'vox-style': 'Editorial explainer visual language, clean infographic-like composition, simplified shapes, bold framing, smart modern color blocking, crisp design-led illustration, readable information-first storytelling.',
-  'money-wolf': 'Pop Art modern illustration, bold shapes, high contrast, playful composition, dynamic layout, saturated colors, commercial editorial feel, expressive dynamic composition.',
 };
 
 function migrateLegacyStylePrompt(saved, style, els) {
@@ -52,20 +51,39 @@ export function renderStoryboardPicker(els) {
 
 export async function loadStyles(els) {
   const data = await api('/api/styles');
-  generationStore.set({ styles: data.styles || [] });
+  const saved = getCurrentStoryboardRecord();
+  const styles = [...(data.styles || [])];
+  if (saved?.styleId && !styles.some((style) => style.id === saved.styleId) && saved.styleSnapshot) {
+    styles.push({
+      id: saved.styleId,
+      name: `${saved.styleSnapshot.title || 'Custom style'} (archived)`,
+      promptText: saved.styleSnapshot.promptText || '',
+      kind: 'archived',
+      editable: false,
+    });
+  }
+  generationStore.set({ styles });
   els.styleSelect.replaceChildren();
   if (els.stageStyleSelect) els.stageStyleSelect.replaceChildren();
-  generationStore.get().styles.forEach((style) => {
-    const option = document.createElement('option');
-    option.value = style.id;
-    option.textContent = style.name;
-    els.styleSelect.appendChild(option);
-    if (els.stageStyleSelect) {
-      const stageOption = option.cloneNode(true);
-      els.stageStyleSelect.appendChild(stageOption);
+  for (const select of [els.styleSelect, els.stageStyleSelect].filter(Boolean)) {
+    const groups = [
+      ['System styles', styles.filter((style) => (style.kind || 'system') === 'system')],
+      ['My styles', styles.filter((style) => style.kind === 'custom')],
+      ['Archived selection', styles.filter((style) => style.kind === 'archived')],
+    ];
+    for (const [label, items] of groups) {
+      if (!items.length) continue;
+      const group = document.createElement('optgroup');
+      group.label = label;
+      for (const style of items) {
+        const option = document.createElement('option');
+        option.value = style.id;
+        option.textContent = style.name;
+        group.appendChild(option);
+      }
+      select.appendChild(group);
     }
-  });
-  const saved = getCurrentStoryboardRecord();
+  }
   if (saved?.styleId && generationStore.get().styles.some((x) => x.id === saved.styleId)) {
     els.styleSelect.value = saved.styleId;
   }
@@ -74,14 +92,12 @@ export async function loadStyles(els) {
   if (migrateLegacyStylePrompt(saved, selectedStyle, els)) {
     persistStoryboardLibrary();
     queueSync(saved);
-  } else if (!saved?.commonPromptText) {
-    prefillCommonPrompt(els.styleSelect.value, els);
   }
 }
 
 export function prefillCommonPrompt(styleId, els) {
-  const style = generationStore.get().styles.find((item) => item.id === styleId);
-  els.commonPromptText.value = style?.promptText || '';
+  void styleId;
+  els.commonPromptText.value = '';
 }
 
 export function renderStyleReferences(els, setStatus) {
@@ -132,7 +148,7 @@ function renderStyleReferenceList(container, items, type, els, setStatus) {
     button.className = 'ref-delete-btn';
     button.setAttribute('aria-label', `Remove ${item.fileName}`);
     button.title = `Remove ${item.fileName}`;
-    button.addEventListener('click', () => deleteStyleReference(type, item.fileName, els, setStatus));
+    button.addEventListener('click', () => deleteStyleReference(type, item, els, setStatus));
     meta.append(name);
 
     const badge = document.createElement('span');
@@ -209,7 +225,11 @@ export async function uploadStyleReferences(type, files, els, setStatus) {
     const form = new FormData();
     [...files].forEach((file) => form.append('files', file));
     const styleId = els.styleSelect.value;
-    const data = await api(`/api/styles/${encodeURIComponent(styleId)}/references/upload?type=${encodeURIComponent(type)}`, {
+    const style = generationStore.get().styles.find((item) => item.id === styleId);
+    const endpoint = style?.kind === 'custom'
+      ? `/api/custom-styles/${encodeURIComponent(styleId)}/references?type=${encodeURIComponent(type)}`
+      : `/api/styles/${encodeURIComponent(styleId)}/references/upload?type=${encodeURIComponent(type)}`;
+    const data = await api(endpoint, {
       method: 'POST',
       body: form,
     });
@@ -221,13 +241,15 @@ export async function uploadStyleReferences(type, files, els, setStatus) {
   }
 }
 
-async function deleteStyleReference(type, fileName, els, setStatus) {
+async function deleteStyleReference(type, item, els, setStatus) {
   try {
     const styleId = els.styleSelect.value;
-    const data = await api(`/api/styles/${encodeURIComponent(styleId)}/references`, {
-      method: 'DELETE',
-      body: JSON.stringify({ type, fileName }),
-    });
+    const data = item.isCustomStyle
+      ? await api(`/api/custom-styles/${encodeURIComponent(styleId)}/references/${encodeURIComponent(item.id)}`, { method: 'DELETE' })
+      : await api(`/api/styles/${encodeURIComponent(styleId)}/references`, {
+        method: 'DELETE',
+        body: JSON.stringify({ type, fileName: item.fileName }),
+      });
     generationStore.set({ styleReferences: applyStyleReferenceOrder(data.references || { characters: [], world: [] }), styleReferencesStyleId: styleId });
     renderStyleReferences(els, setStatus);
     if (setStatus) setStatus('Reference removed.');

@@ -60,63 +60,136 @@ export async function refreshVoicesForCurrentProvider(setStatus, { force = false
   }
 }
 
-let previewAudio = null;
-let previewVoiceId = null;
-let onPlaybackEnded = null;
+let currentPreview = null;
+let previewTokenCounter = 0;
 
-export function stopPreviewVoice() {
-  if (previewAudio) {
-    previewAudio.pause();
+export let previewAudio = null;
+export let previewVoiceId = null;
+export let onPlaybackEnded = null;
+
+function updateLegacyState(previewState) {
+  if (previewState) {
+    previewAudio = previewState.audio;
+    previewVoiceId = previewState.voiceId;
+    onPlaybackEnded = previewState.onPlaybackEnded;
+  } else {
     previewAudio = null;
-  }
-  previewVoiceId = null;
-  if (onPlaybackEnded) {
-    onPlaybackEnded();
+    previewVoiceId = null;
     onPlaybackEnded = null;
   }
 }
 
+function cleanupPreview(targetState = 'idle') {
+  if (currentPreview) {
+    currentPreview.state = targetState;
+
+    if (currentPreview.abortController) {
+      currentPreview.abortController.abort();
+    }
+    if (currentPreview.audio) {
+      try {
+        currentPreview.audio.pause();
+        currentPreview.audio.src = '';
+      } catch (_) {}
+    }
+    if (currentPreview.onPlaybackEnded) {
+      try {
+        currentPreview.onPlaybackEnded();
+      } catch (_) {}
+      currentPreview.onPlaybackEnded = null;
+    }
+    currentPreview = null;
+    updateLegacyState(null);
+  }
+}
+
+export function stopPreviewVoice() {
+  cleanupPreview('stopping');
+}
+
 export async function previewVoice(provider, voice, setStatus, onStart, onEnd) {
   if (!voice?.voiceId) return;
-  if (previewAudio && previewVoiceId === voice.voiceId) {
+
+  if (currentPreview && currentPreview.voiceId === voice.voiceId) {
     stopPreviewVoice();
     if (setStatus) setStatus('Preview stopped.');
     return;
   }
+
   stopPreviewVoice();
+
+  previewTokenCounter++;
+  const token = previewTokenCounter;
+  const abortController = new AbortController();
+
+  const previewState = {
+    voiceId: voice.voiceId,
+    audio: null,
+    abortController,
+    onPlaybackEnded: onEnd,
+    state: 'loading',
+    token
+  };
+  currentPreview = previewState;
+  updateLegacyState(previewState);
+
   try {
     let src;
     if (provider === 'elevenlabs') {
       src = voice.previewUrl;
       if (!src) {
         if (setStatus) setStatus('No preview.');
+        if (currentPreview?.token === token) {
+          cleanupPreview('idle');
+        }
         return;
       }
     } else if (provider === 'spark') {
-      src = await loadProtectedAsset(`/api/audio/spark/voices/${encodeURIComponent(voice.voiceId)}/reference`);
+      src = await loadProtectedAsset(`/api/audio/spark/voices/${encodeURIComponent(voice.voiceId)}/reference`, { signal: abortController.signal });
     } else if (provider === 'piper') {
       if (setStatus) setStatus('Synthesizing preview...');
-      src = await loadProtectedAsset(`/api/audio/piper/voices/${encodeURIComponent(voice.voiceId)}/preview`);
+      src = await loadProtectedAsset(`/api/audio/piper/voices/${encodeURIComponent(voice.voiceId)}/preview`, { signal: abortController.signal });
     } else {
+      if (currentPreview?.token === token) {
+        cleanupPreview('idle');
+      }
       return;
     }
-    if (!src) return;
-    previewAudio = new Audio(src);
-    previewVoiceId = voice.voiceId;
-    onPlaybackEnded = onEnd;
-    previewAudio.addEventListener('ended', () => {
-      stopPreviewVoice();
+
+    if (abortController.signal.aborted || currentPreview?.token !== token) return;
+    if (!src) {
+      if (currentPreview?.token === token) {
+        cleanupPreview('idle');
+      }
+      return;
+    }
+
+    const audio = new Audio(src);
+    previewState.audio = audio;
+    previewState.state = 'playing';
+    updateLegacyState(previewState);
+
+    audio.addEventListener('ended', () => {
+      if (currentPreview?.token === token) {
+        cleanupPreview('idle');
+      }
     });
-    previewAudio.addEventListener('error', () => {
+
+    audio.addEventListener('error', () => {
       if (setStatus) setStatus('Preview failed.');
-      stopPreviewVoice();
+      if (currentPreview?.token === token) {
+        cleanupPreview('idle');
+      }
     });
+
     if (onStart) onStart();
-    await previewAudio.play();
+    await audio.play();
     if (setStatus) setStatus('Previewing voice.');
   } catch (error) {
-    if (setStatus) setStatus(`Preview failed: ${error.message}`);
-    stopPreviewVoice();
+    if (!abortController.signal.aborted && currentPreview?.token === token) {
+      if (setStatus) setStatus(`Preview failed: ${error.message}`);
+      cleanupPreview('idle');
+    }
   }
 }
 

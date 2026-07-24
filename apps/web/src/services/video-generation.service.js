@@ -27,7 +27,6 @@ const STYLE_MOTION_PROMPTS = Object.freeze({
   'cinematic-reality': 'Grounded weight, natural momentum, realistic follow-through.',
   'dark-gothic': 'Restrained movement, heavy drift, ominous atmosphere.',
   'indie-youtuber': 'Lively gestures, casual energy, clean motion.',
-  'money-wolf': 'Pop Art modern graphical realism, popular references.', 
   'vox-style': 'Crisp cutout slides, simple layers, light parallax.',
 });
 
@@ -195,7 +194,7 @@ function createVideoGenerationService({ config, provider, providers, execution, 
         intent: mergeMediaIntent({ modality: 'video', platform: config.mediaOutputDefaults, project: project.mediaSettings, override: input.outputIntent }),
       });
       if (generationMode === 'first_last_frame') validateMiniMaxInterpolationFrames(startSource, endSource, output.requested.aspectRatio);
-      const style = styles.find(input.styleId);
+      const style = styles.resolve ? await styles.resolve(input.styleId, userId) : styles.find(input.styleId);
       if (!style) throw new AppError('STYLE_NOT_FOUND', 'Unknown style', { status: 400 });
 
       const prompt = buildVideoPrompt(input, style, config.env.VIDEO_MOTION_PROMPT);
@@ -243,7 +242,7 @@ function createVideoGenerationService({ config, provider, providers, execution, 
           inputs: {
             operation: 'video.generate',
             prompt: { composed: prompt, scene: input.scenePrompt || '', beat: input.sceneBeat || '', style: style.promptText, common: getAdditionalCommonPrompt(style.promptText, input.commonPromptText), motion: input.motionPrompt || '' },
-            style: { id: style.id },
+            style: { id: style.id, name: style.name },
             provider: { name: metadata.provider || providerName, model: metadata.model || inputPlan.model || null },
             settings: { ...(metadata.settings || {}), output, motionIntensity: input.motionIntensity || 'medium', keyframeSelection: confirmedKeyframes },
             sourceAssets: [

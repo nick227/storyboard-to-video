@@ -274,105 +274,43 @@
   flex: 0 0 auto;
   justify-content: flex-end;
   gap: 5px;
+  width: 100%;
 }
-.scene-status-icon {
-  display: inline-flex;
+.scene-manage-btn {
+  display: grid;
+  grid-template-columns: 16px 1fr;
   align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  min-height: 0;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 7px;
+  gap: 7px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 9px;
+  border-radius: 8px;
   background: var(--glass);
-  color: var(--muted-strong);
-  transition: color 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
-  opacity: 0.45;
-  cursor: pointer;
+  text-align: left;
 }
-.scene-status-icon svg {
-  width: 15px;
-  height: 15px;
+.scene-manage-btn svg {
+  width: 16px;
+  height: 16px;
   fill: none;
-  stroke: currentColor;
+  stroke: var(--accent-ink);
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.scene-status-icon.is-present {
-  color: var(--accent-ink);
-  background: transparent;
-  opacity: 1;
-  cursor: pointer;
+.scene-manage-summary {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.scene-status-icon.is-present svg {
-  stroke: var(--on-accent);
-}
-.scene-status-icon.is-stale {
-  color: var(--warning);
-  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
-  background: color-mix(in srgb, var(--warning) 10%, transparent);
-  opacity: 1;
-}
-.scene-status-icon.is-stale svg {
-  stroke: var(--warning);
-}
-.scene-status-icon:hover:not(:disabled) {
-  border-color: var(--muted-strong);
-  background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
-  opacity: 0.85;
-}
-.scene-status-icon.is-present:hover:not(:disabled) {
-  border-color: var(--accent-ink);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
-  opacity: 1;
-}
-.scene-status-icon:disabled {
-  opacity: 0.2;
-  cursor: not-allowed;
-}
-.scene-status-icon.is-present:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-/* The last attempt for this entity failed (LLM rate limit, provider outage, misconfigured voice,
-   etc.) and nothing has succeeded since — mutually exclusive with .is-present, so this never needs
-   to out-cascade it. Stays visible (dimmed, not hidden) even while disabled, so a failure elsewhere
-   on the card doesn't visually disappear while some other stage is busy. */
-.scene-status-icon.is-failed {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-  opacity: 1;
-  cursor: pointer;
-}
-.scene-status-icon.is-failed svg {
-  stroke: var(--danger);
-}
-.scene-status-icon.is-failed:hover:not(:disabled) {
-  border-color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 20%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 30%, transparent);
-  opacity: 1;
-}
-.scene-status-icon.is-failed:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.scene-delete-btn {
-  color: var(--danger, #c94b4b);
-}
-.scene-delete-btn:hover:not(:disabled) {
-  border-color: currentColor;
-  background: color-mix(in srgb, currentColor 10%, transparent);
-}
-.scene-status-icon[data-status="reference"].has-scene-references {
-  color: #73ddb1;
-  border-color: rgba(115, 221, 177, 0.55);
-  background: rgba(115, 221, 177, 0.1);
-}
+.scene-manage-btn.has-unrun { border-color: var(--accent); background: var(--accent-soft); }
+.scene-manage-btn.needs-update { border-color: var(--warning); }
+.scene-manage-btn.has-failure { border-color: var(--danger); }
+.scene-manage-btn.is-loading { border-color: var(--accent); }
+.scene-manage-btn.is-loading > svg { display: none; }
+.scene-manage-btn.is-loading .status-icon-spinner { display: block; }
 .status-icon-spinner {
   display: none;
   width: 13px;
@@ -383,8 +321,6 @@
   border-radius: 50%;
   animation: spin 0.75s linear infinite;
 }
-.scene-status-icon.is-loading svg { display: none; }
-.scene-status-icon.is-loading .status-icon-spinner { display: block; }
 .scene-image-wrap {
   position: relative;
   border: 1px dashed var(--line);
@@ -640,4 +576,3 @@ button.text-button {
   border-radius: 50%;
 }
 .voice-preview-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-

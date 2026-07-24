@@ -2,7 +2,7 @@ import { sceneStore, uiStore, voiceStore } from '../core/store.js';
 import { getCurrentStoryboardRecord, queueSync } from '../core/persistence.js';
 import { api } from '../core/api.js';
 import { adaptSceneImageShot } from '../core/scene-shots.js';
-import { getArchivedNarrationPlans, insertBlankSceneAt, restoreArchivedNarrationPlan } from '../generation/workflows.js';
+import { insertBlankSceneAt } from '../generation/workflows.js';
 
 function narrationModeKey(enrich) {
   return enrich ? 'enriched' : 'literal';
@@ -80,7 +80,7 @@ export function initNarrationController(elements, services = {}) {
     const versions = mediaCount([scene]);
     const excerpt = String(scene.narrationText || scene.sourceScriptFragment || '').replace(/\s+/g, ' ').trim().slice(0, 140);
     const description = excerpt ? `“${excerpt}${excerpt.length === 140 ? '…' : ''}”` : 'This scene is currently empty.';
-    if (!window.confirm(`Delete scene ${index + 1} from the story?\n\n${description}\n\nThis removes it from Narration, Storyboard, and Timeline. ${versions} generated media version(s) will be archived, not deleted. Neighboring visual plans will be marked stale for continuity review. It can be restored later from Narration history.`)) return;
+    if (!window.confirm(`Delete scene ${index + 1} from the story?\n\n${description}\n\nThis removes it from Narration, Storyboard, and Timeline. ${versions} generated media version(s) will be retained in the project archive. Neighboring visual plans will be marked stale for continuity review.`)) return;
     const record = getCurrentStoryboardRecord();
     if (record) {
       record.archivedDeletedScenes = [{
@@ -99,26 +99,7 @@ export function initNarrationController(elements, services = {}) {
     const nextScenes = renumber(retained);
     persistScenes(nextScenes, setStatus);
     uiStore.set({ selectedSceneId: nextScenes[Math.min(index, nextScenes.length - 1)]?.id || null });
-    setStatus(`Deleted scene ${index + 1}. Its media is archived; review the neighboring scenes for story continuity or restore it from Narration history.`);
-  };
-
-  const restoreDeletedScene = (archiveId) => {
-    const record = getCurrentStoryboardRecord();
-    const archived = record?.archivedDeletedScenes || [];
-    const entry = archived.find((item) => item.id === archiveId);
-    if (!record || !entry?.scene) return;
-    record.archivedDeletedScenes = archived.filter((item) => item.id !== archiveId);
-    record.structureReviewRecommended = true;
-    record.structureEditedAt = new Date().toISOString();
-    const scenes = [...sceneStore.get().scenes];
-    const insertAt = Math.min(Math.max(Number(entry.originalIndex) || 0, 0), scenes.length);
-    scenes.splice(insertAt, 0, { ...structuredClone(entry.scene), structuralContextStale: true });
-    const withStaleNeighbors = scenes.map((scene, index) =>
-      Math.abs(index - insertAt) <= 1 ? { ...scene, structuralContextStale: true } : scene);
-    const nextScenes = renumber(withStaleNeighbors);
-    persistScenes(nextScenes, setStatus);
-    uiStore.set({ selectedSceneId: nextScenes[insertAt]?.id || null });
-    setStatus(`Restored the deleted scene at position ${insertAt + 1}. Review it and its neighbors for continuity.`);
+    setStatus(`Deleted scene ${index + 1}. Its media remains archived; review the neighboring scenes for story continuity.`);
   };
 
   const openAddSceneDialog = () => {
@@ -159,73 +140,12 @@ export function initNarrationController(elements, services = {}) {
     setStatus(`Added empty scene ${insertAt + 1}. Add narration or a visual prompt when you are ready; generation stays blocked until its required input exists.`);
   };
 
-  const renderHistory = () => {
-    const plans = getArchivedNarrationPlans();
-    const deletedScenes = getCurrentStoryboardRecord()?.archivedDeletedScenes || [];
-    const historyCount = plans.length + deletedScenes.length;
-    elements.historyToggle.textContent = `Narration history${historyCount ? ` (${historyCount})` : ''}`;
-    if (!historyCount) {
-      const empty = document.createElement('p');
-      empty.className = 'narration-history-empty';
-      empty.textContent = 'No earlier narration plans have been archived yet.';
-      elements.historyList.replaceChildren(empty);
-      return;
-    }
-    const planNodes = plans.map((plan) => {
-      const item = document.createElement('div');
-      item.className = 'narration-history-item';
-      const details = document.createElement('details');
-      const summary = document.createElement('summary');
-      const date = Number.isNaN(new Date(plan.createdAt).getTime()) ? '' : new Date(plan.createdAt).toLocaleString();
-      summary.textContent = `${plan.label || 'Narration plan'} · ${plan.scenes.length} scenes${date ? ` · ${date}` : ''}`;
-      const comparison = document.createElement('p');
-      const currentScenes = sceneStore.get().scenes;
-      const currentContent = new Set(currentScenes.map((scene) =>
-        `${String(scene.sourceScriptFragment || '').trim()}\u0000${String(scene.narrationText || '').trim()}`));
-      const exactOverlap = plan.scenes.filter((scene) =>
-        currentContent.has(`${String(scene.sourceScriptFragment || '').trim()}\u0000${String(scene.narrationText || '').trim()}`)).length;
-      const delta = plan.scenes.length - currentScenes.length;
-      comparison.textContent = `${delta >= 0 ? '+' : ''}${delta} scenes versus current · ${exactOverlap} exact scene${exactOverlap === 1 ? '' : 's'} overlap · ${mediaCount(plan.scenes)} preserved media versions`;
-      details.append(summary, comparison);
-      const restore = document.createElement('button');
-      restore.type = 'button';
-      restore.className = 'secondary';
-      restore.textContent = 'Restore';
-      restore.addEventListener('click', () => {
-        if (!window.confirm(`Restore this ${plan.scenes.length}-scene narration plan? The current plan will be archived and no generated media will be deleted.`)) return;
-        restoreArchivedNarrationPlan(plan.id, setStatus);
-      });
-      item.append(details, restore);
-      return item;
-    });
-    const deletedNodes = deletedScenes.map((entry) => {
-      const item = document.createElement('div');
-      item.className = 'narration-history-item';
-      const details = document.createElement('details');
-      const summary = document.createElement('summary');
-      summary.textContent = `Deleted scene · formerly ${Number(entry.originalIndex) + 1} · ${new Date(entry.deletedAt).toLocaleString()}`;
-      const comparison = document.createElement('p');
-      const excerpt = String(entry.scene?.narrationText || entry.scene?.sourceScriptFragment || '').replace(/\s+/g, ' ').trim().slice(0, 180);
-      comparison.textContent = `${excerpt}${excerpt.length === 180 ? '…' : ''} · ${mediaCount([entry.scene])} preserved media versions`;
-      details.append(summary, comparison);
-      const restore = document.createElement('button');
-      restore.type = 'button';
-      restore.className = 'secondary';
-      restore.textContent = 'Restore scene';
-      restore.addEventListener('click', () => restoreDeletedScene(entry.id));
-      item.append(details, restore);
-      return item;
-    });
-    elements.historyList.replaceChildren(...planNodes, ...deletedNodes);
-  };
-
   const render = () => {
     syncControls();
     const scenes = sceneStore.get().scenes;
     const operation = uiStore.get().operation;
     elements.addSceneBtn.disabled = Boolean(operation) || scenes.length >= 200;
     elements.addSceneConfirm.disabled = Boolean(operation) || scenes.length >= 200;
-    renderHistory();
   };
 
   elements.addSceneBtn.addEventListener('click', () => openAddSceneDialog());
@@ -233,10 +153,6 @@ export function initNarrationController(elements, services = {}) {
   elements.addSceneConfirm.addEventListener('click', addBlankScene);
   window.addEventListener('storyboard:delete-scene', (event) => {
     if (event.detail?.sceneId) deleteScene(event.detail.sceneId);
-  });
-  elements.historyToggle.addEventListener('click', () => {
-    elements.historyPanel.hidden = !elements.historyPanel.hidden;
-    elements.historyToggle.setAttribute('aria-expanded', String(!elements.historyPanel.hidden));
   });
   elements.mode.addEventListener('change', () => {
     elements.enrichNarration.checked = elements.mode.value === 'enriched';

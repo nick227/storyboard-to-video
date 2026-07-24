@@ -39,6 +39,7 @@ export function initMediaSettings(elements, {
     'aspectRatio', 'imageProvider', 'imageResolutionTier', 'imageQuality',
     'videoProvider', 'videoResolutionTier', 'videoDurationSeconds',
     'costPreview', 'saveDefaultsBtn',
+    'aspectRatioHelper', 'videoProviderHelper', 'videoDurationHelper', 'audioProviderHelper', 'audioProvider',
   ]);
   let quoteSequence = 0;
   let videoOptionsSequence = 0;
@@ -71,11 +72,14 @@ export function initMediaSettings(elements, {
         const baseLabel = option.dataset.baseLabel || option.textContent;
         option.disabled = result?.supported === false;
         option.title = result?.reason || '';
-        if (!option.value && result?.supported) {
-          const seconds = result.output?.resolved?.durationSeconds;
-          option.textContent = seconds ? `${baseLabel} · ${seconds}s` : `${baseLabel} · Automatic`;
+        option.textContent = `${baseLabel}${result?.supported === false ? ' · Unsupported' : ''}`;
+      }
+      if (elements.videoDurationHelper) {
+        if (elements.videoDurationSeconds.value === "") {
+          const resolvedDuration = body.providerDefault?.output?.resolved?.durationSeconds || body.providerDefault?.durationSeconds || 4;
+          elements.videoDurationHelper.textContent = `Currently: ${resolvedDuration}s`;
         } else {
-          option.textContent = `${baseLabel}${result?.supported === false ? ' · Unsupported' : ''}`;
+          elements.videoDurationHelper.textContent = '';
         }
       }
     } catch (_) {
@@ -83,8 +87,11 @@ export function initMediaSettings(elements, {
       for (const option of elements.videoDurationSeconds.options) {
         const baseLabel = option.dataset.baseLabel || option.textContent;
         option.disabled = Boolean(option.value);
-        option.textContent = `${baseLabel}${option.value ? ' · Unavailable' : ' · Automatic'}`;
+        option.textContent = `${baseLabel}${option.value ? ' · Unavailable' : ''}`;
         option.title = option.value ? 'Could not verify this duration against the server media policy.' : '';
+      }
+      if (elements.videoDurationHelper) {
+        elements.videoDurationHelper.textContent = '';
       }
     }
   };
@@ -206,6 +213,58 @@ export function initMediaSettings(elements, {
     .forEach((element) => element.addEventListener('change', applyImageOutputOptions));
   elements.imageProvider.addEventListener('change', saveAndRefreshQuote);
   elements.saveDefaultsBtn.addEventListener('click', saveDefaults);
+
+  let activePolicy = null;
+
+  const updateHelperLabels = () => {
+    if (!activePolicy?.defaults) return;
+    const defaults = activePolicy.defaults;
+
+    if (elements.aspectRatioHelper) {
+      if (elements.aspectRatio.value === "") {
+        const imgAr = defaults.image?.aspectRatio || '1:1';
+        const vidAr = defaults.video?.aspectRatio || '4:3';
+        elements.aspectRatioHelper.textContent = `Currently: ${imgAr} (Image), ${vidAr} (Video)`;
+      } else {
+        elements.aspectRatioHelper.textContent = '';
+      }
+    }
+
+    if (elements.videoProviderHelper) {
+      if (elements.videoProvider.value === "") {
+        const providerName = defaults.video?.provider || 'ltx';
+        const labels = { ltx: 'LTX (local)', minimax: 'MiniMax', stub: 'Stub Preview' };
+        const labelText = labels[providerName] || providerName;
+        elements.videoProviderHelper.textContent = `Currently: ${labelText}`;
+      } else {
+        elements.videoProviderHelper.textContent = '';
+      }
+    }
+
+    if (elements.audioProviderHelper) {
+      const provider = elements.audioProvider.value || defaults.audio?.provider || 'piper';
+      const labels = { stub: 'Local voice (TTS)', piper: 'Piper', spark: 'Voice cloning', elevenlabs: 'ElevenLabs' };
+      const labelText = labels[provider] || provider;
+      elements.audioProviderHelper.textContent = `Currently: ${labelText}`;
+    }
+  };
+
+  [elements.aspectRatio, elements.videoProvider, elements.audioProvider]
+    .forEach((el) => el.addEventListener('change', updateHelperLabels));
+
+  // Load platform default video provider name dynamically to remove opacity
+  fetchRequest('/api/media-output/policy')
+    .then((res) => {
+      if (!res.ok) throw new Error();
+      return res.json();
+    })
+    .then((body) => {
+      if (body.ok && body.defaults) {
+        activePolicy = body;
+        updateHelperLabels();
+      }
+    })
+    .catch(() => {});
 
   return {
     refreshAll: () => Promise.all([

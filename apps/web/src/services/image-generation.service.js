@@ -52,7 +52,7 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
   }
 
   async function resolveReferenceContext(input, { ownerId, userId, signal, lease } = {}) {
-    const style = styles.find(input.styleId);
+    const style = styles.resolve ? await styles.resolve(input.styleId, userId) : styles.find(input.styleId);
     if (!style) throw new AppError('UNKNOWN_STYLE', 'Unknown style', { status: 400 });
     const project = lease
       ? await projectStore.verifyLease(lease, signal)
@@ -71,17 +71,28 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
     const scene = project.scenes?.find((item) => item.id === input.sceneId);
     if (!scene) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
     const disabledDefaults = new Set(imageShot(scene).disabledStyleReferencePaths || []);
-    const styleSources = styles.referenceSources
-      ? styles.referenceSources(style.id, userId, project.styleReferenceOrder)
-      : (styles.referencePaths?.(style.id, userId) || []).map((referencePath) => ({ path: referencePath, url: null }));
-    const defaultReferences = styleSources
-      .filter((item) => !item.url || !disabledDefaults.has(item.url))
-      .map((item) => ({
-        localPath: item.path,
-        path: item.url || `style://${style.id}/${item.type || 'reference'}/${path.basename(item.path)}`,
+    const styleSources = styles.resolveReferenceSources
+      ? await styles.resolveReferenceSources(style.id, userId, project.styleReferenceOrder)
+      : styles.referenceSources
+        ? styles.referenceSources(style.id, userId, project.styleReferenceOrder)
+        : (styles.referencePaths?.(style.id, userId) || []).map((referencePath) => ({ path: referencePath, url: null }));
+    const styleReleases = [];
+    const defaultReferences = [];
+    for (const item of styleSources.filter((candidate) => !candidate.url || !disabledDefaults.has(candidate.url))) {
+      let localPath = item.path;
+      if (!localPath && item.storageKey) {
+        const handle = await assetMaterializer.materialize(item.storageKey);
+        localPath = handle.path;
+        styleReleases.push(handle.release);
+      }
+      if (!localPath) continue;
+      defaultReferences.push({
+        localPath,
+        path: item.url || `style://${style.id}/${item.type || 'reference'}/${path.basename(localPath)}`,
         source: 'style',
         role: item.type === 'characters' ? 'character' : item.type === 'world' ? 'location' : 'composition',
-      }));
+      });
+    }
     const uploaded = await sceneReferencePaths(input.projectId, scene);
     const referencePlan = resolveImageReferencePlan(input.provider, [...uploaded.paths, ...defaultReferences]);
     const visiblePlan = publicReferencePlan(referencePlan);
@@ -100,6 +111,7 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
       output,
       releaseMaterialized: async () => {
         for (const release of uploaded.releases) await release();
+        for (const release of styleReleases) await release();
       },
     };
   }
@@ -160,7 +172,7 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
             inputs: {
               operation: 'image.generate',
               prompt: { composed: prompt, scene: input.scenePrompt, style: style.promptText, common, extra: input.extraPromptText || '' },
-              style: { id: style.id },
+              style: { id: style.id, name: style.name },
               provider: { name: metadata.provider || input.provider, model: metadata.model || null },
               settings: { ...(metadata.settings || {}), output: resolved.output },
               references: selectedReferences.map((reference) => ({ path: reference.path, source: reference.source, role: reference.role, order: reference.order, providerSlot: reference.providerSlot, consumed: true })),

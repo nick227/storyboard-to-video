@@ -102,7 +102,31 @@ function createMediaOutputService({ config, projectStore, billing, videoProvider
   }
 
   function policy() {
-    return { defaults: config.mediaOutputDefaults, aspectRatios: ASPECT_RATIOS, resolutionTiers: RESOLUTION_TIERS, imageQualityLevels: IMAGE_QUALITY_LEVELS };
+    return {
+      defaults: {
+        text: {
+          provider: 'gemini',
+        },
+        image: {
+          provider: 'gemini',
+          aspectRatio: config.mediaOutputDefaults.image.aspectRatio,
+          resolutionTier: config.mediaOutputDefaults.image.resolutionTier,
+          quality: config.mediaOutputDefaults.image.quality,
+        },
+        video: {
+          provider: config.videoProvider,
+          aspectRatio: config.mediaOutputDefaults.video.aspectRatio,
+          resolutionTier: config.mediaOutputDefaults.video.resolutionTier,
+          durationSeconds: 4,
+        },
+        audio: {
+          provider: 'piper',
+        },
+      },
+      aspectRatios: ASPECT_RATIOS,
+      resolutionTiers: RESOLUTION_TIERS,
+      imageQualityLevels: IMAGE_QUALITY_LEVELS,
+    };
   }
 
   return { policy, quote, selection, videoDurationOptions, imageOutputOptions };

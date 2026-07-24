@@ -308,8 +308,8 @@
   margin-top: 18px;
 }
 .entity-modal {
-  width: min(640px, 94vw);
-  max-height: 88vh;
+  width: min(780px, 96vw);
+  max-height: 90vh;
   overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 16px;

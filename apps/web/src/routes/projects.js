@@ -178,7 +178,7 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
     }
 
     const lease = await store.acquireLease(projectId, { ownerId: req.auth.tenantId, userId: req.auth.userId });
-    const selectedStyle = styles.find(styleId || 'basic-cartoon');
+    const selectedStyle = await styles.resolve(styleId || 'basic-cartoon', req.auth.userId);
     const stylePrompt = selectedStyle?.promptText || '';
     const fullPrompt = [stylePrompt, finalPrompt].filter(Boolean).join('\n\n');
 
