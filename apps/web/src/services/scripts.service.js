@@ -1,7 +1,7 @@
 const { AppError } = require('../errors');
 const { cleanText } = require('../shared/text');
 const { sharePathFor } = require('../shared/app-paths');
-const { isArtifact, isArtifactPublic, hasAnyPublicArtifact, artifactState, artifactsFromRow, ARTIFACT_FIELDS } = require('../shared/script-artifacts');
+const { isArtifact, isArtifactPublic, hasAnyPublicArtifact, artifactState, artifactsFromRow, ARTIFACT_FIELDS, ARTIFACTS } = require('../shared/script-artifacts');
 const { publicProjectView } = require('../shared/public-artifact-view');
 
 function publicSummary(script, { artifact = 'screenplay' } = {}) {
@@ -92,8 +92,26 @@ function createScriptsService({ store, projectStore } = {}) {
   }
 
   async function listPublic(options = {}) {
+    const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
+    const offset = Math.max(0, Number(options.offset) || 0);
+    const categorySlug = options.categorySlug || options.category || undefined;
+    const tagSlug = options.tagSlug || options.tag || undefined;
+    const base = { ...options, categorySlug, tagSlug, limit, offset };
+
+    if (options.artifact === 'all') {
+      const perType = Math.min(100, offset + limit);
+      const batches = await Promise.all(ARTIFACTS.map(async (artifact) => {
+        const rows = await store.listPublic({ ...base, artifact, limit: perType, offset: 0 });
+        return rows.map((script) => publicSummary(script, { artifact }));
+      }));
+      return batches
+        .flat()
+        .sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')))
+        .slice(offset, offset + limit);
+    }
+
     const artifact = isArtifact(options.artifact) ? options.artifact : 'screenplay';
-    return (await store.listPublic({ ...options, artifact })).map((script) => publicSummary(script, { artifact }));
+    return (await store.listPublic({ ...base, artifact })).map((script) => publicSummary(script, { artifact }));
   }
 
   async function listPublicByCategory(slug, options = {}) {
@@ -106,6 +124,10 @@ function createScriptsService({ store, projectStore } = {}) {
 
   async function listCategories() {
     return store.listCategories();
+  }
+
+  async function listTags() {
+    return store.listTags ? store.listTags() : [];
   }
 
   async function getPublicBySlug(slug, { userId, artifact = 'screenplay' } = {}) {
@@ -227,7 +249,7 @@ function createScriptsService({ store, projectStore } = {}) {
 
   return {
     create, list, get, update, setVisibility, listPublic, listPublicByCategory, listPublicByTag,
-    listCategories, getPublicBySlug, resolveSharePath, toggleLike, getOwnerStats, ensureForProject, syncFromProject,
+    listCategories, listTags, getPublicBySlug, resolveSharePath, toggleLike, getOwnerStats, ensureForProject, syncFromProject,
     listProjects, canPublicReadProjectMedia, publicSummary, ownerView,
   };
 }

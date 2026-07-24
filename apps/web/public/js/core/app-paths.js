@@ -41,6 +41,21 @@ export function libraryHomePath(tab = '') {
   return '/library';
 }
 
+export function libraryQueryPath({
+  tab = 'all',
+  artifact = 'all',
+  category = '',
+  tag = '',
+} = {}) {
+  const params = new URLSearchParams();
+  if (tab === 'mine' || tab === 'community') params.set('tab', tab);
+  if (artifact && artifact !== 'all') params.set('artifact', artifact);
+  if (category) params.set('category', category);
+  if (tag) params.set('tag', tag);
+  const query = params.toString();
+  return query ? `/library?${query}` : '/library';
+}
+
 export function libraryCategoryPath(slug) {
   return `/library/category/${encodeURIComponent(slug)}`;
 }
@@ -96,7 +111,12 @@ export function parseStudioPath(pathname = '') {
 
 export function scriptSlugFromRecord(record) {
   if (!record) return '';
-  return record.script?.slug || slugifyName(record.title);
+  const stored = record.script?.slug || '';
+  const titleSlug = slugifyName(record.title);
+  // A work commonly starts life as "Untitled". Once it has a real title, do not keep exposing
+  // that placeholder in private editor URLs while canonical script metadata catches up.
+  if (/^untitled(?:-\d+)?$/.test(stored) && titleSlug !== 'untitled') return titleSlug;
+  return stored || titleSlug;
 }
 
 export function authorSlugFromSession(session) {

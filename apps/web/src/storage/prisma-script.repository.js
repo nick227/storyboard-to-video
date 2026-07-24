@@ -201,6 +201,11 @@ class PrismaScriptRepository extends ScriptStore {
     return rows.map((c) => ({ id: c.id, slug: c.slug, name: c.name, sortOrder: c.sortOrder }));
   }
 
+  async listTags() {
+    const rows = await this.prisma.tag.findMany({ orderBy: [{ name: 'asc' }] });
+    return rows.map((t) => ({ id: t.id, slug: t.slug, name: t.name }));
+  }
+
   async findCategoryBySlug(slug) {
     return this.prisma.category.findUnique({ where: { slug: String(slug || '') } });
   }

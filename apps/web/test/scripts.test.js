@@ -178,6 +178,11 @@ test('storyboard and timeline publish independently of screenplay', async () => 
   await scripts.setVisibility(created.id, 'public', { tenantId: 't1', artifact: 'timeline' });
   assert.equal((await scripts.listPublic({ artifact: 'timeline' })).length, 1);
   assert.equal((await scripts.listPublic({ artifact: 'storyboard' })).length, 1);
+
+  const allListed = await scripts.listPublic({ artifact: 'all' });
+  assert.equal(allListed.length, 2);
+  assert.ok(allListed.every((item) => item.artifact === 'storyboard' || item.artifact === 'timeline'));
+  assert.ok(String(allListed[0].publishedAt || '') >= String(allListed[1].publishedAt || ''));
 });
 
 test('public storyboard view returns sanitized project scenes without a cover payload', async () => {

@@ -197,6 +197,12 @@ class ScriptStore {
       .map((c) => ({ id: c.id, slug: c.slug, name: c.name, sortOrder: c.sortOrder }));
   }
 
+  async listTags() {
+    return [...this.tags.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((t) => ({ id: t.id, slug: t.slug, name: t.name }));
+  }
+
   async findCategoryBySlug(slug) {
     return [...this.categories.values()].find((c) => c.slug === slug) || null;
   }

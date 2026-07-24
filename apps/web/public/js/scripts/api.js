@@ -13,9 +13,15 @@ async function publicJson(url) {
   return payload;
 }
 
-export async function fetchPublicScripts({ artifact = 'screenplay' } = {}) {
+export async function fetchPublicScripts({
+  artifact = 'all',
+  category = '',
+  tag = '',
+} = {}) {
   const params = new URLSearchParams();
-  if (artifact && artifact !== 'screenplay') params.set('artifact', artifact);
+  if (artifact) params.set('artifact', artifact);
+  if (category) params.set('category', category);
+  if (tag) params.set('tag', tag);
   const query = params.toString();
   return (await publicJson(`/api/public/scripts${query ? `?${query}` : ''}`)).scripts || [];
 }
@@ -29,6 +35,10 @@ export async function fetchPublicScript(slug, { artifact = 'screenplay' } = {}) 
 
 export async function fetchCategories() {
   return (await publicJson('/api/public/scripts/categories')).categories || [];
+}
+
+export async function fetchTags() {
+  return (await publicJson('/api/public/scripts/tags')).tags || [];
 }
 
 export async function fetchScriptsByCategory(slug) {

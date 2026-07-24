@@ -79,12 +79,18 @@ function createPublicScriptsRouter({ scripts, optionalAuth }) {
         limit: req.query.limit,
         offset: req.query.offset,
         artifact: req.query.artifact,
+        category: req.query.category,
+        tag: req.query.tag,
       }),
     });
   }));
 
   router.get('/categories', asyncRoute(async (req, res) => {
     res.json({ ok: true, categories: await scripts.listCategories() });
+  }));
+
+  router.get('/tags', asyncRoute(async (req, res) => {
+    res.json({ ok: true, tags: await scripts.listTags() });
   }));
 
   router.get('/category/:slug', validate(publicScriptListQuery, 'query'), asyncRoute(async (req, res) => {
@@ -94,6 +100,7 @@ function createPublicScriptsRouter({ scripts, optionalAuth }) {
         limit: req.query.limit,
         offset: req.query.offset,
         artifact: req.query.artifact,
+        tag: req.query.tag,
       }),
     });
   }));
@@ -105,6 +112,7 @@ function createPublicScriptsRouter({ scripts, optionalAuth }) {
         limit: req.query.limit,
         offset: req.query.offset,
         artifact: req.query.artifact,
+        category: req.query.category,
       }),
     });
   }));

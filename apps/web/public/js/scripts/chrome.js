@@ -108,6 +108,22 @@ export function renderCategoryNav(categories = [], activeSlug = '') {
   return `<nav class="script-category-nav" aria-label="Categories">${items.join('')}</nav>`;
 }
 
+export function renderFilterNav(items = [], {
+  ariaLabel = 'Filters',
+  activeSlug = '',
+  allHref = libraryHomePath(),
+  hrefFor,
+} = {}) {
+  const chips = [
+    `<a class="script-chip${!activeSlug ? ' is-active' : ''}" href="${escapeHtml(allHref)}">All</a>`,
+    ...items.map((item) => {
+      const href = typeof hrefFor === 'function' ? hrefFor(item) : '#';
+      return `<a class="script-chip${item.slug === activeSlug ? ' is-active' : ''}" href="${escapeHtml(href)}">${escapeHtml(item.name)}</a>`;
+    }),
+  ];
+  return `<nav class="script-category-nav" aria-label="${escapeHtml(ariaLabel)}">${chips.join('')}</nav>`;
+}
+
 export async function shareUrl(url, { title = 'Screenplay', text = '' } = {}) {
   if (navigator.share) {
     await navigator.share({ title, text, url });
