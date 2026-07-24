@@ -15,6 +15,19 @@ function renderLines(scriptText = '') {
   )).join('\n');
 }
 
+function showArtifactChrome({ cover, body, artifactRoot, storyboard, timeline, toolbar }, mode) {
+  const isBoard = mode === 'storyboard';
+  const isTimeline = mode === 'timeline';
+  const isScript = mode === 'screenplay';
+  cover.hidden = !isScript;
+  body.hidden = !isScript;
+  artifactRoot.hidden = isScript;
+  storyboard.hidden = !isBoard;
+  timeline.hidden = !isTimeline;
+  toolbar.hidden = !isScript;
+  if (!isScript) cover.replaceChildren();
+}
+
 const route = parseWorkPath(window.location.pathname);
 const slug = route?.workSlug || '';
 const authorSlug = route?.authorSlug || '';
@@ -40,8 +53,16 @@ const artifactView = document.getElementById('artifactView');
 const storyboardView = document.getElementById('storyboardView');
 const timelineView = document.getElementById('timelineView');
 const readerCover = document.getElementById('readerCover');
+const readerToolbar = document.querySelector('.script-reader-toolbar');
+const chrome = {
+  cover: readerCover,
+  body: readerBody,
+  artifactRoot: artifactView,
+  storyboard: storyboardView,
+  timeline: timelineView,
+  toolbar: readerToolbar,
+};
 
-bindFullscreen(fullscreenBtn, stage);
 initWorkbar();
 
 try {
@@ -64,32 +85,14 @@ try {
   ]);
 
   const scenes = script.project?.scenes || [];
+  showArtifactChrome(chrome, artifact);
 
   if (artifact === 'storyboard') {
-    readerCover.hidden = true;
-    readerCover.replaceChildren();
-    readerBody.hidden = true;
-    artifactView.hidden = false;
-    storyboardView.hidden = false;
-    timelineView.hidden = true;
-    document.querySelector('.script-reader-toolbar').hidden = true;
     renderStoryboardView(storyboardView, scenes);
   } else if (artifact === 'timeline') {
-    readerCover.hidden = true;
-    readerCover.replaceChildren();
-    readerBody.hidden = true;
-    artifactView.hidden = false;
-    storyboardView.hidden = true;
-    timelineView.hidden = false;
-    document.querySelector('.script-reader-toolbar').hidden = true;
     await renderTimelineView(timelineView, scenes);
   } else {
-    readerCover.hidden = false;
-    artifactView.hidden = true;
-    storyboardView.hidden = true;
-    timelineView.hidden = true;
-    readerBody.hidden = false;
-    document.querySelector('.script-reader-toolbar').hidden = false;
+    bindFullscreen(fullscreenBtn, stage);
     readerCover.innerHTML = scriptCoverPage(script);
     readerPage.innerHTML = renderLines(script.scriptText || '');
 
@@ -101,13 +104,11 @@ try {
     });
     scaler.start();
     scaler.scheduleUpdate();
-  }
 
-  likeCount.textContent = String(script.likeCount || 0);
-  likeBtn.setAttribute('aria-pressed', String(Boolean(script.likedByMe)));
-  likeBtn.classList.toggle('is-liked', Boolean(script.likedByMe));
+    likeCount.textContent = String(script.likeCount || 0);
+    likeBtn.setAttribute('aria-pressed', String(Boolean(script.likedByMe)));
+    likeBtn.classList.toggle('is-liked', Boolean(script.likedByMe));
 
-  if (artifact === 'screenplay') {
     likeBtn.addEventListener('click', async () => {
       try {
         const result = await toggleScriptLike(script.id);
@@ -120,12 +121,9 @@ try {
         flashStatus(toolbarStatus, error.message || 'Could not update like');
       }
     });
-  }
 
-  const url = new URL(workPath(canonicalAuthor, script.slug, artifact), window.location.origin).toString();
-  if (artifact === 'screenplay') {
     bindShareButton(shareBtn, {
-      getUrl: url,
+      getUrl: new URL(workPath(canonicalAuthor, script.slug, artifact), window.location.origin).toString(),
       title: script.title || label,
       text: script.logline || `By ${script.author || 'Anonymous'}`,
       onStatus: (message) => flashStatus(toolbarStatus, message),

@@ -34,9 +34,11 @@ async function playMedia(el, offset = 0) {
   try {
     if (el.readyState < 1) {
       await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { cleanup(); reject(new Error('media timeout')); }, 4000);
         const onReady = () => { cleanup(); resolve(); };
         const onError = () => { cleanup(); reject(new Error('media error')); };
         const cleanup = () => {
+          clearTimeout(timer);
           el.removeEventListener('loadedmetadata', onReady);
           el.removeEventListener('error', onError);
         };
@@ -108,7 +110,7 @@ export async function renderTimelineView(root, scenes = []) {
     ]);
     return {
       ...scene,
-      duration: Math.max(videoDuration, audioDuration, STILL_SECONDS),
+      duration: Math.max(videoDuration, audioDuration) || STILL_SECONDS,
       start: 0,
     };
   }));

@@ -15,10 +15,6 @@ function publicSceneView(scene = {}, index = 0) {
   const image = Array.isArray(shot.versions) ? shot.versions[shot.activeVersionIndex] : null;
   const video = Array.isArray(shot.videoVersions) ? shot.videoVersions[shot.activeVideoVersionIndex] : null;
   const audio = Array.isArray(scene.audioVersions) ? scene.audioVersions[scene.activeAudioVersionIndex] : null;
-  const subtitle = Array.isArray(scene.subtitleVersions)
-    ? scene.subtitleVersions[scene.activeSubtitleVersionIndex]
-    : null;
-  const audioPath = audio?.path || null;
   const hasVideo = scene.activeVisualType === 'video' && Boolean(video?.path);
 
   return {
@@ -28,9 +24,7 @@ function publicSceneView(scene = {}, index = 0) {
     narrationText: textOf(scene.narrationText),
     imagePath: image?.path || null,
     videoPath: hasVideo ? video.path : null,
-    audioPath,
-    words: subtitle?.sourceAudioPath === audioPath ? (subtitle?.words || null) : null,
-    captionStyle: subtitle?.style || 'classic',
+    audioPath: audio?.path || null,
   };
 }
 

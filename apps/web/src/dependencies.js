@@ -61,7 +61,6 @@ const { createAssetMaterializer } = require('./storage/asset-materializer');
 const { ScriptStore } = require('./storage/script-store');
 const { PrismaScriptRepository } = require('./storage/prisma-script.repository');
 const { MemoryWritersRepository, PrismaWritersRepository } = require('./storage/writers-store');
-const { MemoryCustomStyleRepository, PrismaCustomStyleRepository } = require('./storage/custom-style.repository');
 
 function createDependencies(config, overrides = {}) {
   const useTestAdapters = Boolean(overrides.identityStore && !overrides.prisma && !overrides.projectStore);
@@ -107,10 +106,7 @@ function createDependencies(config, overrides = {}) {
   const spendSummary = overrides.spendSummary || (prisma ? createSpendSummaryService({ prisma, billingRepository }) : null);
   const videoAttemptRepository = overrides.videoAttemptRepository || (prisma ? new PrismaVideoGenerationAttemptRepository(prisma) : new VideoGenerationAttemptStore(config.paths.videoAttempts));
 
-  const customStyleRepository = overrides.customStyleRepository || (useTestAdapters
-    ? new MemoryCustomStyleRepository()
-    : new PrismaCustomStyleRepository(prisma));
-  const styles = createStylesService(config, { customStyles: customStyleRepository, blobStore });
+  const styles = createStylesService(config);
   const textProviders = createTextProviders(config, cancellation, usageTracker, providerAdmission);
   const imageProvider = createImageProviders(config, textProviders, cancellation, usageTracker, providerAdmission);
   const audioProvider = createAudioProviders(config, cancellation, usageTracker, providerAdmission);
@@ -136,7 +132,7 @@ function createDependencies(config, overrides = {}) {
   const auth = new AuthService({ identityStore });
 
   return {
-    config, prisma, projectStore, scriptStore, scripts, writersStore, writers, customStyleRepository, queue, providerAdmission, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, spendSummary, generationContext, identityStore,
+    config, prisma, projectStore, scriptStore, scripts, writersStore, writers, queue, providerAdmission, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, spendSummary, generationContext, identityStore,
     styles, prompts, referenceGeneration, dialogue, sceneSplit, shotPlanning, images, audio, videos, subtitles, shotReferences, exports, voices, imageProvider, mediaOutput,
     upload: createUpload(config),
     auth,

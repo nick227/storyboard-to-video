@@ -212,6 +212,7 @@ test('public storyboard view returns sanitized project scenes without a cover pa
   assert.equal(publicBoard.project.scenes[0].imagePath, '/projects/board-1/assets/images/a.png');
   assert.equal(publicBoard.project.scenes[0].narrationText, 'She opens the door.');
   assert.equal(publicBoard.project.scenes[0].versions, undefined);
+  assert.equal(publicBoard.project.scenes[0].words, undefined);
   assert.equal(await scripts.canPublicReadProjectMedia('board-1'), true);
   assert.equal(await scripts.canPublicReadProjectMedia('missing'), false);
 

@@ -5,6 +5,8 @@ const { AppError } = require('../errors');
 const { buildProjectAssetStorageKey } = require('../storage/blob-store');
 
 function createAssetsController({ projectStore, styles, scripts }) {
+  const PUBLIC_MEDIA_TYPES = new Set(['images', 'audio', 'videos', 'subtitles', 'scene-images']);
+
   async function resolveProjectAsset(req) {
     const file = path.basename(req.params.fileName);
     if (file !== req.params.fileName) throw new AppError('INVALID_PATH', 'Invalid asset path', { status: 400 });
@@ -25,6 +27,12 @@ function createAssetsController({ projectStore, styles, scripts }) {
       } catch (error) {
         if (error.code !== 'PROJECT_NOT_FOUND' && error.status !== 404) throw error;
       }
+    }
+
+    if (!PUBLIC_MEDIA_TYPES.has(req.params.type)) {
+      throw new AppError(ownerId ? 'ASSET_NOT_FOUND' : 'UNAUTHENTICATED',
+        ownerId ? 'Asset not found' : 'Authentication is required',
+        { status: ownerId ? 404 : 401 });
     }
 
     const allowed = scripts?.canPublicReadProjectMedia
