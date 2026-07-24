@@ -1,3 +1,7 @@
+import {
+  libraryCategoryPath, libraryHomePath, libraryScriptPath, libraryTagPath,
+} from '../core/app-paths.js';
+
 export function escapeHtml(value = '') {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -27,13 +31,13 @@ export function renderBreadcrumbs(crumbs = []) {
 }
 
 export function scriptTrail(script = {}) {
-  const crumbs = [{ label: 'Library', href: '/scripts' }];
+  const crumbs = [{ label: 'Library', href: libraryHomePath() }];
   if (script.category?.slug) {
-    crumbs.push({ label: script.category.name, href: `/scripts/category/${script.category.slug}` });
+    crumbs.push({ label: script.category.name, href: libraryCategoryPath(script.category.slug) });
   }
   const primaryTag = script.tags?.[0];
   if (primaryTag?.slug) {
-    crumbs.push({ label: primaryTag.name, href: `/scripts/tag/${primaryTag.slug}` });
+    crumbs.push({ label: primaryTag.name, href: libraryTagPath(primaryTag.slug) });
   }
   crumbs.push({ label: script.title || 'Untitled' });
   return crumbs;
@@ -46,7 +50,8 @@ export function scriptCoverCard(script, { compact = false } = {}) {
     ? `<p class="cover-logline">${escapeHtml(script.logline)}</p>`
     : '';
   const meta = compact ? '' : `<p class="cover-meta">${likes ? `${likes} like${likes === 1 ? '' : 's'}` : 'New'}</p>`;
-  return `<a class="${classes}" href="/scripts/${encodeURIComponent(script.slug)}">
+  const href = libraryScriptPath(script.writer?.profileSlug, script.slug);
+  return `<a class="${classes}" href="${escapeHtml(href)}">
     <p class="cover-label">${escapeHtml(script.category?.name || 'Screenplay')}</p>
     <h2 class="cover-title">${escapeHtml(script.title || 'Untitled')}</h2>
     ${logline}
@@ -67,10 +72,10 @@ export function scriptCoverPage(script) {
     ? `<p class="script-cover-page-logline">${escapeHtml(script.logline)}</p>`
     : '';
   const tags = (script.tags || []).map((tag) => (
-    `<a class="script-chip" href="/scripts/tag/${encodeURIComponent(tag.slug)}">${escapeHtml(tag.name)}</a>`
+    `<a class="script-chip" href="${escapeHtml(libraryTagPath(tag.slug))}">${escapeHtml(tag.name)}</a>`
   )).join('');
   const category = script.category
-    ? `<a class="script-chip" href="/scripts/category/${encodeURIComponent(script.category.slug)}">${escapeHtml(script.category.name)}</a>`
+    ? `<a class="script-chip" href="${escapeHtml(libraryCategoryPath(script.category.slug))}">${escapeHtml(script.category.name)}</a>`
     : '';
   return `<header class="script-cover-page" aria-label="Screenplay cover">
     <div class="script-cover-page-top">
@@ -91,9 +96,9 @@ export function scriptCoverPage(script) {
 export function renderCategoryNav(categories = [], activeSlug = '') {
   if (!categories.length) return '';
   const items = [
-    `<a class="script-chip${!activeSlug ? ' is-active' : ''}" href="/scripts">All</a>`,
+    `<a class="script-chip${!activeSlug ? ' is-active' : ''}" href="${libraryHomePath()}">All</a>`,
     ...categories.map((category) => (
-      `<a class="script-chip${category.slug === activeSlug ? ' is-active' : ''}" href="/scripts/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.name)}</a>`
+      `<a class="script-chip${category.slug === activeSlug ? ' is-active' : ''}" href="${escapeHtml(libraryCategoryPath(category.slug))}">${escapeHtml(category.name)}</a>`
     )),
   ];
   return `<nav class="script-category-nav" aria-label="Categories">${items.join('')}</nav>`;

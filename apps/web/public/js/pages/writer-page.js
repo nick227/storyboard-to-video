@@ -13,11 +13,11 @@ try {
   const writer = await fetchWriter(slug);
   document.title = `${writer.displayName || 'Writer'} — Storyboarder`;
   document.getElementById('scriptsBreadcrumbs').innerHTML = renderBreadcrumbs([
-    { label: 'Library', href: '/scripts' },
+    { label: 'Library', href: '/library' },
     { label: writer.displayName || 'Writer' },
   ]);
   document.getElementById('writerName').textContent = writer.displayName || 'Writer';
-  document.getElementById('writerBio').textContent = writer.bio || 'Screenplays on Storyboarder.';
+  document.getElementById('writerBio').textContent = writer.bio || '';
   document.getElementById('writerFollowers').textContent = `${writer.followerCount || 0} follower${writer.followerCount === 1 ? '' : 's'}`;
   document.getElementById('writerGrid').innerHTML = (writer.scripts || []).map((script) => scriptCoverCard(script)).join('')
     || '<p class="scripts-status">No public screenplays yet.</p>';

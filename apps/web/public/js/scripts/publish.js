@@ -55,7 +55,7 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
     const isPublic = script?.visibility === 'public';
     toggle.checked = isPublic;
     shareBtn.disabled = !isPublic || !script?.slug;
-    shareBtn.dataset.sharePath = script?.sharePath || (script?.slug ? `/scripts/${script.slug}` : '');
+    shareBtn.dataset.sharePath = script?.sharePath || (script?.slug ? `/library/${script.writer?.profileSlug || 'anonymous'}/${script.slug}` : '');
     applyMetaFields(script);
     if (script?.id) refreshStats(script.id);
   }

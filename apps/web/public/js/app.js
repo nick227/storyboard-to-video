@@ -1,5 +1,6 @@
 import { projectStore, sceneStore, voiceStore, uiStore, batchStore, spendStore } from './core/store.js';
-import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope } from './core/persistence.js';
+import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope, findStoryboardByScriptSlug } from './core/persistence.js';
+import { parseStudioPath } from './core/app-paths.js';
 import { initRendering, renderScenes, renderEntityOperationState } from './studio/rendering.js';
 import { initTimeline } from './studio/timeline.js';
 import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, renderStageBar, renderStyleReferenceOperationState, initImageLibraryModal, populateTokensInfoModal } from './studio/ui.js';
@@ -10,6 +11,7 @@ import {
   refreshVoicesForCurrentProvider, cloneVoice, switchMicrophone,
   closeVoiceLibraryCleanup, toggleVoiceRecording,
   renderVoiceLibraryList, resetVoiceRecordingUI, voiceRecordingState,
+  stopPreviewVoice,
 } from './media/voices.js';
 
 import { initMediaSettings } from './media/media-settings.js';
@@ -83,6 +85,10 @@ const els = {
   videoDurationSeconds: document.getElementById('videoDurationSeconds'),
   mediaCostPreview: document.getElementById('mediaCostPreview'),
   saveMediaDefaultsBtn: document.getElementById('saveMediaDefaultsBtn'),
+  aspectRatioHelper: document.getElementById('aspectRatioHelper'),
+  videoProviderHelper: document.getElementById('videoProviderHelper'),
+  videoDurationHelper: document.getElementById('videoDurationHelper'),
+  audioProviderHelper: document.getElementById('audioProviderHelper'),
   audioProvider: document.getElementById('audioProvider'),
   videoMotionIntensity: document.getElementById('videoMotionIntensity'),
   subtitleStyleSelect: document.getElementById('subtitleStyleSelect'),
@@ -237,7 +243,17 @@ const els = {
   entityModal: document.getElementById('entityModal'),
   entityModalSceneLabel: document.getElementById('entityModalSceneLabel'),
   entityModalTitle: document.getElementById('entityModalTitle'),
+  entityModalSummary: document.getElementById('entityModalSummary'),
+  entityModalPosition: document.getElementById('entityModalPosition'),
+  entityModalPreviousBtn: document.getElementById('entityModalPreviousBtn'),
+  entityModalNextBtn: document.getElementById('entityModalNextBtn'),
   closeEntityModalBtn: document.getElementById('closeEntityModalBtn'),
+  entityModalSourceText: document.getElementById('entityModalSourceText'),
+  entityControllerRows: document.getElementById('entityControllerRows'),
+  entityModalDetail: document.getElementById('entityModalDetail'),
+  entityModalDetailTitle: document.getElementById('entityModalDetailTitle'),
+  entityModalDetailCloseBtn: document.getElementById('entityModalDetailCloseBtn'),
+  entityModalDeleteBtn: document.getElementById('entityModalDeleteBtn'),
   entityModalBeatField: document.getElementById('entityModalBeatField'),
   entityModalBeat: document.getElementById('entityModalBeat'),
   entityModalRegenBeatBtn: document.getElementById('entityModalRegenBeatBtn'),
@@ -369,9 +385,11 @@ function initControllers() {
     storyboardTitle: els.storyboardTitle,
   }, {
     setStatus,
+    getCurrentRecord: getCurrentStoryboardRecord,
     onScriptChange: () => {
       saveStoryboard(els, false);
       renderStageBar(els);
+      scriptController?.syncRoute?.();
     },
   });
   storyboardController = initStoryboardController({
@@ -392,9 +410,15 @@ function initControllers() {
     downloadWarning: els.downloadConfirmWarning,
     downloadBullets: els.downloadConfirmBullets,
   }, {
-    createProject: () => createStoryboard(els),
+    createProject: () => {
+      createStoryboard(els);
+      scriptController?.syncRoute?.();
+    },
     getCurrentRecord: getCurrentStoryboardRecord,
-    openProject: (id) => openStoryboard(id, els),
+    openProject: (id) => {
+      openStoryboard(id, els);
+      scriptController?.syncRoute?.();
+    },
     saveProject: (immediate) => saveStoryboard(els, immediate),
     renderPicker: () => renderStoryboardPicker(els),
     loadStoryboardIntoUI,
@@ -411,6 +435,11 @@ function initControllers() {
     videoDurationSeconds: els.videoDurationSeconds,
     costPreview: els.mediaCostPreview,
     saveDefaultsBtn: els.saveMediaDefaultsBtn,
+    aspectRatioHelper: els.aspectRatioHelper,
+    videoProviderHelper: els.videoProviderHelper,
+    videoDurationHelper: els.videoDurationHelper,
+    audioProviderHelper: els.audioProviderHelper,
+    audioProvider: els.audioProvider,
   }, {
     saveProject: () => saveStoryboard(els, false),
     getQuantity: () => sceneStore.get().scenes.length,
@@ -503,6 +532,7 @@ function initControllers() {
     resetVoiceRecording: () => resetVoiceRecordingUI(els),
     renderVoiceLibrary: () => renderVoiceLibraryList(els, setStatus),
     populateTokensInfo: () => populateTokensInfoModal(els),
+    stopPreviewVoice,
     setStatus,
   });
 
@@ -586,8 +616,16 @@ async function init() {
   setPersistenceScope(session.tenant.id);
 
   const restored = await runStage('Restoring your storyboards', () => restoreStoryboardLibrary(els));
+  const route = parseStudioPath(window.location.pathname);
+  if (route?.scriptSlug) {
+    const match = findStoryboardByScriptSlug(route.scriptSlug);
+    if (match && match.id !== getCurrentStoryboardRecord()?.id) {
+      await openStoryboard(match.id, els);
+    }
+  }
   storyboardController.renderPicker();
   const loaded = await loadStoryboardIntoUI();
+  scriptController?.syncRoute?.();
 
   const startupParams = new URLSearchParams(window.location.search);
   if (startupParams.get('download') === '1') {

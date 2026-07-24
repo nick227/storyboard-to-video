@@ -21,6 +21,9 @@ const { mediaOutputRoutes } = require('./routes/media-output.routes');
 const { createScriptsRouter, createPublicScriptsRouter } = require('./routes/scripts.routes');
 const { createWritersRouter, createPublicWritersRouter } = require('./routes/writers.routes');
 const { isPlatformAdmin } = require('./middleware/style-admin');
+const {
+  isStudioPath, studioRedirectTarget, libraryHomePath, libraryCategoryPath, libraryTagPath,
+} = require('./shared/app-paths');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -70,16 +73,26 @@ function registerPageRoutes(app, config) {
   const pages = [
     [['/', '/index.html'], 'index.html'],
     [['/login', '/login.html'], 'login.html'],
-    [['/studio', '/studio.html'], 'studio.html'],
     [['/admin', '/admin.html'], 'admin.html'],
     [['/credits', '/credits.html'], 'credits.html'],
     [['/text-to-speech', '/text-to-speech.html'], 'text-to-speech.html'],
-    [['/scripts', '/scripts.html'], 'scripts.html'],
+    [['/library'], 'scripts.html'],
     [['/scripts-browse.html'], 'scripts-browse.html'],
     [['/script-reader.html'], 'script-reader.html'],
     [['/writer.html'], 'writer.html'],
   ];
   for (const [routes, filename] of pages) app.get(routes, sendPage(filename));
+
+  app.get(['/scripts', '/scripts.html'], (req, res) => res.redirect(301, libraryHomePath()));
+
+  // Studio surfaces: /script|/storyboard|/timeline[/:slug]
+  app.get(['/script', '/script/:slug', '/storyboard', '/storyboard/:slug', '/timeline', '/timeline/:slug'], (req, res, next) => {
+    if (req.params.slug?.includes('.')) return next();
+    return sendPage('studio.html')(req, res);
+  });
+
+  // Legacy /studio?page=… → /storyboard|script|timeline
+  app.get(['/studio', '/studio.html'], (req, res) => res.redirect(301, studioRedirectTarget(req)));
 
   if (config.env?.NODE_ENV !== 'production') {
     app.get(['/test', '/test.html'], sendPage(path.join('dev', 'test.html')));
@@ -90,7 +103,6 @@ function registerPageRoutes(app, config) {
 // Server-rendered guard for the authenticated HTML entry points, so an unauthenticated
 // visitor never receives the storyboard shell (no client-side flash to hide).
 function pageGuard(auth) {
-  const GUARDED_APP_PATHS = new Set(['/studio', '/studio.html']);
   const ADMIN_PATHS = new Set(['/admin', '/admin.html']);
   const CUSTOMER_PATHS = new Set(['/credits', '/credits.html']);
   const TOOL_PATHS = new Set(['/text-to-speech', '/text-to-speech.html']);
@@ -100,7 +112,7 @@ function pageGuard(auth) {
 
   return async (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-    const isAppPage = GUARDED_APP_PATHS.has(req.path);
+    const isAppPage = isStudioPath(req.path);
     const isAdminPage = ADMIN_PATHS.has(req.path);
     const isCustomerPage = CUSTOMER_PATHS.has(req.path);
     const isToolPage = TOOL_PATHS.has(req.path);
@@ -131,12 +143,8 @@ function pageGuard(auth) {
       if (req.path === '/text-to-speech.html') return res.redirect('/text-to-speech');
       return next();
     }
-    if (identity) {
-      if (req.path === '/studio.html') return res.redirect('/studio');
-      return next();
-    }
-    const target = req.path === '/studio.html' ? '/studio' : (req.originalUrl || '/studio');
-    return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(target)}`);
+    if (identity) return next();
+    return res.redirect(`${LOGIN_PATH}?redirect=${encodeURIComponent(req.originalUrl || '/storyboard')}`);
   };
 }
 
@@ -146,17 +154,35 @@ function registerRoutes(app, d) {
     if (req.params.slug.includes('.')) return next();
     return sendPage('writer.html')(req, res);
   });
-  app.get('/scripts/category/:slug', (req, res, next) => {
+  app.get('/library/category/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
     return sendPage('scripts-browse.html')(req, res);
+  });
+  app.get('/library/tag/:slug', (req, res, next) => {
+    if (req.params.slug.includes('.')) return next();
+    return sendPage('scripts-browse.html')(req, res);
+  });
+  app.get('/library/:author/:script', (req, res, next) => {
+    if (req.params.author.includes('.') || req.params.script.includes('.')) return next();
+    return sendPage('script-reader.html')(req, res);
+  });
+
+  // Legacy public script paths → /library/...
+  app.get('/scripts/category/:slug', (req, res, next) => {
+    if (req.params.slug.includes('.')) return next();
+    return res.redirect(301, libraryCategoryPath(req.params.slug));
   });
   app.get('/scripts/tag/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
-    return sendPage('scripts-browse.html')(req, res);
+    return res.redirect(301, libraryTagPath(req.params.slug));
   });
-  app.get('/scripts/:slug', (req, res, next) => {
+  app.get('/scripts/:slug', async (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
-    return sendPage('script-reader.html')(req, res);
+    try {
+      return res.redirect(301, await d.scripts.resolveSharePath(req.params.slug));
+    } catch (_) {
+      return res.redirect(302, libraryHomePath());
+    }
   });
   app.use(assetsRoutes(d.controllers.assets));
   app.use('/api/projects', createProjectRouter({

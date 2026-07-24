@@ -2,10 +2,11 @@ import {
   fetchCategories, fetchScriptsByCategory, fetchScriptsByTag,
 } from '../scripts/api.js';
 import { renderBreadcrumbs, renderCategoryNav, scriptCoverCard } from '../scripts/chrome.js';
+import { libraryHomePath, parseLibraryBrowsePath } from '../core/app-paths.js';
 
-const parts = window.location.pathname.split('/').filter(Boolean);
-const mode = parts[1]; // category | tag
-const slug = decodeURIComponent(parts[2] || '');
+const browse = parseLibraryBrowsePath(window.location.pathname) || {};
+const mode = browse.mode;
+const slug = browse.slug || '';
 
 const breadcrumbs = document.getElementById('scriptsBreadcrumbs');
 const status = document.getElementById('scriptsStatus');
@@ -33,7 +34,7 @@ try {
     : `Public ${label.toLowerCase()} screenplays.`;
 
   breadcrumbs.innerHTML = renderBreadcrumbs([
-    { label: 'Library', href: '/scripts' },
+    { label: 'Library', href: libraryHomePath() },
     { label },
   ]);
   categoryNav.innerHTML = renderCategoryNav(categories, mode === 'category' ? slug : '');

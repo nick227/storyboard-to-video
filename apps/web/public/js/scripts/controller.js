@@ -1,10 +1,13 @@
 import { ScreenplayEditor } from '../screenplay-editor/js/ScreenplayEditor.js';
 import { toFinalDraftXml, toPlainScript, toPrintableScriptHtml, toRichTextScript, toStructuredScriptJson } from './export.js';
 import { assertElements } from '../core/dom-contract.js';
+import {
+  DEFAULT_STUDIO_PAGE, parseStudioPath, scriptSlugFromRecord, studioPath,
+} from '../core/app-paths.js';
 
 const STUDIO_PAGE_STORAGE_KEY = 'storyboarder.activeStudioPage';
 
-export function initScriptController(elements, { setStatus, onScriptChange } = {}) {
+export function initScriptController(elements, { setStatus, onScriptChange, getCurrentRecord } = {}) {
   assertElements('Script controller', elements, [
     'scriptText', 'modeSelect', 'editorContainer', 'pagePanel', 'focusBtn',
     'downloadBtn', 'downloadMenu', 'pageTabs', 'pageTabButtons', 'pagePanels',
@@ -58,6 +61,20 @@ export function initScriptController(elements, { setStatus, onScriptChange } = {
     }
   };
 
+  const currentSlug = () => scriptSlugFromRecord(getCurrentRecord?.());
+
+  const syncTabHrefs = (slug = currentSlug()) => {
+    elements.pageTabButtons.forEach((button) => {
+      button.setAttribute('href', studioPath(button.dataset.page, slug));
+    });
+    const download = document.getElementById('downloadZipBtn');
+    if (download) {
+      const url = new URL(studioPath(activePage, slug), window.location.origin);
+      url.searchParams.set('download', '1');
+      download.setAttribute('href', `${url.pathname}${url.search}`);
+    }
+  };
+
   const applyPage = (page, { persist = true } = {}) => {
     const activeButton = elements.pageTabButtons.find((button) => button.dataset.page === page);
     if (!activeButton) return;
@@ -71,12 +88,14 @@ export function initScriptController(elements, { setStatus, onScriptChange } = {
       panel.hidden = panel.id !== activeButton.getAttribute('aria-controls');
     });
     activePage = page;
+    const slug = currentSlug();
+    syncTabHrefs(slug);
     if (persist) {
       try { localStorage.setItem(STUDIO_PAGE_STORAGE_KEY, page); } catch (_) {}
       const url = new URL(window.location.href);
-      url.searchParams.set('page', page);
-      url.searchParams.delete('download');
-      history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+      url.searchParams.delete('page');
+      const next = `${studioPath(page, slug)}${url.search}${url.hash}`;
+      history.replaceState(history.state, '', next);
     }
     if (page === 'script' && elements.modeSelect.value === 'screenplay' && !editor) setEditorMode('screenplay');
   };
@@ -168,12 +187,13 @@ export function initScriptController(elements, { setStatus, onScriptChange } = {
 
   let savedPage = activePage;
   try {
-    const requestedPage = new URLSearchParams(window.location.search).get('page');
+    const fromPath = parseStudioPath(window.location.pathname)?.page;
     const storedPage = localStorage.getItem(STUDIO_PAGE_STORAGE_KEY);
-    if (elements.pageTabButtons.some((button) => button.dataset.page === requestedPage)) savedPage = requestedPage;
+    if (elements.pageTabButtons.some((button) => button.dataset.page === fromPath)) savedPage = fromPath;
     else if (elements.pageTabButtons.some((button) => button.dataset.page === storedPage)) savedPage = storedPage;
+    else savedPage = DEFAULT_STUDIO_PAGE;
   } catch (_) {}
-  applyPage(savedPage, { persist: false });
+  applyPage(savedPage, { persist: true });
   let savedMode = 'raw';
   try { savedMode = localStorage.getItem('scriptEditorMode') || 'raw'; } catch (_) {}
   setEditorMode(savedMode);
@@ -230,5 +250,7 @@ export function initScriptController(elements, { setStatus, onScriptChange } = {
     syncFromText: () => {
       if (editor && elements.modeSelect.value === 'screenplay') editor.loadScript(elements.scriptText.value || '', 'fountain');
     },
+    syncRoute: () => applyPage(activePage, { persist: true }),
+    activePage: () => activePage,
   };
 }

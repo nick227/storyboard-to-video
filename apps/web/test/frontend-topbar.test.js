@@ -71,12 +71,13 @@ function enhance(pathname, search = '', savedPage = null) {
 }
 
 test('topbar partial is plain HTML with editable studio links', () => {
-  assert.match(topbarHtml, /href="\/studio\?page=script"/);
-  assert.match(topbarHtml, /href="\/studio\?page=storyboard"/);
-  assert.match(topbarHtml, /href="\/studio\?page=timeline"/);
-  assert.match(topbarHtml, /id="downloadZipBtn"[^>]+href="\/studio\?download=1"/);
+  assert.match(topbarHtml, /href="\/script"/);
+  assert.match(topbarHtml, /href="\/storyboard"/);
+  assert.match(topbarHtml, /href="\/timeline"/);
+  assert.match(topbarHtml, /href="\/library"/);
+  assert.match(topbarHtml, /id="downloadZipBtn"[^>]+href="\/storyboard\?download=1"/);
   assert.doesNotMatch(topbarHtml, /tabindex="-1"/);
-  assert.doesNotMatch(topbarHtml, /customElements|innerHTML|TOPBAR/);
+  assert.doesNotMatch(topbarHtml, /studio\?page=/);
 });
 
 test('the Storyboard tab sits between Script and Timeline in tab order', () => {
@@ -90,7 +91,7 @@ test('the Storyboard tab sits between Script and Timeline in tab order', () => {
 });
 
 test('enhancer restores studio tab semantics and the saved active page', () => {
-  const { tabs, pageTabs } = enhance('/studio', '', 'script');
+  const { tabs, pageTabs } = enhance('/script');
   assert.equal(pageTabs.getAttribute('role'), 'tablist');
   const script = tabs.find((tab) => tab.dataset.page === 'script');
   assert.ok(script.classList.contains('is-active'));

@@ -1,5 +1,6 @@
 const { AppError } = require('../errors');
 const { cleanText } = require('../shared/text');
+const { sharePathFor } = require('../shared/app-paths');
 
 function publicSummary(script) {
   const summary = {
@@ -29,7 +30,7 @@ function ownerView(script) {
     ...script,
     likeCount: Number(script.likeCount || 0),
     viewCount: Number(script.viewCount || 0),
-    sharePath: `/scripts/${script.slug}`,
+    sharePath: sharePathFor(script),
   };
 }
 
@@ -171,9 +172,17 @@ function createScriptsService({ store }) {
     }));
   }
 
+  async function resolveSharePath(slug) {
+    const script = await store.findBySlug(slug);
+    if (!script || script.visibility !== 'public') {
+      throw new AppError('SCRIPT_NOT_FOUND', 'Script not found', { status: 404 });
+    }
+    return sharePathFor(script);
+  }
+
   return {
     create, list, get, update, setVisibility, listPublic, listPublicByCategory, listPublicByTag,
-    listCategories, getPublicBySlug, toggleLike, getOwnerStats, ensureForProject, syncFromProject,
+    listCategories, getPublicBySlug, resolveSharePath, toggleLike, getOwnerStats, ensureForProject, syncFromProject,
     listProjects, publicSummary, ownerView,
   };
 }

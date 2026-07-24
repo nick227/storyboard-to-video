@@ -5,6 +5,7 @@ import {
   bindFullscreen, bindShareButton, escapeHtml, flashStatus, loginRedirect,
   renderBreadcrumbs, scriptCoverCard, scriptCoverPage, scriptTrail,
 } from '../scripts/chrome.js';
+import { libraryScriptPath, parseLibraryScriptPath } from '../core/app-paths.js';
 
 function renderLines(scriptText = '') {
   return RawScriptAdapter.parse(scriptText, 'fountain').lines.map((line) => (
@@ -12,7 +13,9 @@ function renderLines(scriptText = '') {
   )).join('\n');
 }
 
-const slug = decodeURIComponent(window.location.pathname.replace(/^\/scripts\//, '').replace(/\/$/, ''));
+const route = parseLibraryScriptPath(window.location.pathname);
+const slug = route?.scriptSlug || '';
+const authorSlug = route?.authorSlug || '';
 const status = document.getElementById('readerStatus');
 const article = document.getElementById('readerArticle');
 const stage = document.getElementById('readerStage');
@@ -35,6 +38,10 @@ bindFullscreen(fullscreenBtn, stage);
 
 try {
   const script = await fetchPublicScript(slug);
+  const canonicalAuthor = script.writer?.profileSlug || 'anonymous';
+  if (canonicalAuthor !== authorSlug || script.slug !== slug) {
+    window.location.replace(libraryScriptPath(canonicalAuthor, script.slug));
+  }
   document.title = `${script.title || 'Script'} — Storyboarder`;
   breadcrumbs.innerHTML = renderBreadcrumbs(scriptTrail(script));
 
@@ -53,7 +60,7 @@ try {
   likeBtn.setAttribute('aria-pressed', String(Boolean(script.likedByMe)));
   likeBtn.classList.toggle('is-liked', Boolean(script.likedByMe));
 
-  const url = new URL(`/scripts/${script.slug}`, window.location.origin).toString();
+  const url = new URL(libraryScriptPath(canonicalAuthor, script.slug), window.location.origin).toString();
   bindShareButton(shareBtn, {
     getUrl: url,
     title: script.title || 'Screenplay',

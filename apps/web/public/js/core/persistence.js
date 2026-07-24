@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { revokeAllAssets } from './assets.js';
 import { adaptSceneImageShot, adaptSceneImageShots, imageShot } from './scene-shots.js';
 import { textValue } from './text-values.js';
+import { scriptSlugFromRecord, slugifyName } from './app-paths.js';
 
 // Valid provider/intensity values live in index.html's <select> options — the single
 // source of truth. Reading them here avoids a second, driftable copy of that enumeration.
@@ -64,6 +65,15 @@ export function persistStoryboardLibrary() {
 export function getCurrentStoryboardRecord() {
   const state = projectStore.get();
   return state.storyboards.find((item) => item.id === state.currentId) || null;
+}
+
+export function findStoryboardByScriptSlug(slug) {
+  if (!slug) return null;
+  const boards = projectStore.get().storyboards || [];
+  return boards.find((item) => item.script?.slug === slug)
+    || boards.find((item) => scriptSlugFromRecord(item) === slug)
+    || boards.find((item) => slugifyName(item.title) === slug)
+    || null;
 }
 
 export async function ensureProjectSynced() {

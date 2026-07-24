@@ -33,7 +33,7 @@ test('script visibility sends the user choice captured before the script refresh
   let serverScript = {
     id: 'script-1',
     slug: 'test-script',
-    sharePath: '/scripts/test-script',
+    sharePath: '/library/anonymous/test-script',
     visibility: 'private',
   };
   let failVisibilityUpdate = false;

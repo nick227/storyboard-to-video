@@ -3,17 +3,13 @@
   if (!root) return;
 
   const path = window.location.pathname.replace(/\.html$/, '') || '/';
+  const studioMatch = path.match(/^\/(script|storyboard|timeline)(?:\/[^/]+)?$/);
   const adminLink = document.getElementById('adminConsoleLink');
   if (adminLink && path === '/admin') adminLink.setAttribute('aria-current', 'page');
 
-  if (path === '/studio') {
+  if (studioMatch) {
+    const page = studioMatch[1];
     const tabs = Array.from(document.querySelectorAll('.page-tab[data-page]'));
-    const pages = tabs.map((tab) => tab.dataset.page);
-    let page = new URLSearchParams(window.location.search).get('page');
-    if (!pages.includes(page)) {
-      try { page = localStorage.getItem('storyboarder.activeStudioPage'); } catch (_) { page = null; }
-    }
-    if (!pages.includes(page)) page = 'storyboard';
     const list = document.querySelector('.page-tabs');
     list.setAttribute('role', 'tablist');
     list.setAttribute('aria-label', 'Studio pages');

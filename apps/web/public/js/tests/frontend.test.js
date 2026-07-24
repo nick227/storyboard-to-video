@@ -118,13 +118,16 @@ async function runTests() {
     assert(!styleChangeHandler.includes('commonPromptText.value.trim()'), 'Prompt refresh should not depend on the previous prompt being empty');
     addResult('Style Change Refreshes Prompt And References', true);
 
-    // Test 11: Every scene exposes live, accessible generation and reference controls.
+    // Test 11: Every scene exposes one accessible controller entry point with direct entity actions.
     const sceneTemplate = document.getElementById('sceneCardTemplate');
-    const statusTypes = [...sceneTemplate.content.querySelectorAll('.scene-status-icon')].map((icon) => icon.dataset.status);
-    assert(statusTypes.join(',') === 'prompt,image,dialogue,audio,video', 'Scene status should include all five generation stages');
-    assert(renderingSource.includes("statusIcon.classList.toggle('is-present', isPresent)"), 'Scene status icons should react to scene content');
-    assert(renderingSource.includes("statusIcon.setAttribute('aria-label', label)"), 'Scene status icons should announce their state');
-    addResult('Scene Header Status Indicators', true);
+    assert(sceneTemplate.content.querySelectorAll('.scene-manage-btn').length === 1, 'Each scene should expose one Manage button');
+    assert(!sceneTemplate.content.querySelector('.scene-manage-label'), 'The compact scene control should not repeat a Manage label');
+    assert(!sceneTemplate.content.querySelector('.scene-delete-btn'), 'Delete should live in the scene controller, not the card');
+    assert(renderingSource.includes('sceneStatusSummary(statuses)'), 'Manage should summarize all scene entities');
+    assert(renderingSource.includes('entity-primary-action'), 'Controller rows should expose direct primary actions');
+    assert(renderingSource.includes('entity-row-textarea'), 'Text entities should be editable directly in their rows');
+    assert(renderingSource.includes('entity-row-media'), 'Media entities should show inline previews');
+    addResult('Unified Scene Controller Entry', true);
 
     // Test 12: Generated scene titles are displayed without exposing an edit control.
     assert(!sceneTemplate.content.querySelector('.scene-title-input'), 'Scene titles should not be editable');
@@ -141,7 +144,7 @@ async function runTests() {
     addResult('Minimal Scene Media Overlay', true);
 
     // Test 14: Secondary settings use consistent modal launchers instead of disclosure menus.
-    const indexSource = await (await fetch('/studio')).text();
+    const indexSource = await (await fetch('/storyboard')).text();
     assert(indexSource.includes('id="sceneReferencesModal"'), 'Scene references should open in a dedicated modal');
     assert(indexSource.includes('id="settingsBtn"'), 'settingsBtn should be present');
     assert(indexSource.includes('<dialog id="settingsModal" class="settings-modal"'), 'settingsModal should use the shared settings modal');

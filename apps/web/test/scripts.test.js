@@ -18,7 +18,7 @@ test('scripts service creates slug, publishes, and 404s private on public read',
 
   assert.equal(created.slug, 'the-odyssey');
   assert.equal(created.visibility, 'private');
-  assert.equal(created.sharePath, '/scripts/the-odyssey');
+  assert.equal(created.sharePath, '/library/anonymous/the-odyssey');
 
   await assert.rejects(() => scripts.getPublicBySlug('the-odyssey'), (error) => error.code === 'SCRIPT_NOT_FOUND');
 
