@@ -89,6 +89,7 @@ const els = {
   fallbackPolicy: document.getElementById('fallbackPolicy'),
   enrichNarration: document.getElementById('enrichNarration'),
   statusText: document.getElementById('statusText'),
+  statusPanel: document.getElementById('statusPanel'),
   generationSummaryText: document.getElementById('generationSummaryText'),
   storyboardSection: document.getElementById('storyboardSection'),
   storyboardGrid: document.getElementById('storyboardGrid'),

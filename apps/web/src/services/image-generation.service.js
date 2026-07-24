@@ -72,7 +72,7 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
     if (!scene) throw new AppError('SCENE_NOT_FOUND', 'Scene not found', { status: 404 });
     const disabledDefaults = new Set(imageShot(scene).disabledStyleReferencePaths || []);
     const styleSources = styles.referenceSources
-      ? styles.referenceSources(style.id, userId)
+      ? styles.referenceSources(style.id, userId, project.styleReferenceOrder)
       : (styles.referencePaths?.(style.id, userId) || []).map((referencePath) => ({ path: referencePath, url: null }));
     const defaultReferences = styleSources
       .filter((item) => !item.url || !disabledDefaults.has(item.url))

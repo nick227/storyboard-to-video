@@ -78,7 +78,7 @@ const planVisuals = z.object({
 const splitScene = z.object({
   projectId,
   scriptFragment: z.string().trim().min(1).max(20_000),
-  // Keep this max in sync with MAX_SPLIT_COUNT in apps/web/public/modules/scene-count.js — the
+  // Keep this max in sync with MAX_SPLIT_COUNT in apps/web/public/js/generation/scene-count.js — the
   // frontend clamps every split request to that same value before it ever reaches this schema.
   count: z.coerce.number().int().min(2).max(8).default(2),
   // The scene's real (non-fallback) narration, if it has any — only sent when Enrich is on and the

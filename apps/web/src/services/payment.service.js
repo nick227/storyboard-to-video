@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 function objectId(value) { return typeof value === 'string' ? value : value?.id || null; }
 function integrationIdentifier() {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz';
-  return `storyframe_${Array.from(crypto.randomBytes(8), (byte) => alphabet[byte % alphabet.length]).join('')}`;
+  return `Storyboarder_${Array.from(crypto.randomBytes(8), (byte) => alphabet[byte % alphabet.length]).join('')}`;
 }
 
 function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl, providerAdmission }) {
@@ -44,7 +44,7 @@ function createPaymentService({ repository, stripe, webhookSecret, publicAppUrl,
             price_data: {
               currency: prepared.sale.currency.toLowerCase(),
               unit_amount: Number(prepared.sale.subtotalAmount),
-              product_data: { name: 'Storyframe credits' },
+              product_data: { name: 'Storyboarder credits' },
             },
             quantity: 1,
           }],

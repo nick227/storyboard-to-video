@@ -52,6 +52,13 @@ function narrationRules(enrich) {
   return enrich ? NARRATION_RULES_ENRICHED : NARRATION_RULES_LITERAL;
 }
 
+function narrationPromptDefaults() {
+  return {
+    literal: NARRATION_RULES_LITERAL,
+    enriched: NARRATION_RULES_ENRICHED,
+  };
+}
+
 function sourceOfTruthRule(enrich) {
   const detailRule = enrich ? 'Narration may add sensory/atmospheric details.' : 'Do not add details beyond the source.';
   return `The source text below is the only authority. ${detailRule} Do not introduce new plot events, characters, or dialogue.`;
@@ -114,12 +121,13 @@ Scenes:
 ${scenesBlock}`;
 }
 
-function buildRegenerateRequest({ scene, instruction, enrich }) {
+function buildRegenerateRequest({ scene, instruction, enrich, narrationPromptText = '' }) {
   return `Return strict JSON only: {"narrationText":"..."}. Rewrite the spoken narration.
 
 ${sourceOfTruthRule(enrich)}
 
-${narrationRules(enrich)}
+Narration style prompt (user-editable, but subordinate to the source-of-truth rule above):
+${cleanText(narrationPromptText, 12_000) || narrationRules(enrich)}
 ${instructionBlock(instruction)}
 
 ${sceneBlock(scene)}
@@ -179,13 +187,13 @@ function createDialogueService({ textProviders, generationCache }) {
     return { scenesDialogue: results, usedFallback: anyFallbackUsed, warning: warnings.join(' ') };
   }
 
-  async function regenerate({ scene, instruction = '', provider, fallbackPolicy = 'local', enrich = true, tenantId, bypassCache = false }) {
+  async function regenerate({ scene, instruction = '', provider, fallbackPolicy = 'local', enrich = true, narrationPromptText = '', tenantId, bypassCache = false }) {
     const fallback = fallbackNarrationText(scene);
     if (provider === 'stub') return { narrationText: fallback, usedFallback: true, warning: 'Stub text mode selected; fallback narration was retained.' };
     if (!scene.scriptFragment) return { narrationText: fallback, usedFallback: true, warning: 'Scene has no source fragment to regenerate narration from; fallback narration was retained.' };
 
     const generateFn = async () => {
-      const request = buildRegenerateRequest({ scene, instruction, enrich });
+      const request = buildRegenerateRequest({ scene, instruction, enrich, narrationPromptText });
       const parsed = regenerateResponseSchema.parse(extractJson(providerOutput(await textProviders.call(provider, request))));
       const narrationText = cleanNarrationText(parsed.narrationText);
       if (!narrationText) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned empty narration data', { status: 502 });
@@ -200,7 +208,7 @@ function createDialogueService({ textProviders, generationCache }) {
         provider,
         promptTemplateVersion: NARRATION_TEMPLATE_VERSION,
         source: { scriptFragment: scene.scriptFragment, beat: scene.beat || '', instruction },
-        settings: { enrich },
+        settings: { enrich, narrationPromptText: cleanText(narrationPromptText, 12_000) },
         bypassCache,
         generateFn
       });
@@ -213,4 +221,4 @@ function createDialogueService({ textProviders, generationCache }) {
   return { cleanNarrationText, generate, regenerate };
 }
 
-module.exports = { cleanNarrationText, createDialogueService, fallbackNarrationText, narrationRules, sourceOfTruthRule };
+module.exports = { cleanNarrationText, createDialogueService, fallbackNarrationText, narrationPromptDefaults, narrationRules, sourceOfTruthRule };

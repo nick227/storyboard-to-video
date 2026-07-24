@@ -26,13 +26,28 @@ function createAudioGenerationService({ config, provider, alignmentProvider, pro
         // `narrationText` mirrors how image versions already store the `prompt` they were generated
         // from and video versions store `sourceImagePath` — lets audio staleness be derived the same
         // way (compare this snapshot to the scene's current narrationText) without a separate flag.
-        const version = { path: asset.path, provider: input.provider, narrationText: input.narrationText, createdAt: new Date().toISOString() };
+        const version = {
+          path: asset.path,
+          provider: input.provider,
+          voice: input.voice || null,
+          narrationText: input.narrationText,
+          createdAt: new Date().toISOString(),
+          ...(Number.isFinite(Number(result.durationSeconds)) && Number(result.durationSeconds) > 0
+            ? { durationSeconds: Number(result.durationSeconds) }
+            : {}),
+        };
         // Alignment is additive, never blocking: a failed or unconfigured alignment step must
         // never fail audio generation, since audio is the critical path and alignment isn't.
         if (alignmentProvider) {
           try {
             const { words } = await alignmentProvider.align({ audioBuffer: result.buffer, transcript: input.narrationText, mimeType: result.mimeType });
-            if (words?.length) version.alignment = { words };
+            if (words?.length) {
+              version.alignment = { words };
+              const alignedDuration = Number(words[words.length - 1]?.end);
+              if (!version.durationSeconds && Number.isFinite(alignedDuration) && alignedDuration > 0) {
+                version.durationSeconds = alignedDuration;
+              }
+            }
           } catch (error) { /* alignment is additive; never fails audio generation */ }
         }
         let scene, project;

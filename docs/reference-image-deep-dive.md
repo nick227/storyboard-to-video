@@ -132,7 +132,7 @@ The implemented limits are:
 | Dezgo | 1 | Switches to `image2image`; the one planned reference becomes `init_image` |
 | Stub | 0 | Consumes no references; every candidate is recorded as `provider_does_not_consume_references` |
 
-Capability resolution is shared between server generation and browser staleness through `src/shared/image-reference-plan.js` and `public/modules/image-reference-plan.js`. Provider transport remains isolated in `src/providers/image/index.js`.
+Capability resolution is shared between server generation and browser staleness through `src/shared/image-reference-plan.js` and `public/js/modules/image-reference-plan.js`. Provider transport remains isolated in `src/providers/image/index.js`.
 
 Consequences:
 
@@ -230,7 +230,7 @@ Manifest-aware image staleness recomputes the canonical hash from current user-c
 
 ### 6. Current video generation and LTX
 
-The UI picks the active scene image version and sends only its path as `imagePath` (`apps/web/public/modules/workflows.js:583-617`). The video service resolves it to a local asset and passes one `imagePath` into the provider (`apps/web/src/services/video-generation.service.js:65-87`).
+The UI picks the active scene image version and sends only its path as `imagePath` (`apps/web/public/js/modules/workflows.js:583-617`). The video service resolves it to a local asset and passes one `imagePath` into the provider (`apps/web/src/services/video-generation.service.js:65-87`).
 
 The LTX adapter copies that one image to the shared directory and calls the local `/generate` endpoint with:
 
@@ -459,7 +459,7 @@ A real adapter (`apps/web/src/providers/video/minimax.js`) already implements th
 
 What "formalize" means concretely:
 
-- Fold MiniMax into one canonical provider/capability registry instead of three partially-overlapping tables (`shared/video-provider-capabilities.js`, `providers/video/minimax-capabilities.js`, `public/modules/video-provider-capabilities.js`). The latter two currently disagree with each other on which MiniMax models exist and are not exercised by production code paths.
+- Fold MiniMax into one canonical provider/capability registry instead of three partially-overlapping tables (`shared/video-provider-capabilities.js`, `providers/video/minimax-capabilities.js`, `public/js/modules/video-provider-capabilities.js`). The latter two currently disagree with each other on which MiniMax models exist and are not exercised by production code paths.
 - Fix the default-resolution mismatch: the platform's default video resolution tier (`draft`) has no MiniMax mapping today, so selecting MiniMax with default project settings throws `UNSUPPORTED_MEDIA_OUTPUT` before a user ever sees a real error message.
 - Confirm (or build) an actual worker that drives `execution.reconcile()` for pending MiniMax attempts; async generation must complete without a human re-polling.
 - Add `MINIMAX_API_KEY`/`MINIMAX_API_HOST` to `.env.example`; the "Implemented: ltx, stub" comment on `VIDEO_PROVIDER` is stale.

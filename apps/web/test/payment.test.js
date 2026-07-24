@@ -47,8 +47,8 @@ test('amount checkout uses server-prepared dynamic pricing and tags the integrat
   await service.createCheckout({ amount: 1234, tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@example.com', idempotencyKey: 'key-1' });
   assert.equal(checkoutParams.line_items[0].price_data.unit_amount, 1234);
   assert.equal(checkoutParams.line_items[0].price_data.currency, 'usd');
-  assert.equal(checkoutParams.line_items[0].price_data.product_data.name, 'Storyframe credits');
-  assert.match(checkoutParams.integration_identifier, /^storyframe_[a-z]{8}$/);
+  assert.equal(checkoutParams.line_items[0].price_data.product_data.name, 'Storyboarder credits');
+  assert.match(checkoutParams.integration_identifier, /^Storyboarder_[a-z]{8}$/);
   assert.equal('payment_method_types' in checkoutParams, false);
   assert.equal('automatic_tax' in checkoutParams, false);
 });

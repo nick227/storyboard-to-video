@@ -1,5 +1,10 @@
+const { narrationPromptDefaults } = require('../services/dialogue.service');
+
 function createStoryboardController({ styles, prompts, dialogue, sceneSplit, shotPlanning }) {
   return {
+    narrationPrompts(_req, res) {
+      return res.json({ prompts: narrationPromptDefaults() });
+    },
     // The planning entry point: narration is generated and locked first, then shots are planned
     // from that immutable narration in narration-sized chunks. The returned scene list length IS
     // the final shot count -- nothing upstream guesses a count or reconciles one after the fact.
@@ -7,6 +12,15 @@ function createStoryboardController({ styles, prompts, dialogue, sceneSplit, sho
       const style = styles.find(req.body.styleId || 'basic-cartoon');
       if (!style) return res.status(400).json({ error: 'Unknown style' });
       const result = await shotPlanning.plan({ ...req.body, style, tenantId: req.auth.tenantId });
+      return res.json({ ...result, style });
+    },
+    async prepareNarration(req, res) {
+      return res.json(await shotPlanning.prepareNarration({ ...req.body, tenantId: req.auth.tenantId }));
+    },
+    async planVisuals(req, res) {
+      const style = styles.find(req.body.styleId || 'basic-cartoon');
+      if (!style) return res.status(400).json({ error: 'Unknown style' });
+      const result = await shotPlanning.planVisuals({ ...req.body, style, tenantId: req.auth.tenantId });
       return res.json({ ...result, style });
     },
     // Splits one existing scene into N sub-scenes at AI-chosen story boundaries, preserving the

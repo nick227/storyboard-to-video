@@ -74,7 +74,18 @@ function createStylesService(config) {
     });
   }
   const find = (id, userId) => list(userId).find((style) => style.id === id) || null;
-  const referenceSources = (id, userId) => [...referenceFiles(id, 'characters', userId).slice(0, 4), ...referenceFiles(id, 'world', userId).slice(0, 4)].slice(0, 8);
+  // `order` is the project's own client-set display order (project.styleReferenceOrder, see
+  // style-controller.js), applied here -- not just for display -- because it also decides which
+  // files survive the slice(0, 4) cap below when a style has more than 4 references of a type.
+  function sortByOrder(files, order) {
+    if (!Array.isArray(order) || !order.length) return files;
+    const rank = new Map(order.map((fileName, index) => [fileName, index]));
+    return [...files].sort((a, b) => (rank.has(a.fileName) ? rank.get(a.fileName) : Infinity) - (rank.has(b.fileName) ? rank.get(b.fileName) : Infinity));
+  }
+  const referenceSources = (id, userId, order = {}) => [
+    ...sortByOrder(referenceFiles(id, 'characters', userId), order.characters).slice(0, 4),
+    ...sortByOrder(referenceFiles(id, 'world', userId), order.world).slice(0, 4),
+  ].slice(0, 8);
   const referencePaths = (id, userId) => referenceSources(id, userId).map((item) => item.path);
   function upload(id, type, files, userId) {
     if (!userId) throw new AppError('UNAUTHENTICATED', 'Not authenticated', { status: 401 });
