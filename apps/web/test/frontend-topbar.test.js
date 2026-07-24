@@ -38,6 +38,12 @@ test('topbar lazy-loads credits from their current module locations', () => {
   assert.match(topbarSource, /import\('\.\.\/core\/store\.js'\)/);
 });
 
+test('workbar stays hidden outside edit routes', () => {
+  const workbarSource = fs.readFileSync(path.join(webRoot, 'public', 'js', 'shared', 'workbar.js'), 'utf8');
+  assert.match(workbarSource, /!route\.edit/);
+  assert.match(workbarSource, /View mode is read-only/);
+});
+
 test('topbar owns shared tab styling and studio retains the download confirmation action', () => {
   const topbarCss = fs.readFileSync(path.join(webRoot, 'public', 'css', 'topbar.css'), 'utf8');
   const studio = fs.readFileSync(path.join(webRoot, 'pages', 'studio.html'), 'utf8');

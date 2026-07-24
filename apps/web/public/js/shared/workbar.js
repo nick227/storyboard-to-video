@@ -33,9 +33,10 @@ export function initWorkbar(options = {}) {
   if (!root) return null;
 
   const route = parseWorkPath(window.location.pathname);
-  if (!route) {
+  if (!route || !route.edit) {
+    // View mode is read-only — keep studio control chrome off the public reader.
     root.hidden = true;
-    return null;
+    return route ? { sync() {}, route, artifacts: ARTIFACTS } : null;
   }
 
   root.hidden = false;
@@ -66,22 +67,18 @@ export function initWorkbar(options = {}) {
       const active = artifact === route.artifact;
       tab.classList.toggle('is-active', active);
       tab.setAttribute('aria-current', active ? 'page' : 'false');
-      tab.href = workPath(authorSlug, workSlug, artifact, { edit: route.edit });
+      tab.href = workPath(authorSlug, workSlug, artifact, { edit: true });
     }
 
-  if (downloadBtn) {
-      if (route.edit) {
-        downloadBtn.hidden = false;
-        const url = new URL(workPath(authorSlug, workSlug, route.artifact, { edit: true }), window.location.origin);
-        url.searchParams.set('download', '1');
-        downloadBtn.href = `${url.pathname}${url.search}`;
-      } else {
-        downloadBtn.hidden = true;
-      }
+    if (downloadBtn) {
+      downloadBtn.hidden = false;
+      const url = new URL(workPath(authorSlug, workSlug, route.artifact, { edit: true }), window.location.origin);
+      url.searchParams.set('download', '1');
+      downloadBtn.href = `${url.pathname}${url.search}`;
     }
 
     const visibility = root.querySelector('.sf-work-visibility');
-    if (visibility) visibility.hidden = !route.edit;
+    if (visibility) visibility.hidden = false;
   };
 
   const closeRecent = () => {
@@ -115,7 +112,7 @@ export function initWorkbar(options = {}) {
       return;
     }
     const artifact = route.artifact || 'screenplay';
-    window.location.href = workPath(option.dataset.author, option.dataset.slug, artifact, { edit: route.edit });
+    window.location.href = workPath(option.dataset.author, option.dataset.slug, artifact, { edit: true });
   });
 
   document.addEventListener('click', (event) => {
@@ -151,12 +148,7 @@ export function initWorkbar(options = {}) {
     const isPublic = script?.artifacts?.[artifact]?.visibility === 'public'
       || (artifact === 'screenplay' && script?.visibility === 'public');
     if (shareBtn && !options.manageShare) {
-      // View pages pass shareUrl and have no project record — keep Share enabled.
-      if (!route.edit && options.shareUrl) {
-        shareBtn.disabled = false;
-      } else {
-        shareBtn.disabled = !isPublic || !script?.slug;
-      }
+      shareBtn.disabled = !isPublic || !script?.slug;
       if (script?.slug) {
         shareBtn.dataset.sharePath = workPath(
           route.authorSlug || authorSlugFromRecord(record, options.session),

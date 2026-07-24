@@ -42,10 +42,7 @@ const timelineView = document.getElementById('timelineView');
 const readerCover = document.getElementById('readerCover');
 
 bindFullscreen(fullscreenBtn, stage);
-initWorkbar({
-  shareUrl: () => new URL(workPath(authorSlug, slug, artifact), window.location.origin).toString(),
-  onShareStatus: (message) => flashStatus(toolbarStatus, message),
-});
+initWorkbar();
 
 try {
   if (!route) throw Object.assign(new Error('Not found'), { code: 'SCRIPT_NOT_FOUND' });
@@ -75,9 +72,8 @@ try {
     artifactView.hidden = false;
     storyboardView.hidden = false;
     timelineView.hidden = true;
+    document.querySelector('.script-reader-toolbar').hidden = true;
     renderStoryboardView(storyboardView, scenes);
-    likeBtn.hidden = false;
-    fullscreenBtn.hidden = false;
   } else if (artifact === 'timeline') {
     readerCover.hidden = true;
     readerCover.replaceChildren();
@@ -85,15 +81,15 @@ try {
     artifactView.hidden = false;
     storyboardView.hidden = true;
     timelineView.hidden = false;
+    document.querySelector('.script-reader-toolbar').hidden = true;
     await renderTimelineView(timelineView, scenes);
-    likeBtn.hidden = false;
-    fullscreenBtn.hidden = false;
   } else {
     readerCover.hidden = false;
     artifactView.hidden = true;
     storyboardView.hidden = true;
     timelineView.hidden = true;
     readerBody.hidden = false;
+    document.querySelector('.script-reader-toolbar').hidden = false;
     readerCover.innerHTML = scriptCoverPage(script);
     readerPage.innerHTML = renderLines(script.scriptText || '');
 
@@ -111,26 +107,30 @@ try {
   likeBtn.setAttribute('aria-pressed', String(Boolean(script.likedByMe)));
   likeBtn.classList.toggle('is-liked', Boolean(script.likedByMe));
 
-  likeBtn.addEventListener('click', async () => {
-    try {
-      const result = await toggleScriptLike(script.id);
-      likeBtn.setAttribute('aria-pressed', String(result.liked));
-      likeBtn.classList.toggle('is-liked', result.liked);
-      likeCount.textContent = String(result.likeCount || 0);
-      flashStatus(toolbarStatus, result.liked ? 'Liked' : 'Like removed');
-    } catch (error) {
-      if (error.status === 401 || error.code === 'UNAUTHENTICATED') return loginRedirect();
-      flashStatus(toolbarStatus, error.message || 'Could not update like');
-    }
-  });
+  if (artifact === 'screenplay') {
+    likeBtn.addEventListener('click', async () => {
+      try {
+        const result = await toggleScriptLike(script.id);
+        likeBtn.setAttribute('aria-pressed', String(result.liked));
+        likeBtn.classList.toggle('is-liked', result.liked);
+        likeCount.textContent = String(result.likeCount || 0);
+        flashStatus(toolbarStatus, result.liked ? 'Liked' : 'Like removed');
+      } catch (error) {
+        if (error.status === 401 || error.code === 'UNAUTHENTICATED') return loginRedirect();
+        flashStatus(toolbarStatus, error.message || 'Could not update like');
+      }
+    });
+  }
 
   const url = new URL(workPath(canonicalAuthor, script.slug, artifact), window.location.origin).toString();
-  bindShareButton(shareBtn, {
-    getUrl: url,
-    title: script.title || label,
-    text: script.logline || `By ${script.author || 'Anonymous'}`,
-    onStatus: (message) => flashStatus(toolbarStatus, message),
-  });
+  if (artifact === 'screenplay') {
+    bindShareButton(shareBtn, {
+      getUrl: url,
+      title: script.title || label,
+      text: script.logline || `By ${script.author || 'Anonymous'}`,
+      onStatus: (message) => flashStatus(toolbarStatus, message),
+    });
+  }
 
   const others = script.moreByAuthor || [];
   if (others.length) {

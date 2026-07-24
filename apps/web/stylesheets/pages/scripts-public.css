@@ -420,7 +420,8 @@ body.scripts-shell {
 .timeline-view-empty[hidden],
 .timeline-view-video[hidden],
 .timeline-view-image[hidden],
-#readerCover[hidden] {
+#readerCover[hidden],
+.script-reader-toolbar[hidden] {
   display: none !important;
 }
 
