@@ -83,6 +83,8 @@ const els = {
   customStyleWorldGenerateBtn: document.getElementById('customStyleWorldGenerateBtn'),
   customStyleCharacterLibraryBtn: document.getElementById('customStyleCharacterLibraryBtn'),
   customStyleWorldLibraryBtn: document.getElementById('customStyleWorldLibraryBtn'),
+  customStyleCharacterUploadBtn: document.getElementById('customStyleCharacterUploadBtn'),
+  customStyleWorldUploadBtn: document.getElementById('customStyleWorldUploadBtn'),
   customStyleTitle: document.getElementById('customStyleTitle'),
   customStylePrompt: document.getElementById('customStylePrompt'),
   customStyleSaveBtn: document.getElementById('customStyleSaveBtn'),
@@ -639,7 +641,8 @@ async function init() {
     'customStylesBtn', 'stageCustomStylesBtn', 'customStylesModal', 'customStylesCloseBtn',
     'customStyleNewBtn', 'customStylesList', 'customStyleEditor',
     'customStyleCharacterGenerateBtn', 'customStyleWorldGenerateBtn', 'customStyleCharacterLibraryBtn',
-    'customStyleWorldLibraryBtn', 'imageLibraryModal', 'imageProvider',
+    'customStyleWorldLibraryBtn', 'customStyleCharacterUploadBtn', 'customStyleWorldUploadBtn',
+    'imageLibraryModal', 'imageProvider',
     'customStyleFields', 'customStyleTitle', 'customStylePrompt', 'customStyleSaveBtn',
     'customStyleStatus', 'customStyleCharacterInput',
     'customStyleWorldInput', 'customStyleCharacterRefs', 'customStyleWorldRefs',
@@ -687,12 +690,6 @@ async function init() {
     session,
     getRecord: getCurrentStoryboardRecord,
     manageShare: true,
-    onOpenWork: async (projectId) => {
-      await openStoryboard(projectId, els);
-      await loadStoryboardIntoUI();
-      storyboardController.renderPicker();
-      scriptController?.syncRoute?.();
-    },
     onShareStatus: (message) => setStatus(message),
   });
 

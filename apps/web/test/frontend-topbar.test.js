@@ -22,7 +22,7 @@ test('workbar carries artifact tabs and actions', () => {
   assert.match(workbarHtml, /data-artifact="timeline"/);
   assert.match(workbarHtml, /id="workShareBtn"/);
   assert.match(workbarHtml, /id="downloadZipBtn"/);
-  assert.match(workbarHtml, /id="workTitleBtn"/);
+  assert.doesNotMatch(workbarHtml, /id="workTitleBtn"|id="workTitleLabel"|id="workRecentList"/);
 });
 
 test('studio and reader inject the workbar marker', () => {

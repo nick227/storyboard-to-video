@@ -23,7 +23,6 @@ function pushRecent(entry) {
  * @param {{
  *   session?: object,
  *   getRecord?: () => object|null,
- *   onOpenWork?: (projectId: string) => void,
  *   shareUrl?: string|(() => string),
  *   onShareStatus?: (message: string) => void,
  * }} [options]
@@ -40,9 +39,6 @@ export function initWorkbar(options = {}) {
   }
 
   root.hidden = false;
-  const titleBtn = document.getElementById('workTitleBtn');
-  const titleLabel = document.getElementById('workTitleLabel');
-  const recentList = document.getElementById('workRecentList');
   const shareBtn = document.getElementById('workShareBtn');
   const downloadBtn = document.getElementById('downloadZipBtn');
   const tabs = Array.from(root.querySelectorAll('.sf-artifact-tab'));
@@ -52,7 +48,6 @@ export function initWorkbar(options = {}) {
     const authorSlug = route.authorSlug || authorSlugFromRecord(record, options.session);
     const workSlug = route.workSlug || scriptSlugFromRecord(record) || 'untitled';
     const title = record?.title || workSlug;
-    titleLabel.textContent = title;
 
     pushRecent({
       authorSlug,
@@ -81,54 +76,17 @@ export function initWorkbar(options = {}) {
     if (visibility) visibility.hidden = false;
   };
 
-  const closeRecent = () => {
-    recentList.hidden = true;
-    titleBtn.setAttribute('aria-expanded', 'false');
-  };
-
-  const openRecent = () => {
-    const items = readRecent();
-    recentList.innerHTML = items.map((item) => (
-      `<li role="option" data-author="${item.authorSlug}" data-slug="${item.workSlug}" data-project="${item.projectId || ''}">
-        <button type="button">${item.title || item.workSlug}</button>
-      </li>`
-    )).join('') || '<li class="sf-work-recent-empty">No recent works</li>';
-    recentList.hidden = false;
-    titleBtn.setAttribute('aria-expanded', 'true');
-  };
-
-  titleBtn.addEventListener('click', () => {
-    if (recentList.hidden) openRecent();
-    else closeRecent();
-  });
-
-  recentList.addEventListener('click', (event) => {
-    const option = event.target.closest('[data-slug]');
-    if (!option) return;
-    closeRecent();
-    const projectId = option.dataset.project;
-    if (projectId && options.onOpenWork) {
-      options.onOpenWork(projectId);
-      return;
-    }
-    const artifact = route.artifact || 'screenplay';
-    window.location.href = workPath(option.dataset.author, option.dataset.slug, artifact, { edit: true });
-  });
-
-  document.addEventListener('click', (event) => {
-    if (!recentList.hidden && !root.contains(event.target)) closeRecent();
-  });
-
   if (!options.manageShare) {
     shareBtn?.addEventListener('click', async () => {
       if (shareBtn.disabled) return;
+      const record = options.getRecord?.() || null;
       const raw = typeof options.shareUrl === 'function' ? options.shareUrl() : options.shareUrl;
       const path = shareBtn.dataset.sharePath;
       const url = raw || (path ? new URL(path, window.location.origin).toString() : null)
         || new URL(workPath(route.authorSlug, route.workSlug, route.artifact), window.location.origin).toString();
       try {
         if (navigator.share) {
-          await navigator.share({ title: titleLabel.textContent, url });
+          await navigator.share({ title: record?.title || route.workSlug || 'Work', url });
           options.onShareStatus?.('Shared');
         } else {
           await navigator.clipboard.writeText(url);
