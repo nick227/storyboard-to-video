@@ -4,6 +4,7 @@ import { getCurrentStoryboardRecord, queueSync, ensureProjectSynced, hydrateCurr
 import { clampSplitCount } from './scene-count.js';
 import { adaptSceneImageShot, imageShot, replaceImageState, replaceVideoState, setImagePrompt } from '../core/scene-shots.js';
 import { textValue } from '../core/text-values.js';
+import { resolvedEntityConfig, recordEntityGeneration } from '../core/scene-entity-config.js';
 
 export function getPayloadBase(els) {
   return {
@@ -81,6 +82,10 @@ export function normalizeScene(scene, index) {
     subtitleVersions,
     activeSubtitleVersionIndex: subtitleVersions.length ? Math.min(Math.max(requestedSubtitleIndex, 0), subtitleVersions.length - 1) : 0,
     activeVisualType,
+    entityOverrides: scene?.entityOverrides && typeof scene.entityOverrides === 'object' ? structuredClone(scene.entityOverrides) : {},
+    entityGenerationProvenance: scene?.entityGenerationProvenance && typeof scene.entityGenerationProvenance === 'object'
+      ? structuredClone(scene.entityGenerationProvenance)
+      : {},
   });
 }
 
@@ -148,6 +153,7 @@ export async function regeneratePrompt(index, els, setStatus, withinSerial = fal
     await ensureProjectSynced();
     if (setStatus) setStatus(`Planning prompt ${index + 1}...`);
     const base = getPayloadBase(els);
+    const entityConfig = resolvedEntityConfig(scene, 'prompt', { record: getCurrentStoryboardRecord(), elements: els });
     const data = await api('/api/storyboard/regenerate-prompt', {
       method: 'POST',
       body: JSON.stringify({
@@ -158,7 +164,7 @@ export async function regeneratePrompt(index, els, setStatus, withinSerial = fal
         nextBeat: scenes[index + 1]?.beat || '',
         styleId: base.styleId,
         commonPromptText: base.commonPromptText,
-        provider: base.textProvider,
+        provider: entityConfig.provider,
         projectId: base.projectId,
         fallbackPolicy: base.fallbackPolicy,
         enrich: base.enrich,
@@ -173,6 +179,7 @@ export async function regeneratePrompt(index, els, setStatus, withinSerial = fal
       scene.promptGeneratedFromBeat = data.promptGeneratedFromBeat ?? scene.beat;
       scene.promptGeneratedFromNarration = data.promptGeneratedFromNarration ?? null;
       scene.structuralContextStale = false;
+      recordEntityGeneration(scene, 'prompt', entityConfig);
     }
     sceneStore.set({ scenes: [...scenes] }); // trigger reactivity
     const record = getCurrentStoryboardRecord();
@@ -199,6 +206,7 @@ export async function regenerateAction(index, els, setStatus) {
     await ensureProjectSynced();
     if (setStatus) setStatus(`Planning action ${index + 1}...`);
     const base = getPayloadBase(els);
+    const entityConfig = resolvedEntityConfig(scene, 'action', { record: getCurrentStoryboardRecord(), elements: els });
     const data = await api('/api/storyboard/regenerate-action', {
       method: 'POST',
       body: JSON.stringify({
@@ -207,13 +215,14 @@ export async function regenerateAction(index, els, setStatus) {
         sceneIndex: index,
         previousBeat: scenes[index - 1]?.beat || '',
         nextBeat: scenes[index + 1]?.beat || '',
-        provider: base.textProvider,
+        provider: entityConfig.provider,
         projectId: base.projectId,
         fallbackPolicy: base.fallbackPolicy,
       }),
     });
 
     scene.beat = data.beat || scene.beat;
+    if (!data.usedFallback) recordEntityGeneration(scene, 'action', entityConfig);
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
     if (record) {
@@ -417,12 +426,12 @@ export async function prepareNarration(els, setStatus) {
   }
 }
 
-async function requestPlanVisuals(els, setStatus) {
+async function requestPlanVisuals(els, setStatus, { onlyMissing = false } = {}) {
   const currentScenes = sceneStore.get().scenes;
   if (!currentScenes.length) throw new Error('Prepare narration before planning visuals.');
   await ensureProjectSynced();
   const base = getPayloadBase(els);
-  if (setStatus) setStatus('Planning visuals...');
+  if (setStatus) setStatus(onlyMissing ? 'Filling missing visuals...' : 'Planning visuals...');
   const data = await api('/api/storyboard/plan-visuals', {
     method: 'POST',
     body: JSON.stringify({
@@ -432,9 +441,13 @@ async function requestPlanVisuals(els, setStatus) {
       commonPromptText: base.commonPromptText,
       provider: base.textProvider,
       fallbackPolicy: base.fallbackPolicy,
+      onlyMissing,
     }),
   });
   const nextScenes = (data.scenes || []).map((scene, index) => normalizeScene(scene, index));
+  if (nextScenes.length !== currentScenes.length) {
+    throw new Error('Visual planning returned a different scene count — refusing to replace the storyboard.');
+  }
   const visualInputs = {
     styleId: base.styleId,
     commonPromptText: base.commonPromptText,
@@ -462,11 +475,11 @@ async function requestPlanVisuals(els, setStatus) {
   return nextScenes;
 }
 
-export async function planVisuals(els, setStatus) {
+export async function planVisuals(els, setStatus, { onlyMissing = false } = {}) {
   if (uiStore.get().operation) return;
   uiStore.set({ operation: { type: 'planVisuals' } });
   try {
-    return await requestPlanVisuals(els, setStatus);
+    return await requestPlanVisuals(els, setStatus, { onlyMissing });
   } catch (error) {
     if (setStatus) setStatus(`Planning failed: ${error.message}`);
     throw error;
@@ -475,8 +488,8 @@ export async function planVisuals(els, setStatus) {
   }
 }
 
-// One-click Storyboard planning remains an orchestrator: it prepares narration only when missing or
-// stale, then plans visuals over those exact scene IDs/boundaries without rewriting their words.
+// Bootstrap (empty project) prepares narration then plans all visuals. When scenes already exist,
+// never restructure — only fill missing visual prompts. Use replanStory for an explicit rebuild.
 export async function planShots(els, setStatus) {
   if (uiStore.get().operation) return;
   if (!els.scriptText.value.trim()) {
@@ -485,8 +498,16 @@ export async function planShots(els, setStatus) {
   }
   uiStore.set({ operation: { type: 'planShots' } });
   try {
-    if (narrationNeedsPreparation(els)) await requestPrepareNarration(els, setStatus);
-    const scenes = await requestPlanVisuals(els, setStatus);
+    const existing = sceneStore.get().scenes;
+    if (!existing.length) {
+      await requestPrepareNarration(els, setStatus);
+      const scenes = await requestPlanVisuals(els, setStatus, { onlyMissing: false });
+      return scenes.length;
+    }
+    if (narrationNeedsPreparation(els) && setStatus) {
+      setStatus('Storyboard structure already exists. Filling missing visual prompts only — use Replan to rebuild from the script.');
+    }
+    const scenes = await requestPlanVisuals(els, setStatus, { onlyMissing: true });
     return scenes.length;
   } catch (error) {
     if (setStatus) setStatus(`Storyboard failed: ${error.message}`);
@@ -506,13 +527,14 @@ export async function regenerateDialogue(index, els, setStatus, instruction = ''
     await ensureProjectSynced();
     if (setStatus) setStatus(`Planning narration ${index + 1}...`);
     const base = getPayloadBase(els);
+    const entityConfig = resolvedEntityConfig(scene, 'dialogue', { record: getCurrentStoryboardRecord(), elements: els });
     const data = await api('/api/storyboard/regenerate-dialogue', {
       method: 'POST',
       body: JSON.stringify({
         scene,
         sceneIndex: index,
         instruction,
-        provider: base.textProvider,
+        provider: entityConfig.provider,
         projectId: base.projectId,
         fallbackPolicy: base.fallbackPolicy,
         enrich: base.enrich,
@@ -522,6 +544,7 @@ export async function regenerateDialogue(index, els, setStatus, instruction = ''
 
     scene.narrationText = textValue(data.narrationText, ['narrationText']) || textValue(scene.narrationText, ['narrationText']);
     scene.narrationIsFallback = Boolean(data.usedFallback);
+    if (!data.usedFallback) recordEntityGeneration(scene, 'dialogue', entityConfig);
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
     if (record) {
@@ -557,6 +580,7 @@ export async function regenerateImage(index, scene, els, setStatus, withinSerial
   try {
     if (!withinSerial) await ensureProjectSynced();
     const base = getPayloadBase(els);
+    const entityConfig = resolvedEntityConfig(activeScene, 'image', { record: getCurrentStoryboardRecord(), elements: els });
     const payload = {
       sceneNumber: index + 1,
       sceneId: activeScene.id,
@@ -564,10 +588,15 @@ export async function regenerateImage(index, scene, els, setStatus, withinSerial
       scenePrompt: activeScene.prompt,
       styleId: base.styleId,
       commonPromptText: base.commonPromptText,
-      provider: base.imageProvider,
+      provider: entityConfig.provider,
       projectId: base.projectId,
+      outputIntent: {
+        ...(entityConfig.aspectRatio ? { aspectRatio: entityConfig.aspectRatio } : {}),
+        ...(entityConfig.resolutionTier ? { resolutionTier: entityConfig.resolutionTier } : {}),
+        ...(entityConfig.quality ? { quality: entityConfig.quality } : {}),
+      },
     };
-    if (base.imageProvider !== 'stub') {
+    if (entityConfig.provider !== 'stub') {
       if (setStatus) setStatus('Checking references...');
       const preflight = await api('/api/images/preflight', { method: 'POST', body: JSON.stringify(payload) });
       // The server-authored reference plan remains bound to generation by its hash, but provider
@@ -585,6 +614,7 @@ export async function regenerateImage(index, scene, els, setStatus, withinSerial
 
     replaceImageState(activeScene, data.scene);
     activeScene.activeVisualType = data.scene.activeVisualType;
+    recordEntityGeneration(activeScene, 'image', entityConfig);
 
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
@@ -634,7 +664,12 @@ export async function regenerateAudio(index, scene, els, setStatus, withinSerial
     throw new Error("This scene's narration is fallback placeholder text, not real narration — regenerate narration before generating audio.");
   }
 
-  const audioProvider = voiceStore.get().audioProvider;
+  const entityConfig = resolvedEntityConfig(activeScene, 'audio', {
+    record: getCurrentStoryboardRecord(),
+    voiceState: voiceStore.get(),
+    elements: els,
+  });
+  const audioProvider = entityConfig.provider;
 
   if (!scene) {
     uiStore.set({ operation: { type: 'audio', sceneId: activeScene.id } });
@@ -649,7 +684,7 @@ export async function regenerateAudio(index, scene, els, setStatus, withinSerial
       sceneTitle: activeScene.title,
       narrationText: activeScene.narrationText,
       provider: audioProvider,
-      voice: voiceStore.get().narratorVoice[audioProvider] || null,
+      voice: entityConfig.voice || null,
       projectId: projectStore.get().currentId,
     };
     const idempotencyKey = await logicalIdempotencyKey('audio', { versionCount: activeScene.audioVersions?.length || 0, payload });
@@ -661,6 +696,7 @@ export async function regenerateAudio(index, scene, els, setStatus, withinSerial
 
     activeScene.audioVersions = data.scene.audioVersions;
     activeScene.activeAudioVersionIndex = data.scene.activeAudioVersionIndex;
+    recordEntityGeneration(activeScene, 'audio', entityConfig);
 
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
@@ -707,7 +743,10 @@ export async function regenerateSubtitles(index, scene, els, setStatus, withinSe
       sceneNumber: index + 1,
       sceneId: activeScene.id,
       sceneTitle: activeScene.title,
-      captionStyle: els.subtitleStyleSelect ? els.subtitleStyleSelect.value : 'classic',
+      captionStyle: resolvedEntityConfig(activeScene, 'subtitle', {
+        record: getCurrentStoryboardRecord(),
+        elements: els,
+      }).style,
       projectId: projectStore.get().currentId,
     };
     const idempotencyKey = await logicalIdempotencyKey('subtitle', { versionCount: activeScene.subtitleVersions?.length || 0, sourceAudioPath: activeAudio.path, payload });
@@ -719,6 +758,10 @@ export async function regenerateSubtitles(index, scene, els, setStatus, withinSe
 
     activeScene.subtitleVersions = data.scene.subtitleVersions;
     activeScene.activeSubtitleVersionIndex = data.scene.activeSubtitleVersionIndex;
+    recordEntityGeneration(activeScene, 'subtitle', resolvedEntityConfig(activeScene, 'subtitle', {
+      record: getCurrentStoryboardRecord(),
+      elements: els,
+    }));
 
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
@@ -835,7 +878,11 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
     throw new Error('Scene has no generated reference image.');
   }
 
-  const selectedProvider = els.videoProvider?.value || '';
+  const entityConfig = resolvedEntityConfig(activeScene, 'video', {
+    record: getCurrentStoryboardRecord(),
+    elements: els,
+  });
+  const selectedProvider = entityConfig.provider || '';
   const confirmedKeyframes = shot.videoKeyframeSelection?.source === 'video_generation_confirmation'
     && shot.videoKeyframeSelection.startFrame === shot.startFrame
     && (shot.videoKeyframeSelection.endFrame || null) === (shot.endFrame || null)
@@ -860,10 +907,16 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
       sceneBeat: activeScene.beat,
       styleId: base.styleId,
       commonPromptText: base.commonPromptText,
-      motionIntensity: els.videoMotionIntensity.value,
+      motionIntensity: entityConfig.motionIntensity,
       projectId: base.projectId,
       ...(selectedProvider ? { provider: selectedProvider } : {}),
+      ...(entityConfig.model ? { model: entityConfig.model } : {}),
       ...(generationMode ? { generationMode } : {}),
+      outputIntent: {
+        ...(entityConfig.aspectRatio ? { aspectRatio: entityConfig.aspectRatio } : {}),
+        ...(entityConfig.resolutionTier ? { resolutionTier: entityConfig.resolutionTier } : {}),
+        ...(entityConfig.durationSeconds ? { durationSeconds: entityConfig.durationSeconds } : {}),
+      },
     };
     const idempotencyKey = await logicalIdempotencyKey('video', { versionCount: shot.videoVersions?.length || 0, payload });
     const data = await api('/api/videos/generate', {
@@ -897,6 +950,7 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
 
     replaceVideoState(activeScene, data.scene);
     activeScene.activeVisualType = data.scene.activeVisualType;
+    recordEntityGeneration(activeScene, 'video', entityConfig);
 
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();

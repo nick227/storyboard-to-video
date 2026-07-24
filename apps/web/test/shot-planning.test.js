@@ -35,6 +35,43 @@ test('prepareNarration preserves original source separately and returns text-onl
 
 test('planVisuals adds visual fields without rewriting scene identity, source, narration, or boundaries',async()=>{const service=createShotPlanningService({textProviders:{call:async()=>JSON.stringify({visuals:[{sceneNumber:1,visualPrompt:'Mara stands in the doorway, one hand on the knob.',actionPrompt:'Mara opens the door.'},{sceneNumber:2,visualPrompt:'Mara freezes in the dark hall.',actionPrompt:'Mara freezes.'}]})}});const scenes=[{id:'a',title:'Scene 1',sourceScriptFragment:'SOURCE A',scriptFragment:'SOURCE A',narrationText:'Mara opens the door.',structuralContextStale:true},{id:'b',title:'Scene 2',sourceScriptFragment:'SOURCE B',scriptFragment:'SOURCE B',narrationText:'She freezes.'}];const result=await service.planVisuals({scenes,provider:'gemini',style:{id:'basic',promptText:'simple'},fallbackPolicy:'fail'});assert.deepEqual(result.scenes.map(({id,sourceScriptFragment,narrationText})=>({id,sourceScriptFragment,narrationText})),scenes.map(({id,sourceScriptFragment,narrationText})=>({id,sourceScriptFragment,narrationText})));assert.match(result.scenes[0].prompt,/doorway/);assert.equal(result.scenes[1].promptGeneratedFromNarration,'She freezes.');assert.equal(result.scenes[0].structuralContextStale,false);});
 
+test('planVisuals onlyMissing skips scenes that already have prompts and preserves their media', async () => {
+  let calls = 0;
+  const service = createShotPlanningService({
+    textProviders: {
+      call: async () => {
+        calls += 1;
+        return JSON.stringify({
+          visuals: [{ sceneNumber: 1, visualPrompt: 'New empty scene visual, subject clear.', actionPrompt: 'Subject waits.' }],
+        });
+      },
+    },
+  });
+  const scenes = [
+    {
+      id: 'kept',
+      narrationText: 'Already planned.',
+      prompt: 'Keep this exact prompt.',
+      beat: 'Keep beat.',
+      versions: [{ path: 'images/kept.png' }],
+      activeVersionIndex: 0,
+    },
+    { id: 'missing', narrationText: 'Needs a prompt.' },
+  ];
+  const result = await service.planVisuals({
+    scenes,
+    provider: 'gemini',
+    style: { id: 'basic', promptText: 'simple' },
+    fallbackPolicy: 'fail',
+    onlyMissing: true,
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.scenes.length, 2);
+  assert.equal(result.scenes[0].prompt, 'Keep this exact prompt.');
+  assert.equal(result.scenes[0].versions[0].path, 'images/kept.png');
+  assert.match(result.scenes[1].prompt, /New empty scene/);
+});
+
 test('prepareNarration records exact source offsets when segmentation returns aligned source excerpts',async()=>{const script='INT. HOUSE - NIGHT\nMara opens the door. She freezes.';const service=createShotPlanningService({textProviders:{call:async(_provider,request)=>{if(request.includes('continuous spoken narration'))return JSON.stringify({narrationText:'Mara opens the door. She freezes.'});if(request.includes('"segments"'))return JSON.stringify({segments:[{sourceScriptFragment:'INT. HOUSE - NIGHT\nMara opens the door.',narrationText:'Mara opens the door.'},{sourceScriptFragment:'She freezes.',narrationText:'She freezes.'}]});throw new Error(`unexpected request: ${request}`);}}});const result=await service.prepareNarration({scriptText:script,provider:'gemini',fallbackPolicy:'fail'});assert.equal(result.scenes.length,2);assert.equal(result.scenes[0].sourceMappingMethod,'model');assert.equal(result.scenes[0].sourceStart,0);assert.equal(result.scenes[1].sourceEnd,script.length);assert.ok(result.scenes[0].sourceEnd<=result.scenes[1].sourceStart);});
 
 test('planVisuals rejects duplicate or incomplete provider scene mappings when fallback is disabled',async()=>{const service=createShotPlanningService({textProviders:{call:async()=>JSON.stringify({visuals:[{sceneNumber:1,visualPrompt:'One complete visual.',actionPrompt:'Subject acts.'},{sceneNumber:1,visualPrompt:'Duplicate visual.',actionPrompt:'Subject reacts.'}]})}});const scenes=[{id:'a',narrationText:'One.'},{id:'b',narrationText:'Two.'}];await assert.rejects(()=>service.planVisuals({scenes,provider:'gemini',fallbackPolicy:'fail'}),/exactly one complete/);});

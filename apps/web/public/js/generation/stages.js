@@ -8,6 +8,7 @@ import { imageShot } from '../core/scene-shots.js';
 import { hashCanonical } from './generation-manifest.js';
 import { normalizeReferenceRole } from '../core/reference-roles.js';
 import { resolveImageReferencePlan } from './image-reference-plan.js';
+import { resolvedEntityConfig } from '../core/scene-entity-config.js';
 
 // --- Staleness -------------------------------------------------------------
 
@@ -62,15 +63,16 @@ function imageManifestStaleness(scene, shot, version) {
   const record = getCurrentStoryboardRecord();
   const style = currentStyle(record);
   if (!record || !style || !version?.manifest?.inputs) return null;
-  if (record.mediaSettings && version.output?.requested) {
+  const config = resolvedEntityConfig(scene, 'image', { record });
+  if (version.output?.requested) {
     const requested = {
-      ...(record.mediaSettings.aspectRatio ? { aspectRatio: record.mediaSettings.aspectRatio } : {}),
-      ...(record.mediaSettings.image?.resolutionTier ? { resolutionTier: record.mediaSettings.image.resolutionTier } : {}),
-      ...(record.mediaSettings.image?.quality ? { quality: record.mediaSettings.image.quality } : {}),
+      ...(config.aspectRatio ? { aspectRatio: config.aspectRatio } : {}),
+      ...(config.resolutionTier ? { resolutionTier: config.resolutionTier } : {}),
+      ...(config.quality ? { quality: config.quality } : {}),
     };
     if (Object.entries(requested).some(([key, value]) => version.output.requested[key] !== value)) return true;
   }
-  const references = currentImageReferences(scene, record.imageProvider, record.styleId);
+  const references = currentImageReferences(scene, config.provider, record.styleId);
   if (!references) return null;
   const inputs = structuredClone(version.manifest.inputs);
   inputs.prompt = {
@@ -80,7 +82,7 @@ function imageManifestStaleness(scene, shot, version) {
     common: additionalCommonPrompt(style.promptText, record.commonPromptText),
   };
   inputs.style = { ...(inputs.style || {}), id: record.styleId };
-  inputs.provider = { ...(inputs.provider || {}), name: record.imageProvider };
+  inputs.provider = { ...(inputs.provider || {}), name: config.provider };
   inputs.references = references;
   return manifestStaleness(version, inputs);
 }
@@ -89,11 +91,12 @@ function videoManifestStaleness(scene, shot, activeImage, version) {
   const record = getCurrentStoryboardRecord();
   const style = currentStyle(record);
   if (!record || !style || !version?.manifest?.inputs) return null;
-  if (record.mediaSettings && version.output?.requested) {
+  const config = resolvedEntityConfig(scene, 'video', { record });
+  if (version.output?.requested) {
     const requested = {
-      ...(record.mediaSettings.aspectRatio ? { aspectRatio: record.mediaSettings.aspectRatio } : {}),
-      ...(record.mediaSettings.video?.resolutionTier ? { resolutionTier: record.mediaSettings.video.resolutionTier } : {}),
-      ...(record.mediaSettings.video?.durationSeconds ? { durationSeconds: record.mediaSettings.video.durationSeconds } : {}),
+      ...(config.aspectRatio ? { aspectRatio: config.aspectRatio } : {}),
+      ...(config.resolutionTier ? { resolutionTier: config.resolutionTier } : {}),
+      ...(config.durationSeconds ? { durationSeconds: config.durationSeconds } : {}),
     };
     if (Object.entries(requested).some(([key, value]) => version.output.requested[key] !== value)) return true;
   }
@@ -106,7 +109,12 @@ function videoManifestStaleness(scene, shot, activeImage, version) {
     common: additionalCommonPrompt(style.promptText, record.commonPromptText),
   };
   inputs.style = { ...(inputs.style || {}), id: record.styleId };
-  inputs.settings = { ...(inputs.settings || {}), motionIntensity: record.videoMotionIntensity || 'medium' };
+  inputs.provider = {
+    ...(inputs.provider || {}),
+    ...(config.provider ? { name: config.provider } : {}),
+    ...(config.model ? { model: config.model } : {}),
+  };
+  inputs.settings = { ...(inputs.settings || {}), motionIntensity: config.motionIntensity || 'medium' };
   const confirmedKeyframes = shot.videoKeyframeSelection?.source === 'video_generation_confirmation'
     && shot.videoKeyframeSelection.startFrame === shot.startFrame
     && (shot.videoKeyframeSelection.endFrame || null) === (shot.endFrame || null)
@@ -138,8 +146,10 @@ export function computeStaleness(scene) {
   const activeAudio = (scene.audioVersions || [])[scene.activeAudioVersionIndex] || null;
   const activeVideo = (shot.videoVersions || [])[shot.activeVideoVersionIndex] || null;
   const activeSubtitle = (scene.subtitleVersions || [])[scene.activeSubtitleVersionIndex] || null;
+  const audioConfig = resolvedEntityConfig(scene, 'audio', { record: getCurrentStoryboardRecord(), voiceState: voiceStore.get() });
+  const subtitleConfig = resolvedEntityConfig(scene, 'subtitle', { record: getCurrentStoryboardRecord() });
 
-  const hasPrompt = Boolean(String(scene.prompt || '').trim());
+  const hasPrompt = hasText(scenePromptText(scene));
   const promptStale = hasPrompt && (
     Boolean(scene.structuralContextStale) ||
     String(scene.beat || '') !== String(scene.promptGeneratedFromBeat || '') ||
@@ -158,17 +168,19 @@ export function computeStaleness(scene) {
   ));
   const audioStale = Boolean(activeAudio?.path) && (
     String(activeAudio.narrationText || '') !== String(scene.narrationText || '') ||
-    (activeAudio.provider !== 'recorded' && String(activeAudio.provider || '') !== String(voiceStore.get().audioProvider || '')) ||
+    (activeAudio.provider !== 'recorded' && String(activeAudio.provider || '') !== String(audioConfig.provider || '')) ||
     (activeAudio.provider !== 'recorded'
       && Object.prototype.hasOwnProperty.call(activeAudio, 'voice')
-      && String(activeAudio.voice?.voiceId || '') !== String(voiceStore.get().narratorVoice[voiceStore.get().audioProvider]?.voiceId || ''))
+      && String(activeAudio.voice?.voiceId || '') !== String(audioConfig.voice?.voiceId || ''))
   );
   const videoManifestStale = videoManifestStaleness(scene, shot, activeImage, activeVideo);
   const selectedStartFrame = shot.startFrame || activeImage?.path || '';
   const videoStale = Boolean(activeVideo?.path) && (videoManifestStale ?? String(activeVideo.sourceImagePath || '') !== String(selectedStartFrame));
   const subtitleStale = Boolean(activeSubtitle?.path) && (
     audioStale ||
-    String(activeSubtitle.sourceAudioPath || '') !== String(activeAudio?.path || '')
+    String(activeSubtitle.sourceAudioPath || '') !== String(activeAudio?.path || '') ||
+    (Boolean(activeSubtitle.captionStyle || activeSubtitle.style)
+      && String(activeSubtitle.captionStyle || activeSubtitle.style) !== String(subtitleConfig.style || 'classic'))
   );
 
   return { promptStale, imageStale, audioStale, videoStale, subtitleStale };
@@ -181,6 +193,10 @@ const MEDIA_JOB_TYPE = { images: 'image', audio: 'audio', video: 'video', subtit
 
 function hasText(value) {
   return Boolean(String(value || '').trim());
+}
+
+function scenePromptText(scene) {
+  return imageShot(scene).prompt || scene.prompt || '';
 }
 
 // Newest job per scene for a given job type — the shared lookup behind both the aggregate stage-box
@@ -250,9 +266,9 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
   const record = getCurrentStoryboardRecord();
   const planningChanged = record ? hasPlanningChanges(scenes, record) : false;
 
-  const promptsReady = scenes.filter((scene) => hasText(scene.prompt)).length;
+  const promptsReady = scenes.filter((scene) => hasText(scenePromptText(scene))).length;
   const dialogueReady = scenes.filter((scene) => hasText(scene.narrationText)).length;
-  const promptsStaleCount = scenes.filter((scene) => hasText(scene.prompt) && computeStaleness(scene).promptStale).length;
+  const promptsStaleCount = scenes.filter((scene) => hasText(scenePromptText(scene)) && computeStaleness(scene).promptStale).length;
   const lastPlanningJob = [...(recentJobs || [])]
     .filter((job) => PLANNING_JOB_TYPES.has(job.type) && !job.sceneId)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
@@ -263,7 +279,7 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
     stale: promptsStaleCount,
     missing: total ? total - Math.min(promptsReady, dialogueReady) : 0,
     failed: !total && lastPlanningJob?.status === 'failed' ? 1 : 0,
-    running: uiOperation != null && ['planShots', 'prepareNarration', 'planVisuals', 'prompts', 'dialogueAll', 'prompt', 'dialogue', 'action', 'splitScene'].includes(uiOperation.type),
+    running: uiOperation != null && ['planShots', 'prepareNarration', 'planVisuals', 'prompts', 'dialogueAll', 'prompt', 'dialogue', 'action', 'splitScene', 'planningPatch', 'planningRefresh', 'planningStaleUpdate'].includes(uiOperation.type),
     paused: false,
     label: total ? `${total} shot${total === 1 ? '' : 's'}` : 'Not started',
     hasChanges: planningChanged,
@@ -321,9 +337,9 @@ export async function refreshRecentJobs(projectId) {
   if (!projectId) { cachedJobs = []; return cachedJobs; }
   try {
     const data = await api(`/api/jobs?projectId=${encodeURIComponent(projectId)}`);
-    cachedJobs = data.jobs || [];
+    if (projectStore.get().currentId === projectId) cachedJobs = data.jobs || [];
   } catch (_) {
-    cachedJobs = [];
+    if (projectStore.get().currentId === projectId) cachedJobs = [];
   }
   return cachedJobs;
 }
@@ -375,31 +391,40 @@ export async function runPlanning(els, setStatus) {
   }
 }
 
-// "Update stale only": regenerates prompts for scenes whose prompt provenance is stale, and NEVER
-// touches narration — narration and prompts are separate upstream/downstream artifacts, and a stale
-// prompt does not imply the narration itself is wrong.
-export async function updateStalePlanning(els, setStatus, range) {
+// In-place prompt repair: fills missing prompts and/or refreshes stale ones without touching
+// narration boundaries or scene count. Structural rebuilds belong only on explicit Replan.
+export async function patchPlanning(els, setStatus, range, { refreshAll = false } = {}) {
   if (uiStore.get().operation) return;
   const scenes = sceneStore.get().scenes;
-  let staleIndexes = scenes
-    .map((scene, index) => (computeStaleness(scene).promptStale ? index : -1))
+  let indexes = scenes
+    .map((scene, index) => {
+      const hasPrompt = hasText(scenePromptText(scene));
+      if (refreshAll) return index;
+      if (!hasPrompt || computeStaleness(scene).promptStale) return index;
+      return -1;
+    })
     .filter((index) => index !== -1);
-  if (range) staleIndexes = staleIndexes.filter((index) => index >= range.startIndex && index < range.endIndex);
+  if (range) indexes = indexes.filter((index) => index >= range.startIndex && index < range.endIndex);
 
-  if (!staleIndexes.length) {
-    if (setStatus) setStatus('Nothing to update — no stale prompts.');
+  if (!indexes.length) {
+    if (setStatus) setStatus(refreshAll ? 'Nothing to update — no scenes in range.' : 'Nothing to update — prompts already filled.');
     return;
   }
 
-  uiStore.set({ operation: { type: 'planningStaleUpdate' } });
+  uiStore.set({ operation: { type: refreshAll ? 'planningRefresh' : 'planningPatch' } });
   try {
-    for (const index of staleIndexes) {
+    for (const index of indexes) {
       await regeneratePrompt(index, els, setStatus, true); // withinSerial=true: never regenerateDialogue
     }
-    if (setStatus) setStatus(`Updated ${staleIndexes.length} stale prompt${staleIndexes.length === 1 ? '' : 's'}.`);
+    if (setStatus) setStatus(`Updated ${indexes.length} prompt${indexes.length === 1 ? '' : 's'}.`);
   } finally {
     uiStore.set({ operation: null });
   }
+}
+
+// Kept for callers/tests that still name the stale-only path; same preserve-structure behavior.
+export async function updateStalePlanning(els, setStatus, range) {
+  return patchPlanning(els, setStatus, range, { refreshAll: false });
 }
 
 // Explicit structural rebuild: prepare narration boundaries first, then plan visuals over exactly
@@ -407,7 +432,7 @@ export async function updateStalePlanning(els, setStatus, range) {
 // never sweeps generated media automatically.
 export async function replanStory(els, setStatus) {
   await prepareNarration(els, setStatus);
-  await planVisuals(els, setStatus);
+  await planVisuals(els, setStatus, { onlyMissing: false });
 }
 
 // --- Images/Audio/Video batch orchestration ---------------------------------
@@ -594,15 +619,14 @@ export function stopCreateStoryFlow() {
 // Sequences Planning -> Images -> Audio -> Video per preset. Pure orchestration over the functions
 // built in the earlier phases — no new execution engine, no parallel state machine.
 //
-// Planning no longer has a structural decision point to stop at: `runPlanning` always runs straight
-// through (narrate -> plan shots) and returns the final structure, so image/audio/video work can
-// proceed as soon as it resolves.
-// `range` scopes Images/Audio/Video to a slice of the project (default: everything — see
-// buildBatchFns) and scopes Planning's stale-only path the same way; Planning's full-sequence path
-// never accepts a range (see updateStalePlanning above). `forceStages` names stages that must
-// process their whole range unconditionally rather than skipping already-fresh scenes — this is
-// set when the Start modal's "Regenerate if exists" is checked, or when a stage box is checked
-// despite having nothing missing/stale (see buildRunRowStatus / computeForceStages).
+// Planning Start behavior is intentionally conservative: a brand-new empty project runs the full
+// narrate→shots bootstrap; anything else with missing/stale prompts is patched in place. Structural
+// rebuilds never happen from Start — only from the explicit Replan control.
+// `range` scopes Images/Audio/Video and Planning's in-place patch/refresh paths. Planning's full
+// bootstrap path never accepts a range (there are no scenes to slice yet). `forceStages` names
+// stages that must process their whole range unconditionally rather than skipping already-fresh
+// scenes — this is set when the Start modal's "Regenerate if exists" is checked, or when a stage
+// box is checked despite having nothing missing/stale (see buildRunRowStatus / computeForceStages).
 export async function runCreateStoryFlow(preset, els, setStatus, { stages: customStages, range, forceStages = [] } = {}) {
   flowStopRequested = false;
   const stages = preset === 'custom' ? (customStages || []) : PRESET_STAGES[preset];
@@ -615,18 +639,13 @@ export async function runCreateStoryFlow(preset, els, setStatus, { stages: custo
     // reports `missing: 0` for an empty scene list (there's nothing to divide a ratio by), which is
     // NOT the same as "already planned."
     if (planningAction === 'full') {
-      // No plan yet, or an incomplete one, or script/settings changed: run the full sequence
-      // (narrate -> plan shots), same as a standalone Planning run. Never scoped by range —
-      // planning has no safe partial-segmentation mode.
       const planningResult = await runPlanning(els, setStatus);
       if (planningResult.stoppedAt) return planningResult;
-    } else if (planningAction === 'stale') {
-      // A complete plan already exists — only its stale prompts need fixing, optionally scoped to
-      // range. Never regenerate narration or re-run the whole sequence just because a downstream
-      // box was checked.
-      await updateStalePlanning(els, setStatus, range);
+    } else if (planningAction === 'patch' || planningAction === 'refresh') {
+      // Existing scenes: fill missing / refresh prompts only. Never prepareNarration or rebuild.
+      await patchPlanning(els, setStatus, range, { refreshAll: planningAction === 'refresh' });
     }
-    // Both missing and stale are 0: planning is already up to date, nothing to do.
+    // 'current': planning is already up to date, nothing to do.
   }
   if (flowStopRequested) return { stoppedAt: 'paused' };
 
@@ -679,17 +698,22 @@ export function stageHasActionableWork(stage, stageStatus) {
   // A brand-new project has no scenes yet, so every stage's tally reads 0/0/0 — but Planning is
   // still the one stage that always has something to do in that state (it's what creates the
   // scenes). Images/Audio/Video genuinely have nothing to do until scenes exist.
-  if (stage === 'planning') {
-    if (stageStatus.total === 0 || stageStatus.hasChanges) return true;
-  }
+  // Script/settings drift (`hasChanges`) is NOT actionable Start work — that would imply a
+  // structural rebuild. Use the explicit Replan control for that.
+  if (stage === 'planning' && stageStatus.total === 0) return true;
   return stageStatus.missing > 0 || stageStatus.stale > 0 || stageStatus.failed > 0;
 }
 
 // Shared with the run UI so its description and runCreateStoryFlow use the
 // same decision tree when classifying Planning work.
+// 'full'     — empty project bootstrap (narrate + plan shots)
+// 'patch'    — fill missing and/or refresh stale prompts in place
+// 'refresh'  — force regenerate prompts in place (Regenerate if exists / forced stage)
+// 'current'  — nothing to do
 export function classifyPlanningRun(planningStatus, { force = false } = {}) {
-  if (planningStatus.missing > 0 || planningStatus.total === 0 || planningStatus.hasChanges || force) return 'full';
-  if (planningStatus.stale > 0) return 'stale';
+  if (planningStatus.total === 0) return 'full';
+  if (force) return 'refresh';
+  if (planningStatus.missing > 0 || planningStatus.stale > 0) return 'patch';
   return 'current';
 }
 
@@ -729,8 +753,8 @@ export function buildRunRowStatus(scenes, range, batchState, uiOperation, recent
 // Stages whose box is checked despite having no actionable work in the selected range — i.e. the
 // user explicitly overrode a default of "nothing to do here". There's nothing for the normal
 // skip-fresh run to skip *to* in that case, so these stages must process their entire range
-// unconditionally instead (see runCreateStoryFlow's `forceStages`). For Planning, explicitly
-// checking an otherwise-up-to-date row requests a complete replan.
+// unconditionally instead (see runCreateStoryFlow's `forceStages`). For Planning, that means
+// refresh prompts in place — never a structural replan (Replan remains the only rebuild path).
 export function computeForceStages(rowStatus, selection) {
   return ALL_STAGES.filter((stage) => (
     selection[stage] && !stageHasActionableWork(stage, rowStatus[stage].ranged)

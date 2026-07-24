@@ -73,6 +73,7 @@ const planVisuals = z.object({
   provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
   fallbackPolicy,
   bypassCache: z.boolean().default(false),
+  onlyMissing: z.boolean().default(false),
 });
 
 const splitScene = z.object({

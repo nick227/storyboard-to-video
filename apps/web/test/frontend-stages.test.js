@@ -382,7 +382,7 @@ test('computeForceStages: flags explicitly checked up-to-date stages, including 
     audio: { ranged: { total: 2, missing: 1, stale: 0, failed: 0 } },
     // video: has no work in range AND is unchecked — force is irrelevant, must not appear.
     video: { ranged: { total: 2, missing: 0, stale: 0, failed: 0 } },
-    // planning: no work in range but checked — this explicitly requests a complete replan.
+    // planning: no work in range but checked — requests in-place prompt refresh, not structural replan.
     planning: { ranged: { total: 2, missing: 0, stale: 0, failed: 0, hasChanges: false } },
   };
   const selection = { planning: true, images: true, audio: true, video: false };
@@ -521,21 +521,26 @@ test('hasPlanningChanges: detects changes when script or settings differ from la
   assert.equal(hasPlanningChanges([], recordNoChanges), true, 'empty scenes should always indicate changes');
 });
 
-test('stageHasActionableWork: returns true for planning when hasChanges is true', async () => {
+test('stageHasActionableWork: script drift alone does not make Planning Start-actionable', async () => {
   const { stageHasActionableWork } = await stagesPromise;
   const statusNoChanges = { total: 1, missing: 0, stale: 0, failed: 0, hasChanges: false };
   assert.equal(stageHasActionableWork('planning', statusNoChanges), false, 'should have no actionable work if no changes and not missing/stale');
 
   const statusWithChanges = { total: 1, missing: 0, stale: 0, failed: 0, hasChanges: true };
-  assert.equal(stageHasActionableWork('planning', statusWithChanges), true, 'should have actionable work when hasChanges is true');
+  assert.equal(stageHasActionableWork('planning', statusWithChanges), false, 'hasChanges requires explicit Replan, not Start');
+
+  assert.equal(stageHasActionableWork('planning', { total: 0, missing: 0, stale: 0, failed: 0, hasChanges: false }), true, 'empty project still needs Planning');
+  assert.equal(stageHasActionableWork('planning', { total: 4, missing: 3, stale: 0, failed: 0, hasChanges: false }), true, 'missing prompts are actionable');
 });
 
-test('classifyPlanningRun is the shared full/stale/current workflow decision', async () => {
+test('classifyPlanningRun never treats missing prompts or force as a structural full replan', async () => {
   const { classifyPlanningRun } = await stagesPromise;
   assert.equal(classifyPlanningRun({ total: 0, missing: 0, stale: 0, hasChanges: false }), 'full');
-  assert.equal(classifyPlanningRun({ total: 2, missing: 0, stale: 1, hasChanges: false }), 'stale');
+  assert.equal(classifyPlanningRun({ total: 4, missing: 3, stale: 0, hasChanges: false }), 'patch');
+  assert.equal(classifyPlanningRun({ total: 2, missing: 0, stale: 1, hasChanges: false }), 'patch');
+  assert.equal(classifyPlanningRun({ total: 2, missing: 0, stale: 0, hasChanges: true }), 'current', 'script drift alone stays current for Start');
   assert.equal(classifyPlanningRun({ total: 2, missing: 0, stale: 0, hasChanges: false }), 'current');
-  assert.equal(classifyPlanningRun({ total: 2, missing: 0, stale: 0, hasChanges: false }, { force: true }), 'full');
+  assert.equal(classifyPlanningRun({ total: 2, missing: 0, stale: 0, hasChanges: false }, { force: true }), 'refresh');
 });
 
 test('computeStageStatus: sets planning.hasChanges based on hasPlanningChanges', async () => {

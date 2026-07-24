@@ -130,22 +130,27 @@ test('Planning stage prepares narration boundaries, then plans visuals over thos
   }
 });
 
-test('explicitly selecting an up-to-date Planning row refreshes visuals without rewriting narration boundaries', async () => {
+test('explicitly selecting an up-to-date Planning row refreshes prompts in place without rewriting narration boundaries', async () => {
   installLocalStorageShim();
   const originalFetch = global.fetch;
-  let planningCalls = 0;
-  const plannedScenes = [1, 2].map((number) => ({
-    id: `new-${number}`, sceneNumber: number, title: `Scene ${number}`,
-    scriptFragment: `Narration ${number}.`, narrationText: `Narration ${number}.`,
-    beat: `Action ${number}.`, prompt: `Prompt ${number}.`,
-  }));
+  let prepareCalls = 0;
+  let planVisualCalls = 0;
+  let regeneratePromptCalls = 0;
 
   global.fetch = async (url, options) => {
     const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+    if (String(url).startsWith('/api/storyboard/prepare-narration')) {
+      prepareCalls += 1;
+      return json({ scenes: [], usedFallback: false, warning: '' });
+    }
     if (String(url).startsWith('/api/storyboard/plan-visuals')) {
-      planningCalls += 1;
+      planVisualCalls += 1;
       const scenes = JSON.parse(options?.body || '{}').scenes || [];
       return json({ scenes: scenes.map((scene, index) => ({ ...scene, beat: `Action ${index + 1}.`, prompt: `Prompt ${index + 1}.` })), usedFallback: false, warning: '' });
+    }
+    if (String(url).startsWith('/api/storyboard/regenerate-prompt')) {
+      regeneratePromptCalls += 1;
+      return json({ prompt: 'Refreshed prompt in place.', usedFallback: false });
     }
     return json({ project: { revision: 2, scenes: [] }, jobs: [] });
   };
@@ -154,11 +159,12 @@ test('explicitly selecting an up-to-date Planning row refreshes visuals without 
     const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
     const { runCreateStoryFlow } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'stages.js'));
     const oldScene = {
-      id: 'bad-scene', title: 'Scene 1', scriptFragment: '[object Object]', narrationText: '[object Object]',
-      narrationIsFallback: true, beat: 'Fallback action.', prompt: 'Fallback prompt.',
+      id: 'kept-scene', title: 'Scene 1', scriptFragment: 'Original narration.', narrationText: 'Original narration.',
+      narrationIsFallback: false, beat: 'Existing action.', prompt: 'Existing prompt.',
+      versions: [{ path: 'images/kept.png' }], activeVersionIndex: 0,
     };
     const record = {
-      id: 'force-replan-project', title: 'Force Replan', revision: 1, scenes: [oldScene],
+      id: 'force-refresh-project', title: 'Force Refresh', revision: 1, scenes: [oldScene],
       scriptText: 'A complete source script.', styleId: 'basic-cartoon', textProvider: 'openai',
       commonPromptText: '', enrich: false,
       lastPromptInputs: { scriptText: 'A complete source script.', styleId: 'basic-cartoon', textProvider: 'openai', commonPromptText: '', enrich: false, maxShots: null },
@@ -174,9 +180,85 @@ test('explicitly selecting an up-to-date Planning row refreshes visuals without 
 
     const result = await runCreateStoryFlow('custom', els, () => {}, { stages: ['planning'], forceStages: ['planning'] });
     assert.equal(result.stoppedAt, null);
-    assert.equal(planningCalls, 1, 'explicit Planning selection must call visual planning even when status looked up to date');
+    assert.equal(prepareCalls, 0, 'forced Planning must never re-prepare narration / change scene count');
+    assert.equal(planVisualCalls, 0, 'forced Planning must not bulk plan-visuals over the whole board');
+    assert.equal(regeneratePromptCalls, 1, 'forced Planning refreshes prompts in place via regenerate-prompt');
     assert.equal(sceneStore.get().scenes.length, 1);
-    assert.equal(sceneStore.get().scenes[0].narrationText, '[object Object]');
+    assert.equal(sceneStore.get().scenes[0].id, 'kept-scene');
+    assert.equal(sceneStore.get().scenes[0].narrationText, 'Original narration.');
+    assert.equal(sceneStore.get().scenes[0].versions[0].path, 'images/kept.png');
+  } finally {
+    global.fetch = originalFetch;
+    delete global.localStorage;
+  }
+});
+
+test('Start Planning with missing prompts fills in place and preserves scenes that already have images', async () => {
+  installLocalStorageShim();
+  const originalFetch = global.fetch;
+  let prepareCalls = 0;
+  const regeneratedIndexes = [];
+
+  global.fetch = async (url, options) => {
+    const json = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+    if (String(url).startsWith('/api/storyboard/prepare-narration')) {
+      prepareCalls += 1;
+      // A structural rebuild that would destroy scene 1's image if Start mistakenly called it.
+      return json({
+        scenes: [
+          { sceneNumber: 1, title: 'Scene 1', narrationText: 'Merged A.', sourceScriptFragment: 'A', prompt: '', beat: '' },
+          { sceneNumber: 2, title: 'Scene 2', narrationText: 'Merged B.', sourceScriptFragment: 'B', prompt: '', beat: '' },
+          { sceneNumber: 3, title: 'Scene 3', narrationText: 'Merged C.', sourceScriptFragment: 'C', prompt: '', beat: '' },
+        ],
+        usedFallback: false,
+        warning: '',
+      });
+    }
+    if (String(url).startsWith('/api/storyboard/regenerate-prompt')) {
+      const body = JSON.parse(options?.body || '{}');
+      regeneratedIndexes.push(body.sceneIndex);
+      return json({ prompt: `Filled prompt ${body.sceneIndex + 1}.`, usedFallback: false });
+    }
+    return json({ project: { revision: 2, scenes: [] }, jobs: [] });
+  };
+
+  try {
+    const { projectStore, sceneStore, uiStore } = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'store.js'));
+    const { runCreateStoryFlow } = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'stages.js'));
+    const scenes = [
+      {
+        id: 's1', title: 'Scene 1', narrationText: 'One.', beat: 'Act 1.', prompt: 'Prompt 1.',
+        promptGeneratedFromBeat: 'Act 1.', promptGeneratedFromNarration: 'One.',
+        versions: [{ path: 'images/scene1.png', scenePrompt: 'Prompt 1.' }], activeVersionIndex: 0,
+      },
+      { id: 's2', title: 'Scene 2', narrationText: 'Two.', beat: '', prompt: '' },
+      { id: 's3', title: 'Scene 3', narrationText: 'Three.', beat: '', prompt: '' },
+      { id: 's4', title: 'Scene 4', narrationText: 'Four.', beat: '', prompt: '' },
+    ];
+    const record = {
+      id: 'preserve-media-project', title: 'Preserve Media', revision: 1, scenes,
+      scriptText: 'Source.', styleId: 'basic-cartoon', textProvider: 'openai',
+      commonPromptText: '', enrich: false,
+      lastPromptInputs: { scriptText: 'Source.', styleId: 'basic-cartoon', textProvider: 'openai', commonPromptText: '', enrich: false, maxShots: null },
+      lastNarrationInputs: { scriptText: 'Source.', textProvider: 'openai', enrich: false, guidance: '', narrationPromptText: '', maxShots: null },
+    };
+    projectStore.set({ currentId: record.id, storyboards: [record] });
+    sceneStore.set({ scenes });
+    uiStore.set({ operation: null });
+    const els = {
+      scriptText: { value: record.scriptText }, styleSelect: { value: record.styleId },
+      commonPromptText: { value: '' }, textProvider: { value: 'openai' }, imageProvider: { value: 'stub' },
+      fallbackPolicy: { value: 'local' }, enrichNarration: { checked: false }, settingsShotLimitSelect: { value: '' },
+    };
+
+    const result = await runCreateStoryFlow('custom', els, () => {}, { stages: ['planning'] });
+    assert.equal(result.stoppedAt, null);
+    assert.equal(prepareCalls, 0, 'missing prompts must not trigger prepare-narration');
+    assert.deepEqual(regeneratedIndexes, [1, 2, 3], 'only scenes missing prompts are filled');
+    assert.equal(sceneStore.get().scenes.length, 4, 'scene count must stay 4');
+    assert.equal(sceneStore.get().scenes[0].id, 's1');
+    assert.equal(sceneStore.get().scenes[0].versions[0].path, 'images/scene1.png');
+    assert.equal(sceneStore.get().scenes[0].prompt || sceneStore.get().scenes[0].shots?.[0]?.prompt, 'Prompt 1.');
   } finally {
     global.fetch = originalFetch;
     delete global.localStorage;

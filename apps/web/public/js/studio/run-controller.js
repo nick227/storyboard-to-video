@@ -115,8 +115,14 @@ export function initRunController(elements, {
     if (stage === 'planning') {
       const action = classifyPlanningRun(row.full);
       const model = `LLM: ${selectedLabel(elements.textProvider)}`;
-      if (action === 'full') return `${model} · Creates the full storyboard structure — not limited to the selected range.`;
-      if (action === 'stale') return `${model} · Updates ${row.full.stale} stale prompt${row.full.stale === 1 ? '' : 's'} in the selected range.`;
+      if (action === 'full') return `${model} · Creates the storyboard (empty project only) — not limited to the selected range.`;
+      if (action === 'patch') {
+        const parts = [];
+        if (row.full.missing) parts.push(`${row.full.missing} missing`);
+        if (row.full.stale) parts.push(`${row.full.stale} stale`);
+        return `${model} · Fills ${parts.join(' + ') || 'needed'} prompt${(row.full.missing + row.full.stale) === 1 ? '' : 's'} in place — keeps existing scenes and media.`;
+      }
+      if (action === 'refresh') return `${model} · Regenerates prompts in place — does not rebuild scene structure.`;
       return `${model} · ${row.full.label} — up to date.`;
     }
     if (stage === 'images') return `Image: ${selectedLabel(elements.imageProvider)} · ${row.ranged.label} selected · ${row.full.label} total`;

@@ -459,20 +459,32 @@ function createShotPlanningService({ textProviders, generationCache }) {
     return { scenes, narrationText: narration.narrationText, usedFallback, warning: warnings.join(' ') };
   }
 
-  async function planVisuals({ scenes, provider, style, commonPromptText, fallbackPolicy = 'local', tenantId, bypassCache = false }) {
+  async function planVisuals({ scenes, provider, style, commonPromptText, fallbackPolicy = 'local', tenantId, bypassCache = false, onlyMissing = false }) {
     const sourceScenes = Array.isArray(scenes) ? scenes : [];
+    const sceneHasPrompt = (scene) => {
+      const shotPrompt = Array.isArray(scene?.shots) && scene.shots[0] ? cleanText(scene.shots[0].prompt, 20_000) : '';
+      return Boolean(cleanText(scene?.prompt, 20_000) || shotPrompt);
+    };
+    const work = onlyMissing
+      ? sourceScenes
+        .map((scene, index) => ({ scene, index }))
+        .filter(({ scene }) => !sceneHasPrompt(scene))
+      : sourceScenes.map((scene, index) => ({ scene, index }));
+    if (!work.length) return { scenes: sourceScenes, usedFallback: false, warning: '' };
+
     const additional = style ? getAdditionalCommonPrompt(style.promptText, commonPromptText) : commonPromptText;
-    const planned = [];
+    const plannedByIndex = new Map();
     const warnings = [];
     let usedFallback = false;
     const batches = [];
-    for (let i = 0; i < sourceScenes.length; i += 12) batches.push(sourceScenes.slice(i, i + 12));
+    for (let i = 0; i < work.length; i += 12) batches.push(work.slice(i, i + 12));
 
     for (const batch of batches) {
       let visuals;
       let batchUsedFallback = false;
+      const batchScenes = batch.map((item) => item.scene);
       if (provider === 'stub') {
-        visuals = batch.map((scene, index) => {
+        visuals = batchScenes.map((scene, index) => {
           const actionPrompt = compactAction(scene.narrationText);
           return { sceneNumber: index + 1, actionPrompt, visualPrompt: `${actionPrompt} Clear subject, key pose, readable composition.` };
         });
@@ -480,13 +492,13 @@ function createShotPlanningService({ textProviders, generationCache }) {
         batchUsedFallback = true;
       } else {
         const generateFn = async () => {
-          const request = buildVisualPlanningRequest({ scenes: batch, style, additional });
+          const request = buildVisualPlanningRequest({ scenes: batchScenes, style, additional });
           const parsed = extractJson(providerOutput(await textProviders.call(provider, request)));
           if (!Array.isArray(parsed?.visuals)) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid visual planning data', { status: 502 });
           const sceneNumbers = parsed.visuals.map((item) => Number(item?.sceneNumber));
-          const expected = batch.map((_, index) => index + 1);
-          const validNumbers = parsed.visuals.length === batch.length
-            && new Set(sceneNumbers).size === batch.length
+          const expected = batchScenes.map((_, index) => index + 1);
+          const validNumbers = parsed.visuals.length === batchScenes.length
+            && new Set(sceneNumbers).size === batchScenes.length
             && expected.every((sceneNumber) => sceneNumbers.includes(sceneNumber));
           const complete = parsed.visuals.every((item) =>
             cleanText(item?.visualPrompt, 20_000) && compactAction(item?.actionPrompt, ''));
@@ -499,7 +511,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
           visuals = generationCache
             ? await generationCache.runCached({
                 tenantId, operation: 'visual.plan', provider, promptTemplateVersion: 1,
-                source: { scenes: batch.map((scene) => ({ id: scene.id, narrationText: scene.narrationText })) },
+                source: { scenes: batchScenes.map((scene) => ({ id: scene.id, narrationText: scene.narrationText })) },
                 settings: { style: style?.id, additional }, bypassCache, generateFn,
               })
             : await generateFn();
@@ -508,27 +520,28 @@ function createShotPlanningService({ textProviders, generationCache }) {
           usedFallback = true;
           batchUsedFallback = true;
           warnings.push(`Visual planning: provider unavailable for one batch, local prompts were used. ${cleanText(error.message, 200)}`);
-          visuals = batch.map((scene, index) => {
+          visuals = batchScenes.map((scene, index) => {
             const actionPrompt = compactAction(scene.narrationText);
             return { sceneNumber: index + 1, actionPrompt, visualPrompt: `${actionPrompt} Clear subject, key pose, readable composition.` };
           });
         }
       }
       const byNumber = new Map(visuals.map((item) => [Number(item.sceneNumber), item]));
-      batch.forEach((scene, index) => {
+      batch.forEach((item, index) => {
         const visual = byNumber.get(index + 1);
-        const actionPrompt = compactAction(visual.actionPrompt || scene.narrationText);
-        planned.push({
-          ...scene,
+        const actionPrompt = compactAction(visual.actionPrompt || item.scene.narrationText);
+        plannedByIndex.set(item.index, {
+          ...item.scene,
           beat: actionPrompt,
           prompt: cleanText(visual.visualPrompt, 20_000) || `${actionPrompt} Clear subject, key pose, readable composition.`,
           promptGeneratedFromBeat: actionPrompt,
-          promptGeneratedFromNarration: scene.narrationText,
+          promptGeneratedFromNarration: item.scene.narrationText,
           promptIsFallback: batchUsedFallback,
           structuralContextStale: false,
         });
       });
     }
+    const planned = sourceScenes.map((scene, index) => plannedByIndex.get(index) || scene);
     return { scenes: planned, usedFallback, warning: warnings.join(' ') };
   }
 
