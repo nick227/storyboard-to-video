@@ -1,6 +1,6 @@
 import { projectStore, sceneStore, voiceStore, uiStore, batchStore, spendStore } from './core/store.js';
 import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope, findStoryboardByScriptSlug } from './core/persistence.js';
-import { parseWorkPath, workPath, authorSlugFromSession, scriptSlugFromRecord } from './core/app-paths.js';
+import { parseWorkPath } from './core/app-paths.js';
 import { initWorkbar } from './shared/workbar.js';
 import { initRendering, renderScenes, renderEntityOperationState } from './studio/rendering.js';
 import { initTimeline } from './studio/timeline.js';
@@ -40,6 +40,8 @@ const els = {
   scriptDownloadMenu: document.getElementById('scriptDownloadMenu'),
   scriptVisibilityToggle: document.getElementById('scriptVisibilityToggle'),
   scriptShareBtn: document.getElementById('scriptShareBtn'),
+  workVisibilityToggle: document.getElementById('workVisibilityToggle'),
+  workShareBtn: document.getElementById('workShareBtn'),
   scriptMetaBtn: document.getElementById('scriptMetaBtn'),
   scriptMetaModal: document.getElementById('scriptMetaModal'),
   scriptMetaCloseBtn: document.getElementById('scriptMetaCloseBtn'),
@@ -358,6 +360,8 @@ function initControllers(getSession) {
     scriptText: els.scriptText,
     scriptVisibilityToggle: els.scriptVisibilityToggle,
     scriptShareBtn: els.scriptShareBtn,
+    workVisibilityToggle: els.workVisibilityToggle,
+    workShareBtn: els.workShareBtn,
     scriptMetaBtn: els.scriptMetaBtn,
     scriptMetaModal: els.scriptMetaModal,
     scriptMetaCloseBtn: els.scriptMetaCloseBtn,
@@ -631,18 +635,12 @@ async function init() {
   initWorkbar({
     session,
     getRecord: getCurrentStoryboardRecord,
+    manageShare: true,
     onOpenWork: async (projectId) => {
       await openStoryboard(projectId, els);
       await loadStoryboardIntoUI();
       storyboardController.renderPicker();
       scriptController?.syncRoute?.();
-    },
-    shareUrl: () => {
-      const record = getCurrentStoryboardRecord();
-      const author = authorSlugFromSession(session);
-      const slug = scriptSlugFromRecord(record) || route?.workSlug || 'untitled';
-      const artifact = route?.artifact || 'screenplay';
-      return new URL(workPath(author, slug, artifact), window.location.origin).toString();
     },
     onShareStatus: (message) => setStatus(message),
   });

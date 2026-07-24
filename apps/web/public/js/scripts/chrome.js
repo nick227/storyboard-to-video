@@ -43,16 +43,20 @@ export function scriptTrail(script = {}) {
   return crumbs;
 }
 
-export function scriptCoverCard(script, { compact = false } = {}) {
+export function scriptCoverCard(script, { compact = false, artifact = 'screenplay' } = {}) {
   const classes = compact ? 'script-cover-card is-compact' : 'script-cover-card';
   const likes = Number(script.likeCount || 0);
   const logline = !compact && script.logline
     ? `<p class="cover-logline">${escapeHtml(script.logline)}</p>`
     : '';
   const meta = compact ? '' : `<p class="cover-meta">${likes ? `${likes} like${likes === 1 ? '' : 's'}` : 'New'}</p>`;
-  const href = workPath(script.writer?.profileSlug, script.slug, 'screenplay');
+  const kind = script.artifact || artifact;
+  const label = kind === 'storyboard' ? 'Storyboard'
+    : kind === 'timeline' ? 'Timeline'
+      : (script.category?.name || 'Screenplay');
+  const href = script.sharePath || workPath(script.writer?.profileSlug, script.slug, kind);
   return `<a class="${classes}" href="${escapeHtml(href)}">
-    <p class="cover-label">${escapeHtml(script.category?.name || 'Screenplay')}</p>
+    <p class="cover-label">${escapeHtml(label)}</p>
     <h2 class="cover-title">${escapeHtml(script.title || 'Untitled')}</h2>
     ${logline}
     <p class="cover-author">${escapeHtml(script.author || 'Anonymous')}</p>

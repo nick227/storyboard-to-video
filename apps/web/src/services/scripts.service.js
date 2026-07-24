@@ -1,8 +1,11 @@
 const { AppError } = require('../errors');
 const { cleanText } = require('../shared/text');
 const { sharePathFor } = require('../shared/app-paths');
+const { isArtifact, isArtifactPublic, artifactState, ARTIFACT_FIELDS } = require('../shared/script-artifacts');
 
-function publicSummary(script) {
+function publicSummary(script, { artifact = 'screenplay' } = {}) {
+  const key = isArtifact(artifact) ? artifact : 'screenplay';
+  const state = artifactState(script, key);
   const summary = {
     id: script.id,
     title: script.title,
@@ -11,9 +14,17 @@ function publicSummary(script) {
     logline: script.logline || '',
     category: script.category || null,
     tags: script.tags || [],
-    publishedAt: script.publishedAt,
+    artifact: key,
+    visibility: state.visibility,
+    publishedAt: state.publishedAt,
+    artifacts: script.artifacts || {
+      screenplay: artifactState(script, 'screenplay'),
+      storyboard: artifactState(script, 'storyboard'),
+      timeline: artifactState(script, 'timeline'),
+    },
     likeCount: Number(script.likeCount || 0),
     viewCount: Number(script.viewCount || 0),
+    sharePath: sharePathFor(script, key),
   };
   if (script.writer) {
     summary.writer = {
@@ -26,11 +37,22 @@ function publicSummary(script) {
 }
 
 function ownerView(script) {
+  const artifacts = script.artifacts || {
+    screenplay: artifactState(script, 'screenplay'),
+    storyboard: artifactState(script, 'storyboard'),
+    timeline: artifactState(script, 'timeline'),
+  };
   return {
     ...script,
+    artifacts,
     likeCount: Number(script.likeCount || 0),
     viewCount: Number(script.viewCount || 0),
-    sharePath: sharePathFor(script),
+    sharePath: sharePathFor(script, 'screenplay'),
+    sharePaths: {
+      screenplay: sharePathFor(script, 'screenplay'),
+      storyboard: sharePathFor(script, 'storyboard'),
+      timeline: sharePathFor(script, 'timeline'),
+    },
   };
 }
 
@@ -68,15 +90,18 @@ function createScriptsService({ store }) {
     return ownerView(await store.update(id, { ...patch, ...taxonomyPatch(patch) }, { tenantId }));
   }
 
-  async function setVisibility(id, visibility, { tenantId }) {
+  async function setVisibility(id, visibility, { tenantId, artifact = 'screenplay' } = {}) {
     if (visibility !== 'public' && visibility !== 'private') {
       throw new AppError('INVALID_VISIBILITY', 'Visibility must be public or private', { status: 400 });
     }
-    return ownerView(await store.update(id, { visibility }, { tenantId }));
+    const key = isArtifact(artifact) ? artifact : 'screenplay';
+    const field = ARTIFACT_FIELDS[key].visibility;
+    return ownerView(await store.update(id, { [field]: visibility }, { tenantId }));
   }
 
-  async function listPublic(options) {
-    return (await store.listPublic(options)).map(publicSummary);
+  async function listPublic(options = {}) {
+    const artifact = isArtifact(options.artifact) ? options.artifact : 'screenplay';
+    return (await store.listPublic({ ...options, artifact })).map((script) => publicSummary(script, { artifact }));
   }
 
   async function listPublicByCategory(slug, options = {}) {
@@ -91,9 +116,10 @@ function createScriptsService({ store }) {
     return store.listCategories();
   }
 
-  async function getPublicBySlug(slug, { userId } = {}) {
+  async function getPublicBySlug(slug, { userId, artifact = 'screenplay' } = {}) {
+    const key = isArtifact(artifact) ? artifact : 'screenplay';
     const script = await store.findBySlug(slug);
-    if (!script || script.visibility !== 'public') {
+    if (!script || !isArtifactPublic(script, key)) {
       throw new AppError('SCRIPT_NOT_FOUND', 'Script not found', { status: 404 });
     }
     await store.recordView(script.id, userId || null);
@@ -101,15 +127,16 @@ function createScriptsService({ store }) {
     const moreByAuthor = await store.listPublic({
       createdByUserId: script.createdByUserId,
       excludeId: script.id,
+      artifact: key,
       limit: 6,
     });
-    const summary = publicSummary(refreshed || script);
+    const summary = publicSummary(refreshed || script, { artifact: key });
     return {
       ...summary,
-      scriptText: script.scriptText,
+      scriptText: key === 'screenplay' ? script.scriptText : undefined,
       createdByUserId: script.createdByUserId,
       likedByMe: userId ? await store.hasLike(script.id, userId) : false,
-      moreByAuthor: moreByAuthor.map(publicSummary),
+      moreByAuthor: moreByAuthor.map((item) => publicSummary(item, { artifact: key })),
       breadcrumb: {
         category: summary.category,
         writer: summary.writer || null,
@@ -119,7 +146,9 @@ function createScriptsService({ store }) {
 
   async function toggleLike(scriptId, { userId }) {
     const script = await store.read(scriptId);
-    if (script.visibility !== 'public') {
+    if (!isArtifactPublic(script, 'screenplay')
+      && !isArtifactPublic(script, 'storyboard')
+      && !isArtifactPublic(script, 'timeline')) {
       throw new AppError('SCRIPT_NOT_FOUND', 'Script not found', { status: 404 });
     }
     return store.toggleLike(scriptId, userId);
@@ -172,12 +201,13 @@ function createScriptsService({ store }) {
     }));
   }
 
-  async function resolveSharePath(slug) {
+  async function resolveSharePath(slug, { artifact = 'screenplay' } = {}) {
+    const key = isArtifact(artifact) ? artifact : 'screenplay';
     const script = await store.findBySlug(slug);
-    if (!script || script.visibility !== 'public') {
+    if (!script || !isArtifactPublic(script, key)) {
       throw new AppError('SCRIPT_NOT_FOUND', 'Script not found', { status: 404 });
     }
-    return sharePathFor(script);
+    return sharePathFor(script, key);
   }
 
   return {

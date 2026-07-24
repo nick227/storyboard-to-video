@@ -13,8 +13,11 @@ async function publicJson(url) {
   return payload;
 }
 
-export async function fetchPublicScripts() {
-  return (await publicJson('/api/public/scripts')).scripts || [];
+export async function fetchPublicScripts({ artifact = 'screenplay' } = {}) {
+  const params = new URLSearchParams();
+  if (artifact && artifact !== 'screenplay') params.set('artifact', artifact);
+  const query = params.toString();
+  return (await publicJson(`/api/public/scripts${query ? `?${query}` : ''}`)).scripts || [];
 }
 
 export async function fetchPublicScript(slug) {

@@ -9,6 +9,12 @@ const artifactFilter = ['screenplays', 'storyboards', 'timelines'].includes(para
   ? params.get('artifact')
   : 'all';
 
+const ARTIFACT_FROM_FILTER = {
+  screenplays: 'screenplay',
+  storyboards: 'storyboard',
+  timelines: 'timeline',
+};
+
 const breadcrumbs = document.getElementById('scriptsBreadcrumbs');
 const scopeNav = document.getElementById('libraryScopeNav');
 const artifactNav = document.getElementById('libraryArtifactNav');
@@ -45,20 +51,29 @@ artifactNav.innerHTML = [
   artifactLink('timelines', 'Timelines', artifactFilter === 'timelines'),
 ].join('');
 
+function selectedArtifact() {
+  return ARTIFACT_FROM_FILTER[artifactFilter] || 'screenplay';
+}
+
+function artifactState(script, artifact) {
+  return script?.artifacts?.[artifact]
+    || (artifact === 'screenplay'
+      ? { visibility: script?.visibility || 'private', publishedAt: script?.publishedAt || null }
+      : { visibility: 'private', publishedAt: null });
+}
+
 function mineCard(project, session) {
   const slug = project.script?.slug || slugifyName(project.title);
   const author = project.script?.writer?.profileSlug || authorSlugFromSession(session) || 'anonymous';
-  const artifact = artifactFilter === 'storyboards' ? 'storyboard'
-    : artifactFilter === 'timelines' ? 'timeline'
-      : 'screenplay';
+  const artifact = selectedArtifact();
+  const state = artifactState(project.script, artifact);
+  const isPublic = state.visibility === 'public';
   const editHref = workPath(author, slug, artifact, { edit: true });
-  const viewHref = project.script?.visibility === 'public'
-    ? workPath(author, slug, artifact)
-    : '';
+  const viewHref = isPublic ? workPath(author, slug, artifact) : '';
   return `<article class="script-cover-card library-mine-card">
     <p class="cover-label">${escapeHtml(artifact)}</p>
     <h2 class="cover-title">${escapeHtml(project.title || 'Untitled')}</h2>
-    <p class="cover-meta">${project.script?.visibility === 'public' ? 'Public' : 'Private'}</p>
+    <p class="cover-meta">${isPublic ? 'Public' : 'Private'}</p>
     <div class="library-card-actions">
       <a class="script-chip is-active" href="${escapeHtml(editHref)}">Edit</a>
       ${viewHref ? `<a class="script-chip" href="${escapeHtml(viewHref)}">View</a>` : ''}
@@ -79,8 +94,7 @@ try {
       status.innerHTML = `Sign in to see your works. <a href="/login.html?redirect=${encodeURIComponent('/library')}">Sign in</a>`;
     } else {
       const { projects } = await api('/api/projects');
-      let list = projects || [];
-      // Artifact filters are navigational for edit targets; all works still list until per-artifact publish exists
+      const list = projects || [];
       if (!list.length) {
         status.dataset.tone = 'empty';
         status.textContent = 'No works yet. Create a screenplay to get started.';
@@ -98,18 +112,24 @@ try {
     }
   } else {
     if (newBtn) newBtn.hidden = true;
-    const [scripts, categories] = await Promise.all([fetchPublicScripts(), fetchCategories()]);
+    const artifact = artifactFilter === 'all' ? 'screenplay' : selectedArtifact();
+    const [scripts, categories] = await Promise.all([
+      fetchPublicScripts({ artifact }),
+      fetchCategories(),
+    ]);
     if (categoryNav) {
       categoryNav.hidden = false;
       categoryNav.innerHTML = renderCategoryNav(categories);
     }
+    const emptyLabel = artifactFilter === 'all' ? 'screenplays'
+      : artifactFilter;
     if (!scripts.length) {
       status.dataset.tone = 'empty';
-      status.textContent = 'No public screenplays yet.';
+      status.textContent = `No public ${emptyLabel} yet.`;
     } else {
       status.hidden = true;
       grid.hidden = false;
-      grid.innerHTML = scripts.map((script) => scriptCoverCard(script)).join('');
+      grid.innerHTML = scripts.map((script) => scriptCoverCard(script, { artifact })).join('');
     }
   }
 } catch (error) {

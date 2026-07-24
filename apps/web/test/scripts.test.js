@@ -18,13 +18,18 @@ test('scripts service creates slug, publishes, and 404s private on public read',
 
   assert.equal(created.slug, 'the-odyssey');
   assert.equal(created.visibility, 'private');
+  assert.equal(created.artifacts.screenplay.visibility, 'private');
+  assert.equal(created.artifacts.storyboard.visibility, 'private');
   assert.equal(created.sharePath, '/anonymous/the-odyssey/screenplay');
+  assert.equal(created.sharePaths.storyboard, '/anonymous/the-odyssey/storyboard');
 
   await assert.rejects(() => scripts.getPublicBySlug('the-odyssey'), (error) => error.code === 'SCRIPT_NOT_FOUND');
 
   const published = await scripts.setVisibility(created.id, 'public', { tenantId: 'tenant-1' });
   assert.equal(published.visibility, 'public');
   assert.ok(published.publishedAt);
+  assert.equal(published.artifacts.screenplay.visibility, 'public');
+  assert.equal(published.artifacts.storyboard.visibility, 'private');
 
   const publicScript = await scripts.getPublicBySlug('the-odyssey');
   assert.equal(publicScript.scriptText, 'FADE IN:\n\nA wine-dark sea.');
@@ -139,4 +144,37 @@ test('public summary includes logline, category filter, and view recording', asy
   const stats = await scripts.getOwnerStats(created.id, { tenantId: 't1' });
   assert.equal(stats.viewCount, 2);
   assert.equal(stats.likeCount, 0);
+});
+
+test('storyboard and timeline publish independently of screenplay', async () => {
+  const store = new ScriptStore();
+  const scripts = createScriptsService({ store });
+  const created = await scripts.create({
+    title: 'Split Publish',
+    scriptText: 'FADE IN:',
+  }, { tenantId: 't1', userId: 'u1' });
+
+  const board = await scripts.setVisibility(created.id, 'public', {
+    tenantId: 't1',
+    artifact: 'storyboard',
+  });
+  assert.equal(board.visibility, 'private');
+  assert.equal(board.artifacts.storyboard.visibility, 'public');
+  assert.ok(board.artifacts.storyboard.publishedAt);
+  assert.equal(board.sharePaths.storyboard, '/anonymous/split-publish/storyboard');
+
+  await assert.rejects(() => scripts.getPublicBySlug('split-publish'), (error) => error.code === 'SCRIPT_NOT_FOUND');
+  const publicBoard = await scripts.getPublicBySlug('split-publish', { artifact: 'storyboard' });
+  assert.equal(publicBoard.artifact, 'storyboard');
+  assert.equal(publicBoard.scriptText, undefined);
+  assert.equal(publicBoard.sharePath, '/anonymous/split-publish/storyboard');
+
+  const listedBoards = await scripts.listPublic({ artifact: 'storyboard' });
+  assert.equal(listedBoards.length, 1);
+  assert.equal(listedBoards[0].artifact, 'storyboard');
+  assert.equal((await scripts.listPublic({ artifact: 'screenplay' })).length, 0);
+
+  await scripts.setVisibility(created.id, 'public', { tenantId: 't1', artifact: 'timeline' });
+  assert.equal((await scripts.listPublic({ artifact: 'timeline' })).length, 1);
+  assert.equal((await scripts.listPublic({ artifact: 'storyboard' })).length, 1);
 });

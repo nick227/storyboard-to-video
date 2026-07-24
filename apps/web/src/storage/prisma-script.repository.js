@@ -3,6 +3,15 @@ const { Prisma } = require('../../dist/generated/prisma/client.js');
 const { AppError } = require('../errors');
 const { ScriptStore } = require('./script-store');
 const { slugify, cleanText } = require('../shared/text');
+const {
+  artifactsFromRow, artifactVisibilityPatch, normalizeVisibility,
+  visibilityWhere, publishedAtOrder,
+} = require('../shared/script-artifacts');
+
+function asDate(value) {
+  if (!value) return null;
+  return value instanceof Date ? value : new Date(value);
+}
 
 const SCRIPT_INCLUDE = {
   category: true,
@@ -27,20 +36,33 @@ class PrismaScriptRepository extends ScriptStore {
     const writer = row.createdBy
       ? { id: row.createdBy.id, profileSlug: row.createdBy.profileSlug, displayName: row.createdBy.displayName }
       : row.writer || null;
+    const artifacts = artifactsFromRow({
+      visibility: row.visibility,
+      publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
+      storyboardVisibility: row.storyboardVisibility,
+      storyboardPublishedAt: row.storyboardPublishedAt ? row.storyboardPublishedAt.toISOString() : null,
+      timelineVisibility: row.timelineVisibility,
+      timelinePublishedAt: row.timelinePublishedAt ? row.timelinePublishedAt.toISOString() : null,
+    });
     return {
       id: row.id,
       tenantId: row.tenantId,
       createdByUserId: row.createdByUserId,
       title: row.title,
       slug: row.slug,
-      visibility: row.visibility,
+      visibility: artifacts.screenplay.visibility,
+      storyboardVisibility: artifacts.storyboard.visibility,
+      timelineVisibility: artifacts.timeline.visibility,
+      artifacts,
       author: row.author,
       logline: row.logline || '',
       categoryId: row.categoryId || null,
       category: row.category ? { id: row.category.id, slug: row.category.slug, name: row.category.name } : null,
       tags,
       scriptText: row.scriptText,
-      publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
+      publishedAt: artifacts.screenplay.publishedAt,
+      storyboardPublishedAt: artifacts.storyboard.publishedAt,
+      timelinePublishedAt: artifacts.timeline.publishedAt,
       createdAt: row.createdAt.toISOString?.() || row.createdAt,
       updatedAt: row.updatedAt.toISOString?.() || row.updatedAt,
       likeCount: row._count?.likes ?? row.likeCount ?? 0,
@@ -52,7 +74,9 @@ class PrismaScriptRepository extends ScriptStore {
   async create(input = {}, { tenantId, createdByUserId } = {}) {
     const id = input.id || crypto.randomUUID();
     const slug = await this.allocateSlug(input.slug || input.title || 'untitled', { excludeId: id });
-    const visibility = input.visibility === 'public' ? 'public' : 'private';
+    const visibility = normalizeVisibility(input.visibility);
+    const storyboardVisibility = normalizeVisibility(input.storyboardVisibility);
+    const timelineVisibility = normalizeVisibility(input.timelineVisibility);
     const now = new Date();
     const tags = Array.isArray(input.tagSlugs) ? await this.ensureTags(input.tagSlugs) : [];
     try {
@@ -64,11 +88,17 @@ class PrismaScriptRepository extends ScriptStore {
           title: cleanText(input.title || 'Untitled', 200) || 'Untitled',
           slug,
           visibility,
+          storyboardVisibility,
+          timelineVisibility,
           author: cleanText(input.author || 'Anonymous', 200) || 'Anonymous',
           logline: cleanText(input.logline || '', 280),
           categoryId: input.categoryId || null,
           scriptText: String(input.scriptText || ''),
           publishedAt: visibility === 'public' ? (input.publishedAt ? new Date(input.publishedAt) : now) : null,
+          storyboardPublishedAt: storyboardVisibility === 'public'
+            ? (input.storyboardPublishedAt ? new Date(input.storyboardPublishedAt) : now) : null,
+          timelinePublishedAt: timelineVisibility === 'public'
+            ? (input.timelinePublishedAt ? new Date(input.timelinePublishedAt) : now) : null,
           createdAt: now,
           updatedAt: now,
           ...(tags.length ? { tags: { create: tags.map((t) => ({ tagId: t.id })) } } : {}),
@@ -101,12 +131,20 @@ class PrismaScriptRepository extends ScriptStore {
     if (patch.logline != null) data.logline = cleanText(patch.logline, 280);
     if (patch.slug != null) data.slug = await this.allocateSlug(patch.slug, { excludeId: id });
     if (patch.categoryId !== undefined) data.categoryId = patch.categoryId || null;
-    if (patch.visibility === 'public') {
-      data.visibility = 'public';
-      data.publishedAt = existing.publishedAt ? new Date(existing.publishedAt) : new Date();
-    } else if (patch.visibility === 'private') {
-      data.visibility = 'private';
-      data.publishedAt = null;
+    if (patch.visibility === 'public' || patch.visibility === 'private') {
+      const next = artifactVisibilityPatch('screenplay', patch.visibility, existing);
+      data.visibility = next.visibility;
+      data.publishedAt = asDate(next.publishedAt);
+    }
+    if (patch.storyboardVisibility === 'public' || patch.storyboardVisibility === 'private') {
+      const next = artifactVisibilityPatch('storyboard', patch.storyboardVisibility, existing);
+      data.storyboardVisibility = next.storyboardVisibility;
+      data.storyboardPublishedAt = asDate(next.storyboardPublishedAt);
+    }
+    if (patch.timelineVisibility === 'public' || patch.timelineVisibility === 'private') {
+      const next = artifactVisibilityPatch('timeline', patch.timelineVisibility, existing);
+      data.timelineVisibility = next.timelineVisibility;
+      data.timelinePublishedAt = asDate(next.timelinePublishedAt);
     }
     try {
       if (Array.isArray(patch.tagSlugs)) {
@@ -132,16 +170,17 @@ class PrismaScriptRepository extends ScriptStore {
     return rows.map((row) => this.map(row));
   }
 
-  async listPublic({ limit = 50, offset = 0, createdByUserId, excludeId, categorySlug, tagSlug } = {}) {
+  async listPublic({ limit = 50, offset = 0, createdByUserId, excludeId, categorySlug, tagSlug, artifact = 'screenplay' } = {}) {
+    const publishedField = publishedAtOrder(artifact);
     const rows = await this.prisma.script.findMany({
       where: {
-        visibility: 'public',
+        ...visibilityWhere(artifact),
         ...(createdByUserId ? { createdByUserId } : {}),
         ...(excludeId ? { id: { not: excludeId } } : {}),
         ...(categorySlug ? { category: { slug: categorySlug } } : {}),
         ...(tagSlug ? { tags: { some: { tag: { slug: tagSlug } } } } : {}),
       },
-      orderBy: [{ publishedAt: 'desc' }, { updatedAt: 'desc' }],
+      orderBy: [{ [publishedField]: 'desc' }, { updatedAt: 'desc' }],
       take: Math.min(100, Math.max(1, Number(limit) || 50)),
       skip: Math.max(0, Number(offset) || 0),
       include: SCRIPT_INCLUDE,

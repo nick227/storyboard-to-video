@@ -108,29 +108,35 @@ model Session {
 }
 
 model Script {
-  id              String       @id @db.Uuid
-  tenantId        String       @map("tenant_id") @db.Uuid
-  createdByUserId String       @map("created_by_user_id") @db.Uuid
-  categoryId      String?      @map("category_id") @db.Uuid
-  title           String
-  slug            String       @unique
-  visibility      String       @default("private")
-  author          String
-  logline         String       @default("") @db.VarChar(280)
-  scriptText      String       @default("") @map("script_text") @db.Text
-  publishedAt     DateTime?    @map("published_at") @db.Timestamptz(3)
-  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
-  tenant          Workspace    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy       User         @relation("ScriptCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  category        Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  projects        Project[]
-  likes           ScriptLike[]
-  tags            ScriptTag[]
-  views           ScriptView[]
+  id                     String       @id @db.Uuid
+  tenantId               String       @map("tenant_id") @db.Uuid
+  createdByUserId        String       @map("created_by_user_id") @db.Uuid
+  categoryId             String?      @map("category_id") @db.Uuid
+  title                  String
+  slug                   String       @unique
+  visibility             String       @default("private")
+  storyboardVisibility   String       @default("private") @map("storyboard_visibility")
+  timelineVisibility     String       @default("private") @map("timeline_visibility")
+  author                 String
+  logline                String       @default("") @db.VarChar(280)
+  scriptText             String       @default("") @map("script_text") @db.Text
+  publishedAt            DateTime?    @map("published_at") @db.Timestamptz(3)
+  storyboardPublishedAt  DateTime?    @map("storyboard_published_at") @db.Timestamptz(3)
+  timelinePublishedAt    DateTime?    @map("timeline_published_at") @db.Timestamptz(3)
+  createdAt              DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant                 Workspace    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy              User         @relation("ScriptCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  category               Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  projects               Project[]
+  likes                  ScriptLike[]
+  tags                   ScriptTag[]
+  views                  ScriptView[]
 
   @@index([tenantId, updatedAt])
   @@index([visibility, publishedAt])
+  @@index([storyboardVisibility, storyboardPublishedAt])
+  @@index([timelineVisibility, timelinePublishedAt])
   @@index([createdByUserId, visibility, publishedAt])
   @@index([categoryId, visibility, publishedAt])
   @@map("scripts")

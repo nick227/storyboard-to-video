@@ -2,18 +2,33 @@ import { api } from '../core/api.js';
 import { ensureProjectSynced, getCurrentStoryboardRecord, saveStoryboard } from '../core/persistence.js';
 import { shareUrl } from './chrome.js';
 import { fetchCategories, fetchScriptStats, updateScriptMeta } from './api.js';
-import { workPath } from '../core/app-paths.js';
+import { parseWorkPath, workPath } from '../core/app-paths.js';
 
 function parseTagSlugs(value = '') {
   return [...new Set(String(value).split(/[,#]+/).map((part) => part.trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean))].slice(0, 8);
 }
 
-export function initScriptPublishControls(elements, { setStatus } = {}) {
-  const toggle = elements.scriptVisibilityToggle;
-  const shareBtn = elements.scriptShareBtn;
-  const metaBtn = elements.scriptMetaBtn;
-  const modal = elements.scriptMetaModal;
-  if (!toggle || !shareBtn) return { syncFromRecord() {} };
+function activeArtifact() {
+  if (typeof window === 'undefined') return 'screenplay';
+  return parseWorkPath(window.location.pathname)?.artifact || 'screenplay';
+}
+
+function artifactVisibility(script, artifact = 'screenplay') {
+  return script?.artifacts?.[artifact]?.visibility
+    || (artifact === 'screenplay' ? script?.visibility : null)
+    || 'private';
+}
+
+function artifactSharePath(script, artifact = 'screenplay') {
+  if (!script?.slug) return '';
+  return script?.sharePaths?.[artifact]
+    || workPath(script.writer?.profileSlug || 'anonymous', script.slug, artifact);
+}
+
+export function initScriptPublishControls(elements, { setStatus, getArtifact = activeArtifact } = {}) {
+  const toggles = [elements.scriptVisibilityToggle, elements.workVisibilityToggle].filter(Boolean);
+  const shareBtns = [elements.scriptShareBtn, elements.workShareBtn].filter(Boolean);
+  if (!toggles.length && !shareBtns.length) return { syncFromRecord() {} };
 
   let busy = false;
   let categoriesLoaded = false;
@@ -53,12 +68,17 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
       record.script = script;
       if (script.scriptText != null) record.scriptText = script.scriptText;
     }
-    const isPublic = script?.visibility === 'public';
-    toggle.checked = isPublic;
-    shareBtn.disabled = !isPublic || !script?.slug;
-    shareBtn.dataset.sharePath = script?.sharePath || (script?.slug
-      ? workPath(script.writer?.profileSlug || 'anonymous', script.slug, 'screenplay')
-      : '');
+    const artifact = getArtifact();
+    const isPublic = artifactVisibility(script, artifact) === 'public';
+    const path = artifactSharePath(script, artifact);
+    for (const toggle of toggles) {
+      toggle.checked = isPublic;
+    }
+    for (const shareBtn of shareBtns) {
+      shareBtn.disabled = !isPublic || !script?.slug;
+      shareBtn.dataset.sharePath = path;
+      shareBtn.dataset.artifact = artifact;
+    }
     applyMetaFields(script);
     if (script?.id) refreshStats(script.id);
   }
@@ -79,7 +99,7 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
     await ensureProjectSynced();
     const fresh = getCurrentStoryboardRecord();
     if (!fresh?.scriptId && !fresh?.script?.id) {
-      throw new Error('Save the storyboard before publishing.');
+      throw new Error('Save the work before publishing.');
     }
     const scriptId = fresh.script?.id || fresh.scriptId;
     const response = await api(`/api/scripts/${encodeURIComponent(scriptId)}`);
@@ -88,63 +108,74 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
   }
 
   function closeMetaModal() {
-    modal?.close();
+    elements.scriptMetaModal?.close();
   }
 
   async function openMetaModal() {
-    if (!modal) return;
+    if (!elements.scriptMetaModal) return;
     await syncFromRecord();
-    modal.showModal();
+    elements.scriptMetaModal.showModal();
   }
 
-  toggle.addEventListener('change', async () => {
+  async function onVisibilityChange(sourceToggle) {
     if (busy) return;
     const record = getCurrentStoryboardRecord();
     if (!record) {
-      toggle.checked = false;
+      sourceToggle.checked = false;
       return;
     }
-    // Capture the user's choice before ensureScript() refreshes the script and
-    // applies its previous server-side visibility to the checkbox.
-    const desiredVisibility = toggle.checked ? 'public' : 'private';
+    const artifact = getArtifact();
+    const desiredVisibility = sourceToggle.checked ? 'public' : 'private';
     busy = true;
-    toggle.disabled = true;
+    for (const toggle of toggles) toggle.disabled = true;
     try {
       const script = await ensureScript(record);
-      toggle.checked = desiredVisibility === 'public';
+      for (const toggle of toggles) toggle.checked = desiredVisibility === 'public';
       const response = await api(`/api/scripts/${encodeURIComponent(script.id)}/visibility`, {
         method: 'POST',
-        body: JSON.stringify({ visibility: desiredVisibility }),
+        body: JSON.stringify({ visibility: desiredVisibility, artifact }),
       });
       applyScript(response.script);
-      setStatus?.(desiredVisibility === 'public' ? 'Script is public.' : 'Script is private.');
+      const label = artifact.charAt(0).toUpperCase() + artifact.slice(1);
+      setStatus?.(desiredVisibility === 'public' ? `${label} is public.` : `${label} is private.`);
     } catch (error) {
       applyScript(getCurrentStoryboardRecord()?.script || null);
       setStatus?.(error.message || 'Could not update visibility.');
     } finally {
-      toggle.disabled = false;
+      for (const toggle of toggles) toggle.disabled = false;
       busy = false;
     }
-  });
+  }
 
-  shareBtn.addEventListener('click', async () => {
+  for (const toggle of toggles) {
+    toggle.addEventListener('change', () => onVisibilityChange(toggle));
+  }
+
+  async function onShareClick(shareBtn) {
     const path = shareBtn.dataset.sharePath;
     if (!path) return;
     const url = new URL(path, window.location.origin).toString();
+    const artifact = shareBtn.dataset.artifact || getArtifact();
     try {
-      const result = await shareUrl(url, { title: getCurrentStoryboardRecord()?.title || 'Screenplay' });
+      const result = await shareUrl(url, { title: getCurrentStoryboardRecord()?.title || artifact });
       setStatus?.(result === 'shared' ? 'Shared.' : 'Share link copied.');
     } catch (error) {
       if (error?.name === 'AbortError') return;
       setStatus?.(error.message || url);
     }
-  });
+  }
 
-  metaBtn?.addEventListener('click', () => { openMetaModal().catch((error) => setStatus?.(error.message || 'Could not open publishing details.')); });
+  for (const shareBtn of shareBtns) {
+    shareBtn.addEventListener('click', () => { onShareClick(shareBtn); });
+  }
+
+  elements.scriptMetaBtn?.addEventListener('click', () => {
+    openMetaModal().catch((error) => setStatus?.(error.message || 'Could not open publishing details.'));
+  });
   elements.scriptMetaCloseBtn?.addEventListener('click', closeMetaModal);
   elements.scriptMetaCancelBtn?.addEventListener('click', closeMetaModal);
-  modal?.addEventListener('click', (event) => {
-    if (event.target === modal) closeMetaModal();
+  elements.scriptMetaModal?.addEventListener('click', (event) => {
+    if (event.target === elements.scriptMetaModal) closeMetaModal();
   });
 
   elements.scriptMetaSaveBtn?.addEventListener('click', async () => {
@@ -165,5 +196,5 @@ export function initScriptPublishControls(elements, { setStatus } = {}) {
     }
   });
 
-  return { syncFromRecord, ensureScript };
+  return { syncFromRecord, ensureScript, applyScript };
 }

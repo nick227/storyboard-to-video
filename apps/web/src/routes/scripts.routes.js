@@ -41,7 +41,10 @@ function createScriptsRouter({ scripts, projectStore }) {
   router.post('/:scriptId/visibility', validate(scriptVisibility), asyncRoute(async (req, res) => {
     res.json({
       ok: true,
-      script: await scripts.setVisibility(req.params.scriptId, req.body.visibility, { tenantId: req.auth.tenantId }),
+      script: await scripts.setVisibility(req.params.scriptId, req.body.visibility, {
+        tenantId: req.auth.tenantId,
+        artifact: req.body.artifact,
+      }),
     });
   }));
 
@@ -75,6 +78,7 @@ function createPublicScriptsRouter({ scripts, optionalAuth }) {
       scripts: await scripts.listPublic({
         limit: req.query.limit,
         offset: req.query.offset,
+        artifact: req.query.artifact,
       }),
     });
   }));
@@ -89,6 +93,7 @@ function createPublicScriptsRouter({ scripts, optionalAuth }) {
       scripts: await scripts.listPublicByCategory(req.params.slug, {
         limit: req.query.limit,
         offset: req.query.offset,
+        artifact: req.query.artifact,
       }),
     });
   }));
@@ -99,6 +104,7 @@ function createPublicScriptsRouter({ scripts, optionalAuth }) {
       scripts: await scripts.listPublicByTag(req.params.slug, {
         limit: req.query.limit,
         offset: req.query.offset,
+        artifact: req.query.artifact,
       }),
     });
   }));
@@ -106,7 +112,10 @@ function createPublicScriptsRouter({ scripts, optionalAuth }) {
   router.get('/:slug', asyncRoute(async (req, res) => {
     res.json({
       ok: true,
-      script: await scripts.getPublicBySlug(req.params.slug, { userId: req.auth?.userId }),
+      script: await scripts.getPublicBySlug(req.params.slug, {
+        userId: req.auth?.userId,
+        artifact: req.query.artifact || 'screenplay',
+      }),
     });
   }));
 

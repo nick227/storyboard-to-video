@@ -119,28 +119,56 @@ export function initWorkbar(options = {}) {
     if (!recentList.hidden && !root.contains(event.target)) closeRecent();
   });
 
-  shareBtn?.addEventListener('click', async () => {
-    const raw = typeof options.shareUrl === 'function' ? options.shareUrl() : options.shareUrl;
-    const url = raw || new URL(workPath(route.authorSlug, route.workSlug, route.artifact), window.location.origin).toString();
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: titleLabel.textContent, url });
-        options.onShareStatus?.('Shared');
-      } else {
-        await navigator.clipboard.writeText(url);
-        options.onShareStatus?.('Link copied');
+  if (!options.manageShare) {
+    shareBtn?.addEventListener('click', async () => {
+      if (shareBtn.disabled) return;
+      const raw = typeof options.shareUrl === 'function' ? options.shareUrl() : options.shareUrl;
+      const path = shareBtn.dataset.sharePath;
+      const url = raw || (path ? new URL(path, window.location.origin).toString() : null)
+        || new URL(workPath(route.authorSlug, route.workSlug, route.artifact), window.location.origin).toString();
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: titleLabel.textContent, url });
+          options.onShareStatus?.('Shared');
+        } else {
+          await navigator.clipboard.writeText(url);
+          options.onShareStatus?.('Link copied');
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+        options.onShareStatus?.(error.message || 'Could not share');
       }
-    } catch (error) {
-      if (error?.name === 'AbortError') return;
-      options.onShareStatus?.(error.message || 'Could not share');
-    }
-  });
+    });
+  }
 
-  sync();
-  projectStore.subscribe?.(sync);
+  const syncVisibility = () => {
+    const record = options.getRecord?.() || null;
+    const script = record?.script;
+    const artifact = route.artifact || 'screenplay';
+    const isPublic = script?.artifacts?.[artifact]?.visibility === 'public'
+      || (artifact === 'screenplay' && script?.visibility === 'public');
+    if (shareBtn && !options.manageShare) {
+      shareBtn.disabled = !isPublic || !script?.slug;
+      if (script?.slug) {
+        shareBtn.dataset.sharePath = workPath(
+          route.authorSlug || authorSlugFromRecord(record, options.session),
+          script.slug,
+          artifact,
+        );
+      }
+    }
+  };
+
+  const fullSync = () => {
+    sync();
+    syncVisibility();
+  };
+
+  fullSync();
+  projectStore.subscribe?.(fullSync);
 
   return {
-    sync,
+    sync: fullSync,
     route,
     artifacts: ARTIFACTS,
   };

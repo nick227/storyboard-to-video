@@ -32,5 +32,8 @@ test('project persistence still rejects storyboards beyond the platform limit', 
 test('script schemas accept create and visibility payloads', () => {
   assert.equal(createScript.parse({ title: 'The Odyssey' }).title, 'The Odyssey');
   assert.equal(scriptVisibility.parse({ visibility: 'public' }).visibility, 'public');
+  assert.equal(scriptVisibility.parse({ visibility: 'public' }).artifact, 'screenplay');
+  assert.equal(scriptVisibility.parse({ visibility: 'private', artifact: 'storyboard' }).artifact, 'storyboard');
   assert.equal(scriptVisibility.safeParse({ visibility: 'shared' }).success, false);
+  assert.equal(scriptVisibility.safeParse({ visibility: 'public', artifact: 'shots' }).success, false);
 });

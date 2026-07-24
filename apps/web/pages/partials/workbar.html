@@ -13,7 +13,11 @@
       <a id="tabTimelineBtn" class="sf-artifact-tab page-tab" data-artifact="timeline" data-page="timeline" data-panel="timelinePagePanel" href="#">Timeline</a>
     </nav>
     <div class="sf-artifact-actions">
-      <button id="workShareBtn" class="sf-action-btn" type="button">Share</button>
+      <label class="sf-work-visibility" title="Publish the active artifact">
+        <input type="checkbox" id="workVisibilityToggle" />
+        <span>Public</span>
+      </label>
+      <button id="workShareBtn" class="sf-action-btn" type="button" disabled>Share</button>
       <a id="downloadZipBtn" class="sf-action-btn" href="#">Download</a>
       <button id="workMoreBtn" class="sf-action-btn" type="button" hidden>More</button>
     </div>

@@ -228,11 +228,13 @@ const updateScript = z.object({
 
 const scriptVisibility = z.object({
   visibility: z.enum(['private', 'public']),
+  artifact: z.enum(['screenplay', 'storyboard', 'timeline']).default('screenplay'),
 });
 
 const publicScriptListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+  artifact: z.enum(['screenplay', 'storyboard', 'timeline']).default('screenplay'),
 }).default({});
 
 const updateWriterProfile = z.object({

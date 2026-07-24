@@ -1,6 +1,9 @@
 const crypto = require('node:crypto');
 const { AppError } = require('../errors');
 const { slugify, cleanText } = require('../shared/text');
+const {
+  artifactsFromRow, artifactVisibilityPatch, isArtifactPublic, normalizeVisibility,
+} = require('../shared/script-artifacts');
 
 const SEED_CATEGORIES = [
   { id: '11111111-1111-4111-8111-111111111101', slug: 'feature', name: 'Feature', sortOrder: 10 },
@@ -49,20 +52,26 @@ class ScriptStore {
 
   map(row) {
     if (!row) return null;
+    const artifacts = artifactsFromRow(row);
     return {
       id: row.id,
       tenantId: row.tenantId,
       createdByUserId: row.createdByUserId,
       title: row.title,
       slug: row.slug,
-      visibility: row.visibility,
+      visibility: artifacts.screenplay.visibility,
+      storyboardVisibility: artifacts.storyboard.visibility,
+      timelineVisibility: artifacts.timeline.visibility,
+      artifacts,
       author: row.author,
       logline: row.logline || '',
       categoryId: row.categoryId || null,
       category: this.mapCategory(row.categoryId),
       tags: this.mapTags(row.id),
       scriptText: row.scriptText,
-      publishedAt: row.publishedAt || null,
+      publishedAt: artifacts.screenplay.publishedAt,
+      storyboardPublishedAt: artifacts.storyboard.publishedAt,
+      timelinePublishedAt: artifacts.timeline.publishedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       likeCount: row.likeCount ?? this.countLikes(row.id),
@@ -85,12 +94,16 @@ class ScriptStore {
       createdByUserId,
       title: cleanText(input.title || 'Untitled', 200) || 'Untitled',
       slug,
-      visibility: input.visibility === 'public' ? 'public' : 'private',
+      visibility: normalizeVisibility(input.visibility),
+      storyboardVisibility: normalizeVisibility(input.storyboardVisibility),
+      timelineVisibility: normalizeVisibility(input.timelineVisibility),
       author: cleanText(input.author || 'Anonymous', 200) || 'Anonymous',
       logline: cleanText(input.logline || '', 280),
       categoryId,
       scriptText: String(input.scriptText || ''),
       publishedAt: input.visibility === 'public' ? (input.publishedAt || createdAt) : null,
+      storyboardPublishedAt: input.storyboardVisibility === 'public' ? (input.storyboardPublishedAt || createdAt) : null,
+      timelinePublishedAt: input.timelineVisibility === 'public' ? (input.timelinePublishedAt || createdAt) : null,
       createdAt,
       updatedAt: createdAt,
     };
@@ -130,12 +143,14 @@ class ScriptStore {
       }
       next.categoryId = patch.categoryId || null;
     }
-    if (patch.visibility === 'public') {
-      next.visibility = 'public';
-      next.publishedAt = existing.publishedAt || nowIso();
-    } else if (patch.visibility === 'private') {
-      next.visibility = 'private';
-      next.publishedAt = null;
+    if (patch.visibility === 'public' || patch.visibility === 'private') {
+      Object.assign(next, artifactVisibilityPatch('screenplay', patch.visibility, existing));
+    }
+    if (patch.storyboardVisibility === 'public' || patch.storyboardVisibility === 'private') {
+      Object.assign(next, artifactVisibilityPatch('storyboard', patch.storyboardVisibility, existing));
+    }
+    if (patch.timelineVisibility === 'public' || patch.timelineVisibility === 'private') {
+      Object.assign(next, artifactVisibilityPatch('timeline', patch.timelineVisibility, existing));
     }
     this.scripts.set(id, next);
     if (Array.isArray(patch.tagSlugs)) {
@@ -152,10 +167,10 @@ class ScriptStore {
       .map((row) => this.map(row));
   }
 
-  async listPublic({ limit = 50, offset = 0, createdByUserId, excludeId, categorySlug, tagSlug } = {}) {
+  async listPublic({ limit = 50, offset = 0, createdByUserId, excludeId, categorySlug, tagSlug, artifact = 'screenplay' } = {}) {
     return [...this.scripts.values()]
       .filter((row) => {
-        if (row.visibility !== 'public') return false;
+        if (!isArtifactPublic(row, artifact)) return false;
         if (createdByUserId && row.createdByUserId !== createdByUserId) return false;
         if (excludeId && row.id === excludeId) return false;
         if (categorySlug) {
@@ -165,7 +180,15 @@ class ScriptStore {
         if (tagSlug && !this.mapTags(row.id).some((t) => t.slug === tagSlug)) return false;
         return true;
       })
-      .sort((a, b) => String(b.publishedAt || b.updatedAt).localeCompare(String(a.publishedAt || a.updatedAt)))
+      .sort((a, b) => {
+        const aAt = artifact === 'storyboard' ? a.storyboardPublishedAt
+          : artifact === 'timeline' ? a.timelinePublishedAt
+            : a.publishedAt;
+        const bAt = artifact === 'storyboard' ? b.storyboardPublishedAt
+          : artifact === 'timeline' ? b.timelinePublishedAt
+            : b.publishedAt;
+        return String(bAt || b.updatedAt).localeCompare(String(aAt || a.updatedAt));
+      })
       .slice(offset, offset + limit)
       .map((row) => this.map(row));
   }

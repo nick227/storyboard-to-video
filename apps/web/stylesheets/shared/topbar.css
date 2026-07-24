@@ -134,6 +134,22 @@
   background: var(--accent);
 }
 .sf-artifact-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.sf-work-visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  user-select: none;
+}
+.sf-work-visibility input { margin: 0; }
+.sf-work-visibility:hover { color: var(--text); border-color: var(--muted); }
 .sf-action-btn {
   display: inline-flex;
   align-items: center;

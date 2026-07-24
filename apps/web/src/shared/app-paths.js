@@ -53,9 +53,9 @@ function libraryTagPath(slug) {
   return `/library/tag/${encodeURIComponent(slug)}`;
 }
 
-function sharePathFor(script) {
+function sharePathFor(script, artifact = DEFAULT_ARTIFACT) {
   if (!script?.slug) return '';
-  return workPath(script.writer?.profileSlug || 'anonymous', script.slug, 'screenplay');
+  return workPath(script.writer?.profileSlug || 'anonymous', script.slug, artifact);
 }
 
 function legacyStudioRedirect(req) {
