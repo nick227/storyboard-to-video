@@ -134,15 +134,28 @@ function renderFilterBars(categories, tags) {
   }
 }
 
+function bindNewScreenplay(session) {
+  if (!newBtn) return;
+  newBtn.hidden = false;
+  newBtn.addEventListener('click', () => {
+    if (!session) {
+      window.location.href = `/login.html?redirect=${encodeURIComponent('/library')}`;
+      return;
+    }
+    const author = authorSlugFromSession(session) || 'anonymous';
+    window.location.href = workPath(author, 'untitled', 'screenplay', { edit: true });
+  });
+}
+
 try {
   const sessionRes = await fetch('/api/auth/session');
   const sessionData = await sessionRes.json();
   const session = sessionData.authenticated ? sessionData.session : null;
+  bindNewScreenplay(session);
 
   if (tab === 'mine') {
     if (categoryNav) categoryNav.hidden = true;
     if (tagNav) tagNav.hidden = true;
-    if (newBtn) newBtn.hidden = false;
     if (!session) {
       status.dataset.tone = 'empty';
       status.innerHTML = `Sign in to see your works. <a href="/login.html?redirect=${encodeURIComponent('/library?tab=mine')}">Sign in</a>`;
@@ -158,14 +171,7 @@ try {
         grid.innerHTML = list.map((project) => mineCard(project, session)).join('');
       }
     }
-    if (newBtn) {
-      newBtn.addEventListener('click', () => {
-        const author = authorSlugFromSession(session) || 'anonymous';
-        window.location.href = workPath(author, 'untitled', 'screenplay', { edit: true });
-      });
-    }
   } else {
-    if (newBtn) newBtn.hidden = true;
     const artifact = selectedArtifact() || 'all';
     const [scripts, categories, tags] = await Promise.all([
       fetchPublicScripts({ artifact, category: categoryFilter, tag: tagFilter }),

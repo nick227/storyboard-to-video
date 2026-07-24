@@ -210,6 +210,10 @@ body.scripts-shell {
   text-decoration: none;
 }
 
+.script-chip[hidden] {
+  display: none !important;
+}
+
 .script-chip:hover,
 .script-chip.is-active {
   border-color: var(--scripts-link);
