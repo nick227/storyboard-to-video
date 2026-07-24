@@ -4,7 +4,7 @@ import { parseWorkPath } from './core/app-paths.js';
 import { initWorkbar } from './shared/workbar.js';
 import { initRendering, renderScenes, renderEntityOperationState } from './studio/rendering.js';
 import { initTimeline } from './studio/timeline.js';
-import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, renderStageBar, renderStyleReferenceOperationState, initImageLibraryModal, populateTokensInfoModal } from './studio/ui.js';
+import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, renderStageBar, renderStyleReferenceOperationState, initImageLibraryModal, openImageLibrary, populateTokensInfoModal } from './studio/ui.js';
 import { downloadZip } from './generation/workflows.js';
 import { initializeAuth } from './core/auth.js';
 import { refreshRecentJobs, refreshSpend, replanStory, regenerateAllStage, runCreateStoryFlow } from './generation/stages.js';
@@ -24,6 +24,7 @@ import { initStoryboardController } from './studio/storyboard-controller.js';
 import { initSettingsController } from './studio/settings-controller.js';
 import { initNarrationController } from './studio/narration-controller.js';
 import { initStyleController } from './studio/style-controller.js';
+import { initCustomStylesController } from './studio/custom-styles-controller.js';
 
 export { getZipSummary } from './studio/storyboard-controller.js';
 
@@ -62,9 +63,6 @@ const els = {
   narrationPromptText: document.getElementById('narrationPromptText'),
   narrationPromptReset: document.getElementById('narrationPromptReset'),
 
-  narrationHistoryToggle: document.getElementById('narrationHistoryToggle'),
-  narrationHistoryPanel: document.getElementById('narrationHistoryPanel'),
-  narrationHistoryList: document.getElementById('narrationHistoryList'),
   storyboardAddSceneBtn: document.getElementById('storyboardAddSceneBtn'),
   addSceneDialog: document.getElementById('addSceneDialog'),
   addScenePosition: document.getElementById('addScenePosition'),
@@ -73,6 +71,27 @@ const els = {
 
   styleSelect: document.getElementById('styleSelect'),
   stageStyleSelect: document.getElementById('stageStyleSelect'),
+  customStylesBtn: document.getElementById('customStylesBtn'),
+  stageCustomStylesBtn: document.getElementById('stageCustomStylesBtn'),
+  customStylesModal: document.getElementById('customStylesModal'),
+  customStylesCloseBtn: document.getElementById('customStylesCloseBtn'),
+  customStyleNewBtn: document.getElementById('customStyleNewBtn'),
+  customStylesList: document.getElementById('customStylesList'),
+  customStyleEditor: document.getElementById('customStyleEditor'),
+  customStyleFields: document.getElementById('customStyleFields'),
+  customStyleCharacterGenerateBtn: document.getElementById('customStyleCharacterGenerateBtn'),
+  customStyleWorldGenerateBtn: document.getElementById('customStyleWorldGenerateBtn'),
+  customStyleCharacterLibraryBtn: document.getElementById('customStyleCharacterLibraryBtn'),
+  customStyleWorldLibraryBtn: document.getElementById('customStyleWorldLibraryBtn'),
+  customStyleTitle: document.getElementById('customStyleTitle'),
+  customStylePrompt: document.getElementById('customStylePrompt'),
+  customStyleSaveBtn: document.getElementById('customStyleSaveBtn'),
+  customStyleStatus: document.getElementById('customStyleStatus'),
+  customStyleCharacterInput: document.getElementById('customStyleCharacterInput'),
+  customStyleWorldInput: document.getElementById('customStyleWorldInput'),
+  customStyleCharacterRefs: document.getElementById('customStyleCharacterRefs'),
+  customStyleWorldRefs: document.getElementById('customStyleWorldRefs'),
+  imageLibraryModal: document.getElementById('imageLibraryModal'),
   commonPromptText: document.getElementById('commonPromptText'),
 
   styleRefLightbox: document.getElementById('styleRefLightbox'),
@@ -340,18 +359,32 @@ let storyboardController = null;
 let settingsController = null;
 
 async function loadStoryboardIntoUI() {
-  const stylesLoaded = await runStage('Loading styles', () => loadStyles(els));
-  const referencesLoaded = await runStage('Loading style references', () => loadStyleReferences(els.styleSelect.value, els, setStatus));
-  const voicesLoaded = await runStage('Loading voices', () => refreshVoicesForCurrentProvider(setStatus));
-  await runStage('Loading job history', () => refreshRecentJobs(projectStore.get().currentId));
-  await runStage('Loading token spend', () => refreshSpend(projectStore.get().currentId));
+  // Make the selected work usable before optional provider/catalog requests settle.
   renderVoicesPanel(els);
   renderStageBar(els);
   renderScenes();
   settingsController?.refreshShotCount();
   scriptController?.syncFromText();
   scriptPublishControls?.syncFromRecord(getCurrentStoryboardRecord());
-  return stylesLoaded && referencesLoaded && voicesLoaded;
+  setStatus('Ready. Loading generation options…');
+
+  const projectId = projectStore.get().currentId;
+  const stylesAndReferences = runStage('Loading styles', () => loadStyles(els))
+    .then((loaded) => loaded && projectStore.get().currentId === projectId
+      ? runStage('Loading style references', () => loadStyleReferences(els.styleSelect.value, els, setStatus))
+      : false);
+  Promise.all([
+    stylesAndReferences,
+    runStage('Loading voices', () => refreshVoicesForCurrentProvider(setStatus)),
+    runStage('Loading job history', () => refreshRecentJobs(projectId)),
+    runStage('Loading token spend', () => refreshSpend(projectId)),
+  ]).then(() => {
+    if (projectStore.get().currentId === projectId) {
+      renderVoicesPanel(els);
+      renderStageBar(els);
+    }
+  });
+  return true;
 }
 
 function initControllers(getSession) {
@@ -548,9 +581,6 @@ function initControllers(getSession) {
     guidance: els.narrationGuidance,
     promptText: els.narrationPromptText,
     promptReset: els.narrationPromptReset,
-    historyToggle: els.narrationHistoryToggle,
-    historyPanel: els.narrationHistoryPanel,
-    historyList: els.narrationHistoryList,
     addSceneBtn: els.storyboardAddSceneBtn,
     addSceneDialog: els.addSceneDialog,
     addScenePosition: els.addScenePosition,
@@ -573,6 +603,13 @@ function initControllers(getSession) {
     prefillCommonPrompt: (styleId) => prefillCommonPrompt(styleId, els),
     loadStyleReferences: (styleId) => loadStyleReferences(styleId, els, setStatus),
     uploadStyleReferences: (kind, files) => uploadStyleReferences(kind, files, els, setStatus),
+  });
+  initCustomStylesController(els, {
+    refreshStyles: () => loadStyles(els),
+    loadStyleReferences: (styleId) => loadStyleReferences(styleId, els, setStatus),
+    saveProject: (immediate) => saveStoryboard(els, immediate),
+    openImageLibrary: (options) => openImageLibrary(options),
+    setStatus,
   });
 
   // Watchers for basic UI updates
@@ -598,10 +635,16 @@ async function init() {
     'downloadConfirmWarning', 'downloadConfirmBullets', 'settingsBtn',
     'settingsModal', 'planningModeSelect', 'settingsShotCountDisplay',
     'settingsShotLimitSelect', 'commonPromptText', 'textProvider',
-    'videoMotionIntensity', 'enrichNarration', 'styleSelect',
+    'videoMotionIntensity', 'enrichNarration', 'styleSelect', 'stageStyleSelect',
+    'customStylesBtn', 'stageCustomStylesBtn', 'customStylesModal', 'customStylesCloseBtn',
+    'customStyleNewBtn', 'customStylesList', 'customStyleEditor',
+    'customStyleCharacterGenerateBtn', 'customStyleWorldGenerateBtn', 'customStyleCharacterLibraryBtn',
+    'customStyleWorldLibraryBtn', 'imageLibraryModal', 'imageProvider',
+    'customStyleFields', 'customStyleTitle', 'customStylePrompt', 'customStyleSaveBtn',
+    'customStyleStatus', 'customStyleCharacterInput',
+    'customStyleWorldInput', 'customStyleCharacterRefs', 'customStyleWorldRefs',
     'narrationModeSelect', 'narrationGuidance', 'narrationPromptText',
-    'narrationPromptReset', 'narrationHistoryToggle', 'narrationHistoryPanel',
-    'narrationHistoryList',
+    'narrationPromptReset',
     'storyboardAddSceneBtn', 'addSceneDialog', 'addScenePosition', 'addSceneCancel',
     'addSceneConfirm',
     'characterRefInput', 'worldRefInput', 'audioProvider', 'voiceLibraryModal',
@@ -623,8 +666,11 @@ async function init() {
   setPersistenceScope(session.tenant.id);
 
   const startupParams = new URLSearchParams(window.location.search);
-  const restored = await runStage('Restoring your storyboards', () => restoreStoryboardLibrary(els));
   const route = parseWorkPath(window.location.pathname);
+  const restored = await runStage('Restoring your storyboards', () => restoreStoryboardLibrary(els, {
+    targetProjectId: startupParams.get('project'),
+    targetWorkSlug: route?.workSlug,
+  }));
   if (route?.workSlug) {
     const match = findStoryboardForRoute({
       projectId: startupParams.get('project'),

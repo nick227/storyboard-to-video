@@ -161,7 +161,11 @@
         </div>
 
         <div class="stage-bar-actions">
-          <select id="stageStyleSelect" class="stage-style-select" aria-label="Select Style" title="Select Style"></select>
+          <div class="style-picker-inline">
+            <select id="stageStyleSelect" class="stage-style-select" aria-label="Select Style" title="Select Style"></select>
+            <button type="button" id="stageCustomStylesBtn" class="custom-styles-launch" aria-haspopup="dialog"
+              aria-controls="customStylesModal">Custom styles</button>
+          </div>
           <button type="button" id="settingsBtn" class="primary" aria-haspopup="dialog"
             aria-controls="settingsModal" title="Open Settings">Settings</button>
           <button type="button" id="startPauseBtn" class="primary positive">Start</button>
@@ -176,20 +180,6 @@
         </div>
         <span id="generationSummaryText" class="generation-summary" role="status" aria-live="polite"></span>
       </div>
-    </section>
-
-    <section class="panel panel-tight">
-      <button type="button" id="narrationHistoryToggle" class="secondary" aria-expanded="false">Narration history</button>
-    </section>
-
-    <section id="narrationHistoryPanel" class="panel narration-history" hidden>
-      <div class="narration-history-heading">
-        <div>
-          <h3>Narration history</h3>
-          <p>Compare or restore earlier plans and deleted scenes. Generated media remains attached to its version.</p>
-        </div>
-      </div>
-      <div id="narrationHistoryList"></div>
     </section>
 
     <div class="row storyboard-add-scene-row">
@@ -302,63 +292,13 @@
           <div class="scene-index"></div>
           <h3 class="scene-title"></h3>
         </div>
-        <div class="scene-status" aria-label="Scene status and actions">
-          <button type="button" class="scene-status-icon" data-status="prompt" aria-label="Configure prompt"
-            title="Configure prompt">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-              <path d="M14 2v6h6M8 13h8M8 17h5" />
-            </svg>
-            <span class="status-icon-spinner" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="scene-image-btn scene-status-icon" data-status="image" aria-label="Configure image"
-            title="Configure image">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect width="18" height="18" x="3" y="3" rx="2" />
-              <circle cx="9" cy="9" r="2" />
-              <path d="m21 15-5-5L5 21" />
-            </svg>
-            <span class="status-icon-spinner" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="scene-status-icon" data-status="dialogue" aria-label="Configure narration"
-            title="Configure narration">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
-              <path d="M8 9h8M8 13h5" />
-            </svg>
-            <span class="status-icon-spinner" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="scene-status-icon" data-status="audio" aria-label="Configure audio"
-            title="Configure audio">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M11 5 6 9H2v6h4l5 4Z" />
-              <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
-            </svg>
-            <span class="status-icon-spinner" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="scene-status-icon" data-status="video" aria-label="Configure video"
-            title="Configure video">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect width="15" height="14" x="2" y="5" rx="2" />
-              <path d="m17 10 5-3v10l-5-3Z" />
-            </svg>
-            <span class="status-icon-spinner" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="scene-status-icon" data-status="subtitle" aria-label="Configure subtitles"
-            title="Configure subtitles">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect width="18" height="14" x="3" y="5" rx="2" />
-              <path d="M7 12h4M13 12h4M7 15h7" />
-            </svg>
-            <span class="status-icon-spinner" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="scene-delete-btn scene-status-icon" aria-label="Delete scene"
-            title="Delete scene">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />
-            </svg>
-          </button>
-        </div>
+        <button type="button" class="scene-manage-btn" aria-label="Scene controls">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h16M4 12h16M4 18h16M8 4v4M16 10v4M11 16v4" />
+          </svg>
+          <span class="status-icon-spinner" aria-hidden="true"></span>
+          <span class="scene-manage-summary"></span>
+        </button>
       </div>
 
       <div class="scene-image-wrap">
@@ -405,14 +345,37 @@
     </div>
   </dialog>
 
-  <dialog id="entityModal" class="entity-modal">
-    <div class="modal-header">
+  <dialog id="entityModal" class="entity-modal scene-controller-modal">
+    <div class="modal-header scene-controller-header">
       <div>
         <div class="eyebrow" id="entityModalSceneLabel"></div>
         <h2 id="entityModalTitle"></h2>
+        <p id="entityModalSummary" class="scene-controller-summary"></p>
       </div>
       <button type="button" id="closeEntityModalBtn" class="secondary text-button" aria-label="Close">✕</button>
     </div>
+
+    <nav class="scene-controller-navigation" aria-label="Scene navigation">
+      <button type="button" id="entityModalPreviousBtn">← Previous scene</button>
+      <strong id="entityModalPosition"></strong>
+      <button type="button" id="entityModalNextBtn">Next scene →</button>
+    </nav>
+
+    <section class="scene-controller-source">
+      <div>
+        <strong>Original script fragment</strong>
+        <p id="entityModalSourceText"></p>
+      </div>
+      <span class="entity-status-badge status-source">Source</span>
+    </section>
+
+    <div id="entityControllerRows" class="entity-controller-rows"></div>
+
+    <section id="entityModalDetail" class="entity-modal-detail" hidden>
+      <div class="modal-header">
+        <h3 id="entityModalDetailTitle"></h3>
+        <button type="button" id="entityModalDetailCloseBtn" class="secondary text-button" aria-label="Close details">✕</button>
+      </div>
 
     <label id="entityModalBeatField" class="entity-modal-field" hidden>
       <span class="field-heading">
@@ -509,6 +472,15 @@
       <div class="history-heading"><strong>History</strong><span id="entityModalHistoryCount"></span></div>
       <div id="entityModalHistoryList" class="version-list"></div>
     </div>
+    </section>
+
+    <section class="scene-controller-danger">
+      <div>
+        <strong>Delete scene</strong>
+        <p>Remove this scene and retire media used only by it.</p>
+      </div>
+      <button type="button" id="entityModalDeleteBtn" class="danger-outline">Delete scene</button>
+    </section>
   </dialog>
 
   <dialog id="settingsModal" class="settings-modal" aria-labelledby="settingsModalTitle">
@@ -677,14 +649,18 @@
       <div class="settings-modal-section-heading">
         <h3>Style</h3>
       </div>
+      <div class="style-picker-setting">
+        <label>
+          <span>Preset</span>
+          <select id="styleSelect"></select>
+        </label>
+        <button type="button" id="customStylesBtn" class="custom-styles-launch" aria-haspopup="dialog"
+          aria-controls="customStylesModal">Custom styles</button>
+      </div>
       <label>
-        <span>Preset</span>
-        <select id="styleSelect"></select>
-      </label>
-      <label>
-        <span>Style prompt</span>
+        <span>Additional style direction</span>
         <textarea id="commonPromptText" rows="6"
-          placeholder="Style direction applied to prompts and images."></textarea>
+          placeholder="Optional project-only direction added to the selected style."></textarea>
       </label>
       <div id="styleReferencesPanel" class="reference-groups">
         <section class="style-ref-row">
@@ -750,6 +726,78 @@
     <div class="settings-modal-footer">
       <span class="settings-modal-save-note">Saved</span>
       <button type="button" class="primary" data-close-settings>Done</button>
+    </div>
+  </dialog>
+
+  <dialog id="customStylesModal" class="settings-modal custom-styles-modal" aria-labelledby="customStylesModalTitle">
+    <div class="settings-modal-header">
+      <div>
+        <div class="eyebrow">Personal library</div>
+        <h2 id="customStylesModalTitle">Custom styles</h2>
+      </div>
+      <button type="button" id="customStylesCloseBtn" class="secondary text-button settings-modal-close"
+        aria-label="Close custom styles">✕</button>
+    </div>
+    <div class="custom-styles-layout">
+      <aside class="custom-styles-sidebar">
+        <button type="button" id="customStyleNewBtn" class="primary">+ New style</button>
+        <div id="customStylesList" class="custom-styles-list" role="listbox" aria-label="Your custom styles"></div>
+      </aside>
+      <section id="customStyleEditor" class="custom-style-editor">
+        <div id="customStyleFields" hidden>
+          <label>
+            <span>Title *</span>
+            <input id="customStyleTitle" type="text" maxlength="120" autocomplete="off" required />
+          </label>
+          <label>
+            <span>Style prompt</span>
+            <textarea id="customStylePrompt" rows="8" maxlength="12000"
+              placeholder="Describe the reusable visual language, materials, palette, lighting, and level of detail."></textarea>
+          </label>
+          <div class="custom-style-reference-grid">
+            <section>
+              <div class="custom-style-reference-heading">
+                <div><strong>Character references</strong><small>Up to 4</small></div>
+                <div class="ref-actions">
+                  <button type="button" id="customStyleCharacterGenerateBtn" class="upload-chip">
+                    <span>Generate</span>
+                  </button>
+                  <button type="button" id="customStyleCharacterLibraryBtn" class="upload-chip">
+                    <span>Library</span>
+                  </button>
+                  <label class="upload-chip">
+                    <input id="customStyleCharacterInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+                    <span>Upload</span>
+                  </label>
+                </div>
+              </div>
+              <div id="customStyleCharacterRefs" class="custom-style-reference-list"></div>
+            </section>
+            <section>
+              <div class="custom-style-reference-heading">
+                <div><strong>World references</strong><small>Up to 4</small></div>
+                <div class="ref-actions">
+                  <button type="button" id="customStyleWorldGenerateBtn" class="upload-chip">
+                    <span>Generate</span>
+                  </button>
+                  <button type="button" id="customStyleWorldLibraryBtn" class="upload-chip">
+                    <span>Library</span>
+                  </button>
+                  <label class="upload-chip">
+                    <input id="customStyleWorldInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+                    <span>Upload</span>
+                  </label>
+                </div>
+              </div>
+              <div id="customStyleWorldRefs" class="custom-style-reference-list"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="settings-modal-footer custom-styles-footer">
+      <span id="customStyleStatus" class="settings-modal-save-note" role="status" aria-live="polite"></span>
+      <button type="button" id="customStyleSaveBtn" class="primary" disabled>Save style</button>
     </div>
   </dialog>
 
@@ -1085,6 +1133,7 @@
     </div>
     <div class="settings-modal-footer">
       <button type="button" class="primary" id="closeImageLibraryDoneBtn">Done</button>
+    </div>
   </dialog>
 
   <dialog id="tokensInfoModal" class="settings-modal tokens-info-modal" aria-labelledby="tokensInfoModalTitle" style="width: 64vw; max-width: 100%;">
