@@ -82,6 +82,7 @@ export function normalizeScene(scene, index) {
     videoPrompt: String(scene?.videoPrompt || ''),
     videoPromptGeneratedFromBeat: typeof scene?.videoPromptGeneratedFromBeat === 'string' ? scene.videoPromptGeneratedFromBeat : '',
     videoPromptGeneratedFromNarration: typeof scene?.videoPromptGeneratedFromNarration === 'string' ? scene.videoPromptGeneratedFromNarration : null,
+    cutReason: String(scene?.cutReason || ''),
     shots: [{
       ...sourceShot,
       // plan-visuals / older payloads may still ship the visual prompt at scene.prompt while

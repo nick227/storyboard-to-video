@@ -248,10 +248,12 @@ test('prepareNarration injects style orchestrator guidance into segmentation', a
       orchestratorGuidance: 'Cut like a presentation deck: one claim per segment.',
     },
   });
-  assert.match(segmentRequest, /STYLE CUTS \(primary/);
+  assert.match(segmentRequest, /STYLE COMPOSITION \(primary/);
   assert.match(segmentRequest, /one claim per segment/);
   assert.match(segmentRequest, /HARD RULES/);
-  assert.doesNotMatch(segmentRequest, /DEFAULT CUTS:/);
+  assert.match(segmentRequest, /You are the director locking the edit/);
+  assert.match(segmentRequest, /cutReason/);
+  assert.doesNotMatch(segmentRequest, /DEFAULT COMPOSITION:/);
 });
 
 test('softSegmentTarget scales with narration word count at the spoken pacing rate', () => {
@@ -291,10 +293,11 @@ test('prepareNarration segmentation asks for more cuts when narration is longer'
   });
   await longService.prepareNarration({ scriptText: 'source', provider: 'gemini', fallbackPolicy: 'fail' });
 
-  assert.match(shortRequest, /Soft density target/);
-  assert.match(shortRequest, /about 1 segment/);
-  assert.match(shortRequest, /DEFAULT CUTS/);
-  assert.match(longRequest, /about 2 segments/);
-  assert.match(longRequest, /Longer text → more segments/);
-  assert.doesNotMatch(longRequest, /STYLE CUTS \(primary/);
+  assert.match(shortRequest, /Pacing check \(not a substitute for composition\)/);
+  assert.match(shortRequest, /~1 segment/);
+  assert.match(shortRequest, /DEFAULT COMPOSITION/);
+  assert.match(shortRequest, /You are the director locking the edit/);
+  assert.match(longRequest, /~2 segments/);
+  assert.match(longRequest, /never pad or starve cuts just to hit the number/);
+  assert.doesNotMatch(longRequest, /STYLE COMPOSITION \(primary/);
 });

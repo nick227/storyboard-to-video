@@ -178,6 +178,7 @@ function trimSegmentsToCap(segments, maxSegments) {
       sourceMappingMethod: merged[first].sourceMappingMethod === 'model'
         && merged[second].sourceMappingMethod === 'model' ? 'model' : 'proportional',
       narrationText: [merged[first].narrationText, merged[second].narrationText].filter(Boolean).join(' '),
+      cutReason: merged[neighbor].cutReason || merged[first].cutReason || '',
       narrationIsFallback: Boolean(merged[first].narrationIsFallback || merged[second].narrationIsFallback),
     });
   }
@@ -213,33 +214,43 @@ function softSegmentTarget(chunkText) {
 function buildNarrationSegmentationRequest({ chunkText, sourceText, maxShots, chunkBudget, orchestratorGuidance = '' }) {
   const words = wordCount(chunkText);
   const densityTarget = softSegmentTarget(chunkText);
-  const styleCuts = cleanText(orchestratorGuidance, 1_000);
+  const styleCuts = cleanText(orchestratorGuidance, 2_000);
   const budgetLine = maxShots
-    ? `Soft ceiling: whole narration max ${maxShots} segments; this excerpt's share ≈ ${chunkBudget}. Stay near density below unless STYLE CUTS require otherwise.`
-    : `Soft density target: about ${densityTarget} segment${densityTarget === 1 ? '' : 's'} (${words} words ≈ ${TARGET_WORDS_PER_SCENE} words / ~15-20s per segment). Longer text → more segments.`;
+    ? `Pacing check (not a substitute for composition): whole narration soft ceiling ${maxShots} segments; this excerpt's share ≈ ${chunkBudget}. Prefer STYLE COMPOSITION over raw density.`
+    : `Pacing check (not a substitute for composition): ~${densityTarget} segment${densityTarget === 1 ? '' : 's'} for ${words} words (~${TARGET_WORDS_PER_SCENE} words / 15-20s spoken per card). Use this only after composition decisions — never pad or starve cuts just to hit the number.`;
 
-  // When a style orchestrator is present it owns cut taste; base rules stay mechanical so the model
-  // does not have to reconcile film grammar with deck/vlog/explainer grammar.
-  const cutGuidance = styleCuts
-    ? `STYLE CUTS (primary — decide what counts as a new scene):
+  const compositionGuidance = styleCuts
+    ? `STYLE COMPOSITION (primary — this is how THIS show is directed):
 ${styleCuts}
 
-FALLBACK ONLY if STYLE CUTS are silent: aim near the soft density target; split on sentence boundaries that start a new showable unit.`
-    : `DEFAULT CUTS:
-- Aim near the soft density target; longer narration must yield more segments.
-- Split on a new showable unit (new focus, action, reveal, reaction, or transition).
-- Combine only short calm sentences that truly share one image.`;
+If STYLE COMPOSITION is silent on a choice, fall back to: one showable unit per segment; split early when focus, claim, action, or reveal changes.`
+    : `DEFAULT COMPOSITION:
+- One showable unit per segment (new focus, action, reveal, reaction, claim, or transition).
+- Prefer short cards that each earn a distinct still; combine only calm lines that truly share one image.
+- Never pack several distinct visual or argument moves into one segment.`;
 
-  return `Return strict JSON only: {"segments":[{"sourceScriptFragment":"...","narrationText":"..."}]}. Split finished narration into scene segments and align each to its source script.
+  return `You are the director locking the edit before any visuals are planned.
+
+This segmentation decides every later card: narration slices, images, audio timing, and video. A bad cut propagates everywhere — too few scenes overload cards; too many waste media and repeat visuals; wrong seams make regeneration lose grounding. Do not treat cuts as incidental sentence chopping. Plan the sequence like coverage: each segment must earn its own still.
+
+Return strict JSON only:
+{"segments":[{"sourceScriptFragment":"...","narrationText":"...","cutReason":"..."}]}
+
+DIRECTOR PLAN (do this mentally before emitting JSON):
+1. Read the whole narration excerpt and identify composition beats for this style.
+2. Decide where a new card must start (and why a viewer/editor would cut there).
+3. Check pacing: reject a long overloaded card and a train of near-duplicate cards.
+4. Only then emit exact narration/source slices that match that plan.
 
 HARD RULES (always):
 - narrationText = exact copied excerpt of the narration below (never rewrite).
 - Preserve order. Concatenated narrationText must equal the full narration excerpt.
 - sourceScriptFragment = exact ordered source excerpt for that segment. Concatenated sources must equal the full source excerpt.
-- Do not invent action beats, image prompts, camera moves, or style instructions.
+- cutReason = short director note (≤20 words) stating why THIS card starts here (composition reason, not a paraphrase of the narration).
+- Do not invent action beats, image prompts, camera moves, or style look instructions.
 - ${budgetLine}
 
-${cutGuidance}
+${compositionGuidance}
 
 Finalized narration excerpt:
 ${chunkText}
@@ -514,20 +525,28 @@ function createShotPlanningService({ textProviders, generationCache }) {
         const sourceRanges = exactSourceRanges.length === narrationSegments.length
           ? exactSourceRanges
           : partitionSourceRange(sourceChunk, narrationSegments, baseStart);
-        return narrationSegments.map((narrationText, index) => ({ narrationText, ...sourceRanges[index] }));
+        return narrationSegments.map((narrationText, index) => ({
+          narrationText,
+          cutReason: cleanText(values[index]?.cutReason, 200),
+          ...sourceRanges[index],
+        }));
       };
       let chunkSegments;
       let chunkUsedFallback = Boolean(mappedChunks[i]?.usedFallback);
       if (provider === 'stub') {
         const narrationSegments = fallbackShotsForChunk(chunkText).map((shot) => shot.narrationText);
         const sourceRanges = partitionSourceRange(sourceChunk, narrationSegments, mappedChunks[i]?.sourceStart || 0);
-        chunkSegments = narrationSegments.map((narrationText, index) => ({ narrationText, ...sourceRanges[index] }));
+        chunkSegments = narrationSegments.map((narrationText, index) => ({
+          narrationText,
+          cutReason: '',
+          ...sourceRanges[index],
+        }));
         usedFallback = true;
       } else {
         try {
           chunkSegments = generationCache
             ? await generationCache.runCached({
-                tenantId, operation: 'narration.segment', provider, promptTemplateVersion: 5,
+                tenantId, operation: 'narration.segment', provider, promptTemplateVersion: 6,
                 source: {
                   chunkText,
                   sourceChunk,
@@ -543,7 +562,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
           if (fallbackPolicy !== 'local') throw error;
           const narrationSegments = fallbackShotsForChunk(chunkText).map((shot) => shot.narrationText);
           const sourceRanges = partitionSourceRange(sourceChunk, narrationSegments, mappedChunks[i]?.sourceStart || 0);
-          chunkSegments = narrationSegments.map((narrationText, index) => ({ narrationText, ...sourceRanges[index] }));
+          chunkSegments = narrationSegments.map((narrationText, index) => ({ narrationText, cutReason: '', ...sourceRanges[index] }));
           usedFallback = true;
           warnings.push(`Segmentation: provider unavailable for one excerpt, local boundaries were used. ${cleanText(error.message, 200)}`);
         }
@@ -555,6 +574,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
           sourceEnd: chunkSegment.sourceEnd,
           sourceMappingMethod: chunkSegment.sourceMappingMethod,
           narrationText: chunkSegment.narrationText,
+          cutReason: chunkSegment.cutReason || '',
           narrationIsFallback: chunkUsedFallback,
         });
       }
@@ -575,6 +595,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
       sourceMappingMethod: segment.sourceMappingMethod,
       narrationText: segment.narrationText,
       narrationIsFallback: Boolean(segment.narrationIsFallback),
+      cutReason: segment.cutReason || '',
       beat: '',
       prompt: '',
       videoPrompt: '',

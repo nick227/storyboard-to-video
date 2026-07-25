@@ -48,7 +48,7 @@ scenes[] {
 | Companion | Injects into |
 |---|---|
 | `writing.md` | [A] narration only |
-| `orchestrator.md` | [B] segmentation only |
+| `orchestrator.md` | [B] style composition / director cuts |
 | `style.md` | [C] visual plan, [D] image |
 
 ---
@@ -59,7 +59,7 @@ scenes[] {
 apps/web/style-references/<style-id>/
   style.md           # look
   writing.md         # STYLE VOICE
-  orchestrator.md    # STYLE CUTS
+  orchestrator.md    # STYLE COMPOSITION (director cuts)
   characters/        # optional refs
   world/             # optional refs
 ```
@@ -131,18 +131,20 @@ Legend:
 | **When** | prepare-narration (after [A]) |
 | **Chunking** | ~300 words of **narration** per call |
 | **Builder** | `buildNarrationSegmentationRequest` |
-| **Returns** | `{ segments: [{ sourceScriptFragment, narrationText }] }` |
+| **Returns** | `{ segments: [{ sourceScriptFragment, narrationText, cutReason }] }` |
+
+**Role:** director composition pass. Locks scene count and source alignment before any visuals. Bad cuts here overload cards, waste media, or unground later regeneration — treat as edit-lock, not sentence chopping.
 
 **Prompt stack:**
 
-1. **HARD RULES** — exact copy of narration; exact source alignment; no invented prompts
-2. Soft density — `ceil(words / 45)` (~15–20s speech); optional shot-limit soft ceiling
-3. **STYLE CUTS** ← `orchestrator.md` (primary when present)
-4. Thin fallback if cuts silent (or DEFAULT CUTS if no orchestrator)
+1. Director mandate — plan composition beats before emitting JSON; warn against too-few / too-many failure modes
+2. HARD RULES — exact narration copy; exact source alignment; required `cutReason`
+3. Pacing check — soft ~45-word density / optional shot-limit share (secondary to composition)
+4. **STYLE COMPOSITION** ← `orchestrator.md` (primary when present)
 5. Narration excerpt + source excerpt
 
 **Consumes:** output of [A]  
-**Produces:** scene list — **locks scene count** (unless later split/replan)
+**Produces:** scene list + `cutReason` — **locks scene count** (unless later split/replan)
 
 ---
 
