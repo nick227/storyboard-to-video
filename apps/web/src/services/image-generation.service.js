@@ -12,6 +12,7 @@ const { mergeMediaIntent, resolveImageOutput } = require('../shared/media-output
 const { buildProjectAssetStorageKey } = require('../storage/blob-store');
 const { createAssetMaterializer } = require('../storage/asset-materializer');
 const { dezgoModelForProvider, isDezgoProvider } = require('../providers/image/dezgo-settings');
+const { composeStockQueries } = require('../shared/stock-query');
 
 function createImageGenerationService({ config, styles, provider, projectStore, materializer }) {
   const assetMaterializer = materializer || createAssetMaterializer({
@@ -153,7 +154,12 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
         const references = selectedReferences.map((item) => item.localPath);
         const { sceneReferenceCount, defaultReferenceCount } = resolved;
         const referenceBindings = selectedReferences.map((reference) => ({ path: reference.localPath, role: reference.role, source: reference.source }));
-        const providerResponse = await provider.generate({ provider: input.provider, prompt, references, referenceBindings, referencePlan, title: input.sceneTitle, output: resolved.output });
+        // Only meaningful for provider: 'pixabay', but cheap and pure to compute regardless.
+        // attemptIndex is the scene's existing version count -- so Regenerate (which adds another
+        // version) rotates to a different search result instead of re-downloading the same photo.
+        const stockQueries = composeStockQueries({ scenePrompt: input.scenePrompt, styleId: style.id, styleTitle: style.name });
+        const attemptIndex = imageShot(resolved.scene).versions.length;
+        const providerResponse = await provider.generate({ provider: input.provider, prompt, references, referenceBindings, referencePlan, title: input.sceneTitle, output: resolved.output, stockQueries, attemptIndex });
         const result = providerOutput(providerResponse);
         const metadata = providerResponse && Object.hasOwn(providerResponse, 'output') ? providerResponse : {};
         fs.mkdirSync(config.paths.generated, { recursive: true });

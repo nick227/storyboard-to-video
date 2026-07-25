@@ -38,6 +38,14 @@ const IMAGE_PROVIDER_CAPABILITIES = Object.freeze({
     roleAwarePrompting: false,
     consumesReferences: false,
   }),
+  // A search, not a generation call -- reference images have nothing to attach to.
+  pixabay: Object.freeze({
+    maxReferences: 0,
+    supportedRoles: Object.freeze([]),
+    transport: 'none',
+    roleAwarePrompting: false,
+    consumesReferences: false,
+  }),
 });
 
 function imageProviderCapabilities(provider) {

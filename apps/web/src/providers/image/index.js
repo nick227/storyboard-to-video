@@ -5,6 +5,7 @@ const { IMAGE_PROVIDER_CAPABILITIES, imageProviderCapabilities } = require('../.
 const fs = require('node:fs');
 const { estimatedUsage } = require('../../shared/media-output-policy');
 const { AppError } = require('../../errors');
+const { downloadStockImage } = require('../stock/materialize');
 const {
   DEZGO_FLUX_MODEL, DEZGO_SD1_MODEL, dezgoBillingProvider, dezgoModelForProvider, dezgoSteps, isDezgoFluxProvider, isDezgoProvider,
 } = require('./dezgo-settings');
@@ -15,7 +16,7 @@ function fileBlob(file) {
   return new Blob([fs.readFileSync(file)], { type: mimeType });
 }
 
-function createImageProviders(config, textProviders, getCancellation, usageTracker, providerAdmission) {
+function createImageProviders(config, textProviders, getCancellation, usageTracker, providerAdmission, stockProvider) {
   async function openai(prompt, references = [], output) {
     if (!config.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY missing');
     const { size, quality } = output.resolved.providerSettings;
@@ -181,11 +182,36 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
     }
     const mimeType = part?.inlineData?.mimeType || part?.inline_data?.mime_type || 'image/png'; const rawUsage = data.usageMetadata || null; const outputImageTokens = (rawUsage?.candidatesTokensDetails || []).filter((item) => item.modality === 'IMAGE').reduce((sum, item) => sum + (item.tokenCount || 0), 0); const candidateTokens = rawUsage?.candidatesTokenCount || 0; return providerResult({ output: { buffer: Buffer.from(b64, 'base64'), mimeType, extension: mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/webp' ? 'webp' : 'png' }, provider: 'gemini', model: data.modelVersion || model, providerRequestId: providerRequestId(response, data), settings: { output, temperature: 0.7, responseModalities: ['TEXT', 'IMAGE'] }, usage: { images: 1, ...estimatedUsage(output), ...(rawUsage ? { inputTokens: rawUsage.promptTokenCount || 0, cachedInputTokens: rawUsage.cachedContentTokenCount || 0, outputTokens: candidateTokens + (rawUsage.thoughtsTokenCount || 0), candidateTokens, outputImageTokens, outputTextOrThinkingTokens: Math.max(0, candidateTokens - outputImageTokens) + (rawUsage.thoughtsTokenCount || 0), thinkingTokens: rawUsage.thoughtsTokenCount || 0, totalTokens: rawUsage.totalTokenCount || 0, serviceTier: rawUsage.serviceTier || 'standard' } : {}) }, rawUsage, measurementStatus: rawUsage ? 'observed' : 'estimated' });
   }
+  // stockQueries: ordered list from composeStockQueries() -- the first (fullest, style + subject)
+  // query that returns any results wins; later entries only get tried when an earlier one comes up
+  // empty. attemptIndex rotates which result within that successful search gets picked, so hitting
+  // Regenerate returns a different photo instead of silently re-downloading the same one.
+  async function pixabay(stockQueries, attemptIndex, output) {
+    if (!stockProvider) throw new Error('Pixabay stock provider is not configured');
+    const queries = (Array.isArray(stockQueries) ? stockQueries : [stockQueries]).filter(Boolean);
+    let results = [];
+    let usedQuery = '';
+    for (const query of queries) {
+      const data = await stockProvider.search({ provider: 'pixabay', mediaType: 'image', query, page: 1, perPage: 20, signal: signal(config.env.IMAGE_PROVIDER_TIMEOUT_MS || 180_000, getCancellation) });
+      if (data.results?.length) { results = data.results; usedQuery = query; break; }
+    }
+    if (!results.length) throw new AppError('PROVIDER_ERROR', 'No Pixabay results found for this scene, even after broadening the search', { status: 502 });
+    const picked = results[(Number(attemptIndex) || 0) % results.length];
+    const { buffer, mimeType, extension } = await downloadStockImage(picked.fullUrl, { signal: signal(config.env.IMAGE_PROVIDER_TIMEOUT_MS || 180_000, getCancellation) });
+    return providerResult({
+      output: { buffer, mimeType, extension },
+      provider: 'pixabay',
+      model: 'pixabay-search-v1',
+      settings: { output, query: usedQuery, sourceId: picked.providerId, sourcePageUrl: picked.sourcePageUrl, creator: picked.creator },
+      usage: { images: 1 },
+      measurementStatus: 'not_applicable',
+    });
+  }
   function imageModel(provider) {
     if (isDezgoProvider(provider)) return dezgoModelForProvider(provider);
-    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' }[provider];
+    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image', pixabay: 'pixabay-search-v1' }[provider];
   }
-  function generate({ provider, prompt, references = [], referenceBindings = [], title, output }) {
+  function generate({ provider, prompt, references = [], referenceBindings = [], title, output, stockQueries, attemptIndex }) {
     const capabilities = imageProviderCapabilities(provider);
     if (references.length > capabilities.maxReferences) throw new RangeError(`${provider} accepts at most ${capabilities.maxReferences} planned reference image${capabilities.maxReferences === 1 ? '' : 's'}`);
     if (!output?.requested || !output?.resolved) throw new AppError('MEDIA_OUTPUT_NOT_RESOLVED', 'Image generation requires server-resolved media output', { status: 500 });
@@ -194,10 +220,16 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
       ? Promise.resolve(providerResult({ output: { buffer: stubImage(prompt, title, output.resolved), mimeType: 'image/svg+xml', extension: 'svg' }, provider: 'stub', model, settings: { output, renderer: 'stub-svg-v1' }, usage: { images: 1, ...estimatedUsage(output) }, measurementStatus: 'not_applicable' }))
       : provider === 'openai' ? openai(prompt, references, output)
         : isDezgoProvider(provider) ? dezgo(provider, prompt, references, output)
-          : gemini(prompt, referenceBindings.length ? referenceBindings : references, output);
+          : provider === 'pixabay' ? pixabay(stockQueries, attemptIndex, output)
+            : gemini(prompt, referenceBindings.length ? referenceBindings : references, output);
     const reservationUsage = { images: 1, ...estimatedUsage(output), ...(isDezgoProvider(provider) ? { steps: dezgoSteps(config.env, model) } : {}) };
     const tracked = () => usageTracker ? usageTracker.execute({ modality: 'image', provider: dezgoBillingProvider(provider), model, estimatedUsage: reservationUsage, estimatedUsageComplete: provider !== 'stub', inputMetadata: { promptCharacters: String(prompt).length, referenceCount: references.length, selectedProvider: provider, output } }, operation) : operation();
-    return provider !== 'stub' && providerAdmission
+    // pixabay is exempt here (like stub) for a different reason than stub: it isn't unadmitted --
+    // each individual search request inside pixabay()'s fallback ladder is already admission-gated
+    // one at a time via stockProvider.search(). Wrapping the whole multi-request operation in a
+    // second outer providerAdmission.run() on the same 'pixabay' lane would deadlock -- that lane
+    // allows only one in-flight run() at a time, and the outer run would sit waiting on itself.
+    return provider !== 'stub' && provider !== 'pixabay' && providerAdmission
       ? providerAdmission.run(dezgoBillingProvider(provider), tracked, { signal: getCancellation?.() })
       : tracked();
   }

@@ -94,7 +94,7 @@ function fitDezgoFluxDimensions({ width, height }) {
 
 function resolveImageOutput({ provider, model, intent }) {
   const requested = Object.freeze({ ...intent });
-  if (provider !== 'openai' && provider !== 'stub' && intent.quality !== 'medium') {
+  if (provider !== 'openai' && provider !== 'stub' && provider !== 'pixabay' && intent.quality !== 'medium') {
     throw outputPolicyError(`${provider}/${model || 'default'} does not expose image quality ${intent.quality}`, { modality: 'image', provider, model: model || null, requested });
   }
   let dimensions;
@@ -116,6 +116,13 @@ function resolveImageOutput({ provider, model, intent }) {
     const edge = { draft: 512, standard: 1024, high: 2048, ultra: 4096 }[intent.resolutionTier];
     dimensions = shortEdgeDimensions(intent.aspectRatio, edge);
     providerSettings = { width: dimensions.width, height: dimensions.height };
+  } else if (provider === 'pixabay') {
+    // Nominal bookkeeping only -- a found photo keeps its real, unresizable dimensions. This
+    // exists so the manifest/staleness machinery (which expects every provider to resolve to some
+    // width/height) has something to record; it never governs what's actually downloaded.
+    const edge = { draft: 512, standard: 1024, high: 2048, ultra: 4096 }[intent.resolutionTier];
+    dimensions = shortEdgeDimensions(intent.aspectRatio, edge);
+    providerSettings = {};
   }
   if (!dimensions || !providerSettings) {
     throw outputPolicyError(`${provider}/${model || 'default'} cannot produce ${intent.resolutionTier} images at ${intent.aspectRatio}`, { modality: 'image', provider, model: model || null, requested });

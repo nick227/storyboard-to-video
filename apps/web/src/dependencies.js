@@ -113,9 +113,9 @@ function createDependencies(config, overrides = {}) {
     blobStore,
   });
   const textProviders = createTextProviders(config, cancellation, usageTracker, providerAdmission);
-  const imageProvider = createImageProviders(config, textProviders, cancellation, usageTracker, providerAdmission);
-  const audioProvider = createAudioProviders(config, cancellation, usageTracker, providerAdmission);
   const stockProvider = createStockProviders(config, providerAdmission);
+  const imageProvider = createImageProviders(config, textProviders, cancellation, usageTracker, providerAdmission, stockProvider);
+  const audioProvider = createAudioProviders(config, cancellation, usageTracker, providerAdmission);
   const alignmentProvider = createAlignmentProvider(config, cancellation, usageTracker, providerAdmission);
   const videoProviders = createVideoProviders(config, cancellation, usageTracker, overrides.videoProviderAdapters, providerAdmission);
   const videoExecution = createVideoExecutionService({ providers: videoProviders, attempts: videoAttemptRepository, usageTracker, assetTransport: overrides.videoAssetTransport || createLocalVideoAssetTransport(), attemptTimeoutMs: config.videoAttemptTimeoutMs, providerAdmission });

@@ -8,6 +8,7 @@ export const IMAGE_PROVIDER_CAPABILITIES = Object.freeze({
   dezgo: Object.freeze({ maxReferences: 1, supportedRoles: ALL_ROLES, transport: 'image_to_image_anchor', roleAwarePrompting: false, consumesReferences: true }),
   dezgo_flux: Object.freeze({ maxReferences: 0, supportedRoles: Object.freeze([]), transport: 'none', roleAwarePrompting: false, consumesReferences: false }),
   stub: Object.freeze({ maxReferences: 0, supportedRoles: Object.freeze([]), transport: 'none', roleAwarePrompting: false, consumesReferences: false }),
+  pixabay: Object.freeze({ maxReferences: 0, supportedRoles: Object.freeze([]), transport: 'none', roleAwarePrompting: false, consumesReferences: false }),
 });
 
 export function imageProviderCapabilities(provider) {

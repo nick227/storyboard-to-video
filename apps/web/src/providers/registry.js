@@ -1,5 +1,5 @@
 const TEXT_PROVIDERS = new Set(['gemini', 'openai', 'stub']);
-const IMAGE_PROVIDERS = new Set(['gemini', 'openai', 'dezgo', 'dezgo_flux', 'stub']);
+const IMAGE_PROVIDERS = new Set(['gemini', 'openai', 'dezgo', 'dezgo_flux', 'stub', 'pixabay']);
 const AUDIO_PROVIDERS = new Set(['elevenlabs', 'piper', 'spark', 'stub']);
 // Freesound (sfx) and Jamendo (music) are planned next; only pixabay is implemented today.
 const STOCK_PROVIDERS = new Set(['pixabay']);
