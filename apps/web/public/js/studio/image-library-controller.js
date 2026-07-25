@@ -18,6 +18,10 @@ function emptyState(token = 0) {
     generations: [],
     pastStoryboards: [],
     hasRetrievedPast: false,
+    stockQuery: '',
+    stockPage: 0,
+    stockResults: [],
+    stockHasMore: false,
   };
 }
 
@@ -26,6 +30,17 @@ function appendEmptyState(container, message) {
   empty.className = 'library-image-empty';
   empty.textContent = message;
   container.replaceChildren(empty);
+}
+
+// Not stopword/keyword extraction -- just the prompt's leading clause, capped short, left fully
+// editable in the search box. The full AI visual prompt is a sentence; Pixabay searches better on
+// a short phrase, but guessing "meaningful" words out of the sentence is more likely to produce a
+// worse query than just truncating it and letting the user fix it up.
+function deriveStockQuery(prompt) {
+  const text = String(prompt || '').trim();
+  if (!text) return '';
+  const leadingClause = text.split(/[.,;:]/)[0].trim();
+  return (leadingClause || text).split(/\s+/).slice(0, 8).join(' ');
 }
 
 export class ImageLibraryController {
@@ -59,6 +74,12 @@ export class ImageLibraryController {
       tabPanes: [...modal.querySelectorAll('.library-tab-content .tab-pane')],
       uploadsPane: byId('libraryTabUploads'),
       generationsPane: byId('libraryTabGenerations'),
+      stockPane: byId('libraryTabStock'),
+      stockQueryInput: byId('libraryStockQuery'),
+      stockSearchBtn: byId('libraryStockSearchBtn'),
+      stockList: byId('libraryStockList'),
+      stockStatus: byId('libraryStockStatus'),
+      stockLoadMoreBtn: byId('libraryStockLoadMoreBtn'),
       pastPane: byId('libraryTabPast'),
       pastList: byId('libraryPastList'),
       pastPlaceholder: modal.querySelector('.past-storyboards-placeholder'),
@@ -94,6 +115,11 @@ export class ImageLibraryController {
     this.dom.generateBtn?.addEventListener('click', () => this.generate());
     this.dom.uploadInput?.addEventListener('change', (event) => this.upload(event));
     this.dom.retrievePastBtn?.addEventListener('click', () => this.retrievePastStoryboards());
+    this.dom.stockSearchBtn?.addEventListener('click', () => this.searchStock());
+    this.dom.stockQueryInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); this.searchStock(); }
+    });
+    this.dom.stockLoadMoreBtn?.addEventListener('click', () => this.searchStock({ resetPage: false }));
     this.dom.tabButtons.forEach((button) => {
       button.addEventListener('click', () => this.selectTab(button.dataset.tab));
     });
@@ -151,6 +177,12 @@ export class ImageLibraryController {
     this.dom.useStoryCheckbox.checked = false;
     this.dom.retrievePastBtn.disabled = false;
     this.dom.retrievePastBtn.textContent = 'Retrieve Past Storyboard Images';
+    this.dom.stockList.replaceChildren();
+    this.dom.stockStatus.hidden = true;
+    this.dom.stockLoadMoreBtn.hidden = true;
+    this.dom.stockQueryInput.value = mode === 'scene-image'
+      ? deriveStockQuery(imageShot(sceneStore.get().scenes.find((candidate) => candidate.id === sceneId)).prompt)
+      : '';
 
     if (mode === 'character-reference') {
       this.dom.contextLabel.textContent = 'Style References > Character';
@@ -187,6 +219,7 @@ export class ImageLibraryController {
     this.dom.tabPanes.forEach((pane) => { pane.style.display = 'none'; });
     if (tab === 'uploads') this.dom.uploadsPane.style.display = 'grid';
     if (tab === 'generations') this.dom.generationsPane.style.display = 'grid';
+    if (tab === 'stock') this.dom.stockPane.style.display = 'block';
     if (tab === 'past') {
       this.dom.pastPane.style.display = 'block';
       this.dom.pastList.style.display = this.state.hasRetrievedPast ? 'grid' : 'none';
@@ -438,6 +471,94 @@ export class ImageLibraryController {
     }
     card.append(image, actions, badge);
     return card;
+  }
+
+  async searchStock({ resetPage = true } = {}) {
+    const context = this.context();
+    if (!context.projectId) return;
+    const query = this.dom.stockQueryInput.value.trim();
+    if (!query) { this.state.setStatus?.('Enter a search term.'); return; }
+
+    if (resetPage) {
+      this.state.stockQuery = query;
+      this.state.stockPage = 0;
+      this.state.stockResults = [];
+    }
+    const nextPage = this.state.stockPage + 1;
+    this.dom.stockStatus.hidden = false;
+    this.dom.stockStatus.textContent = 'Searching Pixabay...';
+    this.dom.stockLoadMoreBtn.hidden = true;
+    try {
+      const data = await api(`/api/projects/${encodeURIComponent(context.projectId)}/stock/search?query=${encodeURIComponent(query)}&page=${nextPage}`, { signal: context.signal });
+      if (!this.isCurrent(context)) return;
+      this.state.stockPage = nextPage;
+      this.state.stockResults = [...this.state.stockResults, ...(data.results || [])];
+      this.state.stockHasMore = this.state.stockResults.length < (data.totalHits || 0) && (data.results || []).length > 0;
+      this.renderStockResults();
+      if (this.state.stockResults.length) {
+        this.dom.stockStatus.hidden = true;
+      } else {
+        this.dom.stockStatus.textContent = 'No results found.';
+      }
+      this.dom.stockLoadMoreBtn.hidden = !this.state.stockHasMore;
+    } catch (error) {
+      if (this.isCurrent(context)) {
+        this.dom.stockStatus.hidden = false;
+        this.dom.stockStatus.textContent = `Search failed: ${error.message}`;
+      }
+    }
+  }
+
+  renderStockResults() {
+    this.dom.stockList.replaceChildren(...this.state.stockResults.map((item) => this.createStockCard(item)));
+  }
+
+  createStockCard(item) {
+    const card = document.createElement('div');
+    card.className = 'library-image-card';
+    const image = document.createElement('img');
+    // Hotlinked directly to Pixabay's CDN for browsing -- only the selected result gets
+    // downloaded and stored server-side (see selectStockResult / POST stock/select).
+    image.src = item.thumbnailUrl;
+    image.loading = 'lazy';
+    image.alt = item.tags || 'Pixabay photo';
+    image.title = item.tags || '';
+    const actions = document.createElement('div');
+    actions.className = 'library-image-card-actions';
+    const useButton = document.createElement('button');
+    useButton.type = 'button';
+    useButton.textContent = 'Use';
+    useButton.addEventListener('click', () => this.selectStockResult(item));
+    actions.append(useButton);
+    const badge = document.createElement('span');
+    badge.className = 'library-image-badge';
+    badge.textContent = 'Pixabay';
+    card.append(image, actions, badge);
+    return card;
+  }
+
+  async selectStockResult(item) {
+    const context = this.context();
+    if (!context.projectId) return;
+    this.state.setStatus?.('Downloading stock image...');
+    try {
+      const data = await api(`/api/projects/${encodeURIComponent(context.projectId)}/stock/select`, {
+        method: 'POST',
+        signal: context.signal,
+        body: JSON.stringify({ provider: 'pixabay', fullUrl: item.fullUrl }),
+      });
+      if (!this.isCurrent(context)) return;
+      await this.refreshLibraryLists(context);
+      if (!this.isCurrent(context)) return;
+      if (context.mode === 'scene-image') {
+        await this.selectLibraryImage(data.path, data.fileName, context);
+      } else {
+        await this.addImageToActive(data.path, data.fileName, context);
+      }
+      this.state.setStatus?.('Stock image added.');
+    } catch (error) {
+      if (this.isCurrent(context)) this.state.setStatus?.(`Failed to use stock image: ${error.message}`);
+    }
   }
 
   async deleteLibraryImage(item) {

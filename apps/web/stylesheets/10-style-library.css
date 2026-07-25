@@ -160,6 +160,30 @@
   border: 1px dashed var(--line);
   border-radius: 8px;
 }
+.library-stock-search {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.library-stock-search input {
+  flex: 1;
+  background: var(--bg-surface-2, rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+.library-stock-status {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+#libraryStockLoadMoreBtn {
+  display: block;
+  margin: 10px auto 0;
+}
 .library-past-card-meta {
   position: absolute;
   top: 0;

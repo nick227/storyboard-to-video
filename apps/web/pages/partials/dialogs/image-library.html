@@ -1,0 +1,81 @@
+<dialog id="imageLibraryModal" class="settings-modal image-library-modal" aria-labelledby="imageLibraryModalTitle" style="max-width: 800px; width: 90vw;">
+  <div class="settings-modal-header">
+    <div>
+      <div class="eyebrow" id="imageLibraryModalContextLabel">Image Library</div>
+      <h2 id="imageLibraryModalTitle">Select or Generate Image</h2>
+    </div>
+    <button type="button" class="secondary text-button settings-modal-close" id="closeImageLibraryBtn"
+      aria-label="Close image library">✕</button>
+  </div>
+  <div class="settings-modal-body">
+    <!-- Section 1: AI Image Generator (Top Feature) -->
+    <section class="library-section ai-generator-section">
+      <h3>AI Image Generator</h3>
+      <div class="ai-generator-controls">
+        <textarea id="libraryAiPrompt" class="library-prompt-textarea" placeholder="Describe the image you want to generate..."></textarea>
+        <div class="ai-generator-options">
+          <label class="checkbox-field">
+            <input type="checkbox" id="libraryUseStory" />
+            <span>Use story (appends user prompt to script summary)</span>
+          </label>
+          <div class="provider-select-wrapper">
+            <label for="libraryProviderSelect">Provider:</label>
+            <select id="libraryProviderSelect" class="provider-select">
+              <option value="gemini">Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="dezgo">Dezgo SD</option>
+          <option value="dezgo_flux">Dezgo Flux</option>
+              <option value="stub">Stub</option>
+            </select>
+          </div>
+          <button type="button" id="libraryGenerateBtn" class="primary">Generate Image</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Active / Current Selection Section -->
+    <section class="library-section active-selection-section">
+      <div class="style-ref-col-header">
+        <div><strong>Active Selection</strong><small id="libraryActiveSectionLabel">Images currently in use</small></div>
+        <label class="upload-chip">
+          <input id="libraryUploadInput" type="file" accept="image/*" multiple hidden />
+          <span>Upload New</span>
+        </label>
+      </div>
+      <div id="libraryActiveList" class="library-image-list"></div>
+    </section>
+
+    <!-- Section 3: Library of Images -->
+    <section class="library-section library-tabs-section">
+      <h3>Library Content</h3>
+      <div class="library-tabs">
+        <button type="button" class="tab-btn active" data-tab="uploads">User Uploads</button>
+        <button type="button" class="tab-btn" data-tab="generations">AI Generations</button>
+        <button type="button" class="tab-btn" data-tab="stock">Stock Photos</button>
+        <button type="button" class="tab-btn" data-tab="past">Past Storyboards</button>
+      </div>
+      <div class="library-tab-content">
+        <div id="libraryTabUploads" class="library-image-list tab-pane active"></div>
+        <div id="libraryTabGenerations" class="library-image-list tab-pane" style="display: none;"></div>
+        <div id="libraryTabStock" class="tab-pane" style="display: none;">
+          <div class="library-stock-search">
+            <input type="text" id="libraryStockQuery" placeholder="Search Pixabay photos..." />
+            <button type="button" id="libraryStockSearchBtn" class="secondary">Search</button>
+          </div>
+          <p id="libraryStockStatus" class="library-stock-status" hidden></p>
+          <div id="libraryStockList" class="library-image-list"></div>
+          <button type="button" id="libraryStockLoadMoreBtn" class="secondary" hidden>Load more</button>
+        </div>
+        <div id="libraryTabPast" class="library-image-list tab-pane" style="display: none;">
+          <div class="past-storyboards-placeholder" style="padding: 20px; text-align: center;">
+            <button type="button" id="libraryRetrievePastBtn" class="secondary">Retrieve Past Storyboard Images</button>
+          </div>
+          <div id="libraryPastList" class="library-image-list" style="display: none;"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="settings-modal-footer">
+    <button type="button" class="primary" id="closeImageLibraryDoneBtn">Done</button>
+  </div>
+</dialog>
