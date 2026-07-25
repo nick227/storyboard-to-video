@@ -32,6 +32,21 @@ test('server script identity replaces stale cached slug during library restore m
   assert.equal(merged.revision, 3);
 });
 
+test('library restore prefers non-empty local scriptText drafts, else server canonical text', async () => {
+  const { mergeStoryboardLibraryProjects } = await persistencePromise;
+  const [fromEmptyLocal] = mergeStoryboardLibraryProjects(
+    [{ id: 'p1', title: 'A', scriptText: '', revision: 2 }],
+    [{ id: 'p1', title: 'A', scriptText: 'INT. CABIN - NIGHT', revision: 3 }],
+  );
+  assert.equal(fromEmptyLocal.scriptText, 'INT. CABIN - NIGHT');
+
+  const [fromLocalDraft] = mergeStoryboardLibraryProjects(
+    [{ id: 'p1', title: 'A', scriptText: 'INT. CABIN - DAWN', revision: 2 }],
+    [{ id: 'p1', title: 'A', scriptText: 'INT. CABIN - NIGHT', revision: 3 }],
+  );
+  assert.equal(fromLocalDraft.scriptText, 'INT. CABIN - DAWN');
+});
+
 test('Library Edit links include the exact project target', () => {
   const source = fs.readFileSync(path.join(webRoot, 'public/js/pages/scripts-index.js'), 'utf8');
   assert.match(source, /searchParams\.set\('project', project\.id\)/);

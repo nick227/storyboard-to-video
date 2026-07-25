@@ -106,7 +106,18 @@ class ProjectStore {
     if (expectedRevision !== undefined && Number(expectedRevision) !== existing.revision) {
       throw new AppError('REVISION_CONFLICT', `Expected revision ${expectedRevision}, current revision is ${existing.revision}`, { status: 409, details: { expectedRevision: Number(expectedRevision), currentRevision: existing.revision } });
     }
-    const next = this.normalize({ ...document, id, tenantId: existing.tenantId || existing.ownerId, createdByUserId: existing.createdByUserId || existing.ownerId, scriptId: document.scriptId || existing.scriptId || null, incarnationId: existing.incarnationId, revision: existing.revision + 1, createdAt: existing.createdAt, updatedAt: new Date().toISOString() });
+    const next = this.normalize({
+      ...document,
+      id,
+      tenantId: existing.tenantId || existing.ownerId,
+      createdByUserId: existing.createdByUserId || existing.ownerId,
+      scriptId: document.scriptId || existing.scriptId || null,
+      scriptText: document.scriptText != null ? document.scriptText : existing.scriptText,
+      incarnationId: existing.incarnationId,
+      revision: existing.revision + 1,
+      createdAt: existing.createdAt,
+      updatedAt: new Date().toISOString(),
+    });
     this.atomicJson(this.documentPath(id), next);
     this.syncReferences(id, next.assetReferences || []);
     return next;

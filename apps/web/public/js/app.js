@@ -677,8 +677,8 @@ async function init() {
     setStatus('Log in to open your storyboards.');
     return;
   }
-  initControllers(() => session);
   setPersistenceScope(session.tenant.id);
+  initControllers(() => session);
 
   const startupParams = new URLSearchParams(window.location.search);
   const route = parseWorkPath(window.location.pathname);

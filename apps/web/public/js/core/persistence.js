@@ -100,6 +100,11 @@ export function mergeStoryboardLibraryProjects(localProjects = [], serverProject
       // "untitled" slug and must not make a Library Edit link resolve to the wrong work.
       scriptId: serverProject.scriptId || local.scriptId || null,
       script: serverProject.script || local.script || null,
+      // Keep non-empty local drafts (debounce may not have synced yet). If local was wiped to ''
+      // while the Script table still has text, take the server canonical copy.
+      scriptText: (typeof local.scriptText === 'string' && local.scriptText.length)
+        ? local.scriptText
+        : (serverProject.scriptText ?? local.scriptText ?? ''),
       scenes: mergeScenes(serverProject.scenes, local.scenes),
       revision: serverProject.revision,
     } : createStoryboardRecord(serverProject));
@@ -183,7 +188,9 @@ export async function hydrateCurrentProjectFromServer() {
       revision: serverProject.revision,
       scriptId: serverProject.scriptId || record.scriptId || null,
       script: serverProject.script || record.script || null,
-      scriptText: serverProject.scriptText ?? record.scriptText,
+      scriptText: (typeof serverProject.scriptText === 'string' && serverProject.scriptText.length)
+        ? serverProject.scriptText
+        : (record.scriptText ?? serverProject.scriptText ?? ''),
       scenes: mergedScenes.length ? mergedScenes : adaptSceneImageShots(serverProject.scenes),
     });
     
@@ -198,6 +205,12 @@ export async function hydrateCurrentProjectFromServer() {
 }
 
 export async function syncProjectRecord(record, setStatus, { throwOnError = false } = {}) {
+  // Scene/media syncs reuse the in-memory record. Prefer the live editor textarea so a stale
+  // empty record.scriptText cannot overwrite a screenplay the user still has on screen.
+  if (typeof document !== 'undefined') {
+    const liveScript = document.getElementById('scriptText');
+    if (liveScript && typeof liveScript.value === 'string') record.scriptText = liveScript.value;
+  }
   record.scenes = adaptSceneImageShots(record.scenes);
   const projectPayload = () => ({ ...record, id: record.id, title: record.title, scenes: adaptSceneImageShots(record.scenes) });
   try {

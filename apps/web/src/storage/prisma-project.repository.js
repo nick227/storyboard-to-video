@@ -62,7 +62,19 @@ class PrismaProjectRepository extends ProjectStore {
   async write(id, document, { expectedRevision, ownerId } = {}) {
     const existing = await this.read(id, { ownerId });
     if (expectedRevision !== undefined && Number(expectedRevision) !== existing.revision) throw new AppError('REVISION_CONFLICT', `Expected revision ${expectedRevision}, current revision is ${existing.revision}`, { status: 409, details: { expectedRevision: Number(expectedRevision), currentRevision: existing.revision } });
-    const next = this.normalize({ ...document, id, tenantId: existing.tenantId, createdByUserId: existing.createdByUserId, scriptId: document.scriptId || existing.scriptId || null, incarnationId: existing.incarnationId, revision: existing.revision + 1, createdAt: existing.createdAt, updatedAt: new Date().toISOString() });
+    const next = this.normalize({
+      ...document,
+      id,
+      tenantId: existing.tenantId,
+      createdByUserId: existing.createdByUserId,
+      scriptId: document.scriptId || existing.scriptId || null,
+      // Preserve screenplay body when a scene/media sync omits scriptText from the PUT body.
+      scriptText: document.scriptText != null ? document.scriptText : existing.scriptText,
+      incarnationId: existing.incarnationId,
+      revision: existing.revision + 1,
+      createdAt: existing.createdAt,
+      updatedAt: new Date().toISOString(),
+    });
     const result = await this.prisma.project.updateMany({
       where: { id, tenantId: existing.tenantId, revision: existing.revision },
       data: { title: next.title, scriptId: next.scriptId || null, revision: next.revision, document: json(next), updatedAt: new Date(next.updatedAt) },

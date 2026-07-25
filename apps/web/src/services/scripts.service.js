@@ -122,8 +122,8 @@ function createScriptsService({ store, projectStore } = {}) {
     return listPublic({ ...options, tagSlug: slug });
   }
 
-  async function listCategories() {
-    return store.listCategories();
+  async function listCategories({ onlyWithScripts = false } = {}) {
+    return store.listCategories({ onlyWithScripts });
   }
 
   async function listTags() {
@@ -196,13 +196,18 @@ function createScriptsService({ store, projectStore } = {}) {
     return store.getStats(scriptId);
   }
 
+  function scriptSyncPatch(project) {
+    const patch = { title: project.title };
+    // Scene/media project PUTs often omit scriptText (JSON drops undefined). Never coerce that
+    // to '' — it would wipe the canonical Script row and empty the editor on the next refresh.
+    if (project.scriptText != null) patch.scriptText = project.scriptText;
+    return patch;
+  }
+
   async function ensureForProject(project, { tenantId, userId, author, projectStore } = {}) {
     const scope = { tenantId: tenantId || project.tenantId };
     if (project.scriptId) {
-      const synced = await store.update(project.scriptId, {
-        title: project.title,
-        scriptText: project.scriptText || '',
-      }, scope);
+      const synced = await store.update(project.scriptId, scriptSyncPatch(project), scope);
       return ownerView(synced);
     }
     const script = await store.create({
@@ -221,10 +226,9 @@ function createScriptsService({ store, projectStore } = {}) {
 
   async function syncFromProject(project, { tenantId } = {}) {
     if (!project.scriptId) return null;
-    return ownerView(await store.update(project.scriptId, {
-      title: project.title,
-      scriptText: project.scriptText || '',
-    }, { tenantId: tenantId || project.tenantId }));
+    return ownerView(await store.update(project.scriptId, scriptSyncPatch(project), {
+      tenantId: tenantId || project.tenantId,
+    }));
   }
 
   async function listProjects(scriptId, { tenantId, projectStore }) {

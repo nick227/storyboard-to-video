@@ -102,6 +102,15 @@ test('scripts service allocates unique slugs and links projects', async () => {
       scriptText: 'INT. SHIP - NIGHT',
     }, { tenantId: 'tenant-1' });
     assert.equal(synced.scriptText, 'INT. SHIP - NIGHT');
+
+    const projectWithoutScriptText = { ...projectStore.read('proj-odyssey', { ownerId: 'tenant-1' }), title: 'The Odyssey' };
+    delete projectWithoutScriptText.scriptText;
+    const preserved = await scripts.ensureForProject(projectWithoutScriptText, {
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      projectStore,
+    });
+    assert.equal(preserved.scriptText, 'INT. SHIP - NIGHT');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
