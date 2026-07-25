@@ -88,6 +88,23 @@ test('custom style writing guidance can be updated independently of the visual p
   }
 });
 
+test('system style markdown keeps visual prompt separate from writing guidance', async () => {
+  const f = fixture();
+  try {
+    fs.writeFileSync(
+      path.join(f.root, 'styles', 'stick.md'),
+      '# Stick\nBold outlines only.\n\n## Writing guidance\nShort action sentences. One prop per beat.\n',
+    );
+    const style = f.service.find('stick', 'user-1');
+    assert.equal(style.name, 'Stick');
+    assert.equal(style.promptText, 'Bold outlines only.');
+    assert.equal(style.writingGuidance, 'Short action sentences. One prop per beat.');
+    assert.doesNotMatch(style.promptText, /Writing guidance/i);
+  } finally {
+    f.cleanup();
+  }
+});
+
 test('custom style references persist in blob storage, reorder, enforce limits, and delete cleanly', async () => {
   const f = fixture();
   try {
