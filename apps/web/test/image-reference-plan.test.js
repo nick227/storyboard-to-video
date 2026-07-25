@@ -26,6 +26,8 @@ test('image providers publish explicit reference capabilities', () => {
   assert.equal(imageProviderCapabilities('dezgo').transport, 'image_to_image_anchor');
   assert.equal(imageProviderCapabilities('dezgo_flux').consumesReferences, false);
   assert.equal(imageProviderCapabilities('stub').consumesReferences, false);
+  assert.equal(imageProviderCapabilities('local-safetensors:biglove-xl1').consumesReferences, false);
+  assert.equal(resolveImageReferencePlan('local-safetensors:flux-dev', references(1)).provider, 'local-safetensors');
   assert.throws(() => imageProviderCapabilities('unknown'), /Unsupported image provider/);
 });
 

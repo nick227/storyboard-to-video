@@ -9,6 +9,7 @@ import { hashCanonical } from './generation-manifest.js';
 import { normalizeReferenceRole } from '../core/reference-roles.js';
 import { resolveImageReferencePlan } from './image-reference-plan.js';
 import { resolvedEntityConfig } from '../core/scene-entity-config.js';
+import { parseImageProviderSelection } from './local-safetensors.js';
 
 // --- Staleness -------------------------------------------------------------
 
@@ -175,7 +176,7 @@ export function computeStaleness(scene) {
   const imageManifestStale = imageManifestStaleness(scene, shot, activeImage);
   const imageStale = Boolean(activeImage?.path) && (imageManifestStale ?? (
     String(activeImage.scenePrompt || '') !== String(shot.prompt || '') ||
-    (Boolean(activeImage.provider) && String(activeImage.provider) !== String(getCurrentStoryboardRecord()?.imageProvider || ''))
+    (Boolean(activeImage.provider) && parseImageProviderSelection(activeImage.provider).provider !== parseImageProviderSelection(getCurrentStoryboardRecord()?.imageProvider || '').provider)
   ));
   const audioStale = Boolean(activeAudio?.path) && (
     String(activeAudio.narrationText || '') !== String(scene.narrationText || '') ||

@@ -1,4 +1,5 @@
 import { REFERENCE_ROLES, normalizeReferenceRole } from '../core/reference-roles.js';
+import { parseImageProviderSelection } from './local-safetensors.js';
 
 const ALL_ROLES = Object.freeze([...REFERENCE_ROLES]);
 
@@ -13,7 +14,8 @@ export const IMAGE_PROVIDER_CAPABILITIES = Object.freeze({
 });
 
 export function imageProviderCapabilities(provider) {
-  const capabilities = IMAGE_PROVIDER_CAPABILITIES[provider];
+  const { provider: key } = parseImageProviderSelection(provider);
+  const capabilities = IMAGE_PROVIDER_CAPABILITIES[key];
   if (!capabilities) throw new RangeError(`Unsupported image provider: ${provider}`);
   return capabilities;
 }
@@ -26,7 +28,8 @@ function providerSlot(provider, index) {
 }
 
 export function resolveImageReferencePlan(provider, references = []) {
-  const capabilities = imageProviderCapabilities(provider);
+  const { provider: key } = parseImageProviderSelection(provider);
+  const capabilities = imageProviderCapabilities(key);
   const included = [];
   const excluded = [];
   for (const [candidateOrder, reference] of (Array.isArray(references) ? references : []).entries()) {
@@ -36,8 +39,8 @@ export function resolveImageReferencePlan(provider, references = []) {
     else if (included.length >= capabilities.maxReferences) excluded.push({ ...normalized, reason: 'provider_limit' });
     else {
       const order = included.length;
-      included.push({ ...normalized, order, providerSlot: providerSlot(provider, order) });
+      included.push({ ...normalized, order, providerSlot: providerSlot(key, order) });
     }
   }
-  return { provider, capabilities, included, excluded };
+  return { provider: key, capabilities, included, excluded };
 }

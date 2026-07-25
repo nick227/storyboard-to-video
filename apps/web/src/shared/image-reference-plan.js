@@ -1,4 +1,5 @@
 const { REFERENCE_ROLES, normalizeReferenceRole } = require('./reference-roles');
+const { parseImageProviderSelection } = require('./local-safetensors');
 
 const ALL_ROLES = Object.freeze([...REFERENCE_ROLES]);
 
@@ -56,7 +57,8 @@ const IMAGE_PROVIDER_CAPABILITIES = Object.freeze({
 });
 
 function imageProviderCapabilities(provider) {
-  const capabilities = IMAGE_PROVIDER_CAPABILITIES[provider];
+  const { provider: key } = parseImageProviderSelection(provider);
+  const capabilities = IMAGE_PROVIDER_CAPABILITIES[key];
   if (!capabilities) throw new RangeError(`Unsupported image provider: ${provider}`);
   return capabilities;
 }
@@ -69,7 +71,8 @@ function providerSlot(provider, index) {
 }
 
 function resolveImageReferencePlan(provider, references = []) {
-  const capabilities = imageProviderCapabilities(provider);
+  const { provider: key } = parseImageProviderSelection(provider);
+  const capabilities = imageProviderCapabilities(key);
   const included = [];
   const excluded = [];
 
@@ -83,11 +86,11 @@ function resolveImageReferencePlan(provider, references = []) {
       excluded.push({ ...normalized, reason: 'provider_limit' });
     } else {
       const order = included.length;
-      included.push({ ...normalized, order, providerSlot: providerSlot(provider, order) });
+      included.push({ ...normalized, order, providerSlot: providerSlot(key, order) });
     }
   }
 
-  return { provider, capabilities, included, excluded };
+  return { provider: key, capabilities, included, excluded };
 }
 
 module.exports = { IMAGE_PROVIDER_CAPABILITIES, imageProviderCapabilities, resolveImageReferencePlan };
