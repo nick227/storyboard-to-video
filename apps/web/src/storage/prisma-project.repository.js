@@ -123,7 +123,7 @@ class PrismaProjectRepository extends ProjectStore {
     return { files: aggregate._count, bytes: Number(aggregate._sum.byteSize || 0n), maxFiles: this.maxFiles, maxBytes: this.maxBytes };
   }
 
-  async commitAsset(lease, type, sourcePath, { fileName = path.basename(sourcePath), signal, mimeType } = {}) {
+  async commitAsset(lease, type, sourcePath, { fileName = path.basename(sourcePath), signal, mimeType, provenance } = {}) {
     await this.verifyLease(lease, signal);
     const safeName = path.basename(fileName);
     if (!safeName || safeName !== fileName || safeName.includes('\\')) throw new AppError('INVALID_PATH', 'Invalid asset filename', { status: 400 });
@@ -132,6 +132,19 @@ class PrismaProjectRepository extends ProjectStore {
     if (usage.files + 1 > this.maxFiles || usage.bytes + size > this.maxBytes) throw new AppError('PROJECT_QUOTA_EXCEEDED', 'Project storage quota exceeded', { status: 413, details: { ...usage, requestedBytes: size } });
     const storageKey = buildProjectAssetStorageKey(lease.projectId, type, safeName);
     const publicPath = buildProjectAssetPublicPath(lease.projectId, type, safeName);
+    // Only set for assets materialized from an external media provider (e.g. Pixabay) -- absent
+    // (all-null) for AI generations and user uploads, which have nothing external to attribute.
+    const provenanceFields = provenance ? {
+      source: provenance.source ?? null,
+      provider: provenance.provider ?? null,
+      sourceId: provenance.sourceId ?? null,
+      sourcePageUrl: provenance.sourcePageUrl ?? null,
+      licenseCode: provenance.licenseCode ?? null,
+      licenseUrl: provenance.licenseUrl ?? null,
+      creator: provenance.creator ?? null,
+      attributionText: provenance.attributionText ?? null,
+      commercialUseAllowed: provenance.commercialUseAllowed ?? null,
+    } : {};
     let committed = false;
     try {
       await this.verifyLease(lease, signal);
@@ -141,6 +154,7 @@ class PrismaProjectRepository extends ProjectStore {
       const record = await this.prisma.asset.create({ data: {
         id: crypto.randomUUID(), tenantId: lease.ownerId, userId: lease.userId, projectId: lease.projectId, type, fileName: safeName,
         storageKey, publicPath, mimeType: mimeType || null, byteSize: BigInt(size), status: 'committed',
+        ...provenanceFields,
       } });
       return {
         id: record.id,
@@ -151,6 +165,7 @@ class PrismaProjectRepository extends ProjectStore {
         sourcePath: this.blobStore.resolveLocalPath?.(storageKey) ?? null,
         mimeType: mimeType || null,
         byteSize: size,
+        ...provenanceFields,
       };
     } catch (error) {
       if (committed) await this.blobStore.delete(storageKey);

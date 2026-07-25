@@ -545,7 +545,10 @@ export class ImageLibraryController {
       const data = await api(`/api/projects/${encodeURIComponent(context.projectId)}/stock/select`, {
         method: 'POST',
         signal: context.signal,
-        body: JSON.stringify({ provider: 'pixabay', fullUrl: item.fullUrl }),
+        body: JSON.stringify({
+          provider: 'pixabay', fullUrl: item.fullUrl,
+          sourceId: item.providerId, sourcePageUrl: item.sourcePageUrl, creator: item.creator,
+        }),
       });
       if (!this.isCurrent(context)) return;
       await this.refreshLibraryLists(context);
@@ -555,7 +558,8 @@ export class ImageLibraryController {
       } else {
         await this.addImageToActive(data.path, data.fileName, context);
       }
-      this.state.setStatus?.('Stock image added.');
+      const creator = data.provenance?.creator;
+      this.state.setStatus?.(creator ? `Added from Pixabay — photo by ${creator}.` : 'Added from Pixabay.');
     } catch (error) {
       if (this.isCurrent(context)) this.state.setStatus?.(`Failed to use stock image: ${error.message}`);
     }

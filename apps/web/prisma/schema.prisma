@@ -314,6 +314,20 @@ model Asset {
   status     String    @default("committed")
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(3)
+  // Provenance -- null for AI generations and user uploads (nothing external to attribute).
+  // Populated for assets materialized from an external media provider (e.g. Pixabay). License is
+  // deliberately several fields, not one string: a provider like Jamendo (planned) can require a
+  // license page, a named creator, ready-made attribution text, and a distinct commercial-use flag,
+  // none of which collapse into a single value without losing information a user might need later.
+  source                String?   @map("source")
+  provider              String?   @map("provider")
+  sourceId              String?   @map("source_id")
+  sourcePageUrl         String?   @map("source_page_url")
+  licenseCode           String?   @map("license_code")
+  licenseUrl            String?   @map("license_url")
+  creator               String?   @map("creator")
+  attributionText       String?   @map("attribution_text") @db.Text
+  commercialUseAllowed  Boolean?  @map("commercial_use_allowed")
   tenant     Workspace @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)

@@ -265,31 +265,70 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
     res.json({ ok: true, ...data });
   }));
 
+  const STOCK_IMAGE_CONTENT_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+  const STOCK_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
+
+  function safeString(value, maxLength) {
+    return typeof value === 'string' && value.trim() ? value.trim().slice(0, maxLength) : null;
+  }
+
   // POST /:projectId/stock/select -- downloads the chosen Pixabay result server-side and commits
   // it into the project's own asset storage via the same path AI generations/uploads already use.
   router.post('/:projectId/stock/select', asyncRoute(async (req, res) => {
     if (!stockProvider) throw new AppError('NOT_CONFIGURED', 'Stock media search is not configured', { status: 501 });
     const projectId = req.params.projectId;
-    const { provider = 'pixabay', fullUrl } = req.body || {};
+    const { provider = 'pixabay', fullUrl, sourceId, sourcePageUrl, creator } = req.body || {};
     if (provider !== 'pixabay') throw new AppError('VALIDATION_ERROR', 'Unsupported stock provider', { status: 400 });
     if (!fullUrl) throw new AppError('VALIDATION_ERROR', 'fullUrl is required', { status: 400 });
     const parsedUrl = assertPixabayAssetUrl(fullUrl);
 
     const lease = await store.acquireLease(projectId, { ownerId: req.auth.tenantId, userId: req.auth.userId });
-    const response = await fetch(parsedUrl);
+
+    // redirect: 'manual' -- a redirect off pixabay.com (compromised CDN, crafted response, etc.)
+    // must not be silently followed, since that would let the allowlist above be bypassed after
+    // the fact. Any redirect response is treated as a failure rather than followed.
+    const response = await fetch(parsedUrl, { redirect: 'manual' });
+    if (response.status >= 300 && response.status < 400) {
+      throw new AppError('PROVIDER_ERROR', 'Stock asset URL redirected; refusing to follow off the allowed host', { status: 502 });
+    }
     if (!response.ok) throw new AppError('PROVIDER_ERROR', `Failed to download stock image (${response.status})`, { status: 502 });
+
+    const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    const extension = STOCK_IMAGE_CONTENT_TYPES[contentType];
+    if (!extension) throw new AppError('PROVIDER_ERROR', `Unexpected content type from stock provider: ${contentType || 'unknown'}`, { status: 502 });
+
+    const declaredLength = Number(response.headers.get('content-length') || 0);
+    if (declaredLength > STOCK_IMAGE_MAX_BYTES) {
+      throw new AppError('PROVIDER_ERROR', 'Stock image exceeds the maximum allowed size', { status: 502 });
+    }
     const buffer = Buffer.from(await response.arrayBuffer());
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-    const extension = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
+    if (buffer.length > STOCK_IMAGE_MAX_BYTES) {
+      throw new AppError('PROVIDER_ERROR', 'Stock image exceeds the maximum allowed size', { status: 502 });
+    }
 
     const fileName = `stock-pixabay-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.${extension}`;
     const staged = path.join(config.paths.generated, `.${fileName}.upload`);
     fs.mkdirSync(config.paths.generated, { recursive: true });
     fs.writeFileSync(staged, buffer);
-    const asset = await store.commitAsset(lease, 'ai-references', staged, { fileName, mimeType: contentType });
+    // License fields are constant for every Pixabay asset (free for commercial/noncommercial use, no
+    // attribution required) -- derived server-side rather than trusted from the client, unlike
+    // sourceId/sourcePageUrl/creator which vary per item and only affect the requesting user's own
+    // project metadata.
+    const provenance = {
+      source: 'stock_pixabay',
+      provider: 'pixabay',
+      sourceId: safeString(sourceId, 120),
+      sourcePageUrl: safeString(sourcePageUrl, 2000),
+      creator: safeString(creator, 200),
+      licenseCode: 'pixabay',
+      licenseUrl: 'https://pixabay.com/service/license/',
+      attributionText: null,
+      commercialUseAllowed: true,
+    };
+    const asset = await store.commitAsset(lease, 'ai-references', staged, { fileName, mimeType: contentType, provenance });
     fs.rmSync(staged, { force: true });
 
-    res.json({ ok: true, path: asset.path, fileName: asset.fileName });
+    res.json({ ok: true, path: asset.path, fileName: asset.fileName, provenance });
   }));
 
   // POST /:projectId/scenes/:sceneId/images/upload

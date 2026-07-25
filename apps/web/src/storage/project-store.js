@@ -277,7 +277,9 @@ class ProjectStore {
     return { files, bytes, maxFiles: this.maxFiles, maxBytes: this.maxBytes };
   }
 
-  async commitAsset(lease, type, sourcePath, { fileName = path.basename(sourcePath), signal, mimeType } = {}) {
+  // provenance is accepted for signature parity with prisma-project.repository.js's commitAsset
+  // but has nowhere to persist to here -- the filesystem fallback has no Asset table.
+  async commitAsset(lease, type, sourcePath, { fileName = path.basename(sourcePath), signal, mimeType, provenance: _provenance } = {}) {
     this.verifyLease(lease, signal);
     const safeName = path.basename(fileName);
     if (!safeName || safeName !== fileName || safeName.includes('\\')) throw new AppError('INVALID_PATH', 'Invalid asset filename', { status: 400 });
