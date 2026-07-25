@@ -177,13 +177,14 @@ test('timeout stops the remote run', async () => {
 
 test('cancellation delegates to /stop when a run id exists', async () => {
   const calls = [];
+  const { AppError } = require('../src/errors');
   const controller = new AbortController();
   const original = global.fetch;
   global.fetch = async (url, options = {}) => {
     const href = String(url);
     calls.push({ href, method: options.method || 'GET' });
     if (href.endsWith('/start')) {
-      queueMicrotask(() => controller.abort());
+      queueMicrotask(() => controller.abort(new AppError('JOB_CANCELLED', 'Generation job cancelled', { status: 409 })));
       return jsonResponse({ runId: 55 });
     }
     if (href.includes('/heartbeat')) return jsonResponse({ ok: true });
@@ -212,9 +213,113 @@ test('cancellation delegates to /stop when a run id exists', async () => {
         prompt: 'x',
         output: outputFor('flux-dev-q4-gguf'),
       }),
-      (error) => /cancel|abort|timed out|request aborted/i.test(error.message),
+      (error) => error.code === 'JOB_CANCELLED',
     );
     assert.ok(calls.some((call) => call.href.endsWith('/api/generation-runs/55/stop')));
+    assert.equal(calls.some((call) => call.href.includes('/images/')), false);
+  } finally {
+    global.fetch = original;
+  }
+});
+
+test('rejects non-fetchable remote image paths', async () => {
+  const original = global.fetch;
+  global.fetch = async (url) => {
+    const href = String(url);
+    if (href.endsWith('/start')) return jsonResponse({ runId: 3 });
+    if (href.includes('/heartbeat')) return jsonResponse({ ok: true });
+    if (href.includes('/progress')) return jsonResponse({ runId: 3, status: 'completed', completed_count: 1 });
+    if (href.includes('/api/generations?')) {
+      return jsonResponse({
+        items: [{ id: 1, status: 'success', web_path: 'C:\\\\projects\\\\outputs\\\\x.png', mime_type: 'image/png' }],
+      });
+    }
+    throw new Error(`unexpected ${href}`);
+  };
+  try {
+    const providers = createImageProviders(enabledConfig());
+    await assert.rejects(
+      () => providers.generate({
+        provider: LOCAL_SAFETENSORS_PROVIDER,
+        model: 'flux-dev',
+        prompt: 'x',
+        output: outputFor('flux-dev'),
+      }),
+      /relative web path/,
+    );
+  } finally {
+    global.fetch = original;
+  }
+});
+
+test('remote stopped run becomes a provider error, not a silent hang/cancel', async () => {
+  const original = global.fetch;
+  global.fetch = async (url) => {
+    const href = String(url);
+    if (href.endsWith('/start')) return jsonResponse({ runId: 7 });
+    if (href.includes('/heartbeat')) return jsonResponse({ ok: true });
+    if (href.includes('/progress')) {
+      return jsonResponse({
+        runId: 7,
+        status: 'stopped',
+        completed_count: 0,
+        stop_reason: 'recovered stale run',
+      });
+    }
+    throw new Error(`unexpected ${href}`);
+  };
+  try {
+    const providers = createImageProviders(enabledConfig());
+    await assert.rejects(
+      () => providers.generate({
+        provider: LOCAL_SAFETENSORS_PROVIDER,
+        model: 'biglove-xl1',
+        prompt: 'x',
+        output: outputFor('biglove-xl1'),
+      }),
+      (error) => error.code === 'PROVIDER_ERROR' && /recovered stale run/.test(error.message),
+    );
+  } finally {
+    global.fetch = original;
+  }
+});
+
+test('transient progress failures retry until completion', async () => {
+  let progressAttempts = 0;
+  const original = global.fetch;
+  global.fetch = async (url) => {
+    const href = String(url);
+    if (href.endsWith('/start')) return jsonResponse({ runId: 8 });
+    if (href.includes('/heartbeat')) return jsonResponse({ ok: true });
+    if (href.includes('/progress')) {
+      progressAttempts += 1;
+      if (progressAttempts === 1) {
+        const error = new Error('The operation was aborted due to timeout');
+        error.name = 'TimeoutError';
+        throw error;
+      }
+      return jsonResponse({ runId: 8, status: 'completed', completed_count: 1 });
+    }
+    if (href.includes('/api/generations?')) {
+      return jsonResponse({
+        items: [{ id: 1, status: 'success', web_path: '/images/ok.png', mime_type: 'image/png' }],
+      });
+    }
+    if (href.endsWith('/images/ok.png')) {
+      return new Response(PNG_BYTES, { status: 200, headers: { 'Content-Type': 'image/png' } });
+    }
+    throw new Error(`unexpected ${href}`);
+  };
+  try {
+    const providers = createImageProviders(enabledConfig({ pollIntervalMs: 1, timeoutMs: 5_000 }));
+    const result = await providers.generate({
+      provider: LOCAL_SAFETENSORS_PROVIDER,
+      model: 'flux-dev',
+      prompt: 'x',
+      output: outputFor('flux-dev'),
+    });
+    assert.equal(result.providerRequestId, '8');
+    assert.ok(progressAttempts >= 2);
   } finally {
     global.fetch = original;
   }

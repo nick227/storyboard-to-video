@@ -11,6 +11,7 @@ const {
 } = require('../../shared/local-safetensors');
 
 const TERMINAL = new Set(['completed', 'stopped', 'failed']);
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 function sleep(ms, abortSignal) {
   return new Promise((resolve, reject) => {
@@ -29,7 +30,7 @@ function sleep(ms, abortSignal) {
 
 function remoteMessage(body, fallback = '') {
   if (!body || typeof body !== 'object') return fallback;
-  return String(body.detail || body.error || body.message || fallback);
+  return String(body.detail || body.error || body.message || body.stop_reason || fallback);
 }
 
 function localError({ model, runId, message, cause, retryable = false, status = 502 }) {
@@ -44,6 +45,34 @@ function localError({ model, runId, message, cause, retryable = false, status = 
   return error;
 }
 
+function throwCancelled({ model, runId, abortSignal }) {
+  const reason = abortSignal?.reason;
+  if (reason && typeof reason === 'object' && reason.code === 'JOB_CANCELLED') throw reason;
+  throw new AppError('JOB_CANCELLED', 'Generation job cancelled', {
+    status: 409,
+    details: { provider: LOCAL_SAFETENSORS_PROVIDER, model, runId },
+  });
+}
+
+function assertFetchableWebPath(webPath, { model, runId }) {
+  const value = String(webPath || '');
+  if (!value.startsWith('/') || value.startsWith('//') || value.includes('://') || /\\|[A-Za-z]:/.test(value) || /localhost|127\.0\.0\.1/i.test(value)) {
+    throw localError({ model, runId, message: 'remote image path was not a relative web path under the configured base URL' });
+  }
+  return value;
+}
+
+function combineSignal(abortSignal, timeoutMs) {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return abortSignal ? AbortSignal.any([timeout, abortSignal]) : timeout;
+}
+
+function isTransientFetchFailure(error) {
+  const name = String(error?.name || '');
+  const message = String(error?.message || error || '');
+  return name === 'TimeoutError' || name === 'AbortError' || /timeout|timed out|network|ECONN|fetch failed|socket/i.test(message);
+}
+
 async function readJson(response) {
   const text = await response.text();
   if (!text) return {};
@@ -52,6 +81,7 @@ async function readJson(response) {
 
 function createLocalSafetensorsClient(config, getCancellation) {
   const settings = config.localSafetensors || {};
+  const requestTimeoutMs = Math.min(settings.timeoutMs || DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS);
 
   function requireConfigured(model) {
     if (!localSafetensorsConfigured(config)) {
@@ -63,22 +93,25 @@ function createLocalSafetensorsClient(config, getCancellation) {
   }
 
   async function request(path, { method = 'GET', body, abortSignal, model, runId } = {}) {
+    const signal = combineSignal(abortSignal, requestTimeoutMs);
     let response;
     try {
       response = await fetch(`${settings.baseUrl}${path}`, {
         method,
         headers: body ? { 'Content-Type': 'application/json' } : undefined,
         body: body ? JSON.stringify(body) : undefined,
-        signal: abortSignal,
+        signal,
       });
     } catch (cause) {
-      const aborted = abortSignal?.aborted || cause?.name === 'AbortError';
+      if (abortSignal?.aborted) throwCancelled({ model, runId, abortSignal });
       throw localError({
         model,
         runId,
-        message: aborted ? 'request aborted or timed out' : `connection failure: ${cause.message || cause}`,
+        message: isTransientFetchFailure(cause)
+          ? `connection timeout/failure talking to ${settings.baseUrl}: ${cause.message || cause}`
+          : `connection failure: ${cause.message || cause}`,
         cause,
-        retryable: !aborted,
+        retryable: true,
       });
     }
     const payload = await readJson(response);
@@ -95,7 +128,7 @@ function createLocalSafetensorsClient(config, getCancellation) {
   }
 
   async function stopRun(runId, session, model) {
-    if (runId == null) return;
+    if (runId == null) return false;
     try {
       await request(`/api/generation-runs/${runId}/stop`, {
         method: 'POST',
@@ -103,32 +136,69 @@ function createLocalSafetensorsClient(config, getCancellation) {
         model,
         runId,
       });
-    } catch (_) { /* best-effort cancel */ }
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   async function waitForCompletion(runId, session, model, abortSignal) {
     const deadline = Date.now() + settings.timeoutMs;
+    let lastLogAt = 0;
     while (Date.now() < deadline) {
       if (abortSignal?.aborted) {
         await stopRun(runId, session, model);
-        throw localError({ model, runId, message: 'cancelled', status: 499 });
+        throwCancelled({ model, runId, abortSignal });
       }
-      await request(`/api/generation-runs/${runId}/heartbeat`, {
-        method: 'POST',
-        body: session,
-        abortSignal,
-        model,
-        runId,
-      }).catch(() => null);
 
-      const progress = await request(`/api/generation-runs/${runId}/progress`, {
-        abortSignal,
-        model,
-        runId,
-      });
+      try {
+        await request(`/api/generation-runs/${runId}/heartbeat`, {
+          method: 'POST',
+          body: session,
+          abortSignal,
+          model,
+          runId,
+        });
+      } catch (error) {
+        if (abortSignal?.aborted) throwCancelled({ model, runId, abortSignal });
+        // Heartbeat loss is recoverable within the overall timeout; keep polling progress.
+        if (!error?.retryable && !isTransientFetchFailure(error?.cause || error)) throw error;
+      }
+
+      let progress;
+      try {
+        progress = await request(`/api/generation-runs/${runId}/progress`, {
+          abortSignal,
+          model,
+          runId,
+        });
+      } catch (error) {
+        if (abortSignal?.aborted) throwCancelled({ model, runId, abortSignal });
+        if (Date.now() >= deadline) throw error;
+        if (error?.retryable || isTransientFetchFailure(error?.cause || error)) {
+          await sleep(settings.pollIntervalMs, abortSignal).catch(() => {});
+          continue;
+        }
+        throw error;
+      }
+
       const status = String(progress.status || '');
+      const now = Date.now();
+      if (now - lastLogAt >= 5_000) {
+        lastLogAt = now;
+        console.log(
+          `[local-safetensors] run=${runId} status=${status} phase=${progress.phase || '-'} `
+          + `step=${progress.inference_step ?? '-'} pct=${progress.image_percent ?? progress.run_percent ?? '-'}`,
+        );
+      }
       if (TERMINAL.has(status)) return progress;
-      await sleep(settings.pollIntervalMs, abortSignal);
+      try {
+        await sleep(settings.pollIntervalMs, abortSignal);
+      } catch (error) {
+        await stopRun(runId, session, model);
+        if (abortSignal?.aborted) throwCancelled({ model, runId, abortSignal });
+        throw error;
+      }
     }
     await stopRun(runId, session, model);
     throw localError({ model, runId, message: `timed out after ${settings.timeoutMs}ms` });
@@ -144,14 +214,12 @@ function createLocalSafetensorsClient(config, getCancellation) {
     if (!item) {
       throw localError({ model, runId, message: 'run finished without a retrievable image' });
     }
-    const webPath = String(item.web_path);
-    if (!webPath.startsWith('/')) {
-      throw localError({ model, runId, message: 'remote image path was not a web URL' });
-    }
+    const webPath = assertFetchableWebPath(item.web_path, { model, runId });
     let response;
     try {
-      response = await fetch(`${settings.baseUrl}${webPath}`, { signal: abortSignal });
+      response = await fetch(`${settings.baseUrl}${webPath}`, { signal: combineSignal(abortSignal, requestTimeoutMs) });
     } catch (cause) {
+      if (abortSignal?.aborted) throwCancelled({ model, runId, abortSignal });
       throw localError({ model, runId, message: `failed to download image: ${cause.message || cause}`, cause });
     }
     if (!response.ok) {
@@ -160,13 +228,17 @@ function createLocalSafetensorsClient(config, getCancellation) {
     const mimeType = response.headers.get('content-type') || item.mime_type || 'image/png';
     const extension = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg'
       : mimeType.includes('webp') ? 'webp' : 'png';
-    return { buffer: Buffer.from(await response.arrayBuffer()), mimeType, extension, generationId: item.id };
+    return {
+      buffer: Buffer.from(await response.arrayBuffer()),
+      mimeType,
+      extension,
+      generationId: item.id,
+      sourceUrl: `${settings.baseUrl}${webPath}`,
+    };
   }
 
   async function generate(prompt, output, model) {
     requireConfigured(model);
-    // Enforce LOCAL_SAFETENSORS_TIMEOUT_MS via the poll deadline; only wire job cancellation here
-    // so AbortSignal.timeout does not race the cooperative /stop path.
     const abortSignal = getCancellation?.() || undefined;
     const session = { client_id: randomUUID(), owner_tab_id: randomUUID() };
     const size = output?.resolved?.providerSettings?.size
@@ -191,6 +263,12 @@ function createLocalSafetensorsClient(config, getCancellation) {
     };
 
     let runId;
+    let stopRequested = false;
+    const requestStop = async () => {
+      stopRequested = true;
+      await stopRun(runId, session, model);
+    };
+
     try {
       const started = await request('/api/generation-runs/start', {
         method: 'POST',
@@ -200,13 +278,23 @@ function createLocalSafetensorsClient(config, getCancellation) {
       });
       runId = started.runId ?? started.id;
       if (runId == null) throw localError({ model, message: 'start response missing runId' });
+      console.log(`[local-safetensors] started run=${runId} model=${model}`);
 
       const progress = await waitForCompletion(runId, session, model, abortSignal);
+      if (abortSignal?.aborted) {
+        await requestStop();
+        throwCancelled({ model, runId, abortSignal });
+      }
       if (progress.status === 'failed') {
         throw localError({ model, runId, message: remoteMessage(progress, progress.error || 'generation failed') });
       }
       if (progress.status === 'stopped') {
-        throw localError({ model, runId, message: progress.stop_reason || 'generation stopped', status: 499 });
+        if (stopRequested || abortSignal?.aborted) throwCancelled({ model, runId, abortSignal });
+        throw localError({
+          model,
+          runId,
+          message: `remote run stopped before an image was ready (${progress.stop_reason || 'no stop_reason'})`,
+        });
       }
       if (Number(progress.completed_count || 0) < 1) {
         throw localError({ model, runId, message: 'run completed with zero successful images' });
@@ -218,13 +306,16 @@ function createLocalSafetensorsClient(config, getCancellation) {
         provider: LOCAL_SAFETENSORS_PROVIDER,
         model,
         providerRequestId: String(runId),
-        settings: { output, size, steps, mode: 'text_to_image', externalRunId: runId, generationId: image.generationId },
+        settings: {
+          output, size, steps, mode: 'text_to_image', externalRunId: runId, generationId: image.generationId, sourceUrl: image.sourceUrl,
+        },
         usage: { images: 1, ...estimatedUsage(output), steps },
         measurementStatus: 'estimated',
       });
     } catch (error) {
-      if (runId != null && (abortSignal?.aborted || /abort|cancel|timed out/i.test(String(error?.message || error?.name || '')))) {
-        await stopRun(runId, session, model);
+      if (runId != null && (abortSignal?.aborted || error?.code === 'JOB_CANCELLED')) {
+        await requestStop();
+        throwCancelled({ model, runId, abortSignal });
       }
       throw error;
     }
