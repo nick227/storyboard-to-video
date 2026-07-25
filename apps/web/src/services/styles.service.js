@@ -72,8 +72,11 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
     world: referenceFiles(id, 'world', userId, options.all).map(publicRecord)
   });
   function publicRecord({ fileName, url, type, isUserUploaded }) { return { fileName, url, type, isUserUploaded }; }
+  function systemStyleDir(id) {
+    return path.join(config.paths.styleReferences, sanitize(id));
+  }
   function readSystemWritingGuidance(id) {
-    const file = path.join(config.paths.styles, 'writing', `${sanitize(id)}.md`);
+    const file = path.join(systemStyleDir(id), 'writing.md');
     if (!fs.existsSync(file)) return '';
     return cleanText(fs.readFileSync(file, 'utf8'), 1_000);
   }
@@ -91,12 +94,17 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
     };
   }
   function list(userId) {
-    return fs.readdirSync(config.paths.styles)
-      .filter((file) => file.endsWith('.md') && !file.includes(path.sep))
-      .map((file) => {
-        const id = file.replace(/\.md$/, '');
-        return parseSystemStyleMarkdown(fs.readFileSync(path.join(config.paths.styles, file), 'utf8'), id, file);
-      });
+    const root = config.paths.styleReferences;
+    if (!fs.existsSync(root)) return [];
+    return fs.readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        const id = sanitize(entry.name);
+        const styleFile = path.join(root, entry.name, 'style.md');
+        if (!fs.existsSync(styleFile)) return null;
+        return parseSystemStyleMarkdown(fs.readFileSync(styleFile, 'utf8'), id, 'style.md');
+      })
+      .filter(Boolean);
   }
   const find = (id, userId) => list(userId).find((style) => style.id === id) || null;
   const customRecord = (style) => style ? {

@@ -11,7 +11,7 @@ const { MemoryIdentityRepository } = require('./support/memory-identity.reposito
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'auth-app-'));
-  for (const dir of ['public', 'styles', 'style-references']) fs.mkdirSync(path.join(root, dir), { recursive: true });
+  for (const dir of ['public', 'style-references']) fs.mkdirSync(path.join(root, dir), { recursive: true });
   const dependencies = createDependencies(loadConfig(root), { identityStore: new MemoryIdentityRepository() });
   return { root, app: createApp(dependencies), projectStore: dependencies.projectStore, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
 }

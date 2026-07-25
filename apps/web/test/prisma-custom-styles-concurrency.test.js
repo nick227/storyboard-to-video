@@ -21,7 +21,6 @@ test('custom styles concurrent generation with real Postgres', { skip: !enabled 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'custom-styles-pg-concurrency-'));
   const config = {
     paths: {
-      styles: path.join(root, 'styles'),
       styleReferences: path.join(root, 'style-references'),
       userStyleReferences: path.join(root, 'user-style-references'),
     },

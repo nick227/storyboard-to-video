@@ -10,22 +10,30 @@ const { createLocalBlobStore } = require('../src/storage/blob-store');
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+function writeSystemStyle(styleReferences, id, markdown, writing = '') {
+  const dir = path.join(styleReferences, id);
+  fs.mkdirSync(path.join(dir, 'characters'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'world'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'style.md'), markdown);
+  if (writing) fs.writeFileSync(path.join(dir, 'writing.md'), writing);
+}
+
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'custom-styles-'));
   const config = {
     paths: {
-      styles: path.join(root, 'styles'),
       styleReferences: path.join(root, 'style-references'),
       userStyleReferences: path.join(root, 'user-style-references'),
     },
   };
   Object.values(config.paths).forEach((directory) => fs.mkdirSync(directory, { recursive: true }));
-  fs.writeFileSync(path.join(config.paths.styles, 'ink.md'), '# Ink\nBold lines');
+  writeSystemStyle(config.paths.styleReferences, 'ink', '# Ink\nBold lines');
   const repository = new MemoryCustomStyleRepository();
   const blobStore = createLocalBlobStore({ root: path.join(root, 'projects') });
   const service = createStylesService(config, { customStyles: repository, blobStore });
   return {
     root,
+    config,
     repository,
     blobStore,
     service,
@@ -88,13 +96,15 @@ test('custom style writing guidance can be updated independently of the visual p
   }
 });
 
-test('system styles load writing guidance from styles/writing companion files', async () => {
+test('system styles load writing guidance from style-references companion files', async () => {
   const f = fixture();
   try {
-    const stylesDir = path.join(f.root, 'styles');
-    fs.writeFileSync(path.join(stylesDir, 'stick.md'), '# Stick\nBold outlines only.\n');
-    fs.mkdirSync(path.join(stylesDir, 'writing'), { recursive: true });
-    fs.writeFileSync(path.join(stylesDir, 'writing', 'stick.md'), 'Short action sentences. One prop per beat.\n');
+    writeSystemStyle(
+      f.config.paths.styleReferences,
+      'stick',
+      '# Stick\nBold outlines only.\n',
+      'Short action sentences. One prop per beat.\n',
+    );
     const style = f.service.find('stick', 'user-1');
     assert.equal(style.name, 'Stick');
     assert.equal(style.promptText, 'Bold outlines only.');
