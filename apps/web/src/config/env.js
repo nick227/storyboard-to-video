@@ -63,6 +63,7 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     },
     sparkUrl: String(env.SPARK_TTS_URL || 'http://localhost:8001').replace(/\/+$/, ''), sparkTimeout: integer(env.SPARK_TTS_TIMEOUT_MS, 120_000, 1, 600_000), sparkServiceToken: String(env.SPARK_SERVICE_TOKEN || ''),
     piperUrl: String(env.PIPER_SERVICE_URL || '').replace(/\/+$/, ''), piperServiceToken: String(env.PIPER_SERVICE_TOKEN || ''),
+    imageServiceUrl: String(env.IMAGE_SERVICE_URL || '').replace(/\/+$/, ''), imageServiceToken: String(env.IMAGE_SERVICE_TOKEN || ''),
     // No implicit localhost default (unlike sparkUrl/ltxUrl): alignment has no local-binary
     // fallback the way Piper does, and unlike Spark/LTX there is currently no deployed target for
     // it anywhere but a developer's own machine. An unset URL must mean "not configured yet", not

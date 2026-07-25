@@ -392,6 +392,7 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
       stub: 'stub-image-v1',
       openai: config.env?.OPENAI_IMAGE_MODEL || 'gpt-image-1',
       gemini: config.env?.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image',
+      sdxl: 'sdxl-base-1.0',
       ...(isDezgoProvider(selection.provider) ? { [selection.provider]: dezgoModelForProvider(selection.provider) } : {}),
       ...(selection.provider === LOCAL_SAFETENSORS_PROVIDER ? { [LOCAL_SAFETENSORS_PROVIDER]: selection.model } : {}),
     };

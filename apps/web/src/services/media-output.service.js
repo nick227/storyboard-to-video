@@ -32,7 +32,7 @@ function createMediaOutputService({ config, projectStore, billing, videoProvider
     if (selection.provider === LOCAL_SAFETENSORS_PROVIDER) return selection.model;
     if (requested) return requested;
     if (isDezgoProvider(selection.provider)) return dezgoModelForProvider(selection.provider);
-    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image', pixabay: 'pixabay-search-v1' }[selection.provider];
+    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image', pixabay: 'pixabay-search-v1', sdxl: 'sdxl-base-1.0' }[selection.provider];
   }
 
   async function selection(input, { ownerId } = {}) {

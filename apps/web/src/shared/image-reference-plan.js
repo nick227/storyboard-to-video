@@ -32,6 +32,13 @@ const IMAGE_PROVIDER_CAPABILITIES = Object.freeze({
     roleAwarePrompting: false,
     consumesReferences: false,
   }),
+  sdxl: Object.freeze({
+    maxReferences: 0,
+    supportedRoles: Object.freeze([]),
+    transport: 'none',
+    roleAwarePrompting: false,
+    consumesReferences: false,
+  }),
   stub: Object.freeze({
     maxReferences: 0,
     supportedRoles: Object.freeze([]),

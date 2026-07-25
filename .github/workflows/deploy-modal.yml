@@ -1,10 +1,10 @@
-name: Deploy Modal TTS services (prod)
+name: Deploy Modal services (prod)
 
 # Manual deploy ONLY, and PROD ONLY. Automatic deploys to the `dev` Modal Environment run from
-# ci.yml (deploy-voice / deploy-piper) after the matching TTS job passes on main -- unrelated web
-# test failures must not block those, but they must also never touch prod. This workflow is the
-# only path that deploys to the `prod` Modal Environment, and it only runs when a human explicitly
-# triggers it from Actions -> "Deploy Modal TTS services (prod)" -> Run workflow.
+# ci.yml (deploy-voice / deploy-piper / deploy-image) after the matching service job passes on
+# main -- unrelated web test failures must not block those, but they must also never touch prod.
+# This workflow is the only path that deploys to the `prod` Modal Environment, and it only runs
+# when a human explicitly triggers it from Actions -> "Deploy Modal services (prod)" -> Run workflow.
 #
 # Unlike the dev auto-deploy (which skips with a warning if `dev` isn't bootstrapped yet, so a
 # missing Environment never breaks push-to-main CI), a missing `prod` Environment/Secret here
@@ -15,6 +15,7 @@ name: Deploy Modal TTS services (prod)
 #   modal environment create prod
 #   modal secret create voice-service-secrets SPARK_SERVICE_TOKEN=... SPARK_TEMPERATURE=0.8 SPARK_TOP_K=50 SPARK_TOP_P=0.95 --env prod
 #   modal secret create piper-service-secrets PIPER_SERVICE_TOKEN=... --env prod
+#   modal secret create image-service-secrets IMAGE_SERVICE_TOKEN=... --env prod
 #
 # Requires repo secrets: MODAL_TOKEN_ID, MODAL_TOKEN_SECRET.
 on:
@@ -61,4 +62,25 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           MODAL_MAX_CONTAINERS: "2"
+        run: modal deploy --env prod modal_app.py
+
+  deploy-image-prod:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install modal
+      - name: Preflight - prod Modal environment/secret
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: bash .github/scripts/modal-preflight.sh prod image-service-secrets fail
+      - name: Deploy image-service to Modal (prod)
+        working-directory: apps/image-service
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          MODAL_MAX_CONTAINERS: "1"
         run: modal deploy --env prod modal_app.py

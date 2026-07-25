@@ -142,7 +142,7 @@ const imageGeneration = z.preprocess((input) => {
   styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
   commonPromptText: z.string().max(20_000).default(''),
   extraPromptText: z.string().max(20_000).default(''),
-  provider: z.enum(['gemini', 'openai', 'dezgo', 'dezgo_flux', 'stub', 'pixabay', LOCAL_SAFETENSORS_PROVIDER]).default('gemini'),
+  provider: z.enum(['gemini', 'openai', 'dezgo', 'dezgo_flux', 'sdxl', 'stub', 'pixabay', LOCAL_SAFETENSORS_PROVIDER]).default('gemini'),
   model: z.string().trim().min(1).max(120).optional(),
   confirmedReferencePlanHash: z.string().trim().max(80).optional(),
   outputIntent: z.object({

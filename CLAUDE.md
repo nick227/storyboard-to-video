@@ -49,6 +49,8 @@ To minimize response latencies and avoid context window bloat:
   - `pages/` — HTML entry-point templates served through explicit Express routes.
   - `test/` — Unit and integration tests (Node native `--test` runner).
 - **`apps/voice-service/`**: Python/FastAPI Spark-TTS voice cloning service (`main.py`, `test_main.py`).
+- **`apps/piper-service/`**: Python/FastAPI Piper TTS (`main.py`, `test_main.py`) — Modal deploy.
+- **`apps/image-service/`**: Python/FastAPI SDXL text-to-image (`main.py`, `test_main.py`) — Modal deploy.
 - **`apps/alignment-service/`**: Python/FastAPI WhisperX forced-alignment daemon (`main.py`, `test_main.py`).
 
 ---

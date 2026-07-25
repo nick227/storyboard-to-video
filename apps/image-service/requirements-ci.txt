@@ -1,0 +1,6 @@
+# CI-only: API tests with IMAGE_SKIP_MODEL_LOAD=1 never import torch/diffusers.
+fastapi==0.115.6
+uvicorn==0.34.0
+python-dotenv==1.0.1
+pytest==8.3.4
+httpx==0.28.1

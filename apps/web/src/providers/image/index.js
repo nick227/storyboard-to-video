@@ -213,11 +213,42 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
       measurementStatus: 'not_applicable',
     });
   }
+  async function sdxl(prompt, output) {
+    if (!config.imageServiceUrl) throw new Error('IMAGE_SERVICE_URL is not configured');
+    const { width, height, steps, guidance } = output.resolved.providerSettings;
+    const headers = { 'Content-Type': 'application/json' };
+    if (config.imageServiceToken) headers.Authorization = `Bearer ${config.imageServiceToken}`;
+    const response = await fetch(`${config.imageServiceUrl}/generate`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        prompt,
+        width,
+        height,
+        steps: steps || 30,
+        guidance: guidance ?? 5,
+      }),
+      signal: signal(config.env.IMAGE_PROVIDER_TIMEOUT_MS || 180_000, getCancellation),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.detail || `SDXL service error (${response.status})`);
+    }
+    return providerResult({
+      output: { buffer: Buffer.from(await response.arrayBuffer()), mimeType: 'image/png', extension: 'png' },
+      provider: 'sdxl',
+      model: 'sdxl-base-1.0',
+      providerRequestId: providerRequestId(response),
+      settings: { output, steps: steps || 30, guidance: guidance ?? 5, mode: 'text_to_image' },
+      usage: { images: 1, ...estimatedUsage(output) },
+      measurementStatus: 'estimated',
+    });
+  }
   function imageModel(provider, requestedModel) {
     const parsed = parseImageProviderSelection(provider, requestedModel);
     if (parsed.provider === LOCAL_SAFETENSORS_PROVIDER) return parsed.model;
     if (isDezgoProvider(parsed.provider)) return dezgoModelForProvider(parsed.provider);
-    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image', pixabay: 'pixabay-search-v1' }[parsed.provider];
+    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image', pixabay: 'pixabay-search-v1', sdxl: 'sdxl-base-1.0' }[parsed.provider];
   }
   function generate({ provider: rawProvider, model: requestedModel, prompt, references = [], referenceBindings = [], title, output, stockQueries, attemptIndex }) {
     const { provider, model: selectionModel } = parseImageProviderSelection(rawProvider, requestedModel);
@@ -231,7 +262,8 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
         : isDezgoProvider(provider) ? dezgo(provider, prompt, references, output)
           : provider === 'pixabay' ? pixabay(stockQueries, attemptIndex, output)
             : provider === LOCAL_SAFETENSORS_PROVIDER ? localSafetensors.generate(prompt, output, model)
-              : gemini(prompt, referenceBindings.length ? referenceBindings : references, output);
+              : provider === 'sdxl' ? sdxl(prompt, output)
+                : gemini(prompt, referenceBindings.length ? referenceBindings : references, output);
     const reservationUsage = { images: 1, ...estimatedUsage(output), ...(isDezgoProvider(provider) ? { steps: dezgoSteps(config.env, model) } : {}) };
     const tracked = () => usageTracker ? usageTracker.execute({ modality: 'image', provider: dezgoBillingProvider(provider), model, estimatedUsage: reservationUsage, estimatedUsageComplete: provider !== 'stub', inputMetadata: { promptCharacters: String(prompt).length, referenceCount: references.length, selectedProvider: provider, output } }, operation) : operation();
     // pixabay is exempt here (like stub) for a different reason than stub: it isn't unadmitted --

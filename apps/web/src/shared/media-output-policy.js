@@ -137,6 +137,16 @@ function resolveImageOutput({ provider, model, intent }) {
         steps: 25,
       };
     }
+  } else if (provider === 'sdxl') {
+    dimensions = intent.resolutionTier === 'standard' ? shortEdgeDimensions(intent.aspectRatio, 1024) : null;
+    if (dimensions) {
+      providerSettings = {
+        width: dimensions.width,
+        height: dimensions.height,
+        steps: 30,
+        guidance: 5,
+      };
+    }
   }
   if (!dimensions || !providerSettings) {
     throw outputPolicyError(`${provider}/${model || 'default'} cannot produce ${intent.resolutionTier} images at ${intent.aspectRatio}`, { modality: 'image', provider, model: model || null, requested });
