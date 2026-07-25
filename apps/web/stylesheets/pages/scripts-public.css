@@ -26,9 +26,10 @@ body.scripts-shell {
 
 .scripts-page,
 .script-reader-page {
-  width: min(1080px, calc(100% - 2rem));
+  max-width: 1500px;
+  width: 100%;
   margin: 0 auto;
-  padding: 1rem 0 4.5rem;
+  padding: 20px;
 }
 
 .scripts-crumbs-slot:empty { display: none; }
