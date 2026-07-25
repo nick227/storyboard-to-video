@@ -95,7 +95,7 @@ graph TD
 | **Action Beats** | Summary of physical action (5–24 words) | Scene fragment | [prompt-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/prompt-generation.service.js): `BEAT_RULES` (Caveman-simple present tense verbs) |
 | **Visual Prompts** | Camera-agnostic layout prompt (15–40 words) | Beat + Neighbors | [prompt-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/prompt-generation.service.js): `CONTINUITY_RULE` + Neighboring scene context |
 | **Image Generation** | Renders keyframe images | Visual prompt + Style + References | [image-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/image-generation.service.js): Injects up to 14 character/world reference paths |
-| **Video Generation** | Animates static images | Image + Motion instructions | [video-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/video-generation.service.js): `INTENSITY_MOTION_PROMPTS`, `STYLE_MOTION_PROMPTS` |
+| **Video Generation** | Animates static images | Image + Motion instructions | [video-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/video-generation.service.js): `buildVideoPrompt`, `INTENSITY_MOTION_PROMPTS` |
 | **Voice / Audio** | Synthesizes voiceovers from text | Narration text | [voice.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/voice.service.js): Piper (local), ElevenLabs (cloud), Spark-TTS (clone) |
 
 ### Developer Tuning Guide
@@ -116,9 +116,8 @@ Configure default style reference images by creating directories:
 - **World/Environment**: `apps/web/style-references/<style-id>/world/`
 *Supported formats: PNG, JPG, WebP, GIF. Sorted alphabetically (up to 8 per category).*
 
-#### 4. Adjusting Prompt Word Budgets
-If you need to fine-tune character limits or prompt lengths, update:
-- **Video Prompts**: Update `VIDEO_PROMPT_WORD_BUDGET` in [video-generation.service.js](file:///Ubuntu/home/administrator/web/basic-cartoon-poc/apps/web/src/services/video-generation.service.js).
+#### 4. Adjusting Prompt Lengths
+- **Video Prompts**: single motion string via `buildVideoPrompt` (provider clamps, e.g. MiniMax 2000 chars).
 - **Visual Prompts**: Update `limits.prompt` in the dependency injection configuration (which maps to limits enforced in `prompt-generation.service.js`).
 
 ---

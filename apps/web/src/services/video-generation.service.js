@@ -22,38 +22,11 @@ const INTENSITY_MOTION_PROMPTS = Object.freeze({
   high: 'Strong continuous action and pronounced follow-through; never a frozen hold.',
 });
 
-const STYLE_MOTION_PROMPTS = Object.freeze({
-  'basic-cartoon': 'Exaggerated snap, recoil, comic timing.',
-  'cinematic-reality': 'Grounded weight, natural momentum, realistic follow-through.',
-  'dark-gothic': 'Restrained movement, heavy drift, ominous atmosphere.',
-  'indie-youtuber': 'Lively gestures, casual energy, clean motion.',
-  'vox-style': 'Crisp cutout slides, simple layers, light parallax.',
-});
-
-const VIDEO_PROMPT_WORD_BUDGET = Object.freeze({
-  action: 24,
-  motion: 18,
-  visual: 28,
-  style: 16,
-  additionalStyle: 5,
-});
-
-function clipWords(value, limit) {
-  return cleanText(value, 20_000).split(/\s+/).filter(Boolean).slice(0, limit).join(' ');
-}
-
-function buildVideoPrompt(input, style, configuredMotionPrompt = '') {
-  const common = getAdditionalCommonPrompt(style.promptText, input.commonPromptText);
-  const intensityMotion = INTENSITY_MOTION_PROMPTS[input.motionIntensity] || INTENSITY_MOTION_PROMPTS.medium;
-  const styleMotion = STYLE_MOTION_PROMPTS[style.id] || 'Clear readable motion.';
-  const motion = cleanText(`${input.motionPrompt || configuredMotionPrompt || intensityMotion} ${styleMotion}`, 4_000);
-  return [
-    input.sceneBeat ? `Story action: ${clipWords(input.sceneBeat, VIDEO_PROMPT_WORD_BUDGET.action)}` : '',
-    `Motion direction: ${clipWords(motion, VIDEO_PROMPT_WORD_BUDGET.motion)}`,
-    input.scenePrompt ? `Scene visual prompt: ${clipWords(input.scenePrompt, VIDEO_PROMPT_WORD_BUDGET.visual)}` : '',
-    `Style baseline: ${clipWords(style.promptText, VIDEO_PROMPT_WORD_BUDGET.style)}`,
-    common ? `Additional style direction: ${clipWords(common, VIDEO_PROMPT_WORD_BUDGET.additionalStyle)}` : '',
-  ].filter(Boolean).join('\n\n');
+// Single motion string for I2V: override → env default → beat → intensity filler.
+// Look/style stay in the start frame; providers clamp length (e.g. MiniMax 2000 chars).
+function buildVideoPrompt(input, configuredMotionPrompt = '') {
+  const intensity = INTENSITY_MOTION_PROMPTS[input.motionIntensity] || INTENSITY_MOTION_PROMPTS.medium;
+  return cleanText(input.motionPrompt || configuredMotionPrompt || input.sceneBeat, 4_000) || intensity;
 }
 
 function validateMiniMaxInterpolationFrames(startSource, endSource, requestedAspectRatio) {
@@ -197,7 +170,7 @@ function createVideoGenerationService({ config, provider, providers, execution, 
       const style = styles.resolve ? await styles.resolve(input.styleId, userId) : styles.find(input.styleId);
       if (!style) throw new AppError('STYLE_NOT_FOUND', 'Unknown style', { status: 400 });
 
-      const prompt = buildVideoPrompt(input, style, config.env.VIDEO_MOTION_PROMPT);
+      const prompt = buildVideoPrompt(input, config.env.VIDEO_MOTION_PROMPT);
       if (providers) await providers.verify({ provider: providerName, model, mode: generationMode }); else await provider.verify();
       fs.mkdirSync(config.paths.videos, { recursive: true });
       const file = `${String(input.sceneNumber).padStart(2, '0')}-${slugify(input.sceneTitle || 'scene')}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.mp4`;
@@ -309,4 +282,4 @@ function createVideoGenerationService({ config, provider, providers, execution, 
   };
 }
 
-module.exports = { DEFAULT_MOTION_PROMPT, INTENSITY_MOTION_PROMPTS, STYLE_MOTION_PROMPTS, VIDEO_PROMPT_WORD_BUDGET, buildVideoPrompt, validateMiniMaxInterpolationFrames, createVideoGenerationService };
+module.exports = { DEFAULT_MOTION_PROMPT, INTENSITY_MOTION_PROMPTS, buildVideoPrompt, validateMiniMaxInterpolationFrames, createVideoGenerationService };

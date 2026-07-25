@@ -237,20 +237,10 @@ Builds cues/SRT from active audio alignment words. Requires prior [E] alignment.
 | **Route** | `POST /api/videos/generate` |
 | **Builder** | `buildVideoPrompt` |
 
-**Composed video prompt (word budgets):**
-
-| Block | Source | Budget |
-|---|---|---|
-| Story action | `scene.beat` from [C] | 28 words |
-| Motion direction | motion override → beat → intensity filler + style-motion seasoning | 36 |
-| Scene visual prompt | `scene.prompt` from [C] | 28 |
-| Style baseline | `style.md` truncated | 40 |
-| Additional style | common remainder | 5 |
-
-Hardcoded style-motion seasoning tags (`STYLE_MOTION_PROMPTS`) by style id (e.g. comic snap, grounded weight, crisp cutout slides). Corporate presentation falls back to generic “Clear readable motion.” if unset.
+**Video prompt:** single motion string — `motionPrompt` override → env `VIDEO_MOTION_PROMPT` → `scene.beat` from [C] → intensity filler. Look/style stay in the start frame; providers clamp length (e.g. MiniMax 2000 chars).
 
 **Media:** start frame = active still from [D] (typical MiniMax/Gemini I2V path).  
-**Consumes:** [C] beat/prompt + [D] still + truncated style  
+**Consumes:** [C] beat (or motion override) + [D] still  
 **Produces:** video version
 
 ---
