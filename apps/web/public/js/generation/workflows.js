@@ -58,7 +58,10 @@ export function normalizeScene(scene, index) {
     beat: String(scene?.beat || ''),
     shots: [{
       ...sourceShot,
-      prompt: textValue(sourceShot.prompt, ['prompt']),
+      // plan-visuals / older payloads may still ship the visual prompt at scene.prompt while
+      // shots[0].prompt is empty. Prefer the shot, but fall back to the top-level field so a
+      // successful visual plan is not dropped as "Never generated".
+      prompt: textValue(sourceShot.prompt, ['prompt']) || textValue(scene?.prompt, ['prompt']),
       versions,
       activeVersionIndex: versions.length ? Math.min(Math.max(requestedIndex, 0), versions.length - 1) : 0,
       videoVersions,

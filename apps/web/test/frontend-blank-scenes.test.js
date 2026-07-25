@@ -39,6 +39,21 @@ test('insertBlankSceneAt creates a source-optional canonical scene and renumbers
   assert.equal(result.scenes[2].structuralContextStale, true);
 });
 
+test('normalizeScene keeps plan-visuals top-level prompt when shots[0].prompt is empty', async () => {
+  const { normalizeScene } = await workflowsPromise;
+  const normalized = normalizeScene({
+    id: 'a',
+    title: 'Scene 1',
+    beat: 'Derek jolts awake and scans the room.',
+    prompt: 'Derek jolts awake in a dark cluttered motel room.',
+    narrationText: 'Derek jolts awake in the motel room.',
+    shots: [{ prompt: '', versions: [], activeVersionIndex: 0, videoVersions: [], activeVideoVersionIndex: 0 }],
+  }, 0);
+  assert.equal(normalized.shots[0].prompt, 'Derek jolts awake in a dark cluttered motel room.');
+  assert.equal(normalized.prompt, 'Derek jolts awake in a dark cluttered motel room.');
+  assert.equal(normalized.beat, 'Derek jolts awake and scans the room.');
+});
+
 test('regenerateImage blocks an explicit blank scene and skips it during a batch', async () => {
   const { regenerateImage } = await workflowsPromise;
   const blank = { id: 'blank', title: 'Scene 1', prompt: '', shots: [{ prompt: '', versions: [] }] };

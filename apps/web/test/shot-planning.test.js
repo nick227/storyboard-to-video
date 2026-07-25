@@ -35,6 +35,77 @@ test('prepareNarration preserves original source separately and returns text-onl
 
 test('planVisuals adds visual fields without rewriting scene identity, source, narration, or boundaries',async()=>{const service=createShotPlanningService({textProviders:{call:async()=>JSON.stringify({visuals:[{sceneNumber:1,visualPrompt:'Mara stands in the doorway, one hand on the knob.',actionPrompt:'Mara opens the door.'},{sceneNumber:2,visualPrompt:'Mara freezes in the dark hall.',actionPrompt:'Mara freezes.'}]})}});const scenes=[{id:'a',title:'Scene 1',sourceScriptFragment:'SOURCE A',scriptFragment:'SOURCE A',narrationText:'Mara opens the door.',structuralContextStale:true},{id:'b',title:'Scene 2',sourceScriptFragment:'SOURCE B',scriptFragment:'SOURCE B',narrationText:'She freezes.'}];const result=await service.planVisuals({scenes,provider:'gemini',style:{id:'basic',promptText:'simple'},fallbackPolicy:'fail'});assert.deepEqual(result.scenes.map(({id,sourceScriptFragment,narrationText})=>({id,sourceScriptFragment,narrationText})),scenes.map(({id,sourceScriptFragment,narrationText})=>({id,sourceScriptFragment,narrationText})));assert.match(result.scenes[0].prompt,/doorway/);assert.equal(result.scenes[1].promptGeneratedFromNarration,'She freezes.');assert.equal(result.scenes[0].structuralContextStale,false);});
 
+test('planVisuals actionPrompt rules ask for grounded motion-friendly actions', async () => {
+  let request = '';
+  const service = createShotPlanningService({
+    textProviders: {
+      call: async (_provider, value) => {
+        request = value;
+        return JSON.stringify({
+          visuals: [
+            { sceneNumber: 1, visualPrompt: 'She locks the apartment door and listens.', actionPrompt: 'She locks the apartment door.' },
+            { sceneNumber: 2, visualPrompt: 'Crowd presses against a closed door from outside.', actionPrompt: 'People outside shout and pound the door harder.' },
+            { sceneNumber: 3, visualPrompt: 'She backs away from the door.', actionPrompt: 'She backs away from the door.' },
+          ],
+        });
+      },
+    },
+  });
+  await service.planVisuals({
+    scenes: [
+      {
+        id: 'prev',
+        narrationText: 'She locks the apartment door and listens.',
+        sourceScriptFragment: '.int motel room night\nShe locks the apartment door and listens.',
+      },
+      {
+        id: 'a',
+        narrationText: 'Shouting people outside voices get more heated and disruptive.',
+        sourceScriptFragment: 'Shouting people outside voices get more heated and disruptive.',
+      },
+      { id: 'next', narrationText: 'She backs away from the door.' },
+    ],
+    provider: 'gemini',
+    style: { id: 'basic', promptText: 'simple' },
+    fallbackPolicy: 'fail',
+  });
+  assert.match(request, /Ground the action in this scene's narration/);
+  assert.match(request, /do not invent props, people, or gestures/);
+  assert.match(request, /Carry the established setting into every frame/);
+  assert.match(request, /Established setting \(carry into every visual unless narration clearly changes location\):/);
+  assert.match(request, /int motel room night/i);
+  assert.match(request, /Previous narration \(continuity only\): She locks the apartment door and listens\./);
+  assert.match(request, /Next narration \(continuity only\): She backs away from the door\./);
+});
+
+test('planVisuals writes the visual prompt onto shots[0] as well as scene.prompt', async () => {
+  const service = createShotPlanningService({
+    textProviders: {
+      call: async () => JSON.stringify({
+        visuals: [{
+          sceneNumber: 1,
+          visualPrompt: 'Derek jolts awake in a dark cluttered motel room.',
+          actionPrompt: 'Derek jolts awake and scans the room.',
+        }],
+      }),
+    },
+  });
+  const result = await service.planVisuals({
+    scenes: [{
+      id: 'a',
+      narrationText: 'Derek jolts awake in the motel room.',
+      beat: '',
+      shots: [{ prompt: '', versions: [], activeVersionIndex: 0 }],
+    }],
+    provider: 'gemini',
+    style: { id: 'basic', promptText: 'simple' },
+    fallbackPolicy: 'fail',
+  });
+  assert.equal(result.scenes[0].prompt, 'Derek jolts awake in a dark cluttered motel room.');
+  assert.equal(result.scenes[0].shots[0].prompt, 'Derek jolts awake in a dark cluttered motel room.');
+  assert.equal(result.scenes[0].beat, 'Derek jolts awake and scans the room.');
+});
+
 test('planVisuals onlyMissing skips scenes that already have prompts and preserves their media', async () => {
   let calls = 0;
   const service = createShotPlanningService({

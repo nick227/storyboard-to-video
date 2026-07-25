@@ -20,16 +20,38 @@ const NARRATION_CHUNK_MAX_LENGTH = 6_000; // per-call output cap, same bound dia
 // overage warning says so explicitly instead of trimming silently.
 const SUBSTANTIAL_OVERAGE_RATIO = 1.25;
 
+const ACTION_PROMPT_RULES = `actionPrompt: describe one physical action in 8-28 words, simple present tense: subject + verb + object/direction. Ground the action in this scene's narration (and source script when provided); keep spatial relationships implied by neighboring narration and the established setting (outside the room door, inside the cluttered room). Prefer dynamic verbs that animate clearly (throws, turns, presses, recoils) over static states (stands, sits, waits, is). Add concrete visible detail only when it stays faithful to the source -- do not invent props, people, or gestures the narration does not support. No camera instructions or style wording.`;
+
+const VISUAL_PROMPT_RULES = `visualPrompt: describe the clearest still visual moment in 15-40 words. State subject, pose, important object, location, and composition. Carry the established setting into every frame unless this scene's narration clearly changes location -- keep place, time-of-day/lighting mood, and durable environment traits (e.g. dark cluttered motel room). Outside or adjacent beats stay tied to that setting. No motion, camera movement, or style wording.`;
+
 const SHOT_RULES = `SHOT RULES:
 - Break this narration excerpt into shots. Each shot pairs one still visual moment with the exact narration spoken during it.
 - narrationText must be an exact copied excerpt of the narration below -- never rewritten, paraphrased, or summarized.
 - One shot may cover several sentences of calm narration; a burst of fast action may need several shots for only a few words. Let the content decide -- there is no target count.
 - Shots must stay in narration order and, concatenated, read back to approximately the full excerpt below.
-- visualPrompt: describe the keyframe at the clearest physical moment in 15-40 words. State subject, pose, important object, location, and composition. No motion, camera movement, or style wording.
-- actionPrompt: describe one physical action in 5-20 words, simple present tense: subject + verb + object/direction.`;
+- ${VISUAL_PROMPT_RULES}
+- ${ACTION_PROMPT_RULES}`;
 
 function wordCount(text) {
   return String(text || '').match(/\S+/g)?.length || 0;
+}
+
+function collectEnvironmentContext(scenes = []) {
+  const sluglines = [];
+  const establishing = [];
+  for (const scene of scenes) {
+    const source = cleanText(scene?.sourceScriptFragment || scene?.scriptFragment, 1_000);
+    for (const line of source.split(/\n+/)) {
+      const trimmed = line.trim();
+      if (/^(?:\.?int\.?\/?ext\.?|\.?int\.?|\.?ext\.?|\.?i\/e)\b/i.test(trimmed)) {
+        sluglines.push(trimmed.replace(/^\./, ''));
+      }
+    }
+  }
+  const firstNarration = cleanText(scenes[0]?.narrationText, 400);
+  if (firstNarration) establishing.push(firstNarration);
+  const parts = [...new Set([...sluglines, ...establishing])].filter(Boolean);
+  return parts.slice(0, 3).join(' | ');
 }
 
 // Splits `text` into pieces of at most `maxWords`, by computing the fragment count
@@ -184,16 +206,26 @@ Source script excerpt:
 ${sourceText}`;
 }
 
-function buildVisualPlanningRequest({ scenes, style, additional }) {
-  const sceneBlock = scenes.map((scene, index) => `${index + 1}. Narration: ${scene.narrationText}`).join('\n\n');
+function buildVisualPlanningRequest({ scenes, neighbors = [], style, additional, environmentContext = '' }) {
+  const sceneBlock = scenes.map((scene, index) => {
+    const neighbor = neighbors[index] || {};
+    const narration = cleanText(scene.narrationText, 6_000);
+    const source = cleanText(scene.sourceScriptFragment || scene.scriptFragment, 2_000);
+    const lines = [`${index + 1}. Narration: ${narration}`];
+    if (source && source !== narration) lines.push(`Source script: ${source}`);
+    if (neighbor.previous) lines.push(`Previous narration (continuity only): ${cleanText(neighbor.previous, 300)}`);
+    if (neighbor.next) lines.push(`Next narration (continuity only): ${cleanText(neighbor.next, 300)}`);
+    return lines.join('\n');
+  }).join('\n\n');
   return `Return strict JSON only: {"visuals":[{"sceneNumber":N,"visualPrompt":"...","actionPrompt":"..."}]}, one object for every scene below.
 
 VISUAL RULES:
 - Do not rewrite, return, split, merge, or reorder narration.
-- visualPrompt: describe the clearest still visual moment in 15-40 words. State subject, pose, important object, location, and composition. No camera movement or style wording.
-- actionPrompt: describe one physical action in 5-20 words, simple present tense.
+- ${VISUAL_PROMPT_RULES}
+- ${ACTION_PROMPT_RULES}
 - Keep every sceneNumber exactly as supplied.
 
+Established setting (carry into every visual unless narration clearly changes location): ${environmentContext || 'none'}.
 Style context: ${style?.promptText || 'none'}.
 Additional: ${additional || 'none'}.
 
@@ -216,13 +248,14 @@ SHOT BUDGET: Plan the strongest visual coverage possible within an overall maxim
 This excerpt's approximate share of that budget is about ${chunkBudget} shot${chunkBudget === 1 ? '' : 's'} -- a soft target, not a hard rule. Use more or fewer if the content genuinely needs it, but stay mindful of the overall ${maxShots}-shot ceiling.`;
 }
 
-function buildShotPlanningRequest({ chunkText, sequenceContext, style, additional, maxShots, chunkBudget }) {
+function buildShotPlanningRequest({ chunkText, sequenceContext, style, additional, maxShots, chunkBudget, environmentContext = '' }) {
   return `Return strict JSON only: {"shots":[{"narrationText":"...","visualPrompt":"...","actionPrompt":"..."}]}.
 
 ${SHOT_RULES}${buildShotCapGuidance({ maxShots, chunkBudget })}
 
 Story so far (broad sequence context, for tone only -- do not restate or count these): ${sequenceContext || 'none'}
 
+Established setting (carry into every visual unless narration clearly changes location): ${environmentContext || 'none'}.
 Style context: ${style?.promptText || 'none'}.
 Additional: ${additional || 'none'}.
 
@@ -315,11 +348,11 @@ function createShotPlanningService({ textProviders, generationCache }) {
     }
   }
 
-  async function planShotsForChunk({ chunkText, sequenceContext, style, additional, provider, fallbackPolicy, tenantId, bypassCache, maxShots, chunkBudget }) {
+  async function planShotsForChunk({ chunkText, sequenceContext, style, additional, provider, fallbackPolicy, tenantId, bypassCache, maxShots, chunkBudget, environmentContext = '' }) {
     if (provider === 'stub') return { shots: fallbackShotsForChunk(chunkText), usedFallback: true, warning: '' };
 
     const generateFn = async () => {
-      const request = buildShotPlanningRequest({ chunkText, sequenceContext, style, additional, maxShots, chunkBudget });
+      const request = buildShotPlanningRequest({ chunkText, sequenceContext, style, additional, maxShots, chunkBudget, environmentContext });
       const parsed = extractJson(providerOutput(await textProviders.call(provider, request)));
       const shots = Array.isArray(parsed?.shots) ? parsed.shots : null;
       if (!shots?.length) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid shot data', { status: 502 });
@@ -333,8 +366,8 @@ function createShotPlanningService({ textProviders, generationCache }) {
     try {
       const shots = generationCache
         ? await generationCache.runCached({
-            tenantId, operation: 'shot.plan', provider, promptTemplateVersion: 1,
-            source: { chunkText, sequenceContext, maxShots: maxShots || null, chunkBudget: chunkBudget || null }, settings: { style: style?.id, additional }, bypassCache, generateFn,
+            tenantId, operation: 'shot.plan', provider, promptTemplateVersion: 4,
+            source: { chunkText, sequenceContext, environmentContext, maxShots: maxShots || null, chunkBudget: chunkBudget || null }, settings: { style: style?.id, additional }, bypassCache, generateFn,
           })
         : await generateFn();
       if (!shots.length) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned no usable shots', { status: 502 });
@@ -473,6 +506,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
     if (!work.length) return { scenes: sourceScenes, usedFallback: false, warning: '' };
 
     const additional = style ? getAdditionalCommonPrompt(style.promptText, commonPromptText) : commonPromptText;
+    const environmentContext = collectEnvironmentContext(sourceScenes);
     const plannedByIndex = new Map();
     const warnings = [];
     let usedFallback = false;
@@ -492,7 +526,11 @@ function createShotPlanningService({ textProviders, generationCache }) {
         batchUsedFallback = true;
       } else {
         const generateFn = async () => {
-          const request = buildVisualPlanningRequest({ scenes: batchScenes, style, additional });
+          const neighbors = batch.map((item) => ({
+            previous: sourceScenes[item.index - 1]?.narrationText || '',
+            next: sourceScenes[item.index + 1]?.narrationText || '',
+          }));
+          const request = buildVisualPlanningRequest({ scenes: batchScenes, neighbors, style, additional, environmentContext });
           const parsed = extractJson(providerOutput(await textProviders.call(provider, request)));
           if (!Array.isArray(parsed?.visuals)) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid visual planning data', { status: 502 });
           const sceneNumbers = parsed.visuals.map((item) => Number(item?.sceneNumber));
@@ -510,8 +548,17 @@ function createShotPlanningService({ textProviders, generationCache }) {
         try {
           visuals = generationCache
             ? await generationCache.runCached({
-                tenantId, operation: 'visual.plan', provider, promptTemplateVersion: 1,
-                source: { scenes: batchScenes.map((scene) => ({ id: scene.id, narrationText: scene.narrationText })) },
+                tenantId, operation: 'visual.plan', provider, promptTemplateVersion: 4,
+                source: {
+                  environmentContext,
+                  scenes: batch.map((item) => ({
+                    id: item.scene.id,
+                    narrationText: item.scene.narrationText,
+                    sourceScriptFragment: item.scene.sourceScriptFragment || item.scene.scriptFragment || '',
+                    previousNarration: sourceScenes[item.index - 1]?.narrationText || '',
+                    nextNarration: sourceScenes[item.index + 1]?.narrationText || '',
+                  })),
+                },
                 settings: { style: style?.id, additional }, bypassCache, generateFn,
               })
             : await generateFn();
@@ -530,10 +577,14 @@ function createShotPlanningService({ textProviders, generationCache }) {
       batch.forEach((item, index) => {
         const visual = byNumber.get(index + 1);
         const actionPrompt = compactAction(visual.actionPrompt || item.scene.narrationText);
+        const visualPrompt = cleanText(visual.visualPrompt, 20_000) || `${actionPrompt} Clear subject, key pose, readable composition.`;
+        const existingShots = Array.isArray(item.scene.shots) ? item.scene.shots : [];
+        const primaryShot = existingShots[0] && typeof existingShots[0] === 'object' ? existingShots[0] : {};
         plannedByIndex.set(item.index, {
           ...item.scene,
           beat: actionPrompt,
-          prompt: cleanText(visual.visualPrompt, 20_000) || `${actionPrompt} Clear subject, key pose, readable composition.`,
+          prompt: visualPrompt,
+          shots: [{ ...primaryShot, prompt: visualPrompt }, ...existingShots.slice(1)],
           promptGeneratedFromBeat: actionPrompt,
           promptGeneratedFromNarration: item.scene.narrationText,
           promptIsFallback: batchUsedFallback,
@@ -558,6 +609,9 @@ function createShotPlanningService({ textProviders, generationCache }) {
     const sequences = await scanSequences({ narrationText: narration.narrationText, provider, fallbackPolicy, tenantId, bypassCache });
     const sequenceContext = sequences.map((item) => [item.label, item.intent].filter(Boolean).join(': ')).filter(Boolean).join('; ');
     const additional = style ? getAdditionalCommonPrompt(style.promptText, commonPromptText) : commonPromptText;
+    const environmentContext = collectEnvironmentContext([
+      { sourceScriptFragment: scriptText, narrationText: narration.chunks?.[0]?.narrationText || narration.narrationText },
+    ]);
 
     const chunks = chunkByWords(narration.narrationText, MAX_WORDS_PER_SHOT_CHUNK);
     const chunkBudgets = allocateShotBudgets(chunks, maxShots);
@@ -569,7 +623,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
     for (let i = 0; i < chunks.length; i += 1) {
       const result = await planShotsForChunk({
         chunkText: chunks[i], sequenceContext, style, additional, provider, fallbackPolicy, tenantId, bypassCache,
-        maxShots, chunkBudget: chunkBudgets[i],
+        maxShots, chunkBudget: chunkBudgets[i], environmentContext,
       });
       if (result.usedFallback) usedFallback = true;
       if (result.warning) warnings.push(result.warning);
