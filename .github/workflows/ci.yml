@@ -155,14 +155,31 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install modal
+      - name: Ensure image-service-secrets in dev
+        id: ensure_secret
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          IMAGE_SERVICE_TOKEN: ${{ secrets.IMAGE_SERVICE_TOKEN }}
+        run: |
+          if [ -z "${IMAGE_SERVICE_TOKEN}" ]; then
+            echo "::warning::IMAGE_SERVICE_TOKEN repo secret not set; skipping image-service deploy."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          modal secret create image-service-secrets \
+            IMAGE_SERVICE_TOKEN="$IMAGE_SERVICE_TOKEN" \
+            --env dev --force
+          echo "ready=true" >> "$GITHUB_OUTPUT"
       - name: Preflight - dev Modal environment/secret
         id: preflight
+        if: steps.ensure_secret.outputs.ready == 'true'
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: bash .github/scripts/modal-preflight.sh dev image-service-secrets skip
       - name: Deploy image-service to Modal (dev)
-        if: steps.preflight.outputs.ready == 'true'
+        if: steps.ensure_secret.outputs.ready == 'true' && steps.preflight.outputs.ready == 'true'
         working-directory: apps/image-service
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}

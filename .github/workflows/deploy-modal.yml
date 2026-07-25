@@ -72,6 +72,21 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install modal
+      # First-time / rotate: create Modal secret from the GitHub repo secret so prod
+      # deploy does not depend on a prior local modal-bootstrap run for image-service.
+      - name: Ensure image-service-secrets in prod
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          IMAGE_SERVICE_TOKEN: ${{ secrets.IMAGE_SERVICE_TOKEN }}
+        run: |
+          if [ -z "${IMAGE_SERVICE_TOKEN}" ]; then
+            echo "::error::Set repo secret IMAGE_SERVICE_TOKEN (random bearer shared with Railway IMAGE_SERVICE_TOKEN)."
+            exit 1
+          fi
+          modal secret create image-service-secrets \
+            IMAGE_SERVICE_TOKEN="$IMAGE_SERVICE_TOKEN" \
+            --env prod --force
       - name: Preflight - prod Modal environment/secret
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
