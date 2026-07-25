@@ -5,6 +5,7 @@ import { clampSplitCount } from './scene-count.js';
 import { adaptSceneImageShot, imageShot, replaceImageState, replaceVideoState, setImagePrompt } from '../core/scene-shots.js';
 import { textValue } from '../core/text-values.js';
 import { resolvedEntityConfig, recordEntityGeneration } from '../core/scene-entity-config.js';
+import { parseImageProviderSelection } from './local-safetensors.js';
 
 // A generation failure is "expected" (record it against this scene and let the batch keep moving)
 // only when the server gave a well-formed rejection tied to THIS request — a validation error, a
@@ -621,6 +622,7 @@ export async function regenerateImage(index, scene, els, setStatus, withinSerial
     if (!withinSerial) await ensureProjectSynced();
     const base = getPayloadBase(els);
     const entityConfig = resolvedEntityConfig(activeScene, 'image', { record: getCurrentStoryboardRecord(), elements: els });
+    const imageSelection = parseImageProviderSelection(entityConfig.provider);
     const payload = {
       sceneNumber: index + 1,
       sceneId: activeScene.id,
@@ -628,7 +630,8 @@ export async function regenerateImage(index, scene, els, setStatus, withinSerial
       scenePrompt: activeScene.prompt,
       styleId: base.styleId,
       commonPromptText: base.commonPromptText,
-      provider: entityConfig.provider,
+      provider: imageSelection.provider,
+      ...(imageSelection.model ? { model: imageSelection.model } : {}),
       projectId: base.projectId,
       outputIntent: {
         ...(entityConfig.aspectRatio ? { aspectRatio: entityConfig.aspectRatio } : {}),
@@ -636,7 +639,7 @@ export async function regenerateImage(index, scene, els, setStatus, withinSerial
         ...(entityConfig.quality ? { quality: entityConfig.quality } : {}),
       },
     };
-    if (entityConfig.provider !== 'stub') {
+    if (imageSelection.provider !== 'stub') {
       if (setStatus) setStatus('Checking references...');
       const preflight = await api('/api/images/preflight', { method: 'POST', body: JSON.stringify(payload) });
       // The server-authored reference plan remains bound to generation by its hash, but provider

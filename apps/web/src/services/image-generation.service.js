@@ -13,6 +13,10 @@ const { buildProjectAssetStorageKey } = require('../storage/blob-store');
 const { createAssetMaterializer } = require('../storage/asset-materializer');
 const { dezgoModelForProvider, isDezgoProvider } = require('../providers/image/dezgo-settings');
 const { composeStockQueries } = require('../shared/stock-query');
+const {
+  LOCAL_SAFETENSORS_PROVIDER,
+  parseImageProviderSelection,
+} = require('../shared/local-safetensors');
 
 function createImageGenerationService({ config, styles, provider, projectStore, materializer }) {
   const assetMaterializer = materializer || createAssetMaterializer({
@@ -58,15 +62,18 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
     const project = lease
       ? await projectStore.verifyLease(lease, signal)
       : await projectStore.read(input.projectId, { ownerId });
+    const selection = parseImageProviderSelection(input.provider, input.model);
     const models = {
       stub: 'stub-image-v1',
       openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
       gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image',
-      ...(isDezgoProvider(input.provider) ? { [input.provider]: dezgoModelForProvider(input.provider) } : {}),
+      pixabay: 'pixabay-search-v1',
+      ...(isDezgoProvider(selection.provider) ? { [selection.provider]: dezgoModelForProvider(selection.provider) } : {}),
+      ...(selection.provider === LOCAL_SAFETENSORS_PROVIDER ? { [LOCAL_SAFETENSORS_PROVIDER]: selection.model } : {}),
     };
     const output = resolveImageOutput({
-      provider: input.provider,
-      model: models[input.provider],
+      provider: selection.provider,
+      model: models[selection.provider],
       intent: mergeMediaIntent({ modality: 'image', platform: config.mediaOutputDefaults, project: project.mediaSettings, override: input.outputIntent }),
     });
     const scene = project.scenes?.find((item) => item.id === input.sceneId);
@@ -95,20 +102,21 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
       });
     }
     const uploaded = await sceneReferencePaths(input.projectId, scene);
-    const referencePlan = resolveImageReferencePlan(input.provider, [...uploaded.paths, ...defaultReferences]);
+    const referencePlan = resolveImageReferencePlan(selection.provider, [...uploaded.paths, ...defaultReferences]);
     const visiblePlan = publicReferencePlan(referencePlan);
     const referencePlanHash = hashCanonical(visiblePlan);
     return {
       style,
       project,
       scene,
+      selection,
       referencePlan,
       visiblePlan,
       referencePlanHash,
       referenceCount: referencePlan.included.length,
       sceneReferenceCount: referencePlan.included.filter((item) => item.source === 'scene').length,
       defaultReferenceCount: referencePlan.included.filter((item) => item.source === 'style').length,
-      requiresConfirmation: input.provider !== 'stub' && referencePlan.excluded.length > 0,
+      requiresConfirmation: selection.provider !== 'stub' && referencePlan.excluded.length > 0,
       output,
       releaseMaterialized: async () => {
         for (const release of uploaded.releases) await release();
@@ -122,7 +130,8 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
       const resolved = await resolveReferenceContext(input, context);
       try {
         return {
-          provider: input.provider,
+          provider: resolved.selection.provider,
+          model: resolved.selection.model || null,
           referenceCount: resolved.referenceCount,
           sceneReferenceCount: resolved.sceneReferenceCount,
           defaultReferenceCount: resolved.defaultReferenceCount,
@@ -159,7 +168,18 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
         // version) rotates to a different search result instead of re-downloading the same photo.
         const stockQueries = composeStockQueries({ scenePrompt: input.scenePrompt, styleId: style.id, styleTitle: style.name });
         const attemptIndex = imageShot(resolved.scene).versions.length;
-        const providerResponse = await provider.generate({ provider: input.provider, prompt, references, referenceBindings, referencePlan, title: input.sceneTitle, output: resolved.output, stockQueries, attemptIndex });
+        const providerResponse = await provider.generate({
+          provider: resolved.selection.provider,
+          model: resolved.selection.model || undefined,
+          prompt,
+          references,
+          referenceBindings,
+          referencePlan,
+          title: input.sceneTitle,
+          output: resolved.output,
+          stockQueries,
+          attemptIndex,
+        });
         const result = providerOutput(providerResponse);
         const metadata = providerResponse && Object.hasOwn(providerResponse, 'output') ? providerResponse : {};
         fs.mkdirSync(config.paths.generated, { recursive: true });
@@ -179,14 +199,14 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
               operation: 'image.generate',
               prompt: { composed: prompt, scene: input.scenePrompt, style: style.promptText, common, extra: input.extraPromptText || '' },
               style: { id: style.id, name: style.name },
-              provider: { name: metadata.provider || input.provider, model: metadata.model || null },
+              provider: { name: metadata.provider || resolved.selection.provider, model: metadata.model || resolved.selection.model || null },
               settings: { ...(metadata.settings || {}), output: resolved.output },
               references: selectedReferences.map((reference) => ({ path: reference.path, source: reference.source, role: reference.role, order: reference.order, providerSlot: reference.providerSlot, consumed: true })),
             },
             result: { providerRequestId: metadata.providerRequestId || null, measurementStatus: metadata.measurementStatus || 'unavailable', mimeType: result.mimeType },
             omissions: referencePlan.excluded.map((reference) => ({ path: reference.path, source: reference.source, role: reference.role, order: reference.candidateOrder, reason: reference.reason })),
           });
-          const version = { path: asset.path, prompt, scenePrompt: input.scenePrompt, provider: input.provider, output: resolved.output, manifest, manifestHash: manifest.manifestHash, createdAt };
+          const version = { path: asset.path, prompt, scenePrompt: input.scenePrompt, provider: resolved.selection.provider, output: resolved.output, manifest, manifestHash: manifest.manifestHash, createdAt };
           let scene, project;
           try {
             ({ scene, project } = await projectStore.attachSceneVersion(lease, { sceneId: input.sceneId, kind: 'image', version, jobId }));

@@ -20,7 +20,7 @@ function references(count) {
 }
 
 test('image providers publish explicit reference capabilities', () => {
-  assert.deepEqual(Object.keys(IMAGE_PROVIDER_CAPABILITIES).sort(), ['dezgo', 'dezgo_flux', 'gemini', 'openai', 'stub']);
+  assert.deepEqual(Object.keys(IMAGE_PROVIDER_CAPABILITIES).sort(), ['dezgo', 'dezgo_flux', 'gemini', 'local-safetensors', 'openai', 'pixabay', 'stub']);
   assert.equal(imageProviderCapabilities('gemini').maxReferences, 14);
   assert.equal(imageProviderCapabilities('openai').maxReferences, 8);
   assert.equal(imageProviderCapabilities('dezgo').transport, 'image_to_image_anchor');
@@ -56,7 +56,7 @@ test('Gemini and OpenAI clamp through the neutral planner while stub records non
 test('browser and server reference planners produce the same manifest-facing plan', async () => {
   const browser = await import(path.join(__dirname, '..', 'public', 'js', 'generation', 'image-reference-plan.js'));
   const candidates = references(10).map(({ localPath, ...reference }) => reference);
-  for (const provider of ['gemini', 'openai', 'dezgo', 'dezgo_flux', 'stub']) {
+  for (const provider of ['gemini', 'openai', 'dezgo', 'dezgo_flux', 'stub', 'pixabay', 'local-safetensors']) {
     assert.deepEqual(browser.resolveImageReferencePlan(provider, candidates), resolveImageReferencePlan(provider, candidates));
   }
 });

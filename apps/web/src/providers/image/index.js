@@ -9,6 +9,11 @@ const { downloadStockImage } = require('../stock/materialize');
 const {
   DEZGO_FLUX_MODEL, DEZGO_SD1_MODEL, dezgoBillingProvider, dezgoModelForProvider, dezgoSteps, isDezgoFluxProvider, isDezgoProvider,
 } = require('./dezgo-settings');
+const { createLocalSafetensorsClient } = require('./local-safetensors');
+const {
+  LOCAL_SAFETENSORS_PROVIDER,
+  parseImageProviderSelection,
+} = require('../../shared/local-safetensors');
 
 function fileBlob(file) {
   const extension = file.split('.').pop()?.toLowerCase();
@@ -17,6 +22,7 @@ function fileBlob(file) {
 }
 
 function createImageProviders(config, textProviders, getCancellation, usageTracker, providerAdmission, stockProvider) {
+  const localSafetensors = createLocalSafetensorsClient(config, getCancellation);
   async function openai(prompt, references = [], output) {
     if (!config.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY missing');
     const { size, quality } = output.resolved.providerSettings;
@@ -207,21 +213,25 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
       measurementStatus: 'not_applicable',
     });
   }
-  function imageModel(provider) {
-    if (isDezgoProvider(provider)) return dezgoModelForProvider(provider);
-    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image', pixabay: 'pixabay-search-v1' }[provider];
+  function imageModel(provider, requestedModel) {
+    const parsed = parseImageProviderSelection(provider, requestedModel);
+    if (parsed.provider === LOCAL_SAFETENSORS_PROVIDER) return parsed.model;
+    if (isDezgoProvider(parsed.provider)) return dezgoModelForProvider(parsed.provider);
+    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image', pixabay: 'pixabay-search-v1' }[parsed.provider];
   }
-  function generate({ provider, prompt, references = [], referenceBindings = [], title, output, stockQueries, attemptIndex }) {
+  function generate({ provider: rawProvider, model: requestedModel, prompt, references = [], referenceBindings = [], title, output, stockQueries, attemptIndex }) {
+    const { provider, model: selectionModel } = parseImageProviderSelection(rawProvider, requestedModel);
     const capabilities = imageProviderCapabilities(provider);
     if (references.length > capabilities.maxReferences) throw new RangeError(`${provider} accepts at most ${capabilities.maxReferences} planned reference image${capabilities.maxReferences === 1 ? '' : 's'}`);
     if (!output?.requested || !output?.resolved) throw new AppError('MEDIA_OUTPUT_NOT_RESOLVED', 'Image generation requires server-resolved media output', { status: 500 });
-    const model = imageModel(provider);
+    const model = imageModel(provider, selectionModel);
     const operation = () => provider === 'stub'
       ? Promise.resolve(providerResult({ output: { buffer: stubImage(prompt, title, output.resolved), mimeType: 'image/svg+xml', extension: 'svg' }, provider: 'stub', model, settings: { output, renderer: 'stub-svg-v1' }, usage: { images: 1, ...estimatedUsage(output) }, measurementStatus: 'not_applicable' }))
       : provider === 'openai' ? openai(prompt, references, output)
         : isDezgoProvider(provider) ? dezgo(provider, prompt, references, output)
           : provider === 'pixabay' ? pixabay(stockQueries, attemptIndex, output)
-            : gemini(prompt, referenceBindings.length ? referenceBindings : references, output);
+            : provider === LOCAL_SAFETENSORS_PROVIDER ? localSafetensors.generate(prompt, output, model)
+              : gemini(prompt, referenceBindings.length ? referenceBindings : references, output);
     const reservationUsage = { images: 1, ...estimatedUsage(output), ...(isDezgoProvider(provider) ? { steps: dezgoSteps(config.env, model) } : {}) };
     const tracked = () => usageTracker ? usageTracker.execute({ modality: 'image', provider: dezgoBillingProvider(provider), model, estimatedUsage: reservationUsage, estimatedUsageComplete: provider !== 'stub', inputMetadata: { promptCharacters: String(prompt).length, referenceCount: references.length, selectedProvider: provider, output } }, operation) : operation();
     // pixabay is exempt here (like stub) for a different reason than stub: it isn't unadmitted --

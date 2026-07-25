@@ -1,5 +1,6 @@
 const { AppError } = require('../errors');
 const { VIDEO_PROVIDERS } = require('./video-provider-capabilities');
+const { sizeKeyForAspectRatio } = require('./local-safetensors');
 
 const RESOLUTION_TIERS = Object.freeze(['draft', 'standard', 'high', 'ultra']);
 const IMAGE_QUALITY_LEVELS = Object.freeze(['low', 'medium', 'high']);
@@ -123,6 +124,19 @@ function resolveImageOutput({ provider, model, intent }) {
     const edge = { draft: 512, standard: 1024, high: 2048, ultra: 4096 }[intent.resolutionTier];
     dimensions = shortEdgeDimensions(intent.aspectRatio, edge);
     providerSettings = {};
+  } else if (provider === 'local-safetensors') {
+    const shortEdge = intent.resolutionTier === 'draft' ? 768 : 1024;
+    dimensions = intent.resolutionTier === 'standard' || intent.resolutionTier === 'draft'
+      ? shortEdgeDimensions(intent.aspectRatio, shortEdge)
+      : null;
+    if (dimensions) {
+      providerSettings = {
+        size: sizeKeyForAspectRatio(intent.aspectRatio),
+        width: dimensions.width,
+        height: dimensions.height,
+        steps: 25,
+      };
+    }
   }
   if (!dimensions || !providerSettings) {
     throw outputPolicyError(`${provider}/${model || 'default'} cannot produce ${intent.resolutionTier} images at ${intent.aspectRatio}`, { modality: 'image', provider, model: model || null, requested });

@@ -69,7 +69,9 @@ function registerMiddleware(app, { config, auth, payments }) {
   app.use(express.static(config.paths.public, { index: false }));
 }
 
-function createSendPage(pagesDir) {
+const { localSafetensorsConfigured, localSafetensorsSelectOptionsHtml } = require('./shared/local-safetensors');
+
+function createSendPage(pagesDir, config) {
   return (filename) => (req, res) => {
     const filePath = path.isAbsolute(filename) ? filename : path.join(pagesDir, filename);
     let html = fs.readFileSync(filePath, 'utf8');
@@ -88,12 +90,15 @@ function createSendPage(pagesDir) {
       return `<!-- Missing Dialog: ${slug} -->`;
     });
 
+    const localOptions = localSafetensorsConfigured(config) ? localSafetensorsSelectOptionsHtml() : '';
+    html = html.replaceAll('<!--local-safetensors-image-options-->', localOptions);
+
     res.type('html').send(html);
   };
 }
 
 function registerPageRoutes(app, config) {
-  const sendPage = createSendPage(config.paths.pages);
+  const sendPage = createSendPage(config.paths.pages, config);
   const pages = [
     [['/', '/index.html'], 'index.html'],
     [['/login', '/login.html'], 'login.html'],
@@ -186,7 +191,7 @@ function pageGuard(auth) {
 }
 
 function registerRoutes(app, d) {
-  const sendPage = createSendPage(d.config.paths.pages);
+  const sendPage = createSendPage(d.config.paths.pages, d.config);
   app.get('/writers/:slug', (req, res, next) => {
     if (req.params.slug.includes('.')) return next();
     return sendPage('writer.html')(req, res);

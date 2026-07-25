@@ -4,6 +4,10 @@ const {
   mergeMediaIntent, resolveImageOutput, resolveVideoOutput,
 } = require('../shared/media-output-policy');
 const { dezgoBillingProvider, dezgoModelForProvider, dezgoSteps, isDezgoProvider } = require('../providers/image/dezgo-settings');
+const {
+  LOCAL_SAFETENSORS_PROVIDER,
+  parseImageProviderSelection,
+} = require('../shared/local-safetensors');
 
 function serializeQuote(quote, quantity) {
   if (!quote) return { available: false, reason: 'billing_not_configured' };
@@ -24,9 +28,11 @@ function serializeQuote(quote, quantity) {
 function createMediaOutputService({ config, projectStore, billing, videoProviders }) {
   const VIDEO_DURATION_OPTIONS = Object.freeze([2, 4, 6, 8, 10, 12]);
   function imageModel(provider, requested) {
+    const selection = parseImageProviderSelection(provider, requested);
+    if (selection.provider === LOCAL_SAFETENSORS_PROVIDER) return selection.model;
     if (requested) return requested;
-    if (isDezgoProvider(provider)) return dezgoModelForProvider(provider);
-    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image' }[provider];
+    if (isDezgoProvider(selection.provider)) return dezgoModelForProvider(selection.provider);
+    return { stub: 'stub-image-v1', openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image', pixabay: 'pixabay-search-v1' }[selection.provider];
   }
 
   async function selection(input, { ownerId } = {}) {
@@ -34,10 +40,11 @@ function createMediaOutputService({ config, projectStore, billing, videoProvider
     if (!['image', 'video'].includes(modality)) throw new AppError('VALIDATION_ERROR', 'modality must be image or video', { status: 400 });
     const project = input.projectId ? await projectStore.read(input.projectId, { ownerId }) : null;
     if (modality === 'image') {
-      const model = imageModel(input.provider, input.model);
-      if (!model) throw new AppError('VALIDATION_ERROR', `Unsupported image provider: ${input.provider}`, { status: 400 });
-      const output = resolveImageOutput({ provider: input.provider, model, intent: mergeMediaIntent({ modality, platform: config.mediaOutputDefaults, project: project?.mediaSettings, override: input.outputIntent }) });
-      return { modality, provider: input.provider, model, output };
+      const parsed = parseImageProviderSelection(input.provider, input.model);
+      const model = imageModel(parsed.provider, parsed.model);
+      if (!model) throw new AppError('VALIDATION_ERROR', `Unsupported image provider: ${parsed.provider}`, { status: 400 });
+      const output = resolveImageOutput({ provider: parsed.provider, model, intent: mergeMediaIntent({ modality, platform: config.mediaOutputDefaults, project: project?.mediaSettings, override: input.outputIntent }) });
+      return { modality, provider: parsed.provider, model, output };
     }
     const projectVideoDefaults = project?.mediaSettings?.video || {};
     const provider = input.provider || projectVideoDefaults.provider || config.videoProvider;

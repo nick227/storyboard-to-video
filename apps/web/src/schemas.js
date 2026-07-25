@@ -1,5 +1,10 @@
 const { z } = require('zod');
 const { VIDEO_PROVIDERS } = require('./shared/video-provider-capabilities');
+const {
+  LOCAL_SAFETENSORS_MODEL_KEYS,
+  LOCAL_SAFETENSORS_PROVIDER,
+  parseImageProviderSelection,
+} = require('./shared/local-safetensors');
 
 const MAX_PROJECT_SCENES = 200;
 
@@ -123,7 +128,12 @@ const mediaSettings = z.object({
   }),
 });
 
-const imageGeneration = z.object({
+const imageGeneration = z.preprocess((input) => {
+  const value = input && typeof input === 'object' ? input : {};
+  if (value.provider == null) return value;
+  const parsed = parseImageProviderSelection(value.provider, value.model);
+  return { ...value, provider: parsed.provider, model: parsed.model || undefined };
+}, z.object({
   projectId,
   sceneId,
   sceneNumber: z.coerce.number().int().min(1).max(MAX_PROJECT_SCENES).default(1),
@@ -132,14 +142,24 @@ const imageGeneration = z.object({
   styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
   commonPromptText: z.string().max(20_000).default(''),
   extraPromptText: z.string().max(20_000).default(''),
-  provider: z.enum(['gemini', 'openai', 'dezgo', 'dezgo_flux', 'stub', 'pixabay']).default('gemini'),
+  provider: z.enum(['gemini', 'openai', 'dezgo', 'dezgo_flux', 'stub', 'pixabay', LOCAL_SAFETENSORS_PROVIDER]).default('gemini'),
+  model: z.string().trim().min(1).max(120).optional(),
   confirmedReferencePlanHash: z.string().trim().max(80).optional(),
   outputIntent: z.object({
     aspectRatio: aspectRatio.optional(),
     resolutionTier: resolutionTier.optional(),
     quality: z.enum(['low', 'medium', 'high']).optional(),
   }).optional(),
-});
+}).superRefine((value, ctx) => {
+  if (value.provider !== LOCAL_SAFETENSORS_PROVIDER) return;
+  if (!LOCAL_SAFETENSORS_MODEL_KEYS.includes(value.model)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['model'],
+      message: `local-safetensors requires one of: ${LOCAL_SAFETENSORS_MODEL_KEYS.join(', ')}`,
+    });
+  }
+}));
 
 const videoGeneration = z.object({
   projectId,

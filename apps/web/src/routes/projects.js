@@ -10,6 +10,10 @@ const { mergeMediaIntent, resolveImageOutput } = require('../shared/media-output
 const { VIDEO_PROVIDER_CAPABILITIES } = require('../shared/video-provider-capabilities');
 const { dezgoModelForProvider, isDezgoProvider } = require('../providers/image/dezgo-settings');
 const { downloadStockImage } = require('../providers/stock/materialize');
+const {
+  LOCAL_SAFETENSORS_PROVIDER,
+  parseImageProviderSelection,
+} = require('../shared/local-safetensors');
 
 function createProjectRouter({ store, queue, upload, shotReferences, styles, prompts, referenceGeneration, imageProvider, stockProvider, identityStore, prisma, config, spendSummary, scripts }) {
   const router = express.Router();
@@ -183,17 +187,19 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
     const stylePrompt = selectedStyle?.promptText || '';
     const fullPrompt = [stylePrompt, finalPrompt].filter(Boolean).join('\n\n');
 
-    const providerName = provider || 'gemini';
+    const selection = parseImageProviderSelection(provider || 'gemini');
     const imageModels = {
       stub: 'stub-image-v1',
       openai: config.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
       gemini: config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image',
-      ...(isDezgoProvider(providerName) ? { [providerName]: dezgoModelForProvider(providerName) } : {}),
+      ...(isDezgoProvider(selection.provider) ? { [selection.provider]: dezgoModelForProvider(selection.provider) } : {}),
+      ...(selection.provider === LOCAL_SAFETENSORS_PROVIDER ? { [LOCAL_SAFETENSORS_PROVIDER]: selection.model } : {}),
     };
-    const output = resolveImageOutput({ provider: providerName, model: imageModels[providerName], intent: mergeMediaIntent({ modality: 'image', platform: config.mediaOutputDefaults, project: project.mediaSettings, override: req.body.outputIntent }) });
+    const output = resolveImageOutput({ provider: selection.provider, model: imageModels[selection.provider], intent: mergeMediaIntent({ modality: 'image', platform: config.mediaOutputDefaults, project: project.mediaSettings, override: req.body.outputIntent }) });
     const result = require('../providers/result').providerOutput(
       await imageProvider.generate({
-        provider: providerName,
+        provider: selection.provider,
+        model: selection.model || undefined,
         prompt: fullPrompt,
         references: [],
         title: 'Reference',

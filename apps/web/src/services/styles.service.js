@@ -8,6 +8,10 @@ const { AppError } = require('../errors');
 const { buildCustomStyleReferenceStorageKey } = require('../storage/blob-store');
 const { mergeMediaIntent, resolveImageOutput } = require('../shared/media-output-policy');
 const { dezgoModelForProvider, isDezgoProvider } = require('../providers/image/dezgo-settings');
+const {
+  LOCAL_SAFETENSORS_PROVIDER,
+  parseImageProviderSelection,
+} = require('../shared/local-safetensors');
 
 function createStylesService(config, { customStyles = null, blobStore = null } = {}) {
   const sanitize = (id = '') => slugify(id);
@@ -383,18 +387,20 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
     });
 
     // 3. Select explicit aspect ratios: 3:4 (portrait) for characters, 16:9 (landscape) for world
+    const selection = parseImageProviderSelection(providerName);
     const models = {
       stub: 'stub-image-v1',
       openai: config.env?.OPENAI_IMAGE_MODEL || 'gpt-image-1',
       gemini: config.env?.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image',
-      ...(isDezgoProvider(providerName) ? { [providerName]: dezgoModelForProvider(providerName) } : {}),
+      ...(isDezgoProvider(selection.provider) ? { [selection.provider]: dezgoModelForProvider(selection.provider) } : {}),
+      ...(selection.provider === LOCAL_SAFETENSORS_PROVIDER ? { [LOCAL_SAFETENSORS_PROVIDER]: selection.model } : {}),
     };
     
     const overrideAspect = normalized === 'world' ? '16:9' : '3:4';
     
     const output = resolveImageOutput({
-      provider: providerName,
-      model: models[providerName],
+      provider: selection.provider,
+      model: models[selection.provider],
       intent: mergeMediaIntent({
         modality: 'image',
         platform: config.mediaOutputDefaults || undefined,
@@ -414,7 +420,8 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
       const prompt = [style.promptText, suffix].filter(Boolean).join('\n\n');
 
       result = await imageProvider.generate({
-        provider: providerName,
+        provider: selection.provider,
+        model: selection.model || undefined,
         prompt,
         title: `Style Reference: ${style.title}`,
         output,
