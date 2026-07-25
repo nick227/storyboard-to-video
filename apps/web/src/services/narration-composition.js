@@ -240,15 +240,19 @@ function reconcileSegments({
   const narration = String(chunkText || '');
   const cleanedModel = (Array.isArray(modelSegments) ? modelSegments : [])
     .map((item) => ({
-      narrationText: cleanText(item?.narrationText, 20_000),
+      // Preserve boundary whitespace — trim() would open gaps in source offsets and break exact concat.
+      narrationText: String(item?.narrationText || '').slice(0, 20_000),
       cutReason: cleanText(item?.cutReason, 200),
-      sourceScriptFragment: cleanText(item?.sourceScriptFragment, 20_000),
+      sourceScriptFragment: String(item?.sourceScriptFragment || '').slice(0, 20_000),
       beatIndex: Number.isInteger(item?.beatIndex) ? item.beatIndex : null,
     }))
-    .filter((item) => item.narrationText);
+    .filter((item) => item.narrationText.trim());
 
   const modelConcatOk = cleanedModel.length
-    && comparableText(cleanedModel.map((item) => item.narrationText).join(' ')) === comparableText(narration);
+    && (
+      cleanedModel.map((item) => item.narrationText).join('') === narration
+      || comparableText(cleanedModel.map((item) => item.narrationText).join(' ')) === comparableText(narration)
+    );
 
   if (modelConcatOk) {
     const providedSources = cleanedModel.map((item) => item.sourceScriptFragment);
@@ -261,15 +265,25 @@ function reconcileSegments({
         exactSourceRanges = [];
         break;
       }
+      // Absorb whitespace-only gaps into this fragment's start so offsets stay contiguous.
+      const start = localCursor;
+      const end = located + fragment.length;
       exactSourceRanges.push({
-        sourceScriptFragment: fragment,
-        sourceStart: sourceStart + located,
-        sourceEnd: sourceStart + located + fragment.length,
+        sourceScriptFragment: sourceChunk.slice(start, end),
+        sourceStart: sourceStart + start,
+        sourceEnd: sourceStart + end,
         sourceMappingMethod: 'model',
       });
-      localCursor = located + fragment.length;
+      localCursor = end;
     }
     if (sourceChunk.slice(localCursor).trim()) exactSourceRanges = [];
+    // Trailing whitespace after the last fragment still belongs to the source span.
+    if (exactSourceRanges.length === cleanedModel.length && localCursor < sourceChunk.length) {
+      const last = exactSourceRanges[exactSourceRanges.length - 1];
+      last.sourceScriptFragment = sourceChunk.slice(last.sourceStart - sourceStart);
+      last.sourceEnd = sourceStart + sourceChunk.length;
+      localCursor = sourceChunk.length;
+    }
     const sourceRanges = exactSourceRanges.length === cleanedModel.length
       ? exactSourceRanges
       : partitionSourceRange(sourceChunk, cleanedModel.map((item) => item.narrationText), sourceStart);

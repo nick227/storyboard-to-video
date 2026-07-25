@@ -532,7 +532,10 @@ function createShotPlanningService({ textProviders, generationCache }) {
             sourceStart: baseStart,
           });
 
+          // Diagnostic retry at most once — never loop even if still under-segmented.
+          let coverageRetried = false;
           if (enrich && densityUnderSegmented(chunkText, reconciled.segments.length, enrich)) {
+            coverageRetried = true;
             warnings.push('Coverage diagnostic: enrich pass looked under-segmented; retrying coverage once.');
             beats = await runCoverage(true);
             modelSegments = await runSegment(beats);
@@ -545,12 +548,19 @@ function createShotPlanningService({ textProviders, generationCache }) {
               sourceStart: baseStart,
             });
           }
+          if (coverageRetried && enrich && densityUnderSegmented(chunkText, reconciled.segments.length, enrich)) {
+            warnings.push('Coverage diagnostic: still under-segmented after one retry; keeping result.');
+          }
 
           if (!reconciled.segments.length) {
             throw new AppError('INVALID_PROVIDER_RESPONSE', 'Narration composition produced no segments', { status: 502 });
           }
-          if (comparableText(reconciled.segments.map((s) => s.narrationText).join(' ')) !== comparableText(chunkText)) {
-            throw new AppError('INVALID_PROVIDER_RESPONSE', 'Narration segmentation did not preserve the finalized narration exactly', { status: 502 });
+          {
+            const joined = reconciled.segments.map((s) => s.narrationText).join('');
+            const joinedSpaced = reconciled.segments.map((s) => s.narrationText).join(' ');
+            if (joined !== chunkText && comparableText(joinedSpaced) !== comparableText(chunkText)) {
+              throw new AppError('INVALID_PROVIDER_RESPONSE', 'Narration segmentation did not preserve the finalized narration exactly', { status: 502 });
+            }
           }
           if (reconciled.mergedBeats?.length) {
             warnings.push(`Coverage reconciliation merged ${reconciled.mergedBeats.length} beat(s) without clean textual seams.`);
