@@ -43,18 +43,17 @@ test('local safetensors is hidden when disabled or missing base URL', () => {
   assert.equal(localSafetensorsConfigured({ localSafetensors: { enabled: false, baseUrl: 'http://x' } }), false);
   assert.equal(localSafetensorsConfigured({ localSafetensors: { enabled: true, baseUrl: '' } }), false);
   assert.equal(localSafetensorsConfigured(enabledConfig()), true);
-  assert.equal(localSafetensorsSelectOptionsHtml().includes('local-safetensors:flux-dev'), true);
+  assert.equal(localSafetensorsSelectOptionsHtml().includes('local-safetensors:biglove-xl1'), true);
+  assert.equal(localSafetensorsSelectOptionsHtml().includes('flux-dev'), false);
 });
 
-test('all four local safetensors models are registered', () => {
+test('ready local safetensors models are registered', () => {
   assert.deepEqual(LOCAL_SAFETENSORS_MODEL_KEYS, [
     'realistic-stock-photo',
     'biglove-xl1',
-    'flux-dev',
-    'flux-dev-q4-gguf',
   ]);
   assert.equal(LOCAL_SAFETENSORS_MODELS[0].label, 'Realistic Stock Photo v2.0');
-  assert.equal(encodeLocalSafetensorsSelection('flux-dev'), 'local-safetensors:flux-dev');
+  assert.equal(encodeLocalSafetensorsSelection('biglove-xl1'), 'local-safetensors:biglove-xl1');
   assert.deepEqual(
     parseImageProviderSelection('local-safetensors:biglove-xl1'),
     { provider: 'local-safetensors', model: 'biglove-xl1' },
@@ -68,7 +67,7 @@ test('start request mapping, progress polling, image import, and no provider fal
     const href = String(url);
     calls.push({ href, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null });
     if (href.endsWith('/api/generation-runs/start')) {
-      assert.equal(calls[0].body.config.model, 'flux-dev');
+      assert.equal(calls[0].body.config.model, 'biglove-xl1');
       assert.equal(calls[0].body.config.count, 1);
       assert.equal(calls[0].body.config.templates[0].text, 'A red circle');
       assert.ok(calls[0].body.client_id);
@@ -104,13 +103,13 @@ test('start request mapping, progress polling, image import, and no provider fal
     const providers = createImageProviders(enabledConfig());
     const result = await providers.generate({
       provider: LOCAL_SAFETENSORS_PROVIDER,
-      model: 'flux-dev',
+      model: 'biglove-xl1',
       prompt: 'A red circle',
       references: [],
-      output: outputFor('flux-dev'),
+      output: outputFor('biglove-xl1'),
     });
     assert.equal(result.provider, LOCAL_SAFETENSORS_PROVIDER);
-    assert.equal(result.model, 'flux-dev');
+    assert.equal(result.model, 'biglove-xl1');
     assert.equal(result.providerRequestId, '77');
     assert.ok(Buffer.compare(result.output.buffer, PNG_BYTES) === 0);
     assert.equal(calls.some((call) => String(call.body?.config?.model || '').includes('gemini')), false);
@@ -209,9 +208,9 @@ test('cancellation delegates to /stop when a run id exists', async () => {
     await assert.rejects(
       () => providers.generate({
         provider: LOCAL_SAFETENSORS_PROVIDER,
-        model: 'flux-dev-q4-gguf',
+        model: 'realistic-stock-photo',
         prompt: 'x',
-        output: outputFor('flux-dev-q4-gguf'),
+        output: outputFor('realistic-stock-photo'),
       }),
       (error) => error.code === 'JOB_CANCELLED',
     );
@@ -241,9 +240,9 @@ test('rejects non-fetchable remote image paths', async () => {
     await assert.rejects(
       () => providers.generate({
         provider: LOCAL_SAFETENSORS_PROVIDER,
-        model: 'flux-dev',
+        model: 'biglove-xl1',
         prompt: 'x',
-        output: outputFor('flux-dev'),
+        output: outputFor('biglove-xl1'),
       }),
       /relative web path/,
     );
@@ -314,9 +313,9 @@ test('transient progress failures retry until completion', async () => {
     const providers = createImageProviders(enabledConfig({ pollIntervalMs: 1, timeoutMs: 5_000 }));
     const result = await providers.generate({
       provider: LOCAL_SAFETENSORS_PROVIDER,
-      model: 'flux-dev',
+      model: 'realistic-stock-photo',
       prompt: 'x',
-      output: outputFor('flux-dev'),
+      output: outputFor('realistic-stock-photo'),
     });
     assert.equal(result.providerRequestId, '8');
     assert.ok(progressAttempts >= 2);
@@ -337,9 +336,9 @@ test('disabled local safetensors does not fall back to another provider', async 
     await assert.rejects(
       () => providers.generate({
         provider: LOCAL_SAFETENSORS_PROVIDER,
-        model: 'flux-dev',
+        model: 'biglove-xl1',
         prompt: 'x',
-        output: outputFor('flux-dev'),
+        output: outputFor('biglove-xl1'),
       }),
       /not enabled/,
     );

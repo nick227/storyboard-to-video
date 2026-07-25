@@ -1,10 +1,10 @@
 const LOCAL_SAFETENSORS_PROVIDER = 'local-safetensors';
 
+// Only list checkpoints that exist on the local Windows disk. Flux entries stay out until their
+// .safetensors / .gguf files are installed under the Safetensors Image Generator model config.
 const LOCAL_SAFETENSORS_MODELS = Object.freeze([
   Object.freeze({ key: 'realistic-stock-photo', label: 'Realistic Stock Photo v2.0' }),
   Object.freeze({ key: 'biglove-xl1', label: 'BigLove XL1' }),
-  Object.freeze({ key: 'flux-dev', label: 'Flux Dev' }),
-  Object.freeze({ key: 'flux-dev-q4-gguf', label: 'Flux Dev Q4 GGUF' }),
 ]);
 
 const LOCAL_SAFETENSORS_MODEL_KEYS = Object.freeze(LOCAL_SAFETENSORS_MODELS.map((model) => model.key));
