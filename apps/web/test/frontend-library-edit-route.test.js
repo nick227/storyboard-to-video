@@ -37,6 +37,13 @@ test('Library Edit links include the exact project target', () => {
   assert.match(source, /searchParams\.set\('project', project\.id\)/);
 });
 
+test('Library New screenplay creates a project before opening the editor', () => {
+  const source = fs.readFileSync(path.join(webRoot, 'public/js/pages/scripts-index.js'), 'utf8');
+  assert.match(source, /api\('\/api\/projects',\s*\{\s*method:\s*'POST'/);
+  assert.match(source, /searchParams\.set\('project', project\.id\)/);
+  assert.doesNotMatch(source, /workPath\(author, 'untitled', 'screenplay', \{ edit: true \}\);/);
+});
+
 test('renamed works do not keep an untitled editor slug', async () => {
   const { scriptSlugFromRecord } = await pathsPromise;
   assert.equal(scriptSlugFromRecord({

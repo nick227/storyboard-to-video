@@ -104,13 +104,29 @@ function renderFilterBars(categories, tags) {
 function bindNewScreenplay(session) {
   if (!newBtn) return;
   newBtn.hidden = false;
-  newBtn.addEventListener('click', () => {
+  newBtn.addEventListener('click', async () => {
     if (!session) {
       window.location.href = `/login.html?redirect=${encodeURIComponent('/library')}`;
       return;
     }
-    const author = authorSlugFromSession(session) || 'anonymous';
-    window.location.href = workPath(author, 'untitled', 'screenplay', { edit: true });
+    newBtn.disabled = true;
+    try {
+      // Create first, then open by project id. A bare /untitled/edit URL is ambiguous and
+      // restores the previous work (or any existing untitled slug) instead of a blank draft.
+      const { project } = await api('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({ title: 'Untitled' }),
+      });
+      const author = authorSlugFromSession(session) || 'anonymous';
+      const url = new URL(workPath(author, 'untitled', 'screenplay', { edit: true }), window.location.origin);
+      url.searchParams.set('project', project.id);
+      window.location.href = `${url.pathname}${url.search}`;
+    } catch (error) {
+      newBtn.disabled = false;
+      status.dataset.tone = 'error';
+      status.hidden = false;
+      status.textContent = error.message || 'Failed to create screenplay.';
+    }
   });
 }
 
