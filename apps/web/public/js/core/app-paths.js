@@ -35,20 +35,16 @@ export function isArtifact(value) {
   return ARTIFACTS.includes(value);
 }
 
-export function libraryHomePath(tab = '') {
-  if (tab === 'community') return '/library?tab=community';
-  if (tab === 'mine') return '/library?tab=mine';
+export function libraryHomePath() {
   return '/library';
 }
 
 export function libraryQueryPath({
-  tab = 'all',
   artifact = 'all',
   category = '',
   tag = '',
 } = {}) {
   const params = new URLSearchParams();
-  if (tab === 'mine' || tab === 'community') params.set('tab', tab);
   if (artifact && artifact !== 'all') params.set('artifact', artifact);
   if (category) params.set('category', category);
   if (tag) params.set('tag', tag);
