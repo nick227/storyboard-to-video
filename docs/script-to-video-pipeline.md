@@ -13,7 +13,9 @@ scriptText
     ▼
 narrationText  (+ STYLE VOICE from writing.md)
     │
-    │  [B] narration.segment       (chunked) — director composition lock
+    │  [B1] narration.coverage     (chunked) — creative visual beats + anchors
+    │  [B2] narration.segment      (chunked) — exact slicer
+    │  [B3] validator              — reconcile / merge / no empty cards
     ▼
 scenes[] {
   narrationText,           ← exact slice of narration
@@ -50,7 +52,7 @@ scenes[] {
 | Companion | Injects into |
 |---|---|
 | `writing.md` | [A] narration only |
-| `orchestrator.md` | [B] STYLE COMPOSITION (director cuts) |
+| `orchestrator.md` | [B1]/[B2] STYLE COMPOSITION (director cuts) |
 | `style.md` | [C] visual plan, [D] image — **not** composed into [G] |
 
 Look stays on the start still for I2V. Common prompt is look direction for [C]/[D] only.
@@ -143,30 +145,51 @@ Legend:
 
 ---
 
-### [B] Narration segment — `narration.segment`
+### [B] Narration composition — `narration.coverage` → `narration.segment` → validate
 
 | | |
 |---|---|
-| **Kind** | text |
+| **Kind** | text (+ deterministic validate) |
 | **When** | prepare-narration (after [A]) |
 | **Chunking** | ~300 words of **narration** per call |
-| **Builder** | `buildNarrationSegmentationRequest` |
-| **Cache** | `narration.segment` v6 |
-| **Returns** | `{ segments: [{ sourceScriptFragment, narrationText, cutReason }] }` |
+| **Builders** | `buildCoverageRequest`, `buildAnchoredSegmentationRequest` (`narration-composition.js`) |
+| **Cache** | `narration.coverage` v1 · `narration.segment` v7 |
+| **Returns** | coverage `{ beats: [{ intent, cutReason, startAnchor, endAnchor }] }` then segments `{ sourceScriptFragment, narrationText, cutReason }` |
 
-**Role:** director composition pass. Locks scene count, seams, and source alignment before any visuals. Bad cuts overload cards, waste media, or unground later regeneration — edit-lock, not sentence chopping.
+**Role:** creative coverage outline, then exact slicer, then structural validator. Keeps `1 scene = 1 narration slice = 1 still`. Dialogue/context inform emotion; they do not dictate cut points.
 
-**Prompt stack:**
+**Authority split:**
 
-1. Director mandate — each segment must earn its own still; warn against too-few / too-many / bad seams
-2. DIRECTOR PLAN — identify composition beats → decide cut points → check pacing → only then emit JSON
-3. HARD RULES — exact narration copy; exact source alignment; required `cutReason` (≤20 words, composition reason, not a paraphrase)
-4. Pacing check — soft ~45-word / 15–20s density or shot-limit share (**secondary** to composition; never pad/starve to hit the number)
-5. **STYLE COMPOSITION** ← `orchestrator.md` when present; else **DEFAULT COMPOSITION** (one showable unit; split early on focus/claim/action/reveal)
+| Layer | Role |
+|---|---|
+| Coverage | Creative director — which stills the cut should earn |
+| Exact slicer | Verbatim narration/source slices guided by beat anchors |
+| Validator | Reconcile: preserve order/text; merge when no clean seam; never invent empty cards; record merges |
+| maxShots | Final merge-down safety valve only |
+
+**Coverage (creative):**
+
+1. Visual-first beats with required `startAnchor` / `endAnchor` (locatable phrases — not loose hints)
+2. Enrich vs literal MODE blocks (enrich denser / more pause-bridge cards; literal calmer)
+3. **STYLE COMPOSITION** ← `orchestrator.md` when present
+4. Soft maxShots ceiling reminder only — **no density quota in the prompt**
+
+**Slicer (structural):**
+
+1. Locked coverage beats as guidance
+2. Exact narration + source copy invariants
+3. Prefer one segment per beat; merge adjacent beats when no clean textual seam
+
+**Validate / reconcile:**
+
+- Prefer model segments when concat is exact
+- Else deterministic anchor placement (`placeBeatsOnNarration`)
+- Merge beats that cannot place a seam; never fabricate silent cards
+- Enrich density diagnostic (`ceil(words/35)`) may **retry coverage once** — never as a prompt quota
+- Then optional maxShots merge-down
 
 **Consumes:** output of [A]  
-**Produces:** scene list + `cutReason` — **locks scene count** (unless later split/replan)  
-**Post:** optional maxShots merge-down preserves survivor prompts and prefers neighbor `cutReason`.
+**Produces:** scene list + `cutReason` — **locks scene count** (unless later split/replan)
 
 `cutReason` is stored on each scene (`normalizeScene`) for grounding / future UI; not yet a primary studio control.
 
@@ -404,7 +427,7 @@ Stub providers skip network and return deterministic local fallbacks.
 | Script- / Narration-driven | [A] enrich off/on (and some regenerate source preference) |
 | Narration style / prompt editor | [A]/[H] base rules override |
 | Narration guidance / helpers | [A] USER GUIDANCE |
-| Shot limit | [B] soft ceiling + post-merge trim (composition still primary) |
+| Shot limit | [B] soft ceiling reminder + post-merge trim (composition still primary; not a prompt quota) |
 | Common prompt | [C][D] additional look direction (not composed into [G]) |
 | Motion intensity | [G] intensity filler when no videoPrompt/beat/override |
 | Image / audio / video provider | Which backend executes [D][E][G] |
@@ -435,7 +458,7 @@ Stub providers skip network and return deterministic local fallbacks.
 |---|---|---|
 | `MAX_WORDS_PER_NARRATION_CHUNK` | 900 | [A] |
 | `MAX_WORDS_PER_SHOT_CHUNK` | 300 | [B], shot.plan |
-| `TARGET_WORDS_PER_SCENE` | 45 | [B] pacing check (secondary) |
+| `TARGET_WORDS_PER_SCENE` | 45 | Diagnostic / softSegmentTarget only — not a coverage prompt quota |
 | Companion cleanText cap | 1000 | writing / orchestrator load |
 | Script max | 200k chars | schemas |
 | Visual plan batch | service batching | [C] |
@@ -447,7 +470,7 @@ Stub providers skip network and return deterministic local fallbacks.
 
 | Area | Path |
 |---|---|
-| Narrate / segment / visual plan | `apps/web/src/services/shot-planning.service.js` |
+| Narrate / coverage / segment / visual plan | `apps/web/src/services/shot-planning.service.js`, `narration-composition.js` |
 | Enrich/literal + regenerate dialogue | `apps/web/src/services/dialogue.service.js` |
 | Regenerate prompt/action | `apps/web/src/services/prompt-generation.service.js` |
 | Split scene | `apps/web/src/services/scene-split.service.js` |

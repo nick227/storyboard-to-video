@@ -10,7 +10,7 @@ const NARRATION_MAX_LENGTH = 6_000;
 // Bump whenever NARRATION_RULES_ENRICHED/NARRATION_RULES_LITERAL or buildRegenerateRequest's shape
 // changes meaningfully — this invalidates old exact-input cache entries so a prompt-quality
 // improvement can't keep silently serving pre-improvement narration forever.
-const NARRATION_TEMPLATE_VERSION = 1;
+const NARRATION_TEMPLATE_VERSION = 2;
 
 const generateResponseSchema = z.object({
   scenes: z.array(z.object({ sceneNumber: z.number(), narrationText: z.string() })),
@@ -27,6 +27,7 @@ const NARRATION_RULES_ENRICHED = `NARRATION RULES:
 3. Remove screenplay labels and formatting.
 4. Narrate the setting, atmosphere, and physical action too, not just dialogue — the environment is part of the story and should be heard, not thinned out or dropped.
 5. Give special care and room to moments where the script shifts location or sets up a new dynamic between characters — the kind of thing a reader would pick up instantly from a scene heading or visual staging that a listener can't see. This is the place to cinematically paint the picture in words: where they are now, what it feels like, what's changed. Elaborating here is encouraged, not something to be brief about.
+6. When the picture would change (new action, reaction, insert, location beat, or a pause before a line), prefer starting a new paragraph. Paragraph breaks are helpful evidence for later cuts — not a requirement, and ordinary prose is fine.
 7. Use punctuation and paragraph spacing to create breathing room.
 8. Preserve the intent of the script.
 9. There is no rush to finish the scene. Do not cut off narration mid-thought, and do not thin out or rush the passage just because the source is long or there are other scenes to get through.

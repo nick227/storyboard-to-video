@@ -1,6 +1,22 @@
 const test=require('node:test');const assert=require('node:assert/strict');
 const {createShotPlanningService,softSegmentTarget,TARGET_WORDS_PER_SCENE}=require('../src/services/shot-planning.service');
 
+function mockPrepareProvider({ narrationText, beats, segments, onCoverage, onSegment }) {
+  return async (_provider, request) => {
+    if (request.includes('continuous spoken narration')) return JSON.stringify({ narrationText });
+    if (request.includes('creative director outlining')) {
+      onCoverage?.(request);
+      return JSON.stringify({ beats: beats || [{ intent: 'beat', cutReason: 'cut', startAnchor: narrationText.slice(0, 12), endAnchor: narrationText.slice(-12) }] });
+    }
+    if (request.includes('exact slicer')) {
+      onSegment?.(request);
+      return JSON.stringify({ segments: segments || [{ sourceScriptFragment: narrationText, narrationText, cutReason: 'cut', beatIndex: 0 }] });
+    }
+    throw new Error('unexpected request: ' + request.slice(0, 120));
+  };
+}
+
+
 test('shot planning falls back to deterministic chunked shots in stub mode, with no scene-count input anywhere',async()=>{const service=createShotPlanningService({textProviders:{}});const result=await service.plan({scriptText:'John stares at a wall for hours. Nothing moves. He finally blinks.',provider:'stub'});assert.equal(result.usedFallback,true);assert.ok(result.scenes.length>=1);assert.equal(result.narrationText.length>0,true);for(const scene of result.scenes){assert.equal(scene.narrationText.length>0,true);assert.equal(typeof scene.beat,'string');assert.equal(typeof scene.prompt,'string');}});
 
 test('narration is finalized before any shot planning call, and shot planning receives only the finished narration, never the raw script',async()=>{const calls=[];const service=createShotPlanningService({textProviders:{call:async(_p,request)=>{calls.push(request);if(request.includes('narrationText')&&!request.includes('shots')){return JSON.stringify({narrationText:'Mara opens the door slowly. She freezes. Blood covers the floor.'});}if(request.includes('sequences')){return JSON.stringify({sequences:[{label:'Discovery',intent:'dread'}]});}return JSON.stringify({shots:[{narrationText:'Mara opens the door slowly. She freezes. Blood covers the floor.',visualPrompt:'Mara stands frozen in a doorway, blood visible on the floor beyond her.',actionPrompt:'Mara freezes at the doorway.'}]});}}});const result=await service.plan({scriptText:'INT. HOUSE - NIGHT\\nMara opens the door.',provider:'gemini',fallbackPolicy:'fail'});assert.equal(result.narrationText,'Mara opens the door slowly. She freezes. Blood covers the floor.');assert.equal(result.scenes.length,1);assert.equal(result.scenes[0].narrationText,'Mara opens the door slowly. She freezes. Blood covers the floor.');assert.equal(result.scenes[0].scriptFragment,result.scenes[0].narrationText);assert.equal(result.scenes[0].beat,'Mara freezes at the doorway.');assert.match(result.scenes[0].prompt,/doorway/);const shotCall=calls.find((request)=>request.includes('"shots"'));assert.match(shotCall,/Narration excerpt to plan shots for:\nMara opens the door slowly/);assert.doesNotMatch(shotCall,/Narration excerpt to plan shots for:[\s\S]*INT\. HOUSE/);assert.match(shotCall,/Mara opens the door slowly/);assert.match(result.scenes[0].videoPrompt,/Mara freezes/);});
@@ -31,7 +47,31 @@ test('budgetTelemetry reports zero merged and non-positive overshoot when the AI
 
 test('budgetTelemetry is absent entirely when no cap is set -- not present with null/zero values',async()=>{const service=createShotPlanningService({textProviders:{call:async(_p,request)=>{if(request.includes('"narrationText"')&&!request.includes('shots')){return JSON.stringify({narrationText:'A short scene.'});}if(request.includes('sequences')){return JSON.stringify({sequences:[{label:'A',intent:''}]});}return JSON.stringify({shots:[{narrationText:'A short scene.',visualPrompt:'A clear depiction, subject visible.',actionPrompt:'Subject acts.'}]});}}});const result=await service.plan({scriptText:'source',provider:'gemini',fallbackPolicy:'fail'});assert.equal('budgetTelemetry' in result,false);});
 
-test('prepareNarration preserves original source separately and returns text-only canonical scene boundaries',async()=>{const service=createShotPlanningService({textProviders:{call:async(_provider,request)=>{if(request.includes('continuous spoken narration'))return JSON.stringify({narrationText:'Mara opens the door. She freezes.'});if(request.includes('"segments"'))return JSON.stringify({segments:[{narrationText:'Mara opens the door.'},{narrationText:'She freezes.'}]});throw new Error(`unexpected request: ${request}`);}}});const result=await service.prepareNarration({scriptText:'INT. HOUSE - NIGHT\\nMara opens the door and freezes.',provider:'gemini',fallbackPolicy:'fail'});assert.equal(result.scenes.length,2);assert.match(result.scenes[0].sourceScriptFragment,/INT\. HOUSE/);assert.equal(result.scenes[0].scriptFragment,result.scenes[0].sourceScriptFragment);assert.equal(result.scenes[0].narrationText,'Mara opens the door.');assert.equal(result.scenes[0].prompt,'');assert.equal(result.scenes[0].beat,'');});
+test('prepareNarration preserves original source separately and returns text-only canonical scene boundaries', async () => {
+  const narrationText = 'Mara opens the door. She freezes.';
+  const service = createShotPlanningService({
+    textProviders: {
+      call: mockPrepareProvider({
+        narrationText,
+        beats: [
+          { intent: 'enter', cutReason: 'new still', startAnchor: 'Mara opens', endAnchor: 'the door.' },
+          { intent: 'react', cutReason: 'reaction', startAnchor: 'She freezes.', endAnchor: 'She freezes.' },
+        ],
+        segments: [
+          { sourceScriptFragment: 'INT. HOUSE - NIGHT\nMara opens the door.', narrationText: 'Mara opens the door.', cutReason: 'new still', beatIndex: 0 },
+          { sourceScriptFragment: ' She freezes.', narrationText: 'She freezes.', cutReason: 'reaction', beatIndex: 1 },
+        ],
+      }),
+    },
+  });
+  const result = await service.prepareNarration({ scriptText: 'INT. HOUSE - NIGHT\nMara opens the door and freezes.', provider: 'gemini', fallbackPolicy: 'fail' });
+  assert.equal(result.scenes.length, 2);
+  assert.match(result.scenes[0].sourceScriptFragment, /INT\. HOUSE/);
+  assert.equal(result.scenes[0].scriptFragment, result.scenes[0].sourceScriptFragment);
+  assert.equal(result.scenes[0].narrationText, 'Mara opens the door.');
+  assert.equal(result.scenes[0].prompt, '');
+  assert.equal(result.scenes[1].narrationText, 'She freezes.');
+});
 
 test('planVisuals adds visual fields without rewriting scene identity, source, narration, or boundaries',async()=>{const service=createShotPlanningService({textProviders:{call:async()=>JSON.stringify({visuals:[{sceneNumber:1,visualPrompt:'Mara stands in the doorway, one hand on the knob.',actionPrompt:'Mara opens the door.',videoPrompt:'Mara pulls the door open with a firm yank, hallway shadow shifts.'},{sceneNumber:2,visualPrompt:'Mara freezes in the dark hall.',actionPrompt:'Mara freezes.',videoPrompt:'Mara locks still as the hall air settles around her.'}]})}});const scenes=[{id:'a',title:'Scene 1',sourceScriptFragment:'SOURCE A',scriptFragment:'SOURCE A',narrationText:'Mara opens the door.',structuralContextStale:true},{id:'b',title:'Scene 2',sourceScriptFragment:'SOURCE B',scriptFragment:'SOURCE B',narrationText:'She freezes.'}];const result=await service.planVisuals({scenes,provider:'gemini',style:{id:'basic',promptText:'simple'},fallbackPolicy:'fail'});assert.deepEqual(result.scenes.map(({id,sourceScriptFragment,narrationText})=>({id,sourceScriptFragment,narrationText})),scenes.map(({id,sourceScriptFragment,narrationText})=>({id,sourceScriptFragment,narrationText})));assert.match(result.scenes[0].prompt,/doorway/);assert.equal(result.scenes[1].promptGeneratedFromNarration,'She freezes.');assert.equal(result.scenes[0].structuralContextStale,false);});
 
@@ -188,13 +228,61 @@ test('planVisuals onlyMissing skips scenes that already have prompts and preserv
   assert.match(result.scenes[1].prompt, /New empty scene/);
 });
 
-test('prepareNarration records exact source offsets when segmentation returns aligned source excerpts',async()=>{const script='INT. HOUSE - NIGHT\nMara opens the door. She freezes.';const service=createShotPlanningService({textProviders:{call:async(_provider,request)=>{if(request.includes('continuous spoken narration'))return JSON.stringify({narrationText:'Mara opens the door. She freezes.'});if(request.includes('"segments"'))return JSON.stringify({segments:[{sourceScriptFragment:'INT. HOUSE - NIGHT\nMara opens the door.',narrationText:'Mara opens the door.'},{sourceScriptFragment:'She freezes.',narrationText:'She freezes.'}]});throw new Error(`unexpected request: ${request}`);}}});const result=await service.prepareNarration({scriptText:script,provider:'gemini',fallbackPolicy:'fail'});assert.equal(result.scenes.length,2);assert.equal(result.scenes[0].sourceMappingMethod,'model');assert.equal(result.scenes[0].sourceStart,0);assert.equal(result.scenes[1].sourceEnd,script.length);assert.ok(result.scenes[0].sourceEnd<=result.scenes[1].sourceStart);});
+test('prepareNarration records exact source offsets when segmentation returns aligned source excerpts', async () => {
+  const script = 'INT. HOUSE - NIGHT\nMara opens the door. She freezes.';
+  const narrationText = 'Mara opens the door. She freezes.';
+  const service = createShotPlanningService({
+    textProviders: {
+      call: mockPrepareProvider({
+        narrationText,
+        beats: [
+          { intent: 'a', cutReason: 'a', startAnchor: 'Mara opens', endAnchor: 'door.' },
+          { intent: 'b', cutReason: 'b', startAnchor: 'She freezes.', endAnchor: 'freezes.' },
+        ],
+        segments: [
+          { sourceScriptFragment: 'INT. HOUSE - NIGHT\nMara opens the door.', narrationText: 'Mara opens the door.', cutReason: 'a', beatIndex: 0 },
+          { sourceScriptFragment: 'She freezes.', narrationText: 'She freezes.', cutReason: 'b', beatIndex: 1 },
+        ],
+      }),
+    },
+  });
+  const result = await service.prepareNarration({ scriptText: script, provider: 'gemini', fallbackPolicy: 'fail' });
+  assert.equal(result.scenes.length, 2);
+  assert.equal(result.scenes[0].sourceMappingMethod, 'model');
+  assert.equal(result.scenes[0].sourceStart, 0);
+  assert.equal(result.scenes[1].sourceEnd, script.length);
+});
 
 test('planVisuals rejects duplicate or incomplete provider scene mappings when fallback is disabled',async()=>{const service=createShotPlanningService({textProviders:{call:async()=>JSON.stringify({visuals:[{sceneNumber:1,visualPrompt:'One complete visual.',actionPrompt:'Subject acts.',videoPrompt:'Subject acts with clear continuous motion.'},{sceneNumber:1,visualPrompt:'Duplicate visual.',actionPrompt:'Subject reacts.',videoPrompt:'Subject reacts with clear continuous motion.'}]})}});const scenes=[{id:'a',narrationText:'One.'},{id:'b',narrationText:'Two.'}];await assert.rejects(()=>service.planVisuals({scenes,provider:'gemini',fallbackPolicy:'fail'}),/exactly one complete/);});
 
 test('planVisuals marks fallback per batch instead of contaminating later successful batches',async()=>{let call=0;const scenes=Array.from({length:13},(_,index)=>({id:`s${index+1}`,narrationText:`Narration ${index+1}.`}));const service=createShotPlanningService({textProviders:{call:async()=>{call+=1;if(call===1)return JSON.stringify({visuals:[{sceneNumber:1,visualPrompt:'Incomplete.',actionPrompt:'Acts.'}]});return JSON.stringify({visuals:[{sceneNumber:1,visualPrompt:'A complete final scene visual.',actionPrompt:'Subject finishes.',videoPrompt:'Subject finishes the action with clear continuous motion.'}]});}}});const result=await service.planVisuals({scenes,provider:'gemini',fallbackPolicy:'local'});assert.equal(result.scenes[0].promptIsFallback,true);assert.equal(result.scenes[11].promptIsFallback,true);assert.equal(result.scenes[12].promptIsFallback,false);});
 
-test('prepareNarration uses the editable style prompt while retaining the source-of-truth guard',async()=>{let narrationRequest='';const service=createShotPlanningService({textProviders:{call:async(_provider,request)=>{if(request.includes('continuous spoken narration')){narrationRequest=request;return JSON.stringify({narrationText:'Mara enters.'});}return JSON.stringify({segments:[{sourceScriptFragment:'Mara enters.',narrationText:'Mara enters.'}]});}}});await service.prepareNarration({scriptText:'Mara enters.',provider:'gemini',fallbackPolicy:'fail',narrationPromptText:'Use spare, rhythmic sentences.'});assert.match(narrationRequest,/Use spare, rhythmic sentences\./);assert.match(narrationRequest,/source text below is the only authority/i);assert.doesNotMatch(narrationRequest,/Stay close to the source text/);});
+test('prepareNarration uses the editable style prompt while retaining the source-of-truth guard', async () => {
+  let narrationRequest = '';
+  const service = createShotPlanningService({
+    textProviders: {
+      call: async (_provider, request) => {
+        if (request.includes('continuous spoken narration')) {
+          narrationRequest = request;
+          return JSON.stringify({ narrationText: 'Mara enters.' });
+        }
+        return mockPrepareProvider({
+          narrationText: 'Mara enters.',
+          segments: [{ sourceScriptFragment: 'Mara enters.', narrationText: 'Mara enters.', cutReason: 'enter', beatIndex: 0 }],
+        })(_provider, request);
+      },
+    },
+  });
+  await service.prepareNarration({
+    scriptText: 'Mara enters.',
+    provider: 'gemini',
+    fallbackPolicy: 'fail',
+    narrationPromptText: 'Use spare, rhythmic sentences.',
+  });
+  assert.match(narrationRequest, /Use spare, rhythmic sentences\./);
+  assert.match(narrationRequest, /source text below is the only authority/i);
+  assert.doesNotMatch(narrationRequest, /Stay close to the source text/);
+});
 
 test('prepareNarration injects style writing guidance into the narration request', async () => {
   let narrationRequest = '';
@@ -205,7 +293,10 @@ test('prepareNarration injects style writing guidance into the narration request
           narrationRequest = request;
           return JSON.stringify({ narrationText: 'Mara enters.' });
         }
-        return JSON.stringify({ segments: [{ sourceScriptFragment: 'Mara enters.', narrationText: 'Mara enters.' }] });
+        return mockPrepareProvider({
+          narrationText: 'Mara enters.',
+          segments: [{ sourceScriptFragment: 'Mara enters.', narrationText: 'Mara enters.', cutReason: 'enter', beatIndex: 0 }],
+        })(_provider, request);
       },
     },
   });
@@ -220,40 +311,35 @@ test('prepareNarration injects style writing guidance into the narration request
   assert.match(narrationRequest, /source text below is the only authority/i);
 });
 
-test('prepareNarration injects style orchestrator guidance into segmentation', async () => {
+test('prepareNarration injects style orchestrator guidance into coverage and slicing', async () => {
+  let coverageRequest = '';
   let segmentRequest = '';
+  const narrationText = 'Mara enters the room and freezes.';
   const service = createShotPlanningService({
     textProviders: {
-      call: async (_provider, request) => {
-        if (request.includes('continuous spoken narration')) {
-          return JSON.stringify({ narrationText: 'Mara enters the room and freezes.' });
-        }
-        segmentRequest = request;
-        return JSON.stringify({
-          segments: [
-            { sourceScriptFragment: 'Mara enters the room', narrationText: 'Mara enters the room' },
-            { sourceScriptFragment: ' and freezes.', narrationText: ' and freezes.' },
-          ],
-        });
-      },
+      call: mockPrepareProvider({
+        narrationText,
+        beats: [{ intent: 'enter', cutReason: 'claim', startAnchor: 'Mara enters', endAnchor: 'freezes.' }],
+        segments: [{ sourceScriptFragment: narrationText, narrationText, cutReason: 'claim', beatIndex: 0 }],
+        onCoverage: (request) => { coverageRequest = request; },
+        onSegment: (request) => { segmentRequest = request; },
+      }),
     },
   });
   await service.prepareNarration({
     scriptText: 'Mara enters the room and freezes.',
     provider: 'gemini',
     fallbackPolicy: 'fail',
-    style: {
-      id: 'deck',
-      promptText: 'Clean slides.',
-      orchestratorGuidance: 'Cut like a presentation deck: one claim per segment.',
-    },
+    style: { id: 'deck', promptText: 'Clean slides.', orchestratorGuidance: 'Cut like a presentation deck: one claim per segment.' },
   });
-  assert.match(segmentRequest, /STYLE COMPOSITION \(primary/);
+  assert.match(coverageRequest, /STYLE COMPOSITION \(primary/);
+  assert.match(coverageRequest, /one claim per segment/);
+  assert.match(coverageRequest, /startAnchor/);
+  assert.match(coverageRequest, /creative director outlining/);
+  assert.doesNotMatch(coverageRequest, /ceil\(words/);
+  assert.match(segmentRequest, /exact slicer/);
+  assert.match(segmentRequest, /COVERAGE BEATS/);
   assert.match(segmentRequest, /one claim per segment/);
-  assert.match(segmentRequest, /HARD RULES/);
-  assert.match(segmentRequest, /You are the director locking the edit/);
-  assert.match(segmentRequest, /cutReason/);
-  assert.doesNotMatch(segmentRequest, /DEFAULT COMPOSITION:/);
 });
 
 test('softSegmentTarget scales with narration word count at the spoken pacing rate', () => {
@@ -265,39 +351,38 @@ test('softSegmentTarget scales with narration word count at the spoken pacing ra
   assert.equal(softSegmentTarget(enriched), 4);
 });
 
-test('prepareNarration segmentation asks for more cuts when narration is longer', async () => {
+test('prepareNarration coverage differs for enrich vs literal and avoids density quotas', async () => {
+  let enrichCoverage = '';
+  let literalCoverage = '';
   const shortNarration = 'Derek wakes.';
   const longNarration = Array.from({ length: 90 }, (_, i) => `Detail${i + 1}`).join(' ');
-  let shortRequest = '';
-  let longRequest = '';
 
   const shortService = createShotPlanningService({
     textProviders: {
-      call: async (_provider, request) => {
-        if (request.includes('continuous spoken narration')) return JSON.stringify({ narrationText: shortNarration });
-        shortRequest = request;
-        return JSON.stringify({ segments: [{ sourceScriptFragment: 'Derek wakes.', narrationText: shortNarration }] });
-      },
+      call: mockPrepareProvider({
+        narrationText: shortNarration,
+        onCoverage: (request) => { enrichCoverage = request; },
+        segments: [{ sourceScriptFragment: 'Derek wakes.', narrationText: shortNarration, cutReason: 'wake', beatIndex: 0 }],
+      }),
     },
   });
-  await shortService.prepareNarration({ scriptText: 'Derek wakes.', provider: 'gemini', fallbackPolicy: 'fail' });
+  await shortService.prepareNarration({ scriptText: 'Derek wakes.', provider: 'gemini', fallbackPolicy: 'fail', enrich: true });
 
   const longService = createShotPlanningService({
     textProviders: {
-      call: async (_provider, request) => {
-        if (request.includes('continuous spoken narration')) return JSON.stringify({ narrationText: longNarration });
-        longRequest = request;
-        return JSON.stringify({ segments: [{ sourceScriptFragment: 'source', narrationText: longNarration }] });
-      },
+      call: mockPrepareProvider({
+        narrationText: longNarration,
+        onCoverage: (request) => { literalCoverage = request; },
+        segments: [{ sourceScriptFragment: 'source', narrationText: longNarration, cutReason: 'block', beatIndex: 0 }],
+      }),
     },
   });
-  await longService.prepareNarration({ scriptText: 'source', provider: 'gemini', fallbackPolicy: 'fail' });
+  await longService.prepareNarration({ scriptText: 'source', provider: 'gemini', fallbackPolicy: 'fail', enrich: false });
 
-  assert.match(shortRequest, /Pacing check \(not a substitute for composition\)/);
-  assert.match(shortRequest, /~1 segment/);
-  assert.match(shortRequest, /DEFAULT COMPOSITION/);
-  assert.match(shortRequest, /You are the director locking the edit/);
-  assert.match(longRequest, /~2 segments/);
-  assert.match(longRequest, /never pad or starve cuts just to hit the number/);
-  assert.doesNotMatch(longRequest, /STYLE COMPOSITION \(primary/);
+  assert.match(enrichCoverage, /MODE: enriched narration/);
+  assert.match(enrichCoverage, /startAnchor/);
+  assert.doesNotMatch(enrichCoverage, /~\d+ segments/);
+  assert.doesNotMatch(enrichCoverage, /Pacing check/);
+  assert.match(literalCoverage, /MODE: literal narration/);
+  assert.doesNotMatch(literalCoverage, /STYLE COMPOSITION \(primary/);
 });

@@ -3,6 +3,17 @@ const { cleanText, extractJson, getAdditionalCommonPrompt, compactAction } = req
 const { splitIntoFragments } = require('../shared/segmentation');
 const { providerOutput } = require('../providers/result');
 const { narrationRules, sourceOfTruthRule, cleanNarrationText, fallbackNarrationText } = require('./dialogue.service');
+const {
+  TARGET_WORDS_PER_SCENE,
+  wordCount,
+  comparableText,
+  softSegmentTarget,
+  normalizeBeats,
+  densityUnderSegmented,
+  buildCoverageRequest,
+  buildAnchoredSegmentationRequest,
+  reconcileSegments,
+} = require('./narration-composition');
 
 // Model-safe sizing for the two chunking passes below. Both reuse splitIntoFragments (paragraph-
 // preferring, falls back to sentence splitting) purely as a size-based chunker -- pass it a target
@@ -11,10 +22,6 @@ const { narrationRules, sourceOfTruthRule, cleanNarrationText, fallbackNarration
 // as planning guidance and a final safety trim instead, not by making chunks bigger or smaller.
 const MAX_WORDS_PER_NARRATION_CHUNK = 900;
 const MAX_WORDS_PER_SHOT_CHUNK = 300; // smaller than the narration chunk: action-dense text can emit many shot objects per call, which is an output-token risk, not an input one.
-
-// Spoken pacing for scene cuts. Keep in sync with TARGET_WORDS_PER_SLIDE in
-// apps/web/public/js/generation/scene-count.js (~45 words ≈ 15-20s of speech).
-const TARGET_WORDS_PER_SCENE = 45;
 
 const NARRATION_CHUNK_MAX_LENGTH = 6_000; // per-call output cap, same bound dialogue.service.js already uses per scene; the aggregate narration has no cap since it's built from many bounded calls.
 
@@ -41,10 +48,6 @@ const SHOT_RULES = `SHOT RULES:
 
 function fallbackVideoPrompt(actionPrompt) {
   return cleanText(`${actionPrompt} Clear continuous subject movement and follow-through.`, 4_000);
-}
-
-function wordCount(text) {
-  return String(text || '').match(/\S+/g)?.length || 0;
 }
 
 function collectEnvironmentContext(scenes = []) {
@@ -185,10 +188,6 @@ function trimSegmentsToCap(segments, maxSegments) {
   return merged;
 }
 
-function comparableText(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim();
-}
-
 function buildNarrateChunkRequest({ chunkText, enrich, guidance = '', narrationPromptText = '', writingGuidance = '' }) {
   const styleVoice = cleanText(writingGuidance, 1_000);
   const userVoice = cleanText(guidance, 500);
@@ -205,58 +204,6 @@ ${baseRules}
 ${userVoice ? `\nUSER GUIDANCE (tone/pacing only; cannot invent plot):\n${userVoice}\n` : ''}
 Script excerpt:
 ${chunkText}`;
-}
-
-function softSegmentTarget(chunkText) {
-  return Math.max(1, Math.ceil(wordCount(chunkText) / TARGET_WORDS_PER_SCENE));
-}
-
-function buildNarrationSegmentationRequest({ chunkText, sourceText, maxShots, chunkBudget, orchestratorGuidance = '' }) {
-  const words = wordCount(chunkText);
-  const densityTarget = softSegmentTarget(chunkText);
-  const styleCuts = cleanText(orchestratorGuidance, 2_000);
-  const budgetLine = maxShots
-    ? `Pacing check (not a substitute for composition): whole narration soft ceiling ${maxShots} segments; this excerpt's share ≈ ${chunkBudget}. Prefer STYLE COMPOSITION over raw density.`
-    : `Pacing check (not a substitute for composition): ~${densityTarget} segment${densityTarget === 1 ? '' : 's'} for ${words} words (~${TARGET_WORDS_PER_SCENE} words / 15-20s spoken per card). Use this only after composition decisions — never pad or starve cuts just to hit the number.`;
-
-  const compositionGuidance = styleCuts
-    ? `STYLE COMPOSITION (primary — this is how THIS show is directed):
-${styleCuts}
-
-If STYLE COMPOSITION is silent on a choice, fall back to: one showable unit per segment; split early when focus, claim, action, or reveal changes.`
-    : `DEFAULT COMPOSITION:
-- One showable unit per segment (new focus, action, reveal, reaction, claim, or transition).
-- Prefer short cards that each earn a distinct still; combine only calm lines that truly share one image.
-- Never pack several distinct visual or argument moves into one segment.`;
-
-  return `You are the director locking the edit before any visuals are planned.
-
-This segmentation decides every later card: narration slices, images, audio timing, and video. A bad cut propagates everywhere — too few scenes overload cards; too many waste media and repeat visuals; wrong seams make regeneration lose grounding. Do not treat cuts as incidental sentence chopping. Plan the sequence like coverage: each segment must earn its own still.
-
-Return strict JSON only:
-{"segments":[{"sourceScriptFragment":"...","narrationText":"...","cutReason":"..."}]}
-
-DIRECTOR PLAN (do this mentally before emitting JSON):
-1. Read the whole narration excerpt and identify composition beats for this style.
-2. Decide where a new card must start (and why a viewer/editor would cut there).
-3. Check pacing: reject a long overloaded card and a train of near-duplicate cards.
-4. Only then emit exact narration/source slices that match that plan.
-
-HARD RULES (always):
-- narrationText = exact copied excerpt of the narration below (never rewrite).
-- Preserve order. Concatenated narrationText must equal the full narration excerpt.
-- sourceScriptFragment = exact ordered source excerpt for that segment. Concatenated sources must equal the full source excerpt.
-- cutReason = short director note (≤20 words) stating why THIS card starts here (composition reason, not a paraphrase of the narration).
-- Do not invent action beats, image prompts, camera moves, or style look instructions.
-- ${budgetLine}
-
-${compositionGuidance}
-
-Finalized narration excerpt:
-${chunkText}
-
-Source script excerpt:
-${sourceText}`;
 }
 
 function buildVisualPlanningRequest({ scenes, neighbors = [], style, additional, environmentContext = '' }) {
@@ -488,54 +435,14 @@ function createShotPlanningService({ textProviders, generationCache }) {
     for (let i = 0; i < chunks.length; i += 1) {
       const chunkText = chunks[i];
       const sourceChunk = mappedChunks[i]?.sourceScriptFragment || source;
-      const generateFn = async () => {
-        const request = buildNarrationSegmentationRequest({
-          chunkText,
-          sourceText: sourceChunk,
-          maxShots,
-          chunkBudget: chunkBudgets[i],
-          orchestratorGuidance: styleOrchestratorGuidance,
-        });
-        const parsed = extractJson(providerOutput(await textProviders.call(provider, request)));
-        const values = Array.isArray(parsed?.segments) ? parsed.segments : null;
-        if (!values?.length) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid narration segments', { status: 502 });
-        const narrationSegments = values.map((item) => cleanNarrationText(item?.narrationText)).filter(Boolean);
-        if (narrationSegments.length !== values.length || comparableText(narrationSegments.join(' ')) !== comparableText(chunkText)) {
-          throw new AppError('INVALID_PROVIDER_RESPONSE', 'Narration segmentation did not preserve the finalized narration exactly', { status: 502 });
-        }
-        const providedSources = values.map((item) => cleanText(item?.sourceScriptFragment, 20_000));
-        const baseStart = mappedChunks[i]?.sourceStart || 0;
-        let localCursor = 0;
-        let exactSourceRanges = [];
-        for (const fragment of providedSources) {
-          const located = fragment ? sourceChunk.indexOf(fragment, localCursor) : -1;
-          if (located < 0 || sourceChunk.slice(localCursor, located).trim()) {
-            exactSourceRanges = [];
-            break;
-          }
-          exactSourceRanges.push({
-            sourceScriptFragment: fragment,
-            sourceStart: baseStart + located,
-            sourceEnd: baseStart + located + fragment.length,
-            sourceMappingMethod: 'model',
-          });
-          localCursor = located + fragment.length;
-        }
-        if (sourceChunk.slice(localCursor).trim()) exactSourceRanges = [];
-        const sourceRanges = exactSourceRanges.length === narrationSegments.length
-          ? exactSourceRanges
-          : partitionSourceRange(sourceChunk, narrationSegments, baseStart);
-        return narrationSegments.map((narrationText, index) => ({
-          narrationText,
-          cutReason: cleanText(values[index]?.cutReason, 200),
-          ...sourceRanges[index],
-        }));
-      };
-      let chunkSegments;
+      const baseStart = mappedChunks[i]?.sourceStart || 0;
+      const chunkBudget = chunkBudgets[i];
       let chunkUsedFallback = Boolean(mappedChunks[i]?.usedFallback);
+      let chunkSegments;
+
       if (provider === 'stub') {
         const narrationSegments = fallbackShotsForChunk(chunkText).map((shot) => shot.narrationText);
-        const sourceRanges = partitionSourceRange(sourceChunk, narrationSegments, mappedChunks[i]?.sourceStart || 0);
+        const sourceRanges = partitionSourceRange(sourceChunk, narrationSegments, baseStart);
         chunkSegments = narrationSegments.map((narrationText, index) => ({
           narrationText,
           cutReason: '',
@@ -544,29 +451,121 @@ function createShotPlanningService({ textProviders, generationCache }) {
         usedFallback = true;
       } else {
         try {
-          chunkSegments = generationCache
-            ? await generationCache.runCached({
-                tenantId, operation: 'narration.segment', provider, promptTemplateVersion: 6,
-                source: {
-                  chunkText,
-                  sourceChunk,
-                  maxShots: maxShots || null,
-                  chunkBudget: chunkBudgets[i] || null,
-                  densityTarget: softSegmentTarget(chunkText),
-                  orchestratorGuidance: styleOrchestratorGuidance,
-                },
-                bypassCache, generateFn,
-              })
-            : await generateFn();
+          const runCoverage = async (undersegmentRetry = false) => {
+            const generateCoverage = async () => {
+              const request = buildCoverageRequest({
+                chunkText,
+                sourceText: sourceChunk,
+                enrich,
+                orchestratorGuidance: styleOrchestratorGuidance,
+                maxShots,
+                chunkBudget,
+                undersegmentRetry,
+              });
+              const parsed = extractJson(providerOutput(await textProviders.call(provider, request)));
+              const beats = normalizeBeats(parsed?.beats);
+              if (!beats.length) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned no coverage beats', { status: 502 });
+              return beats;
+            };
+            return generationCache
+              ? await generationCache.runCached({
+                  tenantId,
+                  operation: 'narration.coverage',
+                  provider,
+                  promptTemplateVersion: 1,
+                  source: {
+                    chunkText,
+                    sourceChunk,
+                    maxShots: maxShots || null,
+                    chunkBudget: chunkBudget || null,
+                    enrich: Boolean(enrich),
+                    undersegmentRetry: Boolean(undersegmentRetry),
+                    orchestratorGuidance: styleOrchestratorGuidance,
+                  },
+                  bypassCache,
+                  generateFn: generateCoverage,
+                })
+              : await generateCoverage();
+          };
+
+          const runSegment = async (beats) => {
+            const generateSegment = async () => {
+              const request = buildAnchoredSegmentationRequest({
+                chunkText,
+                sourceText: sourceChunk,
+                beats,
+                maxShots,
+                chunkBudget,
+                orchestratorGuidance: styleOrchestratorGuidance,
+              });
+              const parsed = extractJson(providerOutput(await textProviders.call(provider, request)));
+              return Array.isArray(parsed?.segments) ? parsed.segments : [];
+            };
+            return generationCache
+              ? await generationCache.runCached({
+                  tenantId,
+                  operation: 'narration.segment',
+                  provider,
+                  promptTemplateVersion: 7,
+                  source: {
+                    chunkText,
+                    sourceChunk,
+                    maxShots: maxShots || null,
+                    chunkBudget: chunkBudget || null,
+                    beats,
+                    orchestratorGuidance: styleOrchestratorGuidance,
+                  },
+                  bypassCache,
+                  generateFn: generateSegment,
+                })
+              : await generateSegment();
+          };
+
+          let beats = await runCoverage(false);
+          let modelSegments = await runSegment(beats);
+          let reconciled = reconcileSegments({
+            chunkText,
+            sourceText: sourceChunk,
+            beats,
+            modelSegments,
+            partitionSourceRange,
+            sourceStart: baseStart,
+          });
+
+          if (enrich && densityUnderSegmented(chunkText, reconciled.segments.length, enrich)) {
+            warnings.push('Coverage diagnostic: enrich pass looked under-segmented; retrying coverage once.');
+            beats = await runCoverage(true);
+            modelSegments = await runSegment(beats);
+            reconciled = reconcileSegments({
+              chunkText,
+              sourceText: sourceChunk,
+              beats,
+              modelSegments,
+              partitionSourceRange,
+              sourceStart: baseStart,
+            });
+          }
+
+          if (!reconciled.segments.length) {
+            throw new AppError('INVALID_PROVIDER_RESPONSE', 'Narration composition produced no segments', { status: 502 });
+          }
+          if (comparableText(reconciled.segments.map((s) => s.narrationText).join(' ')) !== comparableText(chunkText)) {
+            throw new AppError('INVALID_PROVIDER_RESPONSE', 'Narration segmentation did not preserve the finalized narration exactly', { status: 502 });
+          }
+          if (reconciled.mergedBeats?.length) {
+            warnings.push(`Coverage reconciliation merged ${reconciled.mergedBeats.length} beat(s) without clean textual seams.`);
+          }
+          chunkSegments = reconciled.segments;
         } catch (error) {
           if (fallbackPolicy !== 'local') throw error;
           const narrationSegments = fallbackShotsForChunk(chunkText).map((shot) => shot.narrationText);
-          const sourceRanges = partitionSourceRange(sourceChunk, narrationSegments, mappedChunks[i]?.sourceStart || 0);
+          const sourceRanges = partitionSourceRange(sourceChunk, narrationSegments, baseStart);
           chunkSegments = narrationSegments.map((narrationText, index) => ({ narrationText, cutReason: '', ...sourceRanges[index] }));
           usedFallback = true;
           warnings.push(`Segmentation: provider unavailable for one excerpt, local boundaries were used. ${cleanText(error.message, 200)}`);
         }
       }
+
       for (const chunkSegment of chunkSegments) {
         segments.push({
           sourceScriptFragment: chunkSegment.sourceScriptFragment || sourceChunk,
