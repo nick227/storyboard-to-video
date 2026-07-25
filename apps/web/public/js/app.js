@@ -165,7 +165,6 @@ const els = {
   tokensInfoModalCloseBtn: document.getElementById('tokensInfoModalCloseBtn'),
   tokensInfoModalDoneBtn: document.getElementById('tokensInfoModalDoneBtn'),
   tokensSpendContainer: document.getElementById('tokensSpendContainer'),
-  tokensPricingContainer: document.getElementById('tokensPricingContainer'),
   startPauseBtn: document.getElementById('startPauseBtn'),
 
   // Settings modal: visual planning mode, read-only shot count, danger zone

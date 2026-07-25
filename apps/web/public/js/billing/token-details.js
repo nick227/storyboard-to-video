@@ -1,85 +1,146 @@
-import { formatRateCard } from './pricing-format.js';
-
 const MODALITIES = {
-  text: { label: 'Text Generation', icon: '📝' },
-  image: { label: 'Image Generation', icon: '🎨' },
-  audio: { label: 'Audio Synthesis', icon: '🔊' },
-  video: { label: 'Video Generation', icon: '🎬' },
+  text: { label: 'Text', icon: '📝' },
+  image: { label: 'Image', icon: '🎨' },
+  audio: { label: 'Audio', icon: '🔊' },
+  video: { label: 'Video', icon: '🎬' },
 };
 
-function usageDetails(modality, item) {
-  if (modality === 'text') {
-    return `${item.count} prompt(s) (${item.inputTokens.toLocaleString()} in / ${item.outputTokens.toLocaleString()} out)`;
-  }
-  if (modality === 'image') return `${item.count} image(s)`;
-  if (modality === 'audio') {
-    const seconds = Number(item.extra?.seconds || 0);
-    return `${item.count.toLocaleString()} character(s)${seconds > 0 ? ` (~${seconds.toFixed(1)}s audio)` : ''}`;
-  }
-  if (modality === 'video') return `${item.count} video(s) (${item.extra?.frames || 0} frames total)`;
-  return `${item.count} generation(s)`;
+const REQUEST_COLUMNS = [
+  { key: 'occurredAt', label: 'Date' },
+  { key: 'modality', label: 'Type' },
+  { key: 'provenance', label: 'Provenance' },
+  { key: 'costUSD', label: 'Cost' },
+  { key: 'file', label: 'File / usage' },
+];
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (!value) return null;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 ** 2)).toFixed(2)} MB`;
 }
 
-export function buildTokenDetailsViewModel(spend = {}) {
+function formatDate(iso) {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function costLabel(row) {
+  if (row.billingTier === 'platform_overhead') return { cost: 'Included', credits: '0.00', muted: true };
+  if (row.unpriced) return { cost: '⚠ Unpriced', credits: '—', muted: true };
+  return {
+    cost: `$${Number(row.costUSD || 0).toFixed(5)}`,
+    credits: Number(row.credits || 0).toFixed(4),
+    muted: false,
+  };
+}
+
+function fileLabel(row) {
+  const parts = [];
+  const file = row.file || {};
+  if (row.modality === 'text') {
+    parts.push(`${Number(row.inputTokens || 0).toLocaleString()} in / ${Number(row.outputTokens || 0).toLocaleString()} out`);
+    if (row.tokens) parts.push(`${Number(row.tokens).toLocaleString()} tokens`);
+  } else if (row.modality === 'image') {
+    parts.push(`${Number(row.count || 1)} image(s)`);
+  } else if (row.modality === 'audio') {
+    parts.push(`${Number(row.count || 0).toLocaleString()} chars`);
+    if (row.seconds) parts.push(`${Number(row.seconds).toFixed(1)}s`);
+  } else if (row.modality === 'video') {
+    parts.push(`${Number(row.count || 1)} video(s)`);
+    if (row.frames) parts.push(`${Number(row.frames)} frames`);
+  }
+  const size = formatBytes(file.bytes);
+  if (size) parts.push(size);
+  if (file.mimeType) parts.push(file.mimeType);
+  else if (file.extension) parts.push(`.${file.extension}`);
+  if (file.outputPath) {
+    const name = String(file.outputPath).split(/[/\\]/).pop();
+    if (name) parts.push(name);
+  }
+  return parts.join(' · ') || '—';
+}
+
+function provenanceLabel(row) {
+  const scene = row.sceneId ? `scene ${row.sceneId}` : 'project';
+  return `${row.provider} / ${row.model} · ${scene}`;
+}
+
+export function buildTokenDetailsViewModel(spend = {}, { sortKey = 'occurredAt', sortDir = 'desc' } = {}) {
   const {
     totalCostUSD = 0,
     totalTokens = 0,
     totalCredits = 0,
     providers = {},
-    activePrices = [],
     unpriced = [],
-    videoModels = [],
+    requests = [],
   } = spend;
+
   const groups = Object.fromEntries(Object.entries(MODALITIES).map(([key, value]) => [
     key,
-    { key, ...value, costUSD: 0, items: [] },
+    { key, ...value, costUSD: 0, credits: 0, count: 0 },
   ]));
 
-  for (const [provider, providerData] of Object.entries(providers)) {
+  for (const providerData of Object.values(providers)) {
     for (const [modality, modalityData] of Object.entries(providerData.modalities || {})) {
       const group = groups[modality];
       if (!group) continue;
       group.costUSD += Number(modalityData.costUSD || 0);
-      for (const [model, stats] of Object.entries(modalityData.models || {})) {
-        const item = { provider, model, ...stats };
-        group.items.push({
-          ...item,
-          usage: usageDetails(modality, item),
-          costLabel: item.billingTier === 'platform_overhead'
-            ? 'Included'
-            : item.unpriced ? '⚠ Unpriced' : `$${Number(item.costUSD || 0).toFixed(5)}`,
-        });
-      }
+      group.count += Number(modalityData.count || 0);
     }
   }
 
-  const pricingRows = activePrices.map((price) => ({
-    provider: price.provider,
-    modality: price.modality,
-    model: price.model,
-    rate: formatRateCard(price.rateCard),
-  }));
-  const pricedModels = new Set(activePrices.map((price) => `${price.provider}:${price.modality}:${price.model}`));
-  for (const video of videoModels) {
-    if (pricedModels.has(`${video.provider}:video:${video.model}`)) continue;
-    const modes = (video.modes || []).map((mode) => mode.replaceAll('_', ' ')).join(', ');
-    pricingRows.push({
-      provider: video.provider,
-      modality: 'video',
-      model: video.model,
-      isDefault: Boolean(video.isDefault),
-      rate: `Rate not configured${modes ? ` · ${modes}` : ''}`,
-    });
-  }
+  const rows = requests.map((request) => {
+    const money = costLabel(request);
+    return {
+      ...request,
+      provenance: provenanceLabel(request),
+      fileLabel: fileLabel(request),
+      costLabel: money.cost,
+      creditsLabel: money.credits,
+      costMuted: money.muted,
+      sortCost: request.unpriced ? -1 : Number(request.costUSD || 0),
+    };
+  });
+
+  const direction = sortDir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    let left;
+    let right;
+    if (sortKey === 'costUSD') {
+      left = a.sortCost;
+      right = b.sortCost;
+    } else if (sortKey === 'file') {
+      left = a.fileLabel;
+      right = b.fileLabel;
+    } else if (sortKey === 'provenance') {
+      left = a.provenance;
+      right = b.provenance;
+    } else if (sortKey === 'modality') {
+      left = a.modality;
+      right = b.modality;
+    } else {
+      left = a.occurredAt || '';
+      right = b.occurredAt || '';
+    }
+    if (left < right) return -1 * direction;
+    if (left > right) return 1 * direction;
+    return 0;
+  });
 
   return {
     totalCostUSD: Number(totalCostUSD || 0),
     totalTokens: Number(totalTokens || 0),
     totalCredits: Number(totalCredits || 0),
-    groups: Object.values(groups).filter((group) => group.items.length),
+    groups: Object.values(groups).filter((group) => group.count > 0 || group.costUSD > 0),
     unpriced,
     unpricedCount: unpriced.reduce((sum, item) => sum + Number(item.count || 0), 0),
-    pricingRows,
+    requests: rows,
+    sortKey,
+    sortDir,
   };
 }
 
@@ -96,8 +157,74 @@ function summaryItem(label, value) {
   return item;
 }
 
-function renderSpend(container, viewModel) {
-  if (!viewModel.groups.length) {
+function renderModalityTotals(groups) {
+  const bar = element('div', 'tokens-modality-totals');
+  for (const group of groups) {
+    const chip = element('div', 'tokens-modality-total');
+    chip.append(
+      element('span', '', `${group.icon} ${group.label}`),
+      element('strong', '', `$${group.costUSD.toFixed(5)}`),
+    );
+    bar.append(chip);
+  }
+  return bar;
+}
+
+function renderRequestsTable(viewModel, onSort) {
+  const wrap = element('div', 'tokens-requests-wrap');
+  wrap.append(element('h3', 'tokens-section-title', 'AI requests'));
+
+  if (!viewModel.requests.length) {
+    wrap.append(element('div', 'tokens-empty', 'No AI requests recorded'));
+    return wrap;
+  }
+
+  const table = element('table', 'tokens-table tokens-requests-table');
+  const head = element('thead');
+  const headingRow = element('tr');
+  for (const column of REQUEST_COLUMNS) {
+    const th = element('th');
+    const button = element('button', 'tokens-sort-btn', column.label);
+    button.type = 'button';
+    button.dataset.sortKey = column.key;
+    if (viewModel.sortKey === column.key) {
+      button.dataset.sortDir = viewModel.sortDir;
+      button.append(viewModel.sortDir === 'asc' ? ' ▲' : ' ▼');
+    }
+    button.addEventListener('click', () => {
+      const nextDir = viewModel.sortKey === column.key && viewModel.sortDir === 'desc' ? 'asc' : 'desc';
+      onSort(column.key, nextDir);
+    });
+    th.append(button);
+    headingRow.append(th);
+  }
+  head.append(headingRow);
+
+  const body = element('tbody');
+  for (const row of viewModel.requests) {
+    const tr = element('tr');
+    const costCell = element('td', row.costMuted ? 'tokens-muted' : 'tokens-cost-cell');
+    costCell.append(
+      element('div', 'tokens-cost-usd', row.costLabel),
+      element('div', 'tokens-cost-credits', `${row.creditsLabel} credits`),
+    );
+    tr.append(
+      element('td', 'tokens-date', formatDate(row.occurredAt)),
+      element('td', 'tokens-modality', row.modality),
+      element('td', '', row.provenance),
+      costCell,
+      element('td', 'tokens-file', row.fileLabel),
+    );
+    body.append(tr);
+  }
+  table.append(head, body);
+  wrap.append(table);
+  return wrap;
+}
+
+function renderSpend(container, spend, sortState) {
+  const viewModel = buildTokenDetailsViewModel(spend, sortState);
+  if (!viewModel.groups.length && !viewModel.requests.length) {
     container.replaceChildren(element('div', 'tokens-empty', 'No tokens recorded'));
     return;
   }
@@ -109,6 +236,7 @@ function renderSpend(container, viewModel) {
     summaryItem('Total Tokens', viewModel.totalTokens.toLocaleString()),
   );
   const children = [summary];
+  if (viewModel.groups.length) children.push(renderModalityTotals(viewModel.groups));
   if (viewModel.unpriced.length) {
     const warning = element('div', 'tokens-unpriced-warning');
     warning.append(
@@ -120,58 +248,12 @@ function renderSpend(container, viewModel) {
     );
     children.push(warning);
   }
-
-  const grid = element('div', 'tokens-spend-grid');
-  for (const group of viewModel.groups) {
-    const card = element('div', 'tokens-spend-card');
-    const heading = element('h4');
-    heading.append(element('span', '', `${group.icon} ${group.label}`), element('span', 'cost', `$${group.costUSD.toFixed(5)}`));
-    const providers = element('div', 'tokens-spend-card-providers');
-    for (const item of group.items) {
-      const row = element('div', 'tokens-spend-provider-row');
-      const header = element('div', 'tokens-spend-provider-header');
-      const provider = element('strong');
-      provider.append(item.provider, ' ', element('span', 'tokens-model-name', `(${item.model})`));
-      header.append(provider, element('span', item.unpriced || item.billingTier === 'platform_overhead' ? 'tokens-muted' : '', item.costLabel));
-      const modelList = element('div', 'tokens-spend-model-list');
-      const usage = element('div', 'tokens-spend-model-row');
-      usage.append(element('span', '', `Usage: ${item.usage}`));
-      if (item.tokens > 0) usage.append(element('span', '', `Tokens: ${item.tokens.toLocaleString()}`));
-      modelList.append(usage);
-      row.append(header, modelList);
-      providers.append(row);
-    }
-    card.append(heading, providers);
-    grid.append(card);
-  }
-  children.push(grid);
+  children.push(renderRequestsTable(viewModel, (sortKey, sortDir) => {
+    renderSpend(container, spend, { sortKey, sortDir });
+  }));
   container.replaceChildren(...children);
 }
 
-function renderPricing(container, rows) {
-  const table = element('table', 'tokens-table');
-  const head = element('thead');
-  const headingRow = element('tr');
-  for (const label of ['Provider', 'Modality', 'Model', 'Rate']) headingRow.append(element('th', '', label));
-  head.append(headingRow);
-  const body = element('tbody');
-  for (const row of rows) {
-    const tableRow = element('tr');
-    const provider = element('td');
-    provider.append(element('strong', '', row.provider));
-    const modality = element('td', 'tokens-modality', row.modality);
-    const model = element('td');
-    model.append(element('code', '', row.model));
-    if (row.isDefault) model.append(' ', element('span', 'tokens-muted', '(default)'));
-    tableRow.append(provider, modality, model, element('td', '', row.rate));
-    body.append(tableRow);
-  }
-  table.append(head, body);
-  container.replaceChildren(table);
-}
-
 export function renderTokenDetails(els, spend) {
-  const viewModel = buildTokenDetailsViewModel(spend);
-  if (els.tokensSpendContainer) renderSpend(els.tokensSpendContainer, viewModel);
-  if (els.tokensPricingContainer) renderPricing(els.tokensPricingContainer, viewModel.pricingRows);
+  if (els.tokensSpendContainer) renderSpend(els.tokensSpendContainer, spend || {}, { sortKey: 'occurredAt', sortDir: 'desc' });
 }

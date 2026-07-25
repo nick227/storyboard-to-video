@@ -49,6 +49,68 @@ function resolveEventCost(event, priceIndex) {
   return { costUSD: Number(cost.nanoUsd) / 1e9, unpriced: false, billingTier };
 }
 
+function usageCounts(modality, usage = {}) {
+  if (modality === 'image') return Number(usage.images || 1);
+  if (modality === 'audio') return Number(usage.characters || 0);
+  if (modality === 'video') return Number(usage.videos || 1);
+  return 1;
+}
+
+function tokenParts(usage = {}) {
+  const inputTokens = Number(usage.inputTokens || usage.inputTextTokens || 0);
+  const outputTokens = Number(usage.outputTokens || usage.candidatesTokenCount || usage.thoughtsTokenCount || usage.outputImageTokens || 0);
+  const tokens = Number(usage.totalTokens || usage.totalTokenCount || 0) || (inputTokens + outputTokens);
+  return { inputTokens, outputTokens, tokens };
+}
+
+function fileInfoFromEvent(event) {
+  const request = event.generationRequest || {};
+  const output = request.outputMetadata && typeof request.outputMetadata === 'object' ? request.outputMetadata : {};
+  const input = request.inputMetadata && typeof request.inputMetadata === 'object' ? request.inputMetadata : {};
+  const usage = event.usage || {};
+  return {
+    kind: output.kind || null,
+    bytes: Number(output.bytes || usage.outputBytes || input.fileBytes || 0) || null,
+    mimeType: output.mimeType || null,
+    extension: output.extension || null,
+    outputPath: output.outputPath || null,
+    characters: Number(output.characters || usage.characters || input.characters || input.promptCharacters || 0) || null,
+    referenceCount: Number(input.referenceCount || 0) || null,
+  };
+}
+
+function buildRequestRow(event, priceIndex) {
+  const provider = event.provider || 'unknown';
+  const modality = event.modality || 'unknown';
+  const model = event.model || 'unknown';
+  const { costUSD, unpriced, billingTier } = resolveEventCost(event, priceIndex);
+  const usage = event.usage || {};
+  const { inputTokens, outputTokens, tokens } = tokenParts(usage);
+  const reservation = event.generationRequest?.creditReservation;
+  const settledCredits = reservation?.finalCreditMicros != null
+    ? Number(reservation.finalCreditMicros) / 1e6
+    : null;
+  return {
+    id: event.generationRequestId || event.id,
+    occurredAt: event.occurredAt instanceof Date ? event.occurredAt.toISOString() : event.occurredAt || null,
+    modality,
+    provider,
+    model,
+    sceneId: event.sceneId || event.generationRequest?.sceneId || null,
+    costUSD,
+    credits: settledCredits,
+    billingTier,
+    unpriced,
+    tokens,
+    inputTokens,
+    outputTokens,
+    count: usageCounts(modality, usage),
+    seconds: Number(usage.seconds || 0) || null,
+    frames: Number(usage.frames || 0) || null,
+    file: fileInfoFromEvent(event),
+  };
+}
+
 function aggregateEvents(events, prices = []) {
   const priceIndex = buildPriceIndex(prices);
   const providers = {};
@@ -56,12 +118,14 @@ function aggregateEvents(events, prices = []) {
   let platformCostUSD = 0;
   let totalTokens = 0;
   const unpricedByKey = new Map();
+  const requests = [];
 
   for (const event of events) {
     const provider = event.provider || 'unknown';
     const modality = event.modality || 'unknown';
     const model = event.model || 'unknown';
     const { costUSD, unpriced, billingTier } = resolveEventCost(event, priceIndex);
+    requests.push(buildRequestRow(event, priceIndex));
 
     if (unpriced) {
       const key = priceKey(provider, modality, model);
@@ -80,9 +144,7 @@ function aggregateEvents(events, prices = []) {
     }
 
     const usage = event.usage || {};
-    const input = Number(usage.inputTokens || usage.inputTextTokens || 0);
-    const output = Number(usage.outputTokens || usage.candidatesTokenCount || usage.thoughtsTokenCount || usage.outputImageTokens || 0);
-    const tokens = Number(usage.totalTokens || usage.totalTokenCount || 0) || (input + output);
+    const { inputTokens: input, outputTokens: output, tokens } = tokenParts(usage);
 
     providers[provider].costUSD += costUSD;
     providers[provider].tokens += tokens;
@@ -123,28 +185,14 @@ function aggregateEvents(events, prices = []) {
     if (unpriced) modelGroup.unpriced = true;
     if (billingTier) modelGroup.billingTier = billingTier;
 
-    if (modality === 'text') {
-      modalityGroup.count += 1;
-      modelGroup.count += 1;
-    } else if (modality === 'image') {
-      const count = Number(usage.images || 1);
-      modalityGroup.count += count;
-      modelGroup.count += count;
-    } else if (modality === 'audio') {
-      const count = Number(usage.characters || 0);
-      modalityGroup.count += count;
-      modelGroup.count += count;
+    const count = usageCounts(modality, usage);
+    modalityGroup.count += count;
+    modelGroup.count += count;
+    if (modality === 'audio') {
       modelGroup.extra.bytes = (modelGroup.extra.bytes || 0) + Number(usage.outputBytes || 0);
       modelGroup.extra.seconds = (modelGroup.extra.seconds || 0) + Number(usage.seconds || 0);
     } else if (modality === 'video') {
-      const count = Number(usage.videos || 1);
-      modalityGroup.count += count;
-      modelGroup.count += count;
-      const frames = Number(usage.frames || 0);
-      modelGroup.extra.frames = (modelGroup.extra.frames || 0) + frames;
-    } else {
-      modalityGroup.count += 1;
-      modelGroup.count += 1;
+      modelGroup.extra.frames = (modelGroup.extra.frames || 0) + Number(usage.frames || 0);
     }
 
     if (billingTier === 'platform_overhead') platformCostUSD += costUSD;
@@ -152,7 +200,8 @@ function aggregateEvents(events, prices = []) {
     totalTokens += tokens;
   }
 
-  return { providers, totalCostUSD, platformCostUSD, totalTokens, unpriced: [...unpricedByKey.values()] };
+  requests.sort((a, b) => String(b.occurredAt || '').localeCompare(String(a.occurredAt || '')));
+  return { providers, totalCostUSD, platformCostUSD, totalTokens, unpriced: [...unpricedByKey.values()], requests };
 }
 
 function createSpendSummaryService({ prisma, billingRepository }) {
@@ -168,12 +217,40 @@ function createSpendSummaryService({ prisma, billingRepository }) {
     return { creditMicros, credits: Number(creditMicros) / 1e6 };
   }
 
+  async function attachRequestCredits(summary) {
+    const rate = billingRepository ? await billingRepository.activeCreditRate() : null;
+    for (const request of summary.requests) {
+      if (request.credits != null) continue;
+      if (request.unpriced || request.billingTier === 'platform_overhead' || !rate) {
+        request.credits = 0;
+        continue;
+      }
+      const nanoUsd = BigInt(Math.max(0, Math.round(Number(request.costUSD || 0) * 1e9)));
+      request.credits = Number(convertNanoUsdToCreditMicros(nanoUsd, rate)) / 1e6;
+    }
+    return summary;
+  }
+
   async function getProjectSpend(projectId) {
     const [events, prices] = await Promise.all([
-      prisma.usageEvent.findMany({ where: { projectId }, include: { costSnapshot: true } }),
+      prisma.usageEvent.findMany({
+        where: { projectId },
+        include: {
+          costSnapshot: true,
+          generationRequest: {
+            select: {
+              sceneId: true,
+              inputMetadata: true,
+              outputMetadata: true,
+              creditReservation: { select: { finalCreditMicros: true, status: true } },
+            },
+          },
+        },
+        orderBy: { occurredAt: 'desc' },
+      }),
       activePrices(),
     ]);
-    return aggregateEvents(events, prices);
+    return attachRequestCredits(aggregateEvents(events, prices));
   }
 
   async function getTenantSpend(tenantId) {

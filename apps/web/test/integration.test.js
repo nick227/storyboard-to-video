@@ -456,6 +456,12 @@ test('GET /api/projects/:projectId/tokens retrieves and aggregates project token
   assert.equal(populatedRes.body.providers.openai.modalities.text.costUSD, 0.05);
   assert.equal(populatedRes.body.providers.openai.modalities.text.tokens, 1500);
   assert.ok(populatedRes.body.providers.openai.modalities.text.models['gpt-4o']);
+  assert.ok(Array.isArray(populatedRes.body.requests));
+  assert.equal(populatedRes.body.requests.length, 1);
+  assert.equal(populatedRes.body.requests[0].modality, 'text');
+  assert.equal(populatedRes.body.requests[0].provider, 'openai');
+  assert.equal(populatedRes.body.requests[0].model, 'gpt-4o');
+  assert.equal(populatedRes.body.requests[0].costUSD, 0.05);
 
   // Video usage is generation-based rather than token-based, but it must still appear in the same
   // project-spend breakdown with its provider and model. This event has no ProviderCostSnapshot,
