@@ -1,1 +1,3 @@
-Uneasy, concrete dread. Name the wrong detail, the sound, the threat, and the body in the space. Keep it visceral and specific. No cozy gothic romance, no campy spoofs, no soft reassurance.
+Voice: uneasy, concrete, visceral.
+Do: name the wrong detail, the sound, the threat, and the body in space.
+Don't: cozy gothic romance, camp spoof, soft reassurance, vague dread without specifics.

@@ -1,1 +1,3 @@
-Filmic spoken adaptation. Name place, light, and physical action so the listener can see the frame. Keep dialogue and story events intact; add sensory detail only when the source supports it. No camera directions or shot jargon.
+Voice: filmic, sensory, grounded.
+Do: name place, light, and physical action so the listener can see the frame; keep dialogue and story events intact.
+Don't: invent plot; camera directions; shot jargon; empty atmosphere with no story job.

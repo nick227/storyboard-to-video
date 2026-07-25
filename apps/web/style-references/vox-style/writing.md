@@ -1,1 +1,3 @@
-Explainer voice. One idea per beat: state the claim, then the clarifying detail. Clear, informative, and concrete. Prefer labels and facts over mood; no purple prose or cinematic scene-painting.
+Voice: clear explainer.
+Do: one idea per beat — claim, then clarifying detail; labels and facts.
+Don't: purple prose, cinematic scene-painting, multi-idea ramble.

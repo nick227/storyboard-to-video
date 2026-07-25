@@ -1,1 +1,4 @@
-Cut like a vlog edit: hook, reaction, explanation, B-roll beat. Prefer one talk beat or one subject beat per segment; split when the host switches from face-cam energy to a new point or demo.
+Unit: one vlog beat (talk or subject).
+Cut on: hook, reaction, new explanation, or B-roll/demo switch.
+Prefer: one face-cam energy or one subject beat per segment.
+Never: glue a reaction and a new topic into the same segment.

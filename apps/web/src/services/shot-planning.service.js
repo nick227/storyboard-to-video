@@ -180,13 +180,19 @@ function comparableText(value) {
 }
 
 function buildNarrateChunkRequest({ chunkText, enrich, guidance = '', narrationPromptText = '', writingGuidance = '' }) {
+  const styleVoice = cleanText(writingGuidance, 1_000);
+  const userVoice = cleanText(guidance, 500);
+  const baseRules = cleanText(narrationPromptText, 12_000) || narrationRules(enrich);
   return `Return strict JSON only: {"narrationText":"..."}. Narrate this script excerpt as continuous spoken narration.
 
 ${sourceOfTruthRule(enrich)}
 
-Narration style prompt (user-editable, but subordinate to the source-of-truth rule above):
-${cleanText(narrationPromptText, 12_000) || narrationRules(enrich)}
-${writingGuidance ? `\nStyle writing guidance (tone, format, and pacing for this visual style): ${cleanText(writingGuidance, 1_000)}\n` : ''}${guidance ? `\nUser guidance for tone, pacing, length, or emphasis: ${cleanText(guidance, 500)}\n` : ''}
+${styleVoice ? `STYLE VOICE (how this style should sound — follow for tone, density, and phrasing; never override the source-of-truth rule):
+${styleVoice}
+
+` : ''}NARRATION RULES (subordinate to source-of-truth${styleVoice ? ' and STYLE VOICE' : ''}):
+${baseRules}
+${userVoice ? `\nUSER GUIDANCE (tone/pacing only; cannot invent plot):\n${userVoice}\n` : ''}
 Script excerpt:
 ${chunkText}`;
 }
@@ -198,24 +204,34 @@ function softSegmentTarget(chunkText) {
 function buildNarrationSegmentationRequest({ chunkText, sourceText, maxShots, chunkBudget, orchestratorGuidance = '' }) {
   const words = wordCount(chunkText);
   const densityTarget = softSegmentTarget(chunkText);
+  const styleCuts = cleanText(orchestratorGuidance, 1_000);
   const budgetLine = maxShots
-    ? `- The entire narration has a maximum of ${maxShots} segments. This excerpt's approximate share is ${chunkBudget}; treat that as a soft ceiling while still respecting cut density below.`
-    : `- Soft target for this excerpt: about ${densityTarget} segment${densityTarget === 1 ? '' : 's'} (${words} words at ~${TARGET_WORDS_PER_SCENE} words per scene). Longer narration must yield more segments.`;
-  const orchestratorBlock = orchestratorGuidance
-    ? `\nSTYLE ORCHESTRATOR (cut grammar for this style — follow when deciding where to split):\n${cleanText(orchestratorGuidance, 1_000)}\n`
-    : '';
-  return `Return strict JSON only: {"segments":[{"sourceScriptFragment":"...","narrationText":"..."}]}. Divide this finalized spoken narration into visual-story scene segments and align each segment to its source script.
+    ? `Soft ceiling: whole narration max ${maxShots} segments; this excerpt's share ≈ ${chunkBudget}. Stay near density below unless STYLE CUTS require otherwise.`
+    : `Soft density target: about ${densityTarget} segment${densityTarget === 1 ? '' : 's'} (${words} words ≈ ${TARGET_WORDS_PER_SCENE} words / ~15-20s per segment). Longer text → more segments.`;
 
-SEGMENT RULES:
-- narrationText must be an exact copied excerpt of the narration below, never rewritten or summarized.
-- Preserve narration order. Concatenated segments must reproduce the complete narration excerpt.
-- sourceScriptFragment must be the exact, ordered source-script excerpt that produced that narration segment. Concatenated sourceScriptFragment values must reproduce the complete source excerpt.
-- Cut count follows spoken narration length, not plot-beat count. Aim for about ${TARGET_WORDS_PER_SCENE} words per segment (~15-20s of speech). Enriched or wordy narration must be split into more segments — do not keep a long passage in one segment just because it is one story beat.
-- Prefer splitting on sentence or clause boundaries that mark a new visible image (pose change, new focus, new reaction, new detail to show), even inside the same dramatic beat.
-- Separate distinct actions, reveals, reactions, or transitions; combine only short calm sentences that truly share one image.
-- Do not write action beats, image prompts, camera directions, or style instructions.
-${budgetLine}
-${orchestratorBlock}
+  // When a style orchestrator is present it owns cut taste; base rules stay mechanical so the model
+  // does not have to reconcile film grammar with deck/vlog/explainer grammar.
+  const cutGuidance = styleCuts
+    ? `STYLE CUTS (primary — decide what counts as a new scene):
+${styleCuts}
+
+FALLBACK ONLY if STYLE CUTS are silent: aim near the soft density target; split on sentence boundaries that start a new showable unit.`
+    : `DEFAULT CUTS:
+- Aim near the soft density target; longer narration must yield more segments.
+- Split on a new showable unit (new focus, action, reveal, reaction, or transition).
+- Combine only short calm sentences that truly share one image.`;
+
+  return `Return strict JSON only: {"segments":[{"sourceScriptFragment":"...","narrationText":"..."}]}. Split finished narration into scene segments and align each to its source script.
+
+HARD RULES (always):
+- narrationText = exact copied excerpt of the narration below (never rewrite).
+- Preserve order. Concatenated narrationText must equal the full narration excerpt.
+- sourceScriptFragment = exact ordered source excerpt for that segment. Concatenated sources must equal the full source excerpt.
+- Do not invent action beats, image prompts, camera moves, or style instructions.
+- ${budgetLine}
+
+${cutGuidance}
+
 Finalized narration excerpt:
 ${chunkText}
 
@@ -313,7 +329,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
       try {
         const result = generationCache
           ? await generationCache.runCached({
-              tenantId, operation: 'narration.plan', provider, promptTemplateVersion: 2,
+              tenantId, operation: 'narration.plan', provider, promptTemplateVersion: 3,
               source: { chunkText },
               settings: {
                 enrich,
@@ -500,7 +516,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
         try {
           chunkSegments = generationCache
             ? await generationCache.runCached({
-                tenantId, operation: 'narration.segment', provider, promptTemplateVersion: 4,
+                tenantId, operation: 'narration.segment', provider, promptTemplateVersion: 5,
                 source: {
                   chunkText,
                   sourceChunk,

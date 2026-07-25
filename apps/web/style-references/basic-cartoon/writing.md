@@ -1,1 +1,3 @@
-Spare stick-figure storytelling. Short plain sentences: who does what with which one clear prop or place. Favor pose and action over mood. No cinematic atmosphere, no camera talk, no purple prose.
+Voice: spare, plain, childlike clarity.
+Do: short sentences — who does what with one clear prop or place; favor pose and gesture.
+Don't: mood painting, cinematic atmosphere, camera talk, purple prose.

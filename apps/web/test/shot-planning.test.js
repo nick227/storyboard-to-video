@@ -170,8 +170,8 @@ test('prepareNarration injects style writing guidance into the narration request
     fallbackPolicy: 'fail',
     style: { id: 'deck', promptText: 'Clean slides.', writingGuidance: 'One claim per beat. Short presenter voice.' },
   });
-  assert.match(narrationRequest, /Style writing guidance/);
-  assert.match(narrationRequest, /One claim per beat\. Short presenter voice\./);
+  assert.match(narrationRequest, /STYLE VOICE/);
+  assert.match(narrationRequest, /One claim per beat\. Short presenter voice\.|concrete point first|Presenter voice|professional presenter/i);
   assert.match(narrationRequest, /source text below is the only authority/i);
 });
 
@@ -203,8 +203,10 @@ test('prepareNarration injects style orchestrator guidance into segmentation', a
       orchestratorGuidance: 'Cut like a presentation deck: one claim per segment.',
     },
   });
-  assert.match(segmentRequest, /STYLE ORCHESTRATOR/);
+  assert.match(segmentRequest, /STYLE CUTS \(primary/);
   assert.match(segmentRequest, /one claim per segment/);
+  assert.match(segmentRequest, /HARD RULES/);
+  assert.doesNotMatch(segmentRequest, /DEFAULT CUTS:/);
 });
 
 test('softSegmentTarget scales with narration word count at the spoken pacing rate', () => {
@@ -244,9 +246,10 @@ test('prepareNarration segmentation asks for more cuts when narration is longer'
   });
   await longService.prepareNarration({ scriptText: 'source', provider: 'gemini', fallbackPolicy: 'fail' });
 
-  assert.match(shortRequest, /Cut count follows spoken narration length/);
+  assert.match(shortRequest, /Soft density target/);
   assert.match(shortRequest, /about 1 segment/);
+  assert.match(shortRequest, /DEFAULT CUTS/);
   assert.match(longRequest, /about 2 segments/);
-  assert.match(longRequest, /Longer narration must yield more segments/);
-  assert.match(longRequest, /not plot-beat count/);
+  assert.match(longRequest, /Longer text → more segments/);
+  assert.doesNotMatch(longRequest, /STYLE CUTS \(primary/);
 });

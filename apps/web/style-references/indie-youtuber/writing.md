@@ -1,1 +1,3 @@
-Conversational creator voice. Hook fast, react honestly, then explain. Sound like a host talking to camera: punchy claims, personal asides, clear takeaways. Avoid literary narration and film-score atmosphere.
+Voice: conversational creator-to-camera.
+Do: hook fast, react honestly, then explain; punchy claims and clear takeaways.
+Don't: literary narration, film-score atmosphere, anonymous third-person polish.

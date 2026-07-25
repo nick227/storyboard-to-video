@@ -1,1 +1,4 @@
-Cut like a presentation deck: one claim, slide idea, or evidence beat per segment. Prefer title-plus-support cards over long spoken paragraphs. Split when the argument advances — new point, metric, step, diagram, or recommendation — even if the topic stays the same. Allow denser on-screen text per card; do not merge multiple claims into one scene.
+Unit: one slide / claim / evidence beat.
+Cut on: new point, metric, step, diagram, recommendation, or title idea.
+Prefer: title-plus-support cards; allow denser on-screen text per card.
+Never: merge multiple claims into one scene; never keep a long spoken paragraph as one card when the argument advances.

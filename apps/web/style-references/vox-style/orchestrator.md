@@ -1,1 +1,4 @@
-Cut like an explainer sequence: one idea, claim, or diagram beat per segment. Prefer clear before/after or labeled-step cards; split when the teaching point changes.
+Unit: one teaching point or diagram beat.
+Cut on: new claim, labeled step, before/after, or clarifying inset.
+Prefer: one idea per segment; clean step cards.
+Never: merge two teaching points into one segment.

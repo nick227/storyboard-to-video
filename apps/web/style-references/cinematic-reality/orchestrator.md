@@ -1,1 +1,4 @@
-Cut on visual moments: new framing, light shift, reaction, or physical beat. Prefer cinematic coverage — establishing, action, reaction — over packing several beats into one long card.
+Unit: one cinematic coverage beat.
+Cut on: new framing intent, light shift, physical action, or reaction.
+Prefer: establish → act → react coverage over one long card.
+Never: merge several distinct visual moments into a single segment.
