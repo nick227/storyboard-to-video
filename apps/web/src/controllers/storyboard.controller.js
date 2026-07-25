@@ -15,7 +15,9 @@ function createStoryboardController({ styles, prompts, dialogue, sceneSplit, sho
       return res.json({ ...result, style });
     },
     async prepareNarration(req, res) {
-      return res.json(await shotPlanning.prepareNarration({ ...req.body, tenantId: req.auth.tenantId }));
+      const style = await styles.resolve(req.body.styleId || 'basic-cartoon', req.auth.userId);
+      if (!style) return res.status(400).json({ error: 'Unknown style' });
+      return res.json(await shotPlanning.prepareNarration({ ...req.body, style, tenantId: req.auth.tenantId }));
     },
     async planVisuals(req, res) {
       const style = await styles.resolve(req.body.styleId || 'basic-cartoon', req.auth.userId);

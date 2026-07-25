@@ -151,6 +151,30 @@ test('planVisuals marks fallback per batch instead of contaminating later succes
 
 test('prepareNarration uses the editable style prompt while retaining the source-of-truth guard',async()=>{let narrationRequest='';const service=createShotPlanningService({textProviders:{call:async(_provider,request)=>{if(request.includes('continuous spoken narration')){narrationRequest=request;return JSON.stringify({narrationText:'Mara enters.'});}return JSON.stringify({segments:[{sourceScriptFragment:'Mara enters.',narrationText:'Mara enters.'}]});}}});await service.prepareNarration({scriptText:'Mara enters.',provider:'gemini',fallbackPolicy:'fail',narrationPromptText:'Use spare, rhythmic sentences.'});assert.match(narrationRequest,/Use spare, rhythmic sentences\./);assert.match(narrationRequest,/source text below is the only authority/i);assert.doesNotMatch(narrationRequest,/Stay close to the source text/);});
 
+test('prepareNarration injects style writing guidance into the narration request', async () => {
+  let narrationRequest = '';
+  const service = createShotPlanningService({
+    textProviders: {
+      call: async (_provider, request) => {
+        if (request.includes('continuous spoken narration')) {
+          narrationRequest = request;
+          return JSON.stringify({ narrationText: 'Mara enters.' });
+        }
+        return JSON.stringify({ segments: [{ sourceScriptFragment: 'Mara enters.', narrationText: 'Mara enters.' }] });
+      },
+    },
+  });
+  await service.prepareNarration({
+    scriptText: 'Mara enters.',
+    provider: 'gemini',
+    fallbackPolicy: 'fail',
+    style: { id: 'deck', promptText: 'Clean slides.', writingGuidance: 'One claim per beat. Short presenter voice.' },
+  });
+  assert.match(narrationRequest, /Style writing guidance/);
+  assert.match(narrationRequest, /One claim per beat\. Short presenter voice\./);
+  assert.match(narrationRequest, /source text below is the only authority/i);
+});
+
 test('softSegmentTarget scales with narration word count at the spoken pacing rate', () => {
   assert.equal(TARGET_WORDS_PER_SCENE, 45);
   assert.equal(softSegmentTarget('Short.'), 1);

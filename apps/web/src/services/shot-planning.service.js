@@ -179,15 +179,14 @@ function comparableText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
-function buildNarrateChunkRequest({ chunkText, enrich, guidance = '', narrationPromptText = '' }) {
+function buildNarrateChunkRequest({ chunkText, enrich, guidance = '', narrationPromptText = '', writingGuidance = '' }) {
   return `Return strict JSON only: {"narrationText":"..."}. Narrate this script excerpt as continuous spoken narration.
 
 ${sourceOfTruthRule(enrich)}
 
 Narration style prompt (user-editable, but subordinate to the source-of-truth rule above):
 ${cleanText(narrationPromptText, 12_000) || narrationRules(enrich)}
-${guidance ? `\nUser guidance for tone, pacing, length, or emphasis: ${cleanText(guidance, 500)}\n` : ''}
-
+${writingGuidance ? `\nStyle writing guidance (tone, format, and pacing for this visual style): ${cleanText(writingGuidance, 1_000)}\n` : ''}${guidance ? `\nUser guidance for tone, pacing, length, or emphasis: ${cleanText(guidance, 500)}\n` : ''}
 Script excerpt:
 ${chunkText}`;
 }
@@ -279,7 +278,7 @@ ${chunkText}`;
 }
 
 function createShotPlanningService({ textProviders, generationCache }) {
-  async function narrateScript({ scriptText, provider, enrich, guidance = '', narrationPromptText = '', fallbackPolicy, tenantId, bypassCache }) {
+  async function narrateScript({ scriptText, provider, enrich, guidance = '', narrationPromptText = '', writingGuidance = '', fallbackPolicy, tenantId, bypassCache }) {
     const source = cleanText(scriptText, 200_000);
     if (!source) return { narrationText: '', chunks: [], usedFallback: false, warning: '' };
 
@@ -302,7 +301,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
 
     for (const chunkText of chunks) {
       const generateFn = async () => {
-        const request = buildNarrateChunkRequest({ chunkText, enrich, guidance, narrationPromptText });
+        const request = buildNarrateChunkRequest({ chunkText, enrich, guidance, narrationPromptText, writingGuidance });
         const parsed = extractJson(providerOutput(await textProviders.call(provider, request)));
         const narrationText = cleanNarrationText(parsed?.narrationText);
         if (!narrationText) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned empty narration data', { status: 502 });
@@ -311,8 +310,16 @@ function createShotPlanningService({ textProviders, generationCache }) {
       try {
         const result = generationCache
           ? await generationCache.runCached({
-              tenantId, operation: 'narration.plan', provider, promptTemplateVersion: 1,
-              source: { chunkText }, settings: { enrich, guidance, narrationPromptText: cleanText(narrationPromptText, 12_000) }, bypassCache, generateFn,
+              tenantId, operation: 'narration.plan', provider, promptTemplateVersion: 2,
+              source: { chunkText },
+              settings: {
+                enrich,
+                guidance,
+                narrationPromptText: cleanText(narrationPromptText, 12_000),
+                writingGuidance: cleanText(writingGuidance, 1_000),
+              },
+              bypassCache,
+              generateFn,
             })
           : await generateFn();
         narrated.push(result);
@@ -393,9 +400,32 @@ function createShotPlanningService({ textProviders, generationCache }) {
     }
   }
 
-  async function prepareNarration({ scriptText, provider, enrich = true, guidance = '', narrationPromptText = '', fallbackPolicy = 'local', tenantId, bypassCache = false, maxShots }) {
+  async function prepareNarration({
+    scriptText,
+    provider,
+    enrich = true,
+    guidance = '',
+    narrationPromptText = '',
+    writingGuidance = '',
+    style,
+    fallbackPolicy = 'local',
+    tenantId,
+    bypassCache = false,
+    maxShots,
+  }) {
     const source = cleanText(scriptText, 200_000);
-    const narration = await narrateScript({ scriptText: source, provider, enrich, guidance, narrationPromptText, fallbackPolicy, tenantId, bypassCache });
+    const styleWritingGuidance = cleanText(writingGuidance || style?.writingGuidance, 1_000);
+    const narration = await narrateScript({
+      scriptText: source,
+      provider,
+      enrich,
+      guidance,
+      narrationPromptText,
+      writingGuidance: styleWritingGuidance,
+      fallbackPolicy,
+      tenantId,
+      bypassCache,
+    });
     if (!narration.narrationText) return { scenes: [], narrationText: '', usedFallback: narration.usedFallback, warning: narration.warning };
 
     const mappedChunks = (narration.chunks || []).flatMap((chunk) => {
@@ -618,7 +648,15 @@ function createShotPlanningService({ textProviders, generationCache }) {
   // (overall cap + a soft per-chunk budget), and only enforced as a hard guarantee by the final
   // trim below if the model doesn't land within it on its own.
   async function plan({ scriptText, provider, styleId, style, commonPromptText, enrich = true, fallbackPolicy = 'local', tenantId, bypassCache = false, maxShots }) {
-    const narration = await narrateScript({ scriptText, provider, enrich, fallbackPolicy, tenantId, bypassCache });
+    const narration = await narrateScript({
+      scriptText,
+      provider,
+      enrich,
+      writingGuidance: cleanText(style?.writingGuidance, 1_000),
+      fallbackPolicy,
+      tenantId,
+      bypassCache,
+    });
     if (!narration.narrationText) return { scenes: [], narrationText: '', usedFallback: false, warning: '' };
 
     const sequences = await scanSequences({ narrationText: narration.narrationText, provider, fallbackPolicy, tenantId, bypassCache });

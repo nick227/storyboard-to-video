@@ -11,6 +11,7 @@ function publicStyle(style) {
     userId: style.userId,
     title: style.title,
     promptText: style.promptText || '',
+    writingGuidance: style.writingGuidance || '',
     status: style.status || 'active',
     createdAt: style.createdAt,
     updatedAt: style.updatedAt,
@@ -60,7 +61,16 @@ class MemoryCustomStyleRepository {
 
   async create(userId, input) {
     const now = new Date().toISOString();
-    const style = { id: crypto.randomUUID(), userId, title: input.title, promptText: input.promptText || '', status: 'active', createdAt: now, updatedAt: now };
+    const style = {
+      id: crypto.randomUUID(),
+      userId,
+      title: input.title,
+      promptText: input.promptText || '',
+      writingGuidance: input.writingGuidance || '',
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    };
     this.styles.set(style.id, style);
     return publicStyle(style);
   }
@@ -169,7 +179,15 @@ class PrismaCustomStyleRepository {
   }
 
   async create(userId, input) {
-    return publicStyle(await this.prisma.customStyle.create({ data: { id: crypto.randomUUID(), userId, title: input.title, promptText: input.promptText || '' } }));
+    return publicStyle(await this.prisma.customStyle.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId,
+        title: input.title,
+        promptText: input.promptText || '',
+        writingGuidance: input.writingGuidance || '',
+      },
+    }));
   }
 
   async update(id, userId, patch) {

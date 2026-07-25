@@ -52,15 +52,37 @@ test('custom styles require a title and remain scoped to their owner', async () 
     const created = await f.service.createCustom('user-1', {
       title: 'Paper Cutout',
       promptText: 'Layered paper shapes and tactile edges.',
+      writingGuidance: 'Keep narration punchy and slide-like.',
     });
     assert.equal(created.kind, 'custom');
     assert.equal(created.editable, true);
+    assert.equal(created.writingGuidance, 'Keep narration punchy and slide-like.');
     assert.equal(await f.service.resolve(created.id, 'user-2'), null);
     assert.deepEqual((await f.service.listCustom('user-2')), []);
 
     const available = await f.service.listAvailable('user-1');
     assert.deepEqual(available.map((style) => style.name), ['Ink', 'Paper Cutout']);
     assert.equal(available.find((style) => style.id === created.id).promptText, 'Layered paper shapes and tactile edges.');
+    assert.equal(available.find((style) => style.id === created.id).writingGuidance, 'Keep narration punchy and slide-like.');
+    assert.equal(available.find((style) => style.id === 'ink').writingGuidance, '');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('custom style writing guidance can be updated independently of the visual prompt', async () => {
+  const f = fixture();
+  try {
+    const created = await f.service.createCustom('user-1', {
+      title: 'Deck',
+      promptText: 'Clean corporate slides.',
+    });
+    assert.equal(created.writingGuidance, '');
+    const updated = await f.service.updateCustom(created.id, 'user-1', {
+      writingGuidance: 'One claim per beat. Short presenter voice.',
+    });
+    assert.equal(updated.promptText, 'Clean corporate slides.');
+    assert.equal(updated.writingGuidance, 'One claim per beat. Short presenter voice.');
   } finally {
     f.cleanup();
   }
@@ -104,6 +126,18 @@ test('custom style references persist in blob storage, reorder, enforce limits, 
     await f.service.removeCustomReference(style.id, rows[0].id, 'user-1');
     assert.equal(await f.blobStore.exists(removedKey), false);
     assert.equal((await f.repository.listReferences(style.id, 'user-1')).length, 1);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('resolveReferences for custom styles does not create shared style-references folders', async () => {
+  const f = fixture();
+  try {
+    const style = await f.service.createCustom('user-1', { title: 'Paper Origami', promptText: 'Folded paper.' });
+    await f.service.resolveReferences(style.id, 'user-1');
+    assert.equal(fs.existsSync(path.join(f.root, 'style-references', style.id)), false);
+    assert.equal(fs.existsSync(path.join(f.root, 'user-style-references', 'user-1', style.id)), false);
   } finally {
     f.cleanup();
   }

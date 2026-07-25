@@ -251,6 +251,7 @@ function currentNarrationInputs(els, base = getPayloadBase(els)) {
   return {
     scriptText: base.scriptText,
     textProvider: base.textProvider,
+    styleId: base.styleId,
     enrich: base.enrich,
     guidance: [els.narrationGuidance?.value.trim() || '', ...helperGuidance].filter(Boolean).join(' '),
     helperIds: [...selectedHelpers],
@@ -267,6 +268,7 @@ function narrationNeedsPreparation(els) {
   const next = currentNarrationInputs(els);
   return String(last.scriptText || '').trim() !== String(next.scriptText || '').trim()
     || String(last.textProvider || '') !== String(next.textProvider || '')
+    || String(last.styleId || '') !== String(next.styleId || '')
     || Boolean(last.enrich) !== Boolean(next.enrich)
     || String(last.guidance || '') !== String(next.guidance || '')
     || String(last.narrationPromptText || '') !== String(next.narrationPromptText || '')
@@ -330,6 +332,7 @@ async function buildNarrationPreparation(els, setStatus) {
       enrich: base.enrich,
       guidance: inputs.guidance,
       narrationPromptText: inputs.narrationPromptText,
+      styleId: base.styleId,
       ...(inputs.maxShots ? { maxShots: inputs.maxShots } : {}),
     }),
   });

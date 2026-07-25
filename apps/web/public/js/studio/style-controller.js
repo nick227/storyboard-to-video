@@ -31,6 +31,7 @@ export function initStyleController(elements, services = {}) {
       record.styleSnapshot = style ? {
         title: style.name,
         promptText: style.promptText || '',
+        writingGuidance: style.writingGuidance || '',
         updatedAt: style.updatedAt || new Date().toISOString(),
       } : null;
       record.styleReferenceOrder = {};

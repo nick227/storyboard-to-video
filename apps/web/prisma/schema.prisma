@@ -325,15 +325,16 @@ model Asset {
 }
 
 model CustomStyle {
-  id         String                 @id @db.Uuid
-  userId     String                 @map("user_id") @db.Uuid
-  title      String                 @db.VarChar(120)
-  promptText String                 @default("") @map("prompt_text") @db.Text
-  status     String                 @default("active")
-  createdAt  DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt  DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
-  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  references CustomStyleReference[]
+  id              String                 @id @db.Uuid
+  userId          String                 @map("user_id") @db.Uuid
+  title           String                 @db.VarChar(120)
+  promptText      String                 @default("") @map("prompt_text") @db.Text
+  writingGuidance String                 @default("") @map("writing_guidance") @db.Text
+  status          String                 @default("active")
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  references      CustomStyleReference[]
 
   @@index([userId, status, updatedAt])
   @@map("custom_styles")

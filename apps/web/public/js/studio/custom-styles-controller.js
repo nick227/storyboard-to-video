@@ -19,7 +19,7 @@ export function initCustomStylesController(elements, services = {}) {
   assertElements('Custom styles controller', elements, [
     'customStylesBtn', 'stageCustomStylesBtn', 'customStylesModal', 'customStylesCloseBtn',
     'customStyleNewBtn', 'customStylesList', 'customStyleEditor',
-    'customStyleFields', 'customStyleTitle', 'customStylePrompt', 'customStyleSaveBtn',
+    'customStyleFields', 'customStyleTitle', 'customStylePrompt', 'customStyleWritingGuidance', 'customStyleSaveBtn',
     'customStyleStatus', 'customStyleCharacterInput',
     'customStyleWorldInput', 'customStyleCharacterRefs', 'customStyleWorldRefs',
     'styleSelect', 'stageStyleSelect', 'customStyleCharacterGenerateBtn',
@@ -45,6 +45,7 @@ export function initCustomStylesController(elements, services = {}) {
   function setEditorDisabled(disabled) {
     elements.customStyleTitle.disabled = disabled;
     elements.customStylePrompt.disabled = disabled;
+    elements.customStyleWritingGuidance.disabled = disabled;
     elements.customStyleSaveBtn.disabled = disabled || !elements.customStyleTitle.value.trim();
     elements.customStyleNewBtn.disabled = disabled;
     elements.customStylesList.querySelectorAll('button').forEach((btn) => { btn.disabled = disabled; });
@@ -250,6 +251,7 @@ export function initCustomStylesController(elements, services = {}) {
     const style = selectedStyle();
     elements.customStyleTitle.value = style?.name || '';
     elements.customStylePrompt.value = style?.promptText || '';
+    elements.customStyleWritingGuidance.value = style?.writingGuidance || '';
     state.references = { characters: [], world: [] };
     state.dirty = false;
     setStatus('');
@@ -295,7 +297,11 @@ export function initCustomStylesController(elements, services = {}) {
     setStatus('Saving…');
     setEditorDisabled(true);
     try {
-      const body = JSON.stringify({ title, promptText: elements.customStylePrompt.value.trim() });
+      const body = JSON.stringify({
+        title,
+        promptText: elements.customStylePrompt.value.trim(),
+        writingGuidance: elements.customStyleWritingGuidance.value.trim(),
+      });
       const existingStyle = isPersistedCustomStyle(state.styles, state.selectedId);
       const data = existingStyle
         ? await api(`/api/custom-styles/${encodeURIComponent(state.selectedId)}`, { method: 'PATCH', body })
@@ -305,7 +311,12 @@ export function initCustomStylesController(elements, services = {}) {
       await services.refreshStyles?.();
       const record = getCurrentStoryboardRecord();
       if (record?.styleId === data.style.id) {
-        record.styleSnapshot = { title: data.style.name, promptText: data.style.promptText, updatedAt: data.style.updatedAt };
+        record.styleSnapshot = {
+          title: data.style.name,
+          promptText: data.style.promptText,
+          writingGuidance: data.style.writingGuidance || '',
+          updatedAt: data.style.updatedAt,
+        };
         services.saveProject?.(false);
         await services.loadStyleReferences?.(data.style.id);
       }
@@ -423,6 +434,7 @@ export function initCustomStylesController(elements, services = {}) {
     state.references = { characters: [], world: [] };
     elements.customStyleTitle.value = '';
     elements.customStylePrompt.value = '';
+    elements.customStyleWritingGuidance.value = '';
     state.dirty = true;
     renderEditor();
     elements.customStyleTitle.focus();
@@ -434,6 +446,7 @@ export function initCustomStylesController(elements, services = {}) {
   });
   elements.customStyleTitle.addEventListener('input', () => setDirty(true));
   elements.customStylePrompt.addEventListener('input', () => setDirty(true));
+  elements.customStyleWritingGuidance.addEventListener('input', () => setDirty(true));
   elements.customStyleSaveBtn.addEventListener('click', saveStyle);
   elements.customStyleCharacterInput.addEventListener('change', (event) => uploadReferences('characters', event.target.files));
   elements.customStyleWorldInput.addEventListener('change', (event) => uploadReferences('world', event.target.files));

@@ -75,7 +75,15 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
   function list(userId) {
     return fs.readdirSync(config.paths.styles).filter((file) => file.endsWith('.md')).map((file) => {
       const content = fs.readFileSync(path.join(config.paths.styles, file), 'utf8').trim(); const id = file.replace(/\.md$/, '');
-      return { id, name: content.split('\n')[0].replace(/^#\s*/, '').trim() || id, promptText: content.replace(/^#.+\n?/, '').trim(), file, kind: 'system', editable: false };
+      return {
+        id,
+        name: content.split('\n')[0].replace(/^#\s*/, '').trim() || id,
+        promptText: content.replace(/^#.+\n?/, '').trim(),
+        writingGuidance: '',
+        file,
+        kind: 'system',
+        editable: false,
+      };
     });
   }
   const find = (id, userId) => list(userId).find((style) => style.id === id) || null;
@@ -83,6 +91,7 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
     id: style.id,
     name: style.title,
     promptText: style.promptText || '',
+    writingGuidance: style.writingGuidance || '',
     kind: 'custom',
     editable: true,
     status: style.status,
@@ -211,6 +220,12 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
         throw new AppError('VALIDATION_ERROR', 'Custom style prompt must be text', { status: 400 });
       }
       result.promptText = cleanText(input.promptText, 12_000);
+    }
+    if (!partial || input.writingGuidance !== undefined) {
+      if (input.writingGuidance !== undefined && typeof input.writingGuidance !== 'string') {
+        throw new AppError('VALIDATION_ERROR', 'Custom style writing guidance must be text', { status: 400 });
+      }
+      result.writingGuidance = cleanText(input.writingGuidance, 1_000);
     }
     return result;
   }

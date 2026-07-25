@@ -55,6 +55,7 @@ test('both style pickers expose the custom-style manager and its required editor
     'customStylesList',
     'customStyleTitle',
     'customStylePrompt',
+    'customStyleWritingGuidance',
     'customStyleCharacterInput',
     'customStyleWorldInput',
     'customStyleSaveBtn',

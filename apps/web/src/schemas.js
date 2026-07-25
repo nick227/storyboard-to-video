@@ -61,6 +61,7 @@ const prepareNarration = z.object({
   enrich: z.boolean().default(true),
   guidance: z.string().max(500).default(''),
   narrationPromptText: z.string().max(12_000).default(''),
+  styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
   maxShots: z.coerce.number().int().min(1).max(200).optional(),
   bypassCache: z.boolean().default(false),
 });

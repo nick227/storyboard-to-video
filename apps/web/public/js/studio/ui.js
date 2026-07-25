@@ -58,6 +58,7 @@ export async function loadStyles(els) {
       id: saved.styleId,
       name: `${saved.styleSnapshot.title || 'Custom style'} (archived)`,
       promptText: saved.styleSnapshot.promptText || '',
+      writingGuidance: saved.styleSnapshot.writingGuidance || '',
       kind: 'archived',
       editable: false,
     });
