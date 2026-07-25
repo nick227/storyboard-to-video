@@ -22,11 +22,14 @@ const INTENSITY_MOTION_PROMPTS = Object.freeze({
   high: 'Strong continuous action and pronounced follow-through; never a frozen hold.',
 });
 
-// Single motion string for I2V: override → env default → beat → intensity filler.
+// Single motion string for I2V: override → env default → planned videoPrompt → beat → intensity.
 // Look/style stay in the start frame; providers clamp length (e.g. MiniMax 2000 chars).
 function buildVideoPrompt(input, configuredMotionPrompt = '') {
   const intensity = INTENSITY_MOTION_PROMPTS[input.motionIntensity] || INTENSITY_MOTION_PROMPTS.medium;
-  return cleanText(input.motionPrompt || configuredMotionPrompt || input.sceneBeat, 4_000) || intensity;
+  return cleanText(
+    input.motionPrompt || configuredMotionPrompt || input.videoPrompt || input.sceneBeat,
+    4_000,
+  ) || intensity;
 }
 
 function validateMiniMaxInterpolationFrames(startSource, endSource, requestedAspectRatio) {
@@ -193,7 +196,7 @@ function createVideoGenerationService({ config, provider, providers, execution, 
             finalization: {
               projectId: input.projectId, sceneId: input.sceneId, sceneNumber: input.sceneNumber, sceneTitle: input.sceneTitle,
               ownerId, userId, startFramePath, endFramePath, styleId: style.id,
-              promptInputs: { composed: prompt, scene: input.scenePrompt || '', beat: input.sceneBeat || '', style: style.promptText, common: getAdditionalCommonPrompt(style.promptText, input.commonPromptText), motion: input.motionPrompt || '' },
+              promptInputs: { composed: prompt, scene: input.scenePrompt || '', beat: input.sceneBeat || '', video: input.videoPrompt || '', style: style.promptText, common: getAdditionalCommonPrompt(style.promptText, input.commonPromptText), motion: input.motionPrompt || '' },
             },
           }, { ownerId, tenantId: ownerId, userId, jobId, projectId: input.projectId, sceneId: input.sceneId, signal });
           attemptId = executed.attempt.id;
@@ -214,7 +217,7 @@ function createVideoGenerationService({ config, provider, providers, execution, 
           createdAt,
           inputs: {
             operation: 'video.generate',
-            prompt: { composed: prompt, scene: input.scenePrompt || '', beat: input.sceneBeat || '', style: style.promptText, common: getAdditionalCommonPrompt(style.promptText, input.commonPromptText), motion: input.motionPrompt || '' },
+            prompt: { composed: prompt, scene: input.scenePrompt || '', beat: input.sceneBeat || '', video: input.videoPrompt || '', style: style.promptText, common: getAdditionalCommonPrompt(style.promptText, input.commonPromptText), motion: input.motionPrompt || '' },
             style: { id: style.id, name: style.name },
             provider: { name: metadata.provider || providerName, model: metadata.model || inputPlan.model || null },
             settings: { ...(metadata.settings || {}), output, motionIntensity: input.motionIntensity || 'medium', keyframeSelection: confirmedKeyframes },

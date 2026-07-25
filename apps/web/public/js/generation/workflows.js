@@ -6,6 +6,21 @@ import { adaptSceneImageShot, imageShot, replaceImageState, replaceVideoState, s
 import { textValue } from '../core/text-values.js';
 import { resolvedEntityConfig, recordEntityGeneration } from '../core/scene-entity-config.js';
 
+// A generation failure is "expected" (record it against this scene and let the batch keep moving)
+// only when the server gave a well-formed rejection tied to THIS request — a validation error, a
+// provider content/policy rejection, a conflict, etc. (api.js sets `.status` from the HTTP response
+// for exactly these cases.) Anything else — no `.status` at all (a network failure or a malformed,
+// unparseable response — see api.js's JSON.parse catch), a 5xx (our own server, a provider gateway,
+// or a DB/storage/queue failure surfacing as one), or a 429 (rate limited — retrying the rest of the
+// batch immediately just fails identically) — is systemic: the run itself can't be trusted to keep
+// going, so it must stop rather than burn through the rest of the range against whatever's actually
+// broken. Same for a bare, undecorated exception (a bug, not an HTTP-shaped rejection) — `status` is
+// undefined, so it's treated as systemic too.
+function isExpectedGenerationRejection(error) {
+  const status = error?.status;
+  return typeof status === 'number' && status >= 400 && status < 500 && status !== 429;
+}
+
 export function getPayloadBase(els) {
   return {
     projectId: projectStore.get().currentId,
@@ -56,6 +71,7 @@ export function normalizeScene(scene, index) {
     id: typeof scene?.id === 'string' ? scene.id : crypto.randomUUID(),
     title: String(scene?.title || `Scene ${index + 1}`),
     beat: String(scene?.beat || ''),
+    videoPrompt: String(scene?.videoPrompt || ''),
     shots: [{
       ...sourceShot,
       // plan-visuals / older payloads may still ship the visual prompt at scene.prompt while
@@ -573,8 +589,9 @@ export async function regenerateImage(index, scene, els, setStatus, withinSerial
   if (!activeScene || (!scene && uiStore.get().operation)) return;
   if (!String(activeScene.prompt || '').trim()) {
     if (withinSerial) {
-      if (setStatus) setStatus(`Skipped scene ${index + 1}: no prompt.`);
-      return true;
+      const reason = 'no prompt';
+      if (setStatus) setStatus(`Skipped scene ${index + 1}: ${reason}.`);
+      return { outcome: 'skipped', reason };
     }
     throw new Error('Scene has no visual prompt. Add or generate a visual plan first.');
   }
@@ -633,8 +650,10 @@ export async function regenerateImage(index, scene, els, setStatus, withinSerial
     if (setStatus) {
       setStatus(`Image ${index + 1} ready.`);
     }
+    if (withinSerial) return { outcome: 'done' };
   } catch (error) {
     if (setStatus) setStatus(`Image ${index + 1} failed: ${error.message}`);
+    if (withinSerial && isExpectedGenerationRejection(error)) return { outcome: 'failed', reason: error.message };
     throw error;
   } finally {
     if (!scene) {
@@ -653,8 +672,9 @@ export async function regenerateAudio(index, scene, els, setStatus, withinSerial
     // audio yet) — treat it the same way: skip just this scene in a batch run instead of aborting
     // the whole thing, matching regenerateVideo's equivalent missing-prerequisite guard.
     if (withinSerial) {
-      if (setStatus) setStatus(`Skipped scene ${index + 1}: no narration.`);
-      return true;
+      const reason = 'no narration';
+      if (setStatus) setStatus(`Skipped scene ${index + 1}: ${reason}.`);
+      return { outcome: 'skipped', reason };
     }
     throw new Error('Scene has no spoken narration. Generate narration first.');
   }
@@ -664,8 +684,9 @@ export async function regenerateAudio(index, scene, els, setStatus, withinSerial
   // user has to consciously deal with it rather than the app quietly proceeding.
   if (activeScene.narrationIsFallback) {
     if (withinSerial) {
-      if (setStatus) setStatus(`Skipped scene ${index + 1}: placeholder narration.`);
-      return true;
+      const reason = 'placeholder narration';
+      if (setStatus) setStatus(`Skipped scene ${index + 1}: ${reason}.`);
+      return { outcome: 'skipped', reason };
     }
     throw new Error("This scene's narration is fallback placeholder text, not real narration — regenerate narration before generating audio.");
   }
@@ -713,8 +734,10 @@ export async function regenerateAudio(index, scene, els, setStatus, withinSerial
     }
 
     if (setStatus) setStatus(`Audio ${index + 1} ready.`);
+    if (withinSerial) return { outcome: 'done' };
   } catch (error) {
     if (setStatus) setStatus(`Audio ${index + 1} failed: ${error.message}`);
+    if (withinSerial && isExpectedGenerationRejection(error)) return { outcome: 'failed', reason: error.message };
     throw error;
   } finally {
     if (!scene) {
@@ -732,8 +755,9 @@ export async function regenerateSubtitles(index, scene, els, setStatus, withinSe
     // Same "skip in a batch, throw on an explicit single-scene call" shape regenerateAudio/
     // regenerateVideo use for their own missing-prerequisite guards above.
     if (withinSerial) {
-      if (setStatus) setStatus(`Skipped scene ${index + 1}: no audio timing.`);
-      return true;
+      const reason = 'no audio timing';
+      if (setStatus) setStatus(`Skipped scene ${index + 1}: ${reason}.`);
+      return { outcome: 'skipped', reason };
     }
     throw new Error('This scene has no audio timing data yet. Generate (or regenerate) audio first.');
   }
@@ -778,8 +802,10 @@ export async function regenerateSubtitles(index, scene, els, setStatus, withinSe
     }
 
     if (setStatus) setStatus(`Subtitles ${index + 1} ready.`);
+    if (withinSerial) return { outcome: 'done' };
   } catch (error) {
     if (setStatus) setStatus(`Subtitles ${index + 1} failed: ${error.message}`);
+    if (withinSerial && isExpectedGenerationRejection(error)) return { outcome: 'failed', reason: error.message };
     throw error;
   } finally {
     if (!scene) {
@@ -880,7 +906,7 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
   const activeImage = shot.versions[shot.activeVersionIndex];
   const startFramePath = shot.startFrame || activeImage?.path || null;
   if (!startFramePath) {
-    if (withinSerial) return true; // skip this scene
+    if (withinSerial) return { outcome: 'skipped', reason: 'no reference image' };
     throw new Error('Scene has no generated reference image.');
   }
 
@@ -911,6 +937,7 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
       sceneTitle: activeScene.title,
       scenePrompt: activeScene.prompt,
       sceneBeat: activeScene.beat,
+      videoPrompt: activeScene.videoPrompt || '',
       styleId: base.styleId,
       commonPromptText: base.commonPromptText,
       motionIntensity: entityConfig.motionIntensity,
@@ -937,7 +964,7 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
       // multi-scene MiniMax run take minutes per scene for no benefit.
       if (withinSerial) {
         if (setStatus) setStatus(`Video ${index + 1} background generation started.`);
-        return false;
+        return { outcome: 'done' };
       }
       if (setStatus) setStatus(`Generating video ${index + 1}...`);
       await waitForVideoAttempt(data.attemptId, {
@@ -967,9 +994,11 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
     }
 
     if (setStatus) setStatus(`Video ${index + 1} ready.`);
+    if (withinSerial) return { outcome: 'done' };
     return false;
   } catch (error) {
     if (setStatus) setStatus(`Video ${index + 1} failed: ${error.message}`);
+    if (withinSerial && isExpectedGenerationRejection(error)) return { outcome: 'failed', reason: error.message };
     throw error;
   } finally {
     if (!scene) {

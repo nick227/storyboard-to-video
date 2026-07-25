@@ -105,6 +105,7 @@ function videoManifestStaleness(scene, shot, activeImage, version) {
     ...(inputs.prompt || {}),
     scene: shot.prompt || '',
     beat: scene.beat || '',
+    video: scene.videoPrompt || '',
     style: style.promptText || '',
     common: additionalCommonPrompt(style.promptText, record.commonPromptText),
   };
@@ -470,7 +471,7 @@ function resolveLiveScene(id) {
   return sceneStore.get().scenes.find((scene) => scene.id === id) || null;
 }
 
-function buildBatchFns(stage, els, setStatus, onlyMissingOrStale, range) {
+function buildBatchFns(stage, els, setStatus, onlyMissingOrStale, range, sceneIds) {
   const config = MEDIA_STAGE_CONFIG[stage];
   const allScenes = sceneStore.get().scenes;
   const { startIndex = 0, endIndex = allScenes.length } = range || {};
@@ -478,14 +479,22 @@ function buildBatchFns(stage, els, setStatus, onlyMissingOrStale, range) {
   // `uiStore.operation.sceneId`, which drives the per-scene-card loading spinner), so the frozen
   // snapshot must expose `.id`, not just be indexable by position. Slicing to the requested range
   // (default: the whole project) is the entire mechanism for scoping a run to a scene range —
-  // batchController itself is plain index-based and needs no knowledge of ranges at all.
-  const frozenScenes = allScenes.slice(startIndex, endIndex).map((scene) => ({ id: scene.id }));
+  // batchController itself is plain index-based and needs no knowledge of ranges at all. When
+  // `sceneIds` is given (a retry-failed pass, see retryFailedStage below) it takes over instead: the
+  // scenes to touch aren't a contiguous range, they're exactly whichever scenes failed last time.
+  const frozenScenes = sceneIds
+    ? allScenes.filter((scene) => sceneIds.has(scene.id)).map((scene) => ({ id: scene.id }))
+    : allScenes.slice(startIndex, endIndex).map((scene) => ({ id: scene.id }));
   const activeJobsByScene = buildLatestJobsByScene(cachedJobs, MEDIA_JOB_TYPE[stage]);
   const generateFn = async (index) => {
     const scene = resolveLiveScene(frozenScenes[index]?.id);
-    if (!scene) return true; // removed mid-batch: skip, don't fail the whole batch
-    if (['queued', 'running'].includes(activeJobsByScene.get(scene.id)?.status)) return true;
-    if (onlyMissingOrStale && config.hasVersion(scene) && !config.isStale(scene)) return true; // already fresh: skip
+    if (!scene) return { outcome: 'skipped', reason: 'scene no longer exists' }; // removed mid-batch
+    if (['queued', 'running'].includes(activeJobsByScene.get(scene.id)?.status)) {
+      return { outcome: 'skipped', reason: 'already in progress' };
+    }
+    if (onlyMissingOrStale && config.hasVersion(scene) && !config.isStale(scene)) {
+      return { outcome: 'skipped', reason: 'already up to date' };
+    }
     // `index` here is relative to the frozen/sliced range (0 at the range's start), not the scene's
     // real position in the storyboard — regenerate* uses this index for user-facing scene numbers
     // (status text, "scene N" labels, the generated file's numeric prefix), and every other caller
@@ -493,9 +502,11 @@ function buildBatchFns(stage, els, setStatus, onlyMissingOrStale, range) {
     // frozen index here made a range-scoped restart (e.g. "start from scene 7") correctly touch the
     // right scene's data (attachment is keyed by sceneId, not this index) but incorrectly label it
     // "scene 1" everywhere the label is shown — looking exactly like the run had restarted from the
-    // beginning even though it hadn't. `startIndex + index` restores the real position.
+    // beginning even though it hadn't. `startIndex + index` restores the real position. A retry-failed
+    // pass has no single contiguous range to offset from, so it looks the scene's real index up directly.
+    const realIndex = sceneIds ? allScenes.findIndex((s) => s.id === scene.id) : startIndex + index;
     try {
-      return await config.regenerate(startIndex + index, scene, els, setStatus, true);
+      return await config.regenerate(realIndex, scene, els, setStatus, true);
     } finally {
       // Failed provider calls can still have measured/reserved usage, so refresh on every settled
       // attempt, not only successful media creation.
@@ -534,35 +545,41 @@ function syncPauseIntent(stage, finalState, setStatus) {
 // longer exists (removed by a Replan/expansion mid-batch), the step is skipped, not fatal — same
 // "skip this one, keep going" shape regenerateAudio/regenerateVideo already use for missing
 // prerequisites (workflows.js).
-async function runStageBatch(stage, els, setStatus, { onlyMissingOrStale, range }) {
+async function runStageBatch(stage, els, setStatus, { onlyMissingOrStale, range, sceneIds }) {
   // Persist local edits once before the run. Every media endpoint commits its own scene update, so
   // PUTting the whole project again before every scene only creates revision conflicts with those
   // successful commits (and with asynchronous video completion).
   await ensureProjectSynced();
   await refreshRecentJobs(projectStore.get().currentId);
-  const { generateFn, getScenes } = buildBatchFns(stage, els, setStatus, onlyMissingOrStale, range);
+  const { generateFn, getScenes } = buildBatchFns(stage, els, setStatus, onlyMissingOrStale, range, sceneIds);
   if (!getScenes().length) return;
-  const finalState = await batchController.start(BATCH_STORE_KEY[stage], generateFn, getScenes);
-  syncPauseIntent(stage, finalState, setStatus);
+  const outcome = await batchController.start(BATCH_STORE_KEY[stage], generateFn, getScenes);
+  if (!outcome) return; // declined to run (something else already in flight) — nothing changed
+  const { finalState, results, errorMessage } = outcome;
+  // 'error' (a systemic failure stopped the run) is persisted the same as an explicit pause — both
+  // are equally resumable, and stageRuns only distinguishes "stopped, come back to this" from "ran
+  // to completion" for reload survival, not why it stopped (the results panel/status text is where
+  // that distinction is shown to the user).
+  syncPauseIntent(stage, finalState === 'error' ? 'paused' : finalState, setStatus);
   // Land the selected-scene anchor on wherever this run actually stopped, so the next Start
   // continues from there. `currentIndex` is only advanced past a scene once its generateFn call
-  // resolves without throwing (batch.js), so this single read already distinguishes "stopped after
-  // the in-flight scene committed" (currentIndex points at the NEXT scene) from "stopped before it
-  // committed" (currentIndex still points at that same scene) from "ran to completion" (clamped to
-  // the last scene) — no separate stop/complete branching needed here.
-  if (finalState) {
-    const frozen = getScenes();
-    const cursor = batchStore.get()[BATCH_STORE_KEY[stage]].currentIndex;
-    const landingScene = frozen[Math.min(cursor, frozen.length - 1)];
-    if (landingScene) uiStore.set({ selectedSceneId: landingScene.id });
-  }
-  return finalState;
+  // resolves (batch.js) — this single read already distinguishes "stopped after the in-flight scene
+  // committed" (currentIndex points at the NEXT scene) from "stopped before it committed" (currentIndex
+  // still points at that same scene) from "ran to completion" (clamped to the last scene).
+  const frozen = getScenes();
+  const cursor = batchStore.get()[BATCH_STORE_KEY[stage]].currentIndex;
+  const landingScene = frozen[Math.min(cursor, frozen.length - 1)];
+  if (landingScene) uiStore.set({ selectedSceneId: landingScene.id });
+  return { finalState, results, errorMessage };
 }
 
 // Default action: generate whatever is missing or stale, skipping scenes that are already present
 // and fresh. This is what a checked stage box runs when Start is clicked — resuming a paused stage
 // is the same call: already-fresh scenes are skipped cheaply, so re-running never wastes a provider
-// call on completed work.
+// call on completed work. Returns `{ finalState: 'paused'|'complete'|'error', results:
+// {done,skipped,failed}, errorMessage? }` (or undefined if nothing ran), where each results bucket is
+// an array of `{ sceneId, reason? }`. 'error' means a systemic failure (not an ordinary bad scene)
+// stopped the run — see workflows.js's isExpectedGenerationRejection / batch.js.
 export async function generateMissingOrStale(stage, els, setStatus, range) {
   return runStageBatch(stage, els, setStatus, { onlyMissingOrStale: true, range });
 }
@@ -573,6 +590,17 @@ export async function generateMissingOrStale(stage, els, setStatus, range) {
 // be forgotten to check, not two.
 export async function regenerateAllStage(stage, els, setStatus) {
   return runStageBatch(stage, els, setStatus, { onlyMissingOrStale: false });
+}
+
+// Re-attempts only the scenes that failed on the most recent run of this stage — an explicit,
+// user-triggered action distinct from Resume (which continues a Stop-interrupted range) and from a
+// normal Start (which skips already-fresh scenes). A batch no longer stops on scene failure (see
+// batch.js), so "failed" scenes are simply ones left over in the last run's results; retrying always
+// forces generation for them (there's no successful version yet to compare staleness against).
+export async function retryFailedStage(stage, els, setStatus) {
+  const failedIds = new Set((batchStore.get()[BATCH_STORE_KEY[stage]]?.results?.failed || []).map((entry) => entry.sceneId));
+  if (!failedIds.size) return;
+  return runStageBatch(stage, els, setStatus, { onlyMissingOrStale: false, sceneIds: failedIds });
 }
 
 // --- Stop ---------------------------------------------------------------------
@@ -630,7 +658,7 @@ export function stopCreateStoryFlow() {
 export async function runCreateStoryFlow(preset, els, setStatus, { stages: customStages, range, forceStages = [] } = {}) {
   flowStopRequested = false;
   const stages = preset === 'custom' ? (customStages || []) : PRESET_STAGES[preset];
-  if (!stages || !stages.length) return { stoppedAt: 'noStages' };
+  if (!stages || !stages.length) return { stoppedAt: 'noStages', results: {} };
 
   if (stages.includes('planning')) {
     const planningStatus = computeStageStatus(sceneStore.get().scenes, batchStore.get(), uiStore.get().operation, getCachedJobs()).planning;
@@ -640,22 +668,32 @@ export async function runCreateStoryFlow(preset, els, setStatus, { stages: custo
     // NOT the same as "already planned."
     if (planningAction === 'full') {
       const planningResult = await runPlanning(els, setStatus);
-      if (planningResult.stoppedAt) return planningResult;
+      if (planningResult.stoppedAt) return { ...planningResult, results: {} };
     } else if (planningAction === 'patch' || planningAction === 'refresh') {
       // Existing scenes: fill missing / refresh prompts only. Never prepareNarration or rebuild.
       await patchPlanning(els, setStatus, range, { refreshAll: planningAction === 'refresh' });
     }
     // 'current': planning is already up to date, nothing to do.
   }
-  if (flowStopRequested) return { stoppedAt: 'paused' };
+  if (flowStopRequested) return { stoppedAt: 'paused', results: {} };
 
+  // Per-stage results (`{ [stage]: { done, skipped, failed } }`) accumulate across the whole flow so
+  // the caller can render one results summary for a multi-stage run — a stage with per-scene failures
+  // no longer halts the flow (only an explicit Stop does), it just carries its failures into this map.
+  const results = {};
   for (const stage of ['images', 'audio', 'video', 'subtitles']) {
     if (!stages.includes(stage)) continue;
-    if (flowStopRequested) return { stoppedAt: 'paused', atStage: stage };
-    const finalState = await runStageBatch(stage, els, setStatus, { onlyMissingOrStale: !forceStages.includes(stage), range });
-    if (finalState === 'paused' || finalState === 'failed') return { stoppedAt: finalState, atStage: stage };
+    if (flowStopRequested) return { stoppedAt: 'paused', atStage: stage, results };
+    const outcome = await runStageBatch(stage, els, setStatus, { onlyMissingOrStale: !forceStages.includes(stage), range });
+    if (outcome?.results) results[stage] = outcome.results;
+    // A systemic failure ('error') stops the whole multi-stage flow too, same as an explicit Stop —
+    // e.g. audio scenes depend on this stage's output, and continuing to audio while images is
+    // broken would just produce more of the same failure under a different label.
+    if (outcome?.finalState === 'paused' || outcome?.finalState === 'error') {
+      return { stoppedAt: outcome.finalState, atStage: stage, results, errorMessage: outcome.errorMessage };
+    }
   }
-  return { stoppedAt: null };
+  return { stoppedAt: null, results };
 }
 
 // --- Stage-box selection (what Start will act on) ---------------------------

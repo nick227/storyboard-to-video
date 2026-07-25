@@ -24,8 +24,9 @@ scenes[] {
     ▼
 scenes[] {
   …prior fields,
-  beat,                    ← actionPrompt (physical action)
+  beat,                    ← actionPrompt (still / image physical action)
   prompt / shots[0].prompt ← visualPrompt (still description)
+  videoPrompt,             ← I2V motion brief (action-first)
 }
     │
     ├─[D] image.generate ──────────► still image versions
@@ -39,7 +40,7 @@ scenes[] {
     │      (no LLM)
     │
     └─[G] video.generate ──────────► video versions
-           inputs: start still + beat + motion + truncated style.md
+           inputs: start still + videoPrompt (or beat fallback)
 ```
 
 **Rule of thumb:** upstream text AI calls *produce* fields that later media calls *consume*. Style companions inject at different layers:
@@ -48,7 +49,7 @@ scenes[] {
 |---|---|
 | `writing.md` | [A] narration only |
 | `orchestrator.md` | [B] segmentation only |
-| `style.md` | [C] visual plan, [D] image, [G] video (truncated) |
+| `style.md` | [C] visual plan, [D] image |
 
 ---
 
@@ -153,24 +154,25 @@ Legend:
 | **When** | plan-visuals |
 | **Batching** | scenes in batches |
 | **Builder** | `buildVisualPlanningRequest` |
-| **Returns** | `{ visuals: [{ sceneNumber, visualPrompt, actionPrompt }] }` |
+| **Returns** | `{ visuals: [{ sceneNumber, visualPrompt, actionPrompt, videoPrompt }] }` |
 
 **Prompt stack:**
 
-1. Fixed VISUAL + ACTION rules (still description; motion-friendly beat)
+1. Fixed VISUAL + ACTION + VIDEO rules (still description; still action; I2V motion brief)
 2. Established setting (sluglines + early narration)
 3. **Style context** ← `style.md` / `promptText`
 4. Additional common prompt
 5. Per scene: narration, optional source, neighbor continuity
 
 **Consumes:** scenes from [B], `style.md`  
-**Produces:** `scene.prompt` / `shots[0].prompt`, `scene.beat`  
+**Produces:** `scene.prompt` / `shots[0].prompt`, `scene.beat`, `scene.videoPrompt`  
 **Does not** change scene count.
 
 System rules (inline in service):
 
 - `visualPrompt`: 15–40 words, subject/pose/object/location/composition; carry setting; no motion/style wording
-- `actionPrompt`: 8–28 words, present-tense physical action; dynamic verbs; source-faithful
+- `actionPrompt`: 8–28 words, still-frame physical action for the image; source-faithful
+- `videoPrompt`: ~25–60 words; primary subject action first, then light environment/style motion; do not restate look
 
 ---
 
@@ -237,10 +239,10 @@ Builds cues/SRT from active audio alignment words. Requires prior [E] alignment.
 | **Route** | `POST /api/videos/generate` |
 | **Builder** | `buildVideoPrompt` |
 
-**Video prompt:** single motion string — `motionPrompt` override → env `VIDEO_MOTION_PROMPT` → `scene.beat` from [C] → intensity filler. Look/style stay in the start frame; providers clamp length (e.g. MiniMax 2000 chars).
+**Video prompt:** single motion string — `motionPrompt` override → env `VIDEO_MOTION_PROMPT` → planned `scene.videoPrompt` from [C] → `scene.beat` → intensity filler. `videoPrompt` is planned separately from still `actionPrompt`/`beat`: action first, then light environment/style motion. Look stays in the start frame; providers clamp length (e.g. MiniMax 2000 chars).
 
 **Media:** start frame = active still from [D] (typical MiniMax/Gemini I2V path).  
-**Consumes:** [C] beat (or motion override) + [D] still  
+**Consumes:** [C] videoPrompt (or beat fallback) + [D] still  
 **Produces:** video version
 
 ---
@@ -281,7 +283,7 @@ Builds cues/SRT from active audio alignment words. Requires prior [E] alignment.
 | **Route** | `POST /api/storyboard/regenerate-action` |
 
 **Prompt:** rewrite physical beat 8–28 words from script fragment + BEAT RULES (dynamic verbs, source-faithful).  
-**Produces:** new `scene.beat` (feeds later [G] motion).
+**Produces:** new `scene.beat` (still/image action; [G] falls back to beat only if `videoPrompt` is empty).
 
 ---
 
@@ -378,8 +380,9 @@ Stub providers skip network and return deterministic local fallbacks.
 |---|---|---|
 | `narrationText` | [A] then sliced by [B]; or [H] | [C][E][I][K], audio alignment |
 | `sourceScriptFragment` | [B] / [K] | [C] continuity, regenerate fallbacks |
-| `beat` | [C] / [J] / [K] | [G] motion core; [I] action cue |
-| `prompt` / `shots[0].prompt` | [C] / [I] | [D] image; [G] visual block |
+| `beat` | [C] / [J] / [K] | [I] action cue; [G] fallback if no `videoPrompt` |
+| `videoPrompt` | [C] | [G] primary motion string |
+| `prompt` / `shots[0].prompt` | [C] / [I] | [D] image |
 | Image version | [D] | [G] start frame; UI |
 | Audio version + alignment | [E] | [F] subtitles; playback |
 | Subtitle version | [F] | export / playback |

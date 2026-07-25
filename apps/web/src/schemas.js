@@ -148,6 +148,7 @@ const videoGeneration = z.object({
   sceneTitle: z.string().max(200).default(''),
   scenePrompt: z.string().max(20_000).default(''),
   sceneBeat: z.string().max(20_000).default(''),
+  videoPrompt: z.string().max(4_000).default(''),
   styleId: z.string().trim().min(1).max(80).default('basic-cartoon'),
   commonPromptText: z.string().max(20_000).default(''),
   motionPrompt: z.string().max(4_000).default(''),

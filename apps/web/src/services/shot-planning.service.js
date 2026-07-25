@@ -24,9 +24,11 @@ const NARRATION_CHUNK_MAX_LENGTH = 6_000; // per-call output cap, same bound dia
 // overage warning says so explicitly instead of trimming silently.
 const SUBSTANTIAL_OVERAGE_RATIO = 1.25;
 
-const ACTION_PROMPT_RULES = `actionPrompt: describe one physical action in 8-28 words, simple present tense: subject + verb + object/direction. Ground the action in this scene's narration (and source script when provided); keep spatial relationships implied by neighboring narration and the established setting (outside the room door, inside the cluttered room). Prefer dynamic verbs that animate clearly (throws, turns, presses, recoils) over static states (stands, sits, waits, is). Add concrete visible detail only when it stays faithful to the source -- do not invent props, people, or gestures the narration does not support. No camera instructions or style wording.`;
+const ACTION_PROMPT_RULES = `actionPrompt: still-frame physical action for the image in 8-28 words, simple present tense: subject + verb + object/direction. Ground it in this scene's narration (and source script when provided); keep spatial relationships implied by neighboring narration and the established setting. Prefer a readable pose/gesture the still can show. Add concrete visible detail only when faithful to the source -- do not invent props, people, or gestures the narration does not support. No camera instructions, motion timelines, or style wording.`;
 
 const VISUAL_PROMPT_RULES = `visualPrompt: describe the clearest still visual moment in 15-40 words. State subject, pose, important object, location, and composition. Carry the established setting into every frame unless this scene's narration clearly changes location -- keep place, time-of-day/lighting mood, and durable environment traits (e.g. dark cluttered motel room). Outside or adjacent beats stay tied to that setting. No motion, camera movement, or style wording.`;
+
+const VIDEO_PROMPT_RULES = `videoPrompt: one image-to-video motion brief in about 25-60 words. First responsibility: state the primary subject action clearly (who does what, direction, pace). Second: only then enhance with light environment motion and style-appropriate motion feel that fits the start still. Do not re-describe look, wardrobe, or art style in detail -- the start frame owns that. One primary action; avoid stacking multiple beats. No preserve clauses or bracketed camera syntax.`;
 
 const SHOT_RULES = `SHOT RULES:
 - Break this narration excerpt into shots. Each shot pairs one still visual moment with the exact narration spoken during it.
@@ -34,7 +36,12 @@ const SHOT_RULES = `SHOT RULES:
 - One shot may cover several sentences of calm narration; a burst of fast action may need several shots for only a few words. Let the content decide -- there is no target count.
 - Shots must stay in narration order and, concatenated, read back to approximately the full excerpt below.
 - ${VISUAL_PROMPT_RULES}
-- ${ACTION_PROMPT_RULES}`;
+- ${ACTION_PROMPT_RULES}
+- ${VIDEO_PROMPT_RULES}`;
+
+function fallbackVideoPrompt(actionPrompt) {
+  return cleanText(`${actionPrompt} Clear continuous subject movement and follow-through.`, 4_000);
+}
 
 function wordCount(text) {
   return String(text || '').match(/\S+/g)?.length || 0;
@@ -118,6 +125,7 @@ function fallbackShotsForChunk(chunkText) {
       narrationText: cleanText(piece, NARRATION_CHUNK_MAX_LENGTH),
       visualPrompt: `${actionPrompt} Clear subject, key pose, readable composition.`,
       actionPrompt,
+      videoPrompt: fallbackVideoPrompt(actionPrompt),
     };
   });
 }
@@ -125,7 +133,7 @@ function fallbackShotsForChunk(chunkText) {
 // Deterministic safety fallback only -- the per-chunk soft budgets are the primary mechanism for
 // staying near the cap; this just guarantees the ceiling is never crossed when chunks collectively
 // overshoot it anyway. Repeatedly merges whichever shot currently carries the least narration into
-// an adjacent neighbor (keeping the neighbor's visualPrompt/actionPrompt, since two distinct visual
+// an adjacent neighbor (keeping the neighbor's visual/action/video prompts, since two distinct visual
 // moments can't be averaged into one) until the list is at or under the cap.
 function trimShotsToCap(shots, maxShots) {
   if (shots.length <= maxShots) return shots;
@@ -143,6 +151,7 @@ function trimShotsToCap(shots, maxShots) {
       narrationText: [merged[first].narrationText, merged[second].narrationText].filter(Boolean).join(' '),
       visualPrompt: survivor.visualPrompt,
       actionPrompt: survivor.actionPrompt,
+      videoPrompt: survivor.videoPrompt,
       isFallback: merged[first].isFallback || merged[second].isFallback,
     });
   }
@@ -250,12 +259,13 @@ function buildVisualPlanningRequest({ scenes, neighbors = [], style, additional,
     if (neighbor.next) lines.push(`Next narration (continuity only): ${cleanText(neighbor.next, 300)}`);
     return lines.join('\n');
   }).join('\n\n');
-  return `Return strict JSON only: {"visuals":[{"sceneNumber":N,"visualPrompt":"...","actionPrompt":"..."}]}, one object for every scene below.
+  return `Return strict JSON only: {"visuals":[{"sceneNumber":N,"visualPrompt":"...","actionPrompt":"...","videoPrompt":"..."}]}, one object for every scene below.
 
 VISUAL RULES:
 - Do not rewrite, return, split, merge, or reorder narration.
 - ${VISUAL_PROMPT_RULES}
 - ${ACTION_PROMPT_RULES}
+- ${VIDEO_PROMPT_RULES}
 - Keep every sceneNumber exactly as supplied.
 
 Established setting (carry into every visual unless narration clearly changes location): ${environmentContext || 'none'}.
@@ -282,7 +292,7 @@ This excerpt's approximate share of that budget is about ${chunkBudget} shot${ch
 }
 
 function buildShotPlanningRequest({ chunkText, sequenceContext, style, additional, maxShots, chunkBudget, environmentContext = '' }) {
-  return `Return strict JSON only: {"shots":[{"narrationText":"...","visualPrompt":"...","actionPrompt":"..."}]}.
+  return `Return strict JSON only: {"shots":[{"narrationText":"...","visualPrompt":"...","actionPrompt":"...","videoPrompt":"..."}]}.
 
 ${SHOT_RULES}${buildShotCapGuidance({ maxShots, chunkBudget })}
 
@@ -401,13 +411,14 @@ function createShotPlanningService({ textProviders, generationCache }) {
         narrationText: cleanNarrationText(item?.narrationText),
         visualPrompt: cleanText(item?.visualPrompt, 20_000),
         actionPrompt: compactAction(item?.actionPrompt),
+        videoPrompt: cleanText(item?.videoPrompt, 4_000) || fallbackVideoPrompt(compactAction(item?.actionPrompt)),
       })).filter((shot) => shot.narrationText);
     };
 
     try {
       const shots = generationCache
         ? await generationCache.runCached({
-            tenantId, operation: 'shot.plan', provider, promptTemplateVersion: 4,
+            tenantId, operation: 'shot.plan', provider, promptTemplateVersion: 5,
             source: { chunkText, sequenceContext, environmentContext, maxShots: maxShots || null, chunkBudget: chunkBudget || null }, settings: { style: style?.id, additional }, bypassCache, generateFn,
           })
         : await generateFn();
@@ -566,6 +577,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
       narrationIsFallback: Boolean(segment.narrationIsFallback),
       beat: '',
       prompt: '',
+      videoPrompt: '',
     }));
     return { scenes, narrationText: narration.narrationText, usedFallback, warning: warnings.join(' ') };
   }
@@ -598,7 +610,12 @@ function createShotPlanningService({ textProviders, generationCache }) {
       if (provider === 'stub') {
         visuals = batchScenes.map((scene, index) => {
           const actionPrompt = compactAction(scene.narrationText);
-          return { sceneNumber: index + 1, actionPrompt, visualPrompt: `${actionPrompt} Clear subject, key pose, readable composition.` };
+          return {
+            sceneNumber: index + 1,
+            actionPrompt,
+            visualPrompt: `${actionPrompt} Clear subject, key pose, readable composition.`,
+            videoPrompt: fallbackVideoPrompt(actionPrompt),
+          };
         });
         usedFallback = true;
         batchUsedFallback = true;
@@ -617,7 +634,9 @@ function createShotPlanningService({ textProviders, generationCache }) {
             && new Set(sceneNumbers).size === batchScenes.length
             && expected.every((sceneNumber) => sceneNumbers.includes(sceneNumber));
           const complete = parsed.visuals.every((item) =>
-            cleanText(item?.visualPrompt, 20_000) && compactAction(item?.actionPrompt, ''));
+            cleanText(item?.visualPrompt, 20_000)
+            && compactAction(item?.actionPrompt, '')
+            && cleanText(item?.videoPrompt, 4_000));
           if (!validNumbers || !complete) {
             throw new AppError('INVALID_PROVIDER_RESPONSE', 'Visual planning must return exactly one complete, uniquely numbered result for every scene', { status: 502 });
           }
@@ -626,7 +645,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
         try {
           visuals = generationCache
             ? await generationCache.runCached({
-                tenantId, operation: 'visual.plan', provider, promptTemplateVersion: 4,
+                tenantId, operation: 'visual.plan', provider, promptTemplateVersion: 5,
                 source: {
                   environmentContext,
                   scenes: batch.map((item) => ({
@@ -647,7 +666,12 @@ function createShotPlanningService({ textProviders, generationCache }) {
           warnings.push(`Visual planning: provider unavailable for one batch, local prompts were used. ${cleanText(error.message, 200)}`);
           visuals = batchScenes.map((scene, index) => {
             const actionPrompt = compactAction(scene.narrationText);
-            return { sceneNumber: index + 1, actionPrompt, visualPrompt: `${actionPrompt} Clear subject, key pose, readable composition.` };
+            return {
+              sceneNumber: index + 1,
+              actionPrompt,
+              visualPrompt: `${actionPrompt} Clear subject, key pose, readable composition.`,
+              videoPrompt: fallbackVideoPrompt(actionPrompt),
+            };
           });
         }
       }
@@ -656,12 +680,14 @@ function createShotPlanningService({ textProviders, generationCache }) {
         const visual = byNumber.get(index + 1);
         const actionPrompt = compactAction(visual.actionPrompt || item.scene.narrationText);
         const visualPrompt = cleanText(visual.visualPrompt, 20_000) || `${actionPrompt} Clear subject, key pose, readable composition.`;
+        const videoPrompt = cleanText(visual.videoPrompt, 4_000) || fallbackVideoPrompt(actionPrompt);
         const existingShots = Array.isArray(item.scene.shots) ? item.scene.shots : [];
         const primaryShot = existingShots[0] && typeof existingShots[0] === 'object' ? existingShots[0] : {};
         plannedByIndex.set(item.index, {
           ...item.scene,
           beat: actionPrompt,
           prompt: visualPrompt,
+          videoPrompt,
           shots: [{ ...primaryShot, prompt: visualPrompt }, ...existingShots.slice(1)],
           promptGeneratedFromBeat: actionPrompt,
           promptGeneratedFromNarration: item.scene.narrationText,
@@ -752,6 +778,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
       narrationIsFallback: Boolean(shot.isFallback),
       beat: shot.actionPrompt,
       prompt: shot.visualPrompt,
+      videoPrompt: shot.videoPrompt || fallbackVideoPrompt(shot.actionPrompt),
       promptGeneratedFromBeat: shot.actionPrompt,
       promptGeneratedFromNarration: shot.narrationText,
       promptIsFallback: Boolean(shot.isFallback),
