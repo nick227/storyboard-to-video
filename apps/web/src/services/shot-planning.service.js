@@ -12,6 +12,10 @@ const { narrationRules, sourceOfTruthRule, cleanNarrationText, fallbackNarration
 const MAX_WORDS_PER_NARRATION_CHUNK = 900;
 const MAX_WORDS_PER_SHOT_CHUNK = 300; // smaller than the narration chunk: action-dense text can emit many shot objects per call, which is an output-token risk, not an input one.
 
+// Spoken pacing for scene cuts. Keep in sync with TARGET_WORDS_PER_SLIDE in
+// apps/web/public/js/generation/scene-count.js (~45 words ≈ 15-20s of speech).
+const TARGET_WORDS_PER_SCENE = 45;
+
 const NARRATION_CHUNK_MAX_LENGTH = 6_000; // per-call output cap, same bound dialogue.service.js already uses per scene; the aggregate narration has no cap since it's built from many bounded calls.
 
 // A chunk-count overshoot up to this ratio above maxShots is treated as the soft per-chunk budgets
@@ -188,16 +192,27 @@ Script excerpt:
 ${chunkText}`;
 }
 
+function softSegmentTarget(chunkText) {
+  return Math.max(1, Math.ceil(wordCount(chunkText) / TARGET_WORDS_PER_SCENE));
+}
+
 function buildNarrationSegmentationRequest({ chunkText, sourceText, maxShots, chunkBudget }) {
+  const words = wordCount(chunkText);
+  const densityTarget = softSegmentTarget(chunkText);
+  const budgetLine = maxShots
+    ? `- The entire narration has a maximum of ${maxShots} segments. This excerpt's approximate share is ${chunkBudget}; treat that as a soft ceiling while still respecting cut density below.`
+    : `- Soft target for this excerpt: about ${densityTarget} segment${densityTarget === 1 ? '' : 's'} (${words} words at ~${TARGET_WORDS_PER_SCENE} words per scene). Longer narration must yield more segments.`;
   return `Return strict JSON only: {"segments":[{"sourceScriptFragment":"...","narrationText":"..."}]}. Divide this finalized spoken narration into visual-story scene segments and align each segment to its source script.
 
 SEGMENT RULES:
 - narrationText must be an exact copied excerpt of the narration below, never rewritten or summarized.
 - Preserve narration order. Concatenated segments must reproduce the complete narration excerpt.
 - sourceScriptFragment must be the exact, ordered source-script excerpt that produced that narration segment. Concatenated sourceScriptFragment values must reproduce the complete source excerpt.
-- Each segment should represent one coherent visual moment. Combine calm related sentences; separate distinct actions, reveals, reactions, or transitions.
+- Cut count follows spoken narration length, not plot-beat count. Aim for about ${TARGET_WORDS_PER_SCENE} words per segment (~15-20s of speech). Enriched or wordy narration must be split into more segments — do not keep a long passage in one segment just because it is one story beat.
+- Prefer splitting on sentence or clause boundaries that mark a new visible image (pose change, new focus, new reaction, new detail to show), even inside the same dramatic beat.
+- Separate distinct actions, reveals, reactions, or transitions; combine only short calm sentences that truly share one image.
 - Do not write action beats, image prompts, camera directions, or style instructions.
-${maxShots ? `- The entire narration has a maximum of ${maxShots} segments. This excerpt's approximate share is ${chunkBudget}; treat that as a soft target.` : '- Let the content determine the number of segments.'}
+${budgetLine}
 
 Finalized narration excerpt:
 ${chunkText}
@@ -445,8 +460,8 @@ function createShotPlanningService({ textProviders, generationCache }) {
         try {
           chunkSegments = generationCache
             ? await generationCache.runCached({
-                tenantId, operation: 'narration.segment', provider, promptTemplateVersion: 2,
-                source: { chunkText, sourceChunk, maxShots: maxShots || null, chunkBudget: chunkBudgets[i] || null },
+                tenantId, operation: 'narration.segment', provider, promptTemplateVersion: 3,
+                source: { chunkText, sourceChunk, maxShots: maxShots || null, chunkBudget: chunkBudgets[i] || null, densityTarget: softSegmentTarget(chunkText) },
                 bypassCache, generateFn,
               })
             : await generateFn();
@@ -677,4 +692,4 @@ function createShotPlanningService({ textProviders, generationCache }) {
   return { plan, prepareNarration, planVisuals };
 }
 
-module.exports = { createShotPlanningService, chunkByWords };
+module.exports = { createShotPlanningService, chunkByWords, softSegmentTarget, TARGET_WORDS_PER_SCENE };

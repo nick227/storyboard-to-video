@@ -1,5 +1,5 @@
 const test=require('node:test');const assert=require('node:assert/strict');
-const {createShotPlanningService}=require('../src/services/shot-planning.service');
+const {createShotPlanningService,softSegmentTarget,TARGET_WORDS_PER_SCENE}=require('../src/services/shot-planning.service');
 
 test('shot planning falls back to deterministic chunked shots in stub mode, with no scene-count input anywhere',async()=>{const service=createShotPlanningService({textProviders:{}});const result=await service.plan({scriptText:'John stares at a wall for hours. Nothing moves. He finally blinks.',provider:'stub'});assert.equal(result.usedFallback,true);assert.ok(result.scenes.length>=1);assert.equal(result.narrationText.length>0,true);for(const scene of result.scenes){assert.equal(scene.narrationText.length>0,true);assert.equal(typeof scene.beat,'string');assert.equal(typeof scene.prompt,'string');}});
 
@@ -150,3 +150,47 @@ test('planVisuals rejects duplicate or incomplete provider scene mappings when f
 test('planVisuals marks fallback per batch instead of contaminating later successful batches',async()=>{let call=0;const scenes=Array.from({length:13},(_,index)=>({id:`s${index+1}`,narrationText:`Narration ${index+1}.`}));const service=createShotPlanningService({textProviders:{call:async()=>{call+=1;if(call===1)return JSON.stringify({visuals:[{sceneNumber:1,visualPrompt:'Incomplete.',actionPrompt:'Acts.'}]});return JSON.stringify({visuals:[{sceneNumber:1,visualPrompt:'A complete final scene visual.',actionPrompt:'Subject finishes.'}]});}}});const result=await service.planVisuals({scenes,provider:'gemini',fallbackPolicy:'local'});assert.equal(result.scenes[0].promptIsFallback,true);assert.equal(result.scenes[11].promptIsFallback,true);assert.equal(result.scenes[12].promptIsFallback,false);});
 
 test('prepareNarration uses the editable style prompt while retaining the source-of-truth guard',async()=>{let narrationRequest='';const service=createShotPlanningService({textProviders:{call:async(_provider,request)=>{if(request.includes('continuous spoken narration')){narrationRequest=request;return JSON.stringify({narrationText:'Mara enters.'});}return JSON.stringify({segments:[{sourceScriptFragment:'Mara enters.',narrationText:'Mara enters.'}]});}}});await service.prepareNarration({scriptText:'Mara enters.',provider:'gemini',fallbackPolicy:'fail',narrationPromptText:'Use spare, rhythmic sentences.'});assert.match(narrationRequest,/Use spare, rhythmic sentences\./);assert.match(narrationRequest,/source text below is the only authority/i);assert.doesNotMatch(narrationRequest,/Stay close to the source text/);});
+
+test('softSegmentTarget scales with narration word count at the spoken pacing rate', () => {
+  assert.equal(TARGET_WORDS_PER_SCENE, 45);
+  assert.equal(softSegmentTarget('Short.'), 1);
+  const ninetyWords = Array.from({ length: 90 }, (_, i) => `w${i + 1}`).join(' ');
+  assert.equal(softSegmentTarget(ninetyWords), 2);
+  const enriched = Array.from({ length: 180 }, (_, i) => `word${i + 1}`).join(' ');
+  assert.equal(softSegmentTarget(enriched), 4);
+});
+
+test('prepareNarration segmentation asks for more cuts when narration is longer', async () => {
+  const shortNarration = 'Derek wakes.';
+  const longNarration = Array.from({ length: 90 }, (_, i) => `Detail${i + 1}`).join(' ');
+  let shortRequest = '';
+  let longRequest = '';
+
+  const shortService = createShotPlanningService({
+    textProviders: {
+      call: async (_provider, request) => {
+        if (request.includes('continuous spoken narration')) return JSON.stringify({ narrationText: shortNarration });
+        shortRequest = request;
+        return JSON.stringify({ segments: [{ sourceScriptFragment: 'Derek wakes.', narrationText: shortNarration }] });
+      },
+    },
+  });
+  await shortService.prepareNarration({ scriptText: 'Derek wakes.', provider: 'gemini', fallbackPolicy: 'fail' });
+
+  const longService = createShotPlanningService({
+    textProviders: {
+      call: async (_provider, request) => {
+        if (request.includes('continuous spoken narration')) return JSON.stringify({ narrationText: longNarration });
+        longRequest = request;
+        return JSON.stringify({ segments: [{ sourceScriptFragment: 'source', narrationText: longNarration }] });
+      },
+    },
+  });
+  await longService.prepareNarration({ scriptText: 'source', provider: 'gemini', fallbackPolicy: 'fail' });
+
+  assert.match(shortRequest, /Cut count follows spoken narration length/);
+  assert.match(shortRequest, /about 1 segment/);
+  assert.match(longRequest, /about 2 segments/);
+  assert.match(longRequest, /Longer narration must yield more segments/);
+  assert.match(longRequest, /not plot-beat count/);
+});
