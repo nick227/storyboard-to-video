@@ -9,23 +9,11 @@ const { imageShot } = require('../shared/scene-shots');
 const { mergeMediaIntent, resolveImageOutput } = require('../shared/media-output-policy');
 const { VIDEO_PROVIDER_CAPABILITIES } = require('../shared/video-provider-capabilities');
 const { dezgoModelForProvider, isDezgoProvider } = require('../providers/image/dezgo-settings');
+const { downloadStockImage } = require('../providers/stock/materialize');
 
 function createProjectRouter({ store, queue, upload, shotReferences, styles, prompts, referenceGeneration, imageProvider, stockProvider, identityStore, prisma, config, spendSummary, scripts }) {
   const router = express.Router();
   const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
-
-  // Only pixabay.com/cdn.pixabay.com URLs may be fetched server-side here -- the URL otherwise
-  // comes straight from client request input, so without this allowlist a crafted fullUrl would
-  // let a caller make the server fetch arbitrary internal/external addresses (SSRF).
-  function assertPixabayAssetUrl(rawUrl) {
-    let parsed;
-    try { parsed = new URL(String(rawUrl)); } catch (_) { throw new AppError('VALIDATION_ERROR', 'Invalid stock asset URL', { status: 400 }); }
-    const host = parsed.hostname.toLowerCase();
-    if (parsed.protocol !== 'https:' || !(host === 'pixabay.com' || host.endsWith('.pixabay.com'))) {
-      throw new AppError('VALIDATION_ERROR', 'Stock asset URL is not from a supported provider', { status: 400 });
-    }
-    return parsed;
-  }
 
   async function attachScript(project, req) {
     if (!scripts) return project;
@@ -265,9 +253,6 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
     res.json({ ok: true, ...data });
   }));
 
-  const STOCK_IMAGE_CONTENT_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
-  const STOCK_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
-
   function safeString(value, maxLength) {
     return typeof value === 'string' && value.trim() ? value.trim().slice(0, maxLength) : null;
   }
@@ -280,31 +265,9 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
     const { provider = 'pixabay', fullUrl, sourceId, sourcePageUrl, creator } = req.body || {};
     if (provider !== 'pixabay') throw new AppError('VALIDATION_ERROR', 'Unsupported stock provider', { status: 400 });
     if (!fullUrl) throw new AppError('VALIDATION_ERROR', 'fullUrl is required', { status: 400 });
-    const parsedUrl = assertPixabayAssetUrl(fullUrl);
 
     const lease = await store.acquireLease(projectId, { ownerId: req.auth.tenantId, userId: req.auth.userId });
-
-    // redirect: 'manual' -- a redirect off pixabay.com (compromised CDN, crafted response, etc.)
-    // must not be silently followed, since that would let the allowlist above be bypassed after
-    // the fact. Any redirect response is treated as a failure rather than followed.
-    const response = await fetch(parsedUrl, { redirect: 'manual' });
-    if (response.status >= 300 && response.status < 400) {
-      throw new AppError('PROVIDER_ERROR', 'Stock asset URL redirected; refusing to follow off the allowed host', { status: 502 });
-    }
-    if (!response.ok) throw new AppError('PROVIDER_ERROR', `Failed to download stock image (${response.status})`, { status: 502 });
-
-    const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    const extension = STOCK_IMAGE_CONTENT_TYPES[contentType];
-    if (!extension) throw new AppError('PROVIDER_ERROR', `Unexpected content type from stock provider: ${contentType || 'unknown'}`, { status: 502 });
-
-    const declaredLength = Number(response.headers.get('content-length') || 0);
-    if (declaredLength > STOCK_IMAGE_MAX_BYTES) {
-      throw new AppError('PROVIDER_ERROR', 'Stock image exceeds the maximum allowed size', { status: 502 });
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length > STOCK_IMAGE_MAX_BYTES) {
-      throw new AppError('PROVIDER_ERROR', 'Stock image exceeds the maximum allowed size', { status: 502 });
-    }
+    const { buffer, mimeType: contentType, extension } = await downloadStockImage(fullUrl);
 
     const fileName = `stock-pixabay-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.${extension}`;
     const staged = path.join(config.paths.generated, `.${fileName}.upload`);
