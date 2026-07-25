@@ -1,0 +1,32 @@
+<dialog id="scriptMetaModal" class="settings-modal script-meta-modal" aria-labelledby="scriptMetaModalTitle">
+  <div class="settings-modal-header">
+    <div>
+      <h2 id="scriptMetaModalTitle">Publishing details</h2>
+    </div>
+    <button type="button" class="secondary text-button settings-modal-close" id="scriptMetaCloseBtn"
+      aria-label="Close publishing details">✕</button>
+  </div>
+  <div class="settings-modal-body">
+    <div class="script-meta-fields">
+      <label>
+        <span>Logline</span>
+        <textarea id="scriptLogline" maxlength="280" rows="2" placeholder="One or two sentences that sell the story"></textarea>
+      </label>
+      <label>
+        <span>Category</span>
+        <select id="scriptCategorySelect">
+          <option value="">Uncategorized</option>
+        </select>
+      </label>
+      <label>
+        <span>Tags</span>
+        <input id="scriptTagsInput" type="text" maxlength="200" placeholder="noir, heist, coming-of-age" />
+      </label>
+      <p id="scriptStatsLine" class="script-stats-line" hidden></p>
+    </div>
+  </div>
+  <div class="settings-modal-footer">
+    <button type="button" class="secondary" id="scriptMetaCancelBtn">Cancel</button>
+    <button type="button" id="scriptMetaSaveBtn" class="primary">Save</button>
+  </div>
+</dialog>

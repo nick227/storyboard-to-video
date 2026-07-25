@@ -7,15 +7,18 @@ const { imageShot } = require('../shared/scene-shots');
 const PROMPT_BATCH_SIZE = 5;
 const FRAGMENT_MAX_LENGTH = 20_000;
 
-const PROMPT_TEMPLATE_VERSION = 3;
-const ACTION_TEMPLATE_VERSION = 2;
+const PROMPT_TEMPLATE_VERSION = 4;
+const ACTION_TEMPLATE_VERSION = 5;
 
 const BEAT_RULES = `BEAT RULES:
-- Describe one physical action in 5-20 words (max 24).
+- Describe one physical action in 8-28 words.
 - Use simple present tense: subject + verb + object/direction.
+- Ground the action in this scene's exact script/narration excerpt; keep spatial relationships stated or implied there and any established setting.
+- Prefer dynamic verbs that animate clearly (throws, turns, presses, recoils) over static states (stands, sits, waits, is).
+- Add concrete visible detail only when it stays faithful to the source -- do not invent props, people, or gestures the excerpt does not support.
 - Avoid camera instructions, style, or backstory.`;
 
-const CONTINUITY_RULE = 'Keep recurring named characters and objects consistent across adjacent scenes.';
+const CONTINUITY_RULE = 'Keep recurring named characters, objects, and the established setting consistent across adjacent scenes. Carry place, lighting mood, and durable environment traits into the visual unless the source clearly changes location.';
 
 function buildSceneSourceContext(fragment, enrich) {
   const hasNarration = enrich && fragment.narrationText && !fragment.narrationIsFallback;
@@ -155,7 +158,7 @@ function createPromptGenerationService({ textProviders, limits, generationCache 
       : `Fallback scene script excerpt: ${scriptSource}`;
 
     const generateFn = async () => {
-      const request = `Return strict JSON only: {"prompt":"..."}. Create a brand-new Visual Prompt from the canonical source below. Do not rewrite, preserve, or infer wording from any previous visual prompt. Show this physical action: ${scene.beat || ''}. State subject, pose, important object, location, and composition. Use the selected style context to shape the visual interpretation. ${CONTINUITY_RULE} ${sourceBlock}. Optional user instruction: ${extraPromptText || 'none'}. Selected style context: ${style.promptText}. Additional style direction: ${getAdditionalCommonPrompt(style.promptText, commonPromptText) || 'none'}.`;
+      const request = `Return strict JSON only: {"prompt":"..."}. Create a brand-new Visual Prompt from the canonical source below. Do not rewrite, preserve, or infer wording from any previous visual prompt. Show this physical action: ${scene.beat || ''}. State subject, pose, important object, location, and composition. Carry established setting/environment into the frame unless the source clearly changes location. Use the selected style context to shape the visual interpretation. ${CONTINUITY_RULE} ${sourceBlock}. Optional user instruction: ${extraPromptText || 'none'}. Selected style context: ${style.promptText}. Additional style direction: ${getAdditionalCommonPrompt(style.promptText, commonPromptText) || 'none'}.`;
       const raw = providerOutput(await textProviders.call(provider, request));
       const value = extractTextField(raw, ['prompt', 'visualPrompt', 'visual_prompt', 'text', 'content'], limits.prompt);
       if (!value) {
@@ -213,7 +216,7 @@ function createPromptGenerationService({ textProviders, limits, generationCache 
     if (!source) throw new AppError('SCENE_FRAGMENT_MISSING', 'Scene has no script fragment', { status: 400 });
 
     const generateFn = async () => {
-      const request = `Return strict JSON only: {"beat":"..."}. Rewrite the physical action (Beat) for scene ${sceneIndex + 1} in 5-24 words.
+      const request = `Return strict JSON only: {"beat":"..."}. Rewrite the physical action (Beat) for scene ${sceneIndex + 1} in 8-28 words.
 ${BEAT_RULES}
 This scene's exact script excerpt: ${source}
 Existing action: ${scene?.beat || 'none'}.`;

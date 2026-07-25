@@ -54,7 +54,11 @@ function createStylesController({ styles, imageProvider }){
     async customReferenceContent(req,res){
       const {reference,stream}=await styles.customReferenceStream(req.params.styleId,req.params.referenceId,req.auth.userId);
       res.type(reference.mimeType);
-      await pipeline(stream,res);
+      try {
+        await pipeline(stream,res);
+      } catch (err) {
+        if (err.code !== 'ERR_STREAM_PREMATURE_CLOSE') throw err;
+      }
     }
   };
 }

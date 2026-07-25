@@ -12,6 +12,9 @@
   --scripts-line: var(--line);
   --scripts-ui: "Source Sans 3", "Segoe UI", sans-serif;
   --scripts-mono: "Courier Prime", Courier, "Courier New", monospace;
+  --page-width: 8.5in;
+  --page-height: 11in;
+  --page-scale: 1;
 }
 
 body.scripts-shell {
@@ -149,6 +152,24 @@ body.scripts-shell {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--scripts-muted);
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+}
+
+.cover-label[data-artifact="screenplay"] {
+  background: var(--accent-soft);
+  color: var(--accent-ink, var(--accent));
+}
+
+.cover-label[data-artifact="storyboard"] {
+  background: color-mix(in srgb, var(--tag-violet) 22%, transparent);
+  color: var(--tag-violet);
+}
+
+.cover-label[data-artifact="timeline"] {
+  background: color-mix(in srgb, var(--tag-pink) 22%, transparent);
+  color: var(--tag-pink);
 }
 
 .script-cover-card .cover-title {
@@ -327,11 +348,11 @@ body.scripts-shell {
 
 .script-cover-page {
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  min-height: min(78vh, 860px);
-  width: min(100%, 34rem);
-  margin: 0 auto 2.5rem;
-  padding: 2rem 2rem 1.75rem;
+  grid-template-rows: auto auto auto;
+  min-height: auto;
+  width: calc(var(--page-width) * var(--page-scale));
+  margin: 0 auto 1.25rem;
+  padding: 1.5rem 2rem;
   text-align: center;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--glass-ink) 5%, transparent), transparent 24%),
@@ -341,13 +362,13 @@ body.scripts-shell {
 }
 
 .script-cover-page-top,
-.script-cover-page-bottom { min-height: 2rem; }
+.script-cover-page-bottom { min-height: 0; }
 
 .script-cover-page-mid {
   display: grid;
   place-content: center;
-  gap: 1.35rem;
-  padding: 1rem 0;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
 }
 
 .script-cover-page-label {
@@ -426,7 +447,8 @@ body.scripts-shell {
 .timeline-view-video[hidden],
 .timeline-view-image[hidden],
 #readerCover[hidden],
-.script-reader-toolbar[hidden] {
+.script-reader-toolbar[hidden],
+.script-reader-action[hidden] {
   display: none !important;
 }
 
@@ -598,8 +620,8 @@ body.scripts-shell {
   .script-reader-action { padding: 0 0.7rem; }
 
   .script-cover-page {
-    min-height: 68vh;
-    padding: 1.5rem 1.15rem 1.35rem;
+    min-height: auto;
+    padding: 1.25rem 1.15rem;
   }
 
   .storyboard-view-grid {

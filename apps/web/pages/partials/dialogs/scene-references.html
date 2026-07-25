@@ -1,0 +1,32 @@
+<dialog id="sceneReferencesModal" class="settings-modal" aria-labelledby="sceneReferencesModalTitle">
+  <div class="settings-modal-header">
+    <div>
+      <div class="eyebrow" id="sceneReferencesModalSceneLabel">Scene references</div>
+      <h2 id="sceneReferencesModalTitle">Reference Images</h2>
+    </div>
+    <button type="button" class="secondary text-button settings-modal-close" data-close-scene-references
+      aria-label="Close scene reference settings">✕</button>
+  </div>
+  <div class="settings-modal-body">
+    <section class="scene-reference-section">
+      <div class="style-ref-col-header">
+        <div><strong>Project default references</strong><small>Toggle selected-style references for this scene</small></div>
+      </div>
+      <div id="sceneDefaultReferences" class="scene-reference-list"></div>
+    </section>
+    <section class="scene-reference-section">
+      <div class="style-ref-col-header">
+        <div><strong>Scene-only references</strong><small>Choose character, location, composition, or continuity for each image</small></div>
+        <label class="upload-chip">
+          <input id="sceneReferenceInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+          <span>Upload</span>
+        </label>
+      </div>
+      <div id="sceneUploadedReferences" class="scene-reference-list"></div>
+    </section>
+  </div>
+  <div class="settings-modal-footer">
+    <span id="sceneReferencesSaveNote" class="settings-modal-save-note" hidden>Changes apply to this scene</span>
+    <button type="button" class="primary" data-close-scene-references>Done</button>
+  </div>
+</dialog>

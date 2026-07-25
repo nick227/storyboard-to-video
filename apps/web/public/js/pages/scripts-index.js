@@ -6,7 +6,7 @@ import { authorSlugFromSession, libraryQueryPath, workPath, scriptSlugFromRecord
 const params = new URLSearchParams(window.location.search);
 const artifactFilter = ['screenplays', 'storyboards', 'timelines'].includes(params.get('artifact'))
   ? params.get('artifact')
-  : 'all';
+  : 'screenplays';
 const categoryFilter = (params.get('category') || '').trim();
 const tagFilter = (params.get('tag') || '').trim();
 
@@ -40,7 +40,6 @@ function artifactLink(id, label, active) {
 }
 
 artifactNav.innerHTML = [
-  artifactLink('all', 'All', artifactFilter === 'all'),
   artifactLink('screenplays', 'Screenplays', artifactFilter === 'screenplays'),
   artifactLink('storyboards', 'Storyboards', artifactFilter === 'storyboards'),
   artifactLink('timelines', 'Timelines', artifactFilter === 'timelines'),
@@ -57,22 +56,22 @@ function artifactState(script, artifact) {
       : { visibility: 'private', publishedAt: null });
 }
 
-function mineCard(project, session) {
+function mineCard(project, session, artifact) {
   const slug = scriptSlugFromRecord(project);
   const author = project.script?.writer?.profileSlug || authorSlugFromSession(session) || 'anonymous';
-  const artifact = selectedArtifact() || 'screenplay';
   const state = artifactState(project.script, artifact);
   const isPublic = state.visibility === 'public';
+  const isOwner = !session?.user?.id || project.createdByUserId === session.user.id;
   const editUrl = new URL(workPath(author, slug, artifact, { edit: true }), window.location.origin);
   editUrl.searchParams.set('project', project.id);
   const editHref = `${editUrl.pathname}${editUrl.search}`;
   const viewHref = isPublic ? workPath(author, slug, artifact) : '';
   return `<article class="script-cover-card library-mine-card">
-    <p class="cover-label">${escapeHtml(artifact)}</p>
+    <p class="cover-label" data-artifact="${escapeHtml(artifact)}">${escapeHtml(artifact)}</p>
     <h2 class="cover-title">${escapeHtml(project.title || 'Untitled')}</h2>
     <p class="cover-meta">${isPublic ? 'Public' : 'Private'}</p>
     <div class="library-card-actions">
-      <a class="script-chip is-active" href="${escapeHtml(editHref)}">Edit</a>
+      ${isOwner ? `<a class="script-chip is-active" href="${escapeHtml(editHref)}">Edit</a>` : ''}
       ${viewHref ? `<a class="script-chip" href="${escapeHtml(viewHref)}">View</a>` : ''}
     </div>
   </article>`;
@@ -148,10 +147,10 @@ try {
   const session = sessionData.authenticated ? sessionData.session : null;
   bindNewScreenplay(session);
 
-  const artifact = selectedArtifact() || 'all';
+  const artifact = selectedArtifact();
   const [scripts, categories, tags, projectsPayload] = await Promise.all([
     fetchPublicScripts({ artifact, category: categoryFilter, tag: tagFilter }),
-    fetchCategories(),
+    fetchCategories({ onlyWithScripts: true }),
     fetchTags(),
     session ? api('/api/projects') : Promise.resolve({ projects: [] }),
   ]);
@@ -160,14 +159,14 @@ try {
   const projects = projectsPayload.projects || [];
   const publicScripts = excludeOwnedPublicScripts(scripts, projects, session);
   const cards = [
-    ...projects.map((project) => mineCard(project, session)),
+    ...projects.map((project) => mineCard(project, session, artifact)),
     ...publicScripts.map((script) => scriptCoverCard(script, {
-      artifact: script.artifact || selectedArtifact() || 'screenplay',
+      artifact: script.artifact || artifact,
     })),
   ];
 
   if (!cards.length) {
-    const emptyLabel = artifactFilter === 'all' ? 'works' : artifactFilter;
+    const emptyLabel = artifactFilter;
     status.dataset.tone = 'empty';
     status.hidden = false;
     grid.hidden = true;

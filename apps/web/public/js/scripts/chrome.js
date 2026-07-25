@@ -56,7 +56,7 @@ export function scriptCoverCard(script, { compact = false, artifact = 'screenpla
       : (script.category?.name || 'Screenplay');
   const href = script.sharePath || workPath(script.writer?.profileSlug, script.slug, kind);
   return `<a class="${classes}" href="${escapeHtml(href)}">
-    <p class="cover-label">${escapeHtml(label)}</p>
+    <p class="cover-label" data-artifact="${escapeHtml(kind)}">${escapeHtml(label)}</p>
     <h2 class="cover-title">${escapeHtml(script.title || 'Untitled')}</h2>
     ${logline}
     <p class="cover-author">${escapeHtml(script.author || 'Anonymous')}</p>

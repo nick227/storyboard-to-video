@@ -29,6 +29,6 @@ function compactWords(value, maxWords) {
   return cleanText(value, 5_000).split(/\s+/).filter(Boolean).slice(0, maxWords).join(' ');
 }
 function compactAction(value, fallback = 'Subject moves.') {
-  return compactWords(value, 24) || fallback;
+  return compactWords(value, 28) || fallback;
 }
 module.exports = { clampSceneCount, cleanText, extractJson, extractTextField, getAdditionalCommonPrompt, slugify, compactWords, compactAction };

@@ -163,7 +163,23 @@ function createImageProviders(config, textProviders, getCancellation, usageTrack
     if (!config.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing'); const model = config.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image';
     const { imageSize, aspectRatio } = output.resolved.providerSettings;
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.env.GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: textProviders.geminiParts(prompt, references) }], generationConfig: { temperature: 0.7, responseModalities: ['TEXT','IMAGE'], imageConfig: { imageSize, aspectRatio } } }), signal: signal(config.env.IMAGE_PROVIDER_TIMEOUT_MS || 180_000, getCancellation) });
-    if (!response.ok) await throwResponse('gemini', response); const data = await response.json(); const part = (data.candidates?.[0]?.content?.parts || []).find((item) => item.inlineData?.data || item.inline_data?.data); const b64 = part?.inlineData?.data || part?.inline_data?.data; if (!b64) throw new Error('Gemini image error: no image returned'); const mimeType = part?.inlineData?.mimeType || part?.inline_data?.mime_type || 'image/png'; const rawUsage = data.usageMetadata || null; const outputImageTokens = (rawUsage?.candidatesTokensDetails || []).filter((item) => item.modality === 'IMAGE').reduce((sum, item) => sum + (item.tokenCount || 0), 0); const candidateTokens = rawUsage?.candidatesTokenCount || 0; return providerResult({ output: { buffer: Buffer.from(b64, 'base64'), mimeType, extension: mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/webp' ? 'webp' : 'png' }, provider: 'gemini', model: data.modelVersion || model, providerRequestId: providerRequestId(response, data), settings: { output, temperature: 0.7, responseModalities: ['TEXT', 'IMAGE'] }, usage: { images: 1, ...estimatedUsage(output), ...(rawUsage ? { inputTokens: rawUsage.promptTokenCount || 0, cachedInputTokens: rawUsage.cachedContentTokenCount || 0, outputTokens: candidateTokens + (rawUsage.thoughtsTokenCount || 0), candidateTokens, outputImageTokens, outputTextOrThinkingTokens: Math.max(0, candidateTokens - outputImageTokens) + (rawUsage.thoughtsTokenCount || 0), thinkingTokens: rawUsage.thoughtsTokenCount || 0, totalTokens: rawUsage.totalTokenCount || 0, serviceTier: rawUsage.serviceTier || 'standard' } : {}) }, rawUsage, measurementStatus: rawUsage ? 'observed' : 'estimated' });
+    if (!response.ok) await throwResponse('gemini', response); const data = await response.json(); const part = (data.candidates?.[0]?.content?.parts || []).find((item) => item.inlineData?.data || item.inline_data?.data); const b64 = part?.inlineData?.data || part?.inline_data?.data;
+    if (!b64) {
+      let details = '';
+      if (data.promptFeedback?.blockReason) {
+        details = ` (prompt blocked: ${data.promptFeedback.blockReason})`;
+      } else {
+        const candidate = data.candidates?.[0];
+        if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+          details = ` (generation stopped: ${candidate.finishReason})`;
+        }
+      }
+      if (!details && data.error?.message) {
+        details = ` (${data.error.message})`;
+      }
+      throw new Error(`Gemini image error: no image returned${details}`);
+    }
+    const mimeType = part?.inlineData?.mimeType || part?.inline_data?.mime_type || 'image/png'; const rawUsage = data.usageMetadata || null; const outputImageTokens = (rawUsage?.candidatesTokensDetails || []).filter((item) => item.modality === 'IMAGE').reduce((sum, item) => sum + (item.tokenCount || 0), 0); const candidateTokens = rawUsage?.candidatesTokenCount || 0; return providerResult({ output: { buffer: Buffer.from(b64, 'base64'), mimeType, extension: mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/webp' ? 'webp' : 'png' }, provider: 'gemini', model: data.modelVersion || model, providerRequestId: providerRequestId(response, data), settings: { output, temperature: 0.7, responseModalities: ['TEXT', 'IMAGE'] }, usage: { images: 1, ...estimatedUsage(output), ...(rawUsage ? { inputTokens: rawUsage.promptTokenCount || 0, cachedInputTokens: rawUsage.cachedContentTokenCount || 0, outputTokens: candidateTokens + (rawUsage.thoughtsTokenCount || 0), candidateTokens, outputImageTokens, outputTextOrThinkingTokens: Math.max(0, candidateTokens - outputImageTokens) + (rawUsage.thoughtsTokenCount || 0), thinkingTokens: rawUsage.thoughtsTokenCount || 0, totalTokens: rawUsage.totalTokenCount || 0, serviceTier: rawUsage.serviceTier || 'standard' } : {}) }, rawUsage, measurementStatus: rawUsage ? 'observed' : 'estimated' });
   }
   function imageModel(provider) {
     if (isDezgoProvider(provider)) return dezgoModelForProvider(provider);

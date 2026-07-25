@@ -5,7 +5,7 @@ const { ScriptStore } = require('./script-store');
 const { slugify, cleanText } = require('../shared/text');
 const {
   artifactsFromRow, artifactVisibilityPatch, normalizeVisibility,
-  visibilityWhere, publishedAtOrder,
+  visibilityWhere, publishedAtOrder, ARTIFACTS,
 } = require('../shared/script-artifacts');
 
 function asDate(value) {
@@ -196,8 +196,11 @@ class PrismaScriptRepository extends ScriptStore {
     return this.map(row);
   }
 
-  async listCategories() {
-    const rows = await this.prisma.category.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+  async listCategories({ onlyWithScripts = false } = {}) {
+    const where = onlyWithScripts
+      ? { scripts: { some: { OR: ARTIFACTS.map((artifact) => visibilityWhere(artifact)) } } }
+      : undefined;
+    const rows = await this.prisma.category.findMany({ where, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
     return rows.map((c) => ({ id: c.id, slug: c.slug, name: c.name, sortOrder: c.sortOrder }));
   }
 

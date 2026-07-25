@@ -5,7 +5,17 @@ const path = require('node:path');
 
 const webRoot = path.join(__dirname, '..');
 const appSource = fs.readFileSync(path.join(webRoot, 'public', 'js', 'app.js'), 'utf8');
-const studioTemplate = fs.readFileSync(path.join(webRoot, 'pages', 'studio.html'), 'utf8');
+let studioTemplate = fs.readFileSync(path.join(webRoot, 'pages', 'studio.html'), 'utf8');
+
+// Expand dialog partials in studioTemplate so the DOM tests find the elements
+const dialogRegex = /<!--dialogs\/([a-zA-Z0-9_-]+)-->/g;
+studioTemplate = studioTemplate.replace(dialogRegex, (match, slug) => {
+  const dialogPath = path.join(webRoot, 'pages', 'partials', 'dialogs', `${slug}.html`);
+  if (fs.existsSync(dialogPath)) {
+    return fs.readFileSync(dialogPath, 'utf8').trim();
+  }
+  return match;
+});
 
 test('studio shell binds the required status panel from its template', () => {
   assert.match(studioTemplate, /id="statusPanel"/);

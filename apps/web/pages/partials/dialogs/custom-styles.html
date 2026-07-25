@@ -1,0 +1,76 @@
+<dialog id="customStylesModal" class="settings-modal custom-styles-modal" aria-labelledby="customStylesModalTitle">
+  <div class="settings-modal-header">
+    <div>
+      <div class="eyebrow">Personal library</div>
+      <h2 id="customStylesModalTitle">Custom styles</h2>
+    </div>
+    <button type="button" id="customStylesCloseBtn" class="secondary text-button settings-modal-close"
+      aria-label="Close custom styles">✕</button>
+  </div>
+  <div class="custom-styles-layout">
+    <aside class="custom-styles-sidebar">
+      <button type="button" id="customStyleNewBtn" class="primary">+ New style</button>
+      <div id="customStylesList" class="custom-styles-list" role="listbox" aria-label="Your custom styles"></div>
+    </aside>
+    <section id="customStyleEditor" class="custom-style-editor">
+      <div id="customStyleFields" hidden>
+        <label>
+          <span>Title *</span>
+          <input id="customStyleTitle" type="text" maxlength="120" autocomplete="off" required />
+        </label>
+        <label>
+          <span>Style prompt</span>
+          <textarea id="customStylePrompt" rows="8" maxlength="12000"
+            placeholder="Describe the reusable visual language, materials, palette, lighting, and level of detail."></textarea>
+        </label>
+        <label>
+          <span>Writing guidance</span>
+          <textarea id="customStyleWritingGuidance" rows="3" maxlength="1000"
+            placeholder="Short narration help for this style — e.g. punchy pitch-deck claims, spare stick-figure beats, or cinematic sensory detail."></textarea>
+        </label>
+        <div class="custom-style-reference-grid">
+          <section>
+            <div class="custom-style-reference-heading">
+              <div><strong>Character references</strong><small>Up to 4</small></div>
+            </div>
+            <div id="customStyleCharacterRefs" class="custom-style-reference-list"></div>
+              <div class="row">
+                <button type="button" id="customStyleCharacterGenerateBtn" class="upload-chip">
+                  <span>Generate</span>
+                </button>
+                <button type="button" id="customStyleCharacterLibraryBtn" class="upload-chip">
+                  <span>Library</span>
+                </button>
+                <button type="button" id="customStyleCharacterUploadBtn" class="upload-chip">
+                  <span>Upload</span>
+                </button>
+                <input id="customStyleCharacterInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+              </div>
+          </section>
+          <section>
+            <div class="custom-style-reference-heading">
+              <div><strong>World references</strong><small>Up to 4</small></div>
+            </div>
+            <div id="customStyleWorldRefs" class="custom-style-reference-list"></div>
+              <div class="row">
+                <button type="button" id="customStyleWorldGenerateBtn" class="upload-chip">
+                  <span>Generate</span>
+                </button>
+                <button type="button" id="customStyleWorldLibraryBtn" class="upload-chip">
+                  <span>Library</span>
+                </button>
+                <button type="button" id="customStyleWorldUploadBtn" class="upload-chip">
+                  <span>Upload</span>
+                </button>
+                <input id="customStyleWorldInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+              </div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="settings-modal-footer custom-styles-footer">
+    <span id="customStyleStatus" class="settings-modal-save-note" role="status" aria-live="polite"></span>
+    <button type="button" id="customStyleSaveBtn" class="primary" disabled>Save style</button>
+  </div>
+</dialog>

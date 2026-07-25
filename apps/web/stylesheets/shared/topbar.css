@@ -45,7 +45,6 @@
 .sf-nav-link:hover, .sf-nav-link[aria-current="page"] { color: var(--text); background: var(--glass); }
 
 .sf-workbar {
-  border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--topbar-bg) 88%, var(--panel));
   font-family: var(--sf-font);
 }

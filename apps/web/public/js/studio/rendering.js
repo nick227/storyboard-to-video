@@ -216,7 +216,7 @@ function entityStatuses(scene, operation, recentJobs = getCachedJobs(), latestJo
     } else if (failed) {
       key = 'failed';
       label = 'Issue';
-      reason = lastJob?.error || lastJob?.message || 'The latest generation attempt failed.';
+      reason = lastJob?.error?.message || (typeof lastJob?.error === 'string' ? lastJob.error : null) || lastJob?.message || 'The latest generation attempt failed.';
     } else if (!present) {
       ({ key, label } = MISSING_ENTITY_STATUS);
     } else if (stale) {

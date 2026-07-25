@@ -526,3 +526,77 @@
 .voice-record-save[hidden] { display: none; }
 .voice-record-save input { flex: 1; }
 .voice-record-save button { flex: 0 0 auto; }
+
+/* Premium Settings Layout & Card Styling */
+.settings-concept-card {
+  background: var(--surface-deep);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-concept-card:hover {
+  border-color: var(--accent-ring);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+}
+
+.settings-concept-header {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.settings-concept-header h4 {
+  margin: 0 0 var(--space-1);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-ink);
+}
+
+.settings-concept-desc {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.settings-action-block {
+  background: var(--glass);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-panel);
+  padding: var(--space-5);
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-action-block .settings-modal-description {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-action-block button {
+  align-self: flex-start;
+}
+
+/* Fix textareas inside settings modal to match spacing */
+.settings-concept-card textarea {
+  min-height: 120px !important;
+}
+
+/* Ensure voicePanel and other controls line up beautifully inside cards */
+.audio-settings-compact, .style-picker-setting {
+  margin-bottom: var(--space-2);
+}

@@ -61,8 +61,10 @@ export function initRunController(elements, {
   replan,
   regenerate,
   runFlow,
+  retryFailed,
   renderStatus,
   renderStoryboard,
+  renderRunResults,
 } = {}) {
   assertElements('Run controller', elements, [
     'textProvider', 'imageProvider', 'audioProvider', 'videoMotionIntensity',
@@ -74,7 +76,7 @@ export function initRunController(elements, {
     'audioCheck', 'audioStatus', 'videoCheck', 'videoStatus',
     'subtitlesCheck', 'subtitlesStatus', 'replanBtn', 'regenerateImagesBtn',
     'regenerateAudioBtn', 'regenerateVideoBtn', 'regenerateSubtitlesBtn',
-    'startPauseBtn',
+    'startPauseBtn', 'runResultsPanel', 'runResultsRows', 'runResultsDismissBtn',
   ]);
   let generationResolve = null;
   let startResolve = null;
@@ -232,8 +234,36 @@ export function initRunController(elements, {
       : computeForceStages(rowStatus, selection);
     setStatus('Starting...');
     const result = await runFlow({ stages, range, forceStages });
+    // A stage no longer stops the flow just because some of its scenes failed — only an explicit
+    // Stop does — so "Done." covers a run that finished with failures too; the results panel is
+    // what tells the user which scenes need a retry, not the status line.
     if (!result.stoppedAt) setStatus('Done.');
-    else if (result.stoppedAt !== 'failed') setStatus(`Stopped: ${result.stoppedAt}.`);
+    // 'error' means something systemic broke (server error, network/storage failure, an unexpected
+    // exception) — surface the actual message rather than the generic "Stopped: paused." a deliberate
+    // Stop gets, since the user needs to know this needs fixing, not just re-starting.
+    else if (result.stoppedAt === 'error') setStatus(`Stopped — ${result.errorMessage || 'something went wrong'}. Fix the issue, then click Start to continue.`);
+    else setStatus(`Stopped: ${result.stoppedAt}.`);
+    renderRunResults?.(result.results);
+    await refreshAfterRun();
+  });
+  elements.runResultsDismissBtn.addEventListener('click', () => {
+    elements.runResultsPanel.hidden = true;
+  });
+  elements.runResultsRows.addEventListener('click', async (event) => {
+    const button = event.target.closest('.run-results-retry-btn');
+    if (!button || !retryFailed) return;
+    const stage = button.dataset.stage;
+    button.disabled = true;
+    setStatus(`Retrying failed ${stage}...`);
+    const outcome = await retryFailed(stage);
+    // Retrying is its own small run scoped to one stage — the panel shows just that stage's fresh
+    // outcome (done/skipped/failed among the scenes that were retried), same as any other run.
+    if (outcome?.results) renderRunResults?.({ [stage]: outcome.results });
+    if (outcome?.finalState === 'error') {
+      setStatus(`Stopped — ${outcome.errorMessage || 'something went wrong'}. Fix the issue, then retry again.`);
+    } else {
+      setStatus('Done.');
+    }
     await refreshAfterRun();
   });
 }

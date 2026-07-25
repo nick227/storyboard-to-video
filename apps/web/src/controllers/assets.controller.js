@@ -61,7 +61,11 @@ function createAssetsController({ projectStore, styles, scripts }) {
       const { storageKey, mimeType } = await resolveProjectAsset(req);
       const stream = await projectStore.blobStore.getStream(storageKey);
       if (mimeType) res.type(mimeType);
-      await pipeline(stream, res);
+      try {
+        await pipeline(stream, res);
+      } catch (err) {
+        if (err.code !== 'ERR_STREAM_PREMATURE_CLOSE') throw err;
+      }
     },
 
     style(req, res) {

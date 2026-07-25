@@ -191,8 +191,12 @@ class ScriptStore {
     return row ? this.map(row) : null;
   }
 
-  async listCategories() {
+  async listCategories({ onlyWithScripts = false } = {}) {
+    const usedIds = onlyWithScripts
+      ? new Set([...this.scripts.values()].filter((row) => hasAnyPublicArtifact(row)).map((row) => row.categoryId).filter(Boolean))
+      : null;
     return [...this.categories.values()]
+      .filter((c) => !usedIds || usedIds.has(c.id))
       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
       .map((c) => ({ id: c.id, slug: c.slug, name: c.name, sortOrder: c.sortOrder }));
   }

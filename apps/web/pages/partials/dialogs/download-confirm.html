@@ -1,0 +1,23 @@
+<dialog id="downloadConfirmModal" class="generation-confirm-modal" aria-labelledby="downloadConfirmTitle">
+  <div class="generation-confirm-header">
+    <h2 id="downloadConfirmTitle">Confirm download</h2>
+    <button type="button" id="downloadConfirmCloseBtn" class="secondary text-button"
+      aria-label="Close download confirmation">✕</button>
+  </div>
+  <div class="generation-confirm-body">
+    <p id="downloadConfirmIntro" class="generation-confirm-intro">
+      You are about to export and download your storyboard as a ZIP archive.
+    </p>
+    <div id="downloadConfirmWarning" class="download-confirm-warning" hidden></div>
+    <div class="generation-confirm-details">
+      <section>
+        <div class="generation-confirm-label">Expected ZIP Contents</div>
+        <ul id="downloadConfirmBullets" class="download-confirm-bullets"></ul>
+      </section>
+    </div>
+  </div>
+  <div class="generation-confirm-actions">
+    <button type="button" id="downloadConfirmCancelBtn" class="secondary">Cancel</button>
+    <button type="button" id="downloadConfirmRunBtn" class="primary">Download</button>
+  </div>
+</dialog>

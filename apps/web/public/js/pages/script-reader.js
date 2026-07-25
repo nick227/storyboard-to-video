@@ -35,6 +35,7 @@ const artifact = route?.artifact || 'screenplay';
 const status = document.getElementById('readerStatus');
 const article = document.getElementById('readerArticle');
 const stage = document.getElementById('readerStage');
+const editBtn = document.getElementById('scriptEditBtn');
 const likeBtn = document.getElementById('scriptLikeBtn');
 const likeCount = document.getElementById('scriptLikeCount');
 const shareBtn = document.getElementById('scriptShareBtn');
@@ -68,7 +69,11 @@ initWorkbar();
 try {
   if (!route) throw Object.assign(new Error('Not found'), { code: 'SCRIPT_NOT_FOUND' });
 
-  const script = await fetchPublicScript(slug, { artifact });
+  const [script, sessionData] = await Promise.all([
+    fetchPublicScript(slug, { artifact }),
+    fetch('/api/auth/session').then((res) => res.json()).catch(() => ({ authenticated: false })),
+  ]);
+  const session = sessionData.authenticated ? sessionData.session : null;
   const canonicalAuthor = script.writer?.profileSlug || 'anonymous';
   if (canonicalAuthor !== authorSlug || script.slug !== slug) {
     window.location.replace(workPath(canonicalAuthor, script.slug, artifact));
@@ -95,6 +100,11 @@ try {
     bindFullscreen(fullscreenBtn, stage);
     readerCover.innerHTML = scriptCoverPage(script);
     readerPage.innerHTML = renderLines(script.scriptText || '');
+
+    if (editBtn && session?.user?.id && session.user.id === script.createdByUserId) {
+      editBtn.href = workPath(canonicalAuthor, script.slug, artifact, { edit: true });
+      editBtn.hidden = false;
+    }
 
     const scaler = new ViewportScaler({
       wrapper: readerBody,

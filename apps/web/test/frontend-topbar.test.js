@@ -46,7 +46,16 @@ test('workbar stays hidden outside edit routes', () => {
 
 test('topbar owns shared tab styling and studio retains the download confirmation action', () => {
   const topbarCss = fs.readFileSync(path.join(webRoot, 'public', 'css', 'topbar.css'), 'utf8');
-  const studio = fs.readFileSync(path.join(webRoot, 'pages', 'studio.html'), 'utf8');
+  let studio = fs.readFileSync(path.join(webRoot, 'pages', 'studio.html'), 'utf8');
+  // Expand dialog partials in studio so that downloadConfirmRunBtn is resolved
+  const dialogRegex = /<!--dialogs\/([a-zA-Z0-9_-]+)-->/g;
+  studio = studio.replace(dialogRegex, (match, slug) => {
+    const dialogPath = path.join(webRoot, 'pages', 'partials', 'dialogs', `${slug}.html`);
+    if (fs.existsSync(dialogPath)) {
+      return fs.readFileSync(dialogPath, 'utf8').trim();
+    }
+    return match;
+  });
   assert.match(topbarCss, /\.sf-artifact-tab\s*\{/);
   assert.equal((studio.match(/id="downloadConfirmRunBtn"/g) || []).length, 1);
 });

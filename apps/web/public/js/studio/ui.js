@@ -398,6 +398,66 @@ function renderGenerationSummary(els, status) {
   }
 }
 
+const RUN_RESULTS_STAGE_LABELS = { images: 'Images', audio: 'Audio', video: 'Video', subtitles: 'Subtitles' };
+
+// Groups skipped/failed entries by their `reason` string (e.g. "no narration") and counts them, so
+// the results panel reads "2 skipped — no prompt, no narration" instead of a bare count that hides
+// why anything was skipped.
+function summarizeReasons(entries) {
+  const counts = new Map();
+  for (const entry of entries) {
+    const reason = entry.reason || 'unspecified';
+    counts.set(reason, (counts.get(reason) || 0) + 1);
+  }
+  return [...counts.entries()].map(([reason, count]) => (count > 1 ? `${count}× ${reason}` : reason)).join(', ');
+}
+
+// Renders the outcome of the most recently completed run — one row per stage that actually ran,
+// each showing completed/skipped(-with-reason)/failed counts and, when there are failures, a Retry
+// button. `results` is the shape returned by generation/stages.js's runCreateStoryFlow/
+// generateMissingOrStale/retryFailedStage: `{ [stage]: { done, skipped, failed } }`, each an array of
+// `{ sceneId, reason? }`. Purely a render function — the click handler for `.run-results-retry-btn`
+// is wired once in run-controller.js via event delegation, not here.
+export function renderRunResults(els, results) {
+  if (!els.runResultsPanel || !els.runResultsRows) return;
+  const stages = Object.keys(results || {}).filter((stage) => RUN_RESULTS_STAGE_LABELS[stage] && results[stage]);
+  if (!stages.length) {
+    els.runResultsPanel.hidden = true;
+    els.runResultsRows.replaceChildren();
+    return;
+  }
+  els.runResultsRows.replaceChildren(...stages.map((stage) => {
+    const { done = [], skipped = [], failed = [] } = results[stage] || {};
+    const row = document.createElement('div');
+    row.className = 'run-results-row';
+
+    const label = document.createElement('span');
+    label.className = 'run-results-row-label';
+    label.textContent = RUN_RESULTS_STAGE_LABELS[stage];
+
+    const summary = document.createElement('span');
+    summary.className = 'run-results-row-summary';
+    const parts = [`${done.length} completed`];
+    if (skipped.length) parts.push(`${skipped.length} skipped — ${summarizeReasons(skipped)}`);
+    if (failed.length) parts.push(`${failed.length} failed`);
+    summary.textContent = parts.join(' · ');
+
+    row.append(label, summary);
+
+    if (failed.length) {
+      const retryBtn = document.createElement('button');
+      retryBtn.type = 'button';
+      retryBtn.className = 'secondary text-button run-results-retry-btn';
+      retryBtn.dataset.stage = stage;
+      retryBtn.textContent = `Retry ${failed.length} failed`;
+      row.append(retryBtn);
+    }
+
+    return row;
+  }));
+  els.runResultsPanel.hidden = false;
+}
+
 // Replaces the old flat 5-button `updateButtons` — the top-level UX is now Planning/Images/Audio/Video
 // stage boxes (with room for a running spinner) plus one Start/Pause toggle and a Cancel button,
 // driven by `computeStageStatus` (generation/stages.js). Scene-level controls are untouched by this

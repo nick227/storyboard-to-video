@@ -1,0 +1,71 @@
+<dialog id="startRunModal" class="generation-confirm-modal" aria-labelledby="startRunTitle">
+  <div class="generation-confirm-header">
+    <h2 id="startRunTitle">Start production</h2>
+    <button type="button" id="startRunCloseBtn" class="secondary text-button" aria-label="Close Start dialog">✕</button>
+  </div>
+  <div class="generation-confirm-body">
+
+    <div class="start-run-rows" id="startRunRows">
+      <label class="start-run-row">
+        <input type="checkbox" id="startRunPlanningCheck" data-stage="planning" />
+        <span class="start-run-row-main">
+          <span class="start-run-row-label">Planning</span>
+          <span class="start-run-row-status" id="startRunPlanningStatus"></span>
+        </span>
+      </label>
+      <label class="start-run-row">
+        <input type="checkbox" id="startRunImagesCheck" data-stage="images" />
+        <span class="start-run-row-main">
+          <span class="start-run-row-label">Images</span>
+          <span class="start-run-row-status" id="startRunImagesStatus"></span>
+        </span>
+      </label>
+      <label class="start-run-row">
+        <input type="checkbox" id="startRunAudioCheck" data-stage="audio" />
+        <span class="start-run-row-main">
+          <span class="start-run-row-label">Audio</span>
+          <span class="start-run-row-status" id="startRunAudioStatus"></span>
+        </span>
+      </label>
+      <label class="start-run-row">
+        <input type="checkbox" id="startRunVideoCheck" data-stage="video" />
+        <span class="start-run-row-main">
+          <span class="start-run-row-label">Video</span>
+          <span class="start-run-row-status" id="startRunVideoStatus"></span>
+        </span>
+      </label>
+      <label class="start-run-row">
+        <input type="checkbox" id="startRunSubtitlesCheck" data-stage="subtitles" />
+        <span class="start-run-row-main">
+          <span class="start-run-row-label">Subtitles</span>
+          <span class="start-run-row-status" id="startRunSubtitlesStatus"></span>
+        </span>
+      </label>
+    </div>
+
+    <div class="start-run-range" role="radiogroup" aria-label="How many scenes">
+      <label class="start-run-range-option row">
+        <input type="radio" name="startRunRange" id="startRunRangeAll" value="all" />
+        <span>All</span>
+      </label>
+      <label class="start-run-range-option row">
+        <input type="radio" name="startRunRange" id="startRunRangeNext" value="next" checked />
+        <span>Next</span>
+        <input type="number" id="startRunNextCount" min="1" value="5" max="10" aria-label="Number of scenes" />
+      </label>
+    </div>
+
+    <label class="start-run-regen-option row">
+      <input type="checkbox" id="startRunRegenerateIfExists" />
+      <span>Regenerate if exists</span>
+    </label>
+    
+    <p class="start-run-anchor">Start from Scene <span id="startRunSceneLabel">1</span> / <span id="startRunSceneTotal">0</span></p>
+
+    <p id="startRunWarning" class="generation-confirm-intro" hidden></p>
+  </div>
+  <div class="generation-confirm-actions">
+    <button type="button" id="startRunCancelBtn" class="secondary">Cancel</button>
+    <button type="button" id="startRunConfirmBtn" class="primary">Start</button>
+  </div>
+</dialog>

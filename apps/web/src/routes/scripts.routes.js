@@ -86,7 +86,8 @@ function createPublicScriptsRouter({ scripts, optionalAuth }) {
   }));
 
   router.get('/categories', asyncRoute(async (req, res) => {
-    res.json({ ok: true, categories: await scripts.listCategories() });
+    const onlyWithScripts = req.query.onlyWithScripts === 'true';
+    res.json({ ok: true, categories: await scripts.listCategories({ onlyWithScripts }) });
   }));
 
   router.get('/tags', asyncRoute(async (req, res) => {

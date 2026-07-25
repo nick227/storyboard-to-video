@@ -1,0 +1,299 @@
+<dialog id="settingsModal" class="settings-modal" aria-labelledby="settingsModalTitle">
+  <div class="settings-modal-header">
+    <div>
+      <h2 id="settingsModalTitle">Settings</h2>
+    </div>
+    <button type="button" class="secondary text-button settings-modal-close" data-close-settings
+      aria-label="Close settings">✕</button>
+  </div>
+  <div class="settings-modal-body">
+    <div class="settings-modal-section-heading" style="margin-top: 0; padding-top: 0; border-top: none;">
+      <h3>Media Generation</h3>
+    </div>
+
+    <!-- Story & Planning Concept Card -->
+    <div class="settings-concept-card">
+      <div class="settings-concept-header">
+        <h4>Story &amp; Planning</h4>
+        <p class="settings-concept-desc">Configure the text generation engines, layout rules, and storyboarding behavior.</p>
+      </div>
+      <div class="compact-fields">
+        <label>
+          <span>Text provider</span>
+          <select id="textProvider">
+            <option value="gemini">Gemini</option>
+            <option value="openai">OpenAI</option>
+            <option value="stub">Local stub</option>
+          </select>
+        </label>
+        <label>
+          <span>Visual planning</span>
+          <select id="planningModeSelect">
+            <option value="script">Script-driven</option>
+            <option value="auto">Narration-driven</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- Image Settings Concept Card -->
+    <div class="settings-concept-card">
+      <div class="settings-concept-header">
+        <h4>Image Settings</h4>
+        <p class="settings-concept-desc">Set the model, aspect ratio, resolution, and detail level for generated illustrations.</p>
+      </div>
+      <div class="compact-fields">
+        <label>
+          <span>Image provider</span>
+          <select id="imageProvider">
+            <option value="gemini">Gemini</option>
+            <option value="openai">OpenAI</option>
+            <option value="dezgo">Dezgo SD</option>
+            <option value="dezgo_flux">Dezgo Flux</option>
+            <option value="stub">Stub Preview (no API)</option>
+          </select>
+        </label>
+        <label>
+          <span>Aspect ratio</span>
+          <select id="mediaAspectRatio">
+            <option value="">Current defaults</option>
+            <option value="1:1">Square · 1:1</option>
+            <option value="16:9">Landscape · 16:9</option>
+            <option value="9:16">Portrait · 9:16</option>
+            <option value="4:3">Landscape · 4:3</option>
+            <option value="3:2">Landscape · 3:2</option>
+            <option value="2:3">Portrait · 2:3</option>
+          </select>
+          <small id="aspectRatioHelper" class="field-note" aria-live="polite"></small>
+        </label>
+        <label>
+          <span>Image resolution</span>
+          <select id="imageResolutionTier">
+            <option value="draft" data-base-label="Draft">Draft</option>
+            <option value="standard" data-base-label="Standard" selected>Standard</option>
+            <option value="high" data-base-label="High">High</option>
+            <option value="ultra" data-base-label="Ultra">Ultra</option>
+          </select>
+        </label>
+        <label>
+          <span>Image quality</span>
+          <select id="imageQuality">
+            <option value="low" data-base-label="Low">Low</option>
+            <option value="medium" data-base-label="Medium" selected>Medium</option>
+            <option value="high" data-base-label="High">High</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- Video Settings Concept Card -->
+    <div class="settings-concept-card">
+      <div class="settings-concept-header">
+        <h4>Video Settings</h4>
+        <p class="settings-concept-desc">Control motion generation defaults, target resolution, and clip durations.</p>
+      </div>
+      <div class="compact-fields">
+        <label>
+          <span>Video provider</span>
+          <select id="videoProvider">
+            <option value="" selected>Platform default</option>
+            <option value="ltx">LTX (local)</option>
+            <option value="minimax">MiniMax</option>
+            <option value="stub">Stub Preview (no API)</option>
+          </select>
+          <small id="videoProviderHelper" class="field-note" aria-live="polite"></small>
+        </label>
+        <label>
+          <span>Video resolution</span>
+          <select id="videoResolutionTier">
+            <option value="draft" selected>Draft</option>
+            <option value="standard">Standard</option>
+            <option value="high">High</option>
+            <option value="ultra">Ultra</option>
+          </select>
+        </label>
+        <label>
+          <span>Video length</span>
+          <select id="videoDurationSeconds">
+            <option value="" data-base-label="Provider default" selected>Provider default</option>
+            <option value="2" data-base-label="2 seconds · Test">2 seconds · Test</option>
+            <option value="4" data-base-label="4 seconds">4 seconds</option>
+            <option value="6" data-base-label="6 seconds">6 seconds</option>
+            <option value="8" data-base-label="8 seconds">8 seconds</option>
+            <option value="10" data-base-label="10 seconds">10 seconds</option>
+            <option value="12" data-base-label="12 seconds">12 seconds</option>
+          </select>
+          <small id="videoDurationHelper" class="field-note" aria-live="polite"></small>
+        </label>
+        <label>
+          <span>Motion</span>
+          <select id="videoMotionIntensity">
+            <option value="subtle">Subtle</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- Action & Costs Block -->
+    <div class="settings-action-block">
+      <p id="mediaCostPreview" class="settings-modal-description">Changes apply to this project immediately. “Current defaults” applies only to aspect ratio and keeps legacy 1:1 images and 4:3 video.</p>
+      <button type="button" id="saveMediaDefaultsBtn" class="secondary">Use these settings for new projects</button>
+    </div>
+
+    <!-- Audio & Narration Section -->
+    <div class="settings-modal-section-heading">
+      <h3>Audio &amp; Narration</h3>
+    </div>
+    <div class="settings-concept-card">
+      <div class="settings-concept-header">
+        <h4>Audio &amp; Narration Settings</h4>
+        <p class="settings-concept-desc">Choose a voice synthesis provider, select narrator voices, and customize narrative prompts.</p>
+      </div>
+      <div class="audio-settings-compact">
+        <label class="audio-settings-field">
+          <span>Audio provider</span>
+          <select id="audioProvider">
+            <option value="stub">Local voice (TTS)</option>
+            <option value="piper">Piper</option>
+            <option value="spark">Voice cloning</option>
+            <option value="elevenlabs">ElevenLabs</option>
+          </select>
+          <small id="audioProviderHelper" class="field-note" aria-live="polite"></small>
+        </label>
+        <div class="audio-settings-field">
+          <span>Narrator voice</span>
+          <div id="voicesPanel" class="audio-settings-voice"></div>
+        </div>
+        <label class="audio-settings-field">
+          <span>Narration style</span>
+          <select id="narrationModeSelect">
+            <option value="literal">Literal</option>
+            <option value="enriched">Enriched</option>
+          </select>
+        </label>
+        <label class="audio-settings-field">
+          <span>Subtitle style</span>
+          <select id="subtitleStyleSelect">
+            <option value="classic" selected>Classic</option>
+            <option value="bold">Bold</option>
+            <option value="minimal">Minimal</option>
+          </select>
+        </label>
+      </div>
+      <label class="narration-guidance-field">
+        <span>Narration guidance</span>
+        <textarea id="narrationGuidance" maxlength="500" rows="3"
+          placeholder="Optional direction for tone, pacing, length, or emphasis"></textarea>
+      </label>
+      <details class="narration-prompt-editor">
+        <summary>
+          <span>Narration prompt</span>
+        </summary>
+        <p>Edit the underlying prompt template sent to the narration model for the current mode. Reset to fall back to the built-in default.</p>
+        <textarea id="narrationPromptText" rows="8"></textarea>
+        <div class="narration-prompt-actions">
+          <span>Changes apply the next time narration is prepared or regenerated.</span>
+          <button type="button" id="narrationPromptReset" class="secondary text-button">Reset to default</button>
+        </div>
+      </details>
+    </div>
+
+    <!-- Style Section -->
+    <div class="settings-modal-section-heading">
+      <h3>Style</h3>
+    </div>
+    <div class="settings-concept-card">
+      <div class="settings-concept-header">
+        <h4>Visual Style &amp; References</h4>
+        <p class="settings-concept-desc">Apply visual style presets, custom style directions, and upload scene reference images.</p>
+      </div>
+      <div class="style-picker-setting">
+        <label>
+          <span>Preset</span>
+          <select id="styleSelect"></select>
+        </label>
+        <button type="button" id="customStylesBtn" class="custom-styles-launch" aria-haspopup="dialog"
+          aria-controls="customStylesModal">Custom styles</button>
+      </div>
+      <label>
+        <span>Additional style direction</span>
+        <textarea id="commonPromptText" rows="6"
+          placeholder="Optional project-only direction added to the selected style."></textarea>
+      </label>
+      <div id="styleReferencesPanel" class="reference-groups">
+        <section class="style-ref-row">
+          <div class="style-ref-row-header">
+            <div style="margin-bottom: 0.5rem;"><strong>Character</strong></div>
+            <div class="ref-actions">
+              <label class="upload-chip">
+                <input id="characterRefInput" type="file" accept="image/*" multiple hidden />
+                <span>Upload</span>
+              </label>
+              <button type="button" id="characterRefLibraryBtn" class="upload-chip secondary" title="Open Image Library">
+                edit
+              </button>
+            </div>
+          </div>
+          <div id="characterRefs" class="style-ref-list"></div>
+        </section>
+
+        <section class="style-ref-row">
+          <div class="style-ref-row-header">
+            <div style="margin-bottom: 0.5rem;"><strong>World</strong></div>
+            <div class="ref-actions">
+              <label class="upload-chip">
+                <input id="worldRefInput" type="file" accept="image/*" multiple hidden />
+                <span>Upload</span>
+              </label>
+              <button type="button" id="worldRefLibraryBtn" class="upload-chip secondary" title="Open Image Library">
+                edit
+              </button>
+            </div>
+          </div>
+          <div id="worldRefs" class="style-ref-list"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Constraints Section -->
+    <div class="settings-modal-section-heading">
+      <h3>Shot Constraints</h3>
+    </div>
+    <div class="settings-concept-card">
+      <div class="settings-concept-header">
+        <h4>Limits &amp; Volume</h4>
+        <p class="settings-concept-desc">View currently planned shot counts and limit generation volumes.</p>
+      </div>
+      <div class="shot-count-info row" style="display: flex; align-items: center; gap: 8px; margin: 12px 0;">
+        <span id="settingsShotCountDisplay">Not planned yet</span>
+      </div>
+      <label class="row" style="display: flex; align-items: center; gap: 8px; margin: 12px 0;">
+        <span>Shot limit</span>
+        <select id="settingsShotLimitSelect" aria-label="Maximum shots">
+          <option value="">Unlimited</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- Danger Zone Section -->
+    <div class="settings-modal-section-heading hidden">
+      <h3>Regenerate media</h3>
+    </div>
+    <div class="settings-danger-zone hidden">
+      <button type="button" id="settingsReplanBtn" class="primary">Regenerate Plan</button>
+      <button type="button" id="settingsRegenerateImagesBtn" class="primary">Regenerate Images</button>
+      <button type="button" id="settingsRegenerateAudioBtn" class="primary">Regenerate Audio</button>
+      <button type="button" id="settingsRegenerateVideoBtn" class="primary">Regenerate Video</button>
+      <button type="button" id="settingsRegenerateSubtitlesBtn" class="primary">Regenerate Subtitles</button>
+    </div>
+  </div>
+  <div class="settings-modal-footer">
+    <span class="settings-modal-save-note">Saved</span>
+    <button type="button" class="primary" data-close-settings>Done</button>
+  </div>
+</dialog>

@@ -63,6 +63,9 @@ test('regenerateImage blocks an explicit blank scene and skips it during a batch
     regenerateImage(0, blank, {}, (message) => statuses.push(message)),
     /no visual prompt/i,
   );
-  assert.equal(await regenerateImage(0, blank, {}, (message) => statuses.push(message), true), true);
+  assert.deepEqual(
+    await regenerateImage(0, blank, {}, (message) => statuses.push(message), true),
+    { outcome: 'skipped', reason: 'no prompt' },
+  );
   assert.match(statuses.at(-1), /Skipped scene 1: no prompt/);
 });

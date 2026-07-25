@@ -56,7 +56,7 @@ test('run controller wires the subtitles selection alongside every other stage',
     'audioCheck', 'audioStatus', 'videoCheck', 'videoStatus',
     'subtitlesCheck', 'subtitlesStatus', 'replanBtn', 'regenerateImagesBtn',
     'regenerateAudioBtn', 'regenerateVideoBtn', 'regenerateSubtitlesBtn',
-    'startPauseBtn',
+    'startPauseBtn', 'runResultsPanel', 'runResultsRows', 'runResultsDismissBtn',
   ];
   const elements = Object.fromEntries(names.map((name) => [name, element()]));
   for (const stage of ['planning', 'images', 'audio', 'video', 'subtitles']) {

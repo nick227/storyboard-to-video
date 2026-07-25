@@ -1,0 +1,32 @@
+<dialog id="voiceLibraryModal" class="voice-library-modal">
+  <div class="modal-header">
+    <h2>Voice Library</h2>
+    <button type="button" id="closeVoiceLibraryBtn" class="secondary text-button" aria-label="Close">✕</button>
+  </div>
+
+  <div id="voiceLibraryList" class="voice-library-list"></div>
+
+  <div class="voice-library-record">
+    <div class="group-heading">
+      <h3>Record a new voice</h3>
+    </div>
+    <label>
+      <span>Microphone</span>
+      <select id="voiceMicSelect"></select>
+    </label>
+    <div class="voice-mic-status">
+      <span id="voiceMicStatus" class="field-note">Requesting microphone access...</span>
+    </div>
+    <canvas id="voiceWaveformCanvas" class="voice-waveform-canvas" width="480" height="60"></canvas>
+    <small class="field-note">For best cloning quality, read naturally for at least 10-15 seconds.</small>
+    <div class="voice-record-controls">
+      <button type="button" id="voiceRecordBtn" class="primary" disabled>Record</button>
+    </div>
+    <audio id="voiceRecordPreview" class="voice-recorder-preview" controls hidden></audio>
+    <small id="voiceDurationNote" class="field-note voice-duration-note" hidden></small>
+    <div class="voice-record-save" hidden>
+      <input type="text" id="voiceNameInput" placeholder="Voice name" />
+      <button type="button" id="voiceSaveBtn" class="primary" disabled>Save as voice</button>
+    </div>
+  </div>
+</dialog>

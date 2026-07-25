@@ -80,7 +80,7 @@ export function initNarrationController(elements, services = {}) {
     const versions = mediaCount([scene]);
     const excerpt = String(scene.narrationText || scene.sourceScriptFragment || '').replace(/\s+/g, ' ').trim().slice(0, 140);
     const description = excerpt ? `“${excerpt}${excerpt.length === 140 ? '…' : ''}”` : 'This scene is currently empty.';
-    if (!window.confirm(`Delete scene ${index + 1} from the story?\n\n${description}\n\nThis removes it from Narration, Storyboard, and Timeline. ${versions} generated media version(s) will be retained in the project archive. Neighboring visual plans will be marked stale for continuity review.`)) return;
+    if (!window.confirm(`Permanently delete scene ${index + 1} and all its prompts from the story? Media is not deleted.`)) return;
     const record = getCurrentStoryboardRecord();
     if (record) {
       record.archivedDeletedScenes = [{

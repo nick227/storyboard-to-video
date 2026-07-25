@@ -33,8 +33,9 @@ export async function fetchPublicScript(slug, { artifact = 'screenplay' } = {}) 
   return (await publicJson(`/api/public/scripts/${encodeURIComponent(slug)}${query ? `?${query}` : ''}`)).script;
 }
 
-export async function fetchCategories() {
-  return (await publicJson('/api/public/scripts/categories')).categories || [];
+export async function fetchCategories({ onlyWithScripts = false } = {}) {
+  const query = onlyWithScripts ? '?onlyWithScripts=true' : '';
+  return (await publicJson(`/api/public/scripts/categories${query}`)).categories || [];
 }
 
 export async function fetchTags() {
