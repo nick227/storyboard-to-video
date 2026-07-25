@@ -175,6 +175,38 @@ test('prepareNarration injects style writing guidance into the narration request
   assert.match(narrationRequest, /source text below is the only authority/i);
 });
 
+test('prepareNarration injects style orchestrator guidance into segmentation', async () => {
+  let segmentRequest = '';
+  const service = createShotPlanningService({
+    textProviders: {
+      call: async (_provider, request) => {
+        if (request.includes('continuous spoken narration')) {
+          return JSON.stringify({ narrationText: 'Mara enters the room and freezes.' });
+        }
+        segmentRequest = request;
+        return JSON.stringify({
+          segments: [
+            { sourceScriptFragment: 'Mara enters the room', narrationText: 'Mara enters the room' },
+            { sourceScriptFragment: ' and freezes.', narrationText: ' and freezes.' },
+          ],
+        });
+      },
+    },
+  });
+  await service.prepareNarration({
+    scriptText: 'Mara enters the room and freezes.',
+    provider: 'gemini',
+    fallbackPolicy: 'fail',
+    style: {
+      id: 'deck',
+      promptText: 'Clean slides.',
+      orchestratorGuidance: 'Cut like a presentation deck: one claim per segment.',
+    },
+  });
+  assert.match(segmentRequest, /STYLE ORCHESTRATOR/);
+  assert.match(segmentRequest, /one claim per segment/);
+});
+
 test('softSegmentTarget scales with narration word count at the spoken pacing rate', () => {
   assert.equal(TARGET_WORDS_PER_SCENE, 45);
   assert.equal(softSegmentTarget('Short.'), 1);

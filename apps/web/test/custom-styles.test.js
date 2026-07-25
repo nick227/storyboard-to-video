@@ -96,7 +96,7 @@ test('custom style writing guidance can be updated independently of the visual p
   }
 });
 
-test('system styles load writing guidance from style-references companion files', async () => {
+test('system styles load writing and orchestrator guidance from style-references companion files', async () => {
   const f = fixture();
   try {
     writeSystemStyle(
@@ -105,11 +105,16 @@ test('system styles load writing guidance from style-references companion files'
       '# Stick\nBold outlines only.\n',
       'Short action sentences. One prop per beat.\n',
     );
+    fs.writeFileSync(
+      path.join(f.config.paths.styleReferences, 'stick', 'orchestrator.md'),
+      'Cut on pose changes. One action per segment.\n',
+    );
     const style = f.service.find('stick', 'user-1');
     assert.equal(style.name, 'Stick');
     assert.equal(style.promptText, 'Bold outlines only.');
     assert.equal(style.writingGuidance, 'Short action sentences. One prop per beat.');
-    assert.doesNotMatch(style.promptText, /Writing guidance|One prop per beat/i);
+    assert.equal(style.orchestratorGuidance, 'Cut on pose changes. One action per segment.');
+    assert.doesNotMatch(style.promptText, /Writing guidance|One prop per beat|orchestrator/i);
   } finally {
     f.cleanup();
   }

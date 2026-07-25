@@ -1,0 +1,1 @@
+Cut like a presentation deck: one claim, slide idea, or evidence beat per segment. Prefer title-plus-support cards over long spoken paragraphs. Split when the argument advances — new point, metric, step, diagram, or recommendation — even if the topic stays the same. Allow denser on-screen text per card; do not merge multiple claims into one scene.

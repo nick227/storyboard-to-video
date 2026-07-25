@@ -195,12 +195,15 @@ function softSegmentTarget(chunkText) {
   return Math.max(1, Math.ceil(wordCount(chunkText) / TARGET_WORDS_PER_SCENE));
 }
 
-function buildNarrationSegmentationRequest({ chunkText, sourceText, maxShots, chunkBudget }) {
+function buildNarrationSegmentationRequest({ chunkText, sourceText, maxShots, chunkBudget, orchestratorGuidance = '' }) {
   const words = wordCount(chunkText);
   const densityTarget = softSegmentTarget(chunkText);
   const budgetLine = maxShots
     ? `- The entire narration has a maximum of ${maxShots} segments. This excerpt's approximate share is ${chunkBudget}; treat that as a soft ceiling while still respecting cut density below.`
     : `- Soft target for this excerpt: about ${densityTarget} segment${densityTarget === 1 ? '' : 's'} (${words} words at ~${TARGET_WORDS_PER_SCENE} words per scene). Longer narration must yield more segments.`;
+  const orchestratorBlock = orchestratorGuidance
+    ? `\nSTYLE ORCHESTRATOR (cut grammar for this style — follow when deciding where to split):\n${cleanText(orchestratorGuidance, 1_000)}\n`
+    : '';
   return `Return strict JSON only: {"segments":[{"sourceScriptFragment":"...","narrationText":"..."}]}. Divide this finalized spoken narration into visual-story scene segments and align each segment to its source script.
 
 SEGMENT RULES:
@@ -212,7 +215,7 @@ SEGMENT RULES:
 - Separate distinct actions, reveals, reactions, or transitions; combine only short calm sentences that truly share one image.
 - Do not write action beats, image prompts, camera directions, or style instructions.
 ${budgetLine}
-
+${orchestratorBlock}
 Finalized narration excerpt:
 ${chunkText}
 
@@ -415,6 +418,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
   }) {
     const source = cleanText(scriptText, 200_000);
     const styleWritingGuidance = cleanText(writingGuidance || style?.writingGuidance, 1_000);
+    const styleOrchestratorGuidance = cleanText(style?.orchestratorGuidance, 1_000);
     const narration = await narrateScript({
       scriptText: source,
       provider,
@@ -447,7 +451,13 @@ function createShotPlanningService({ textProviders, generationCache }) {
       const chunkText = chunks[i];
       const sourceChunk = mappedChunks[i]?.sourceScriptFragment || source;
       const generateFn = async () => {
-        const request = buildNarrationSegmentationRequest({ chunkText, sourceText: sourceChunk, maxShots, chunkBudget: chunkBudgets[i] });
+        const request = buildNarrationSegmentationRequest({
+          chunkText,
+          sourceText: sourceChunk,
+          maxShots,
+          chunkBudget: chunkBudgets[i],
+          orchestratorGuidance: styleOrchestratorGuidance,
+        });
         const parsed = extractJson(providerOutput(await textProviders.call(provider, request)));
         const values = Array.isArray(parsed?.segments) ? parsed.segments : null;
         if (!values?.length) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned invalid narration segments', { status: 502 });
@@ -490,8 +500,15 @@ function createShotPlanningService({ textProviders, generationCache }) {
         try {
           chunkSegments = generationCache
             ? await generationCache.runCached({
-                tenantId, operation: 'narration.segment', provider, promptTemplateVersion: 3,
-                source: { chunkText, sourceChunk, maxShots: maxShots || null, chunkBudget: chunkBudgets[i] || null, densityTarget: softSegmentTarget(chunkText) },
+                tenantId, operation: 'narration.segment', provider, promptTemplateVersion: 4,
+                source: {
+                  chunkText,
+                  sourceChunk,
+                  maxShots: maxShots || null,
+                  chunkBudget: chunkBudgets[i] || null,
+                  densityTarget: softSegmentTarget(chunkText),
+                  orchestratorGuidance: styleOrchestratorGuidance,
+                },
                 bypassCache, generateFn,
               })
             : await generateFn();

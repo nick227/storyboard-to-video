@@ -75,8 +75,8 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
   function systemStyleDir(id) {
     return path.join(config.paths.styleReferences, sanitize(id));
   }
-  function readSystemWritingGuidance(id) {
-    const file = path.join(systemStyleDir(id), 'writing.md');
+  function readSystemCompanion(id, fileName) {
+    const file = path.join(systemStyleDir(id), fileName);
     if (!fs.existsSync(file)) return '';
     return cleanText(fs.readFileSync(file, 'utf8'), 1_000);
   }
@@ -87,7 +87,8 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
       id,
       name: (lines[0] || '').replace(/^#\s*/, '').trim() || id,
       promptText: lines.slice(1).join('\n').trim(),
-      writingGuidance: readSystemWritingGuidance(id),
+      writingGuidance: readSystemCompanion(id, 'writing.md'),
+      orchestratorGuidance: readSystemCompanion(id, 'orchestrator.md'),
       file,
       kind: 'system',
       editable: false,
@@ -112,6 +113,7 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
     name: style.title,
     promptText: style.promptText || '',
     writingGuidance: style.writingGuidance || '',
+    orchestratorGuidance: style.orchestratorGuidance || '',
     kind: 'custom',
     editable: true,
     status: style.status,
