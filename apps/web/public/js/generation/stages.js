@@ -716,15 +716,16 @@ export async function runCreateStoryFlow(preset, els, setStatus, { stages: custo
 
 // --- Stage-box selection (what Start will act on) ---------------------------
 //
-// The 4 stage boxes double as the run's target list: a box defaults to selected only when it has
-// detected actionable work, but the user can always toggle any box either way — our staleness
-// tracking is a heuristic (per-scene field drift), not a complete picture. It can't see, for
-// example, that the underlying prompt-generation logic changed server-side, or that the user just
-// wants to force a re-run — permanently disabling a box for those cases is confusing, so a box is
-// never unclickable. Instead, a run that includes a stage with no detected work gets a strong
-// warning in the confirmation screen (see getGenerationPreflight('startRun', ...) in app.js) rather
-// than being silently blocked. This is in-memory only (resets on reload, same as any other
-// transient UI state) and always re-derives its default from live status, not a stored preference.
+// The stage boxes double as the run's target list: by default only the first pipeline stage with
+// detected actionable work is selected (to keep Start from chaining a long multi-stage run). The
+// user can always toggle any box either way — our staleness tracking is a heuristic (per-scene
+// field drift), not a complete picture. It can't see, for example, that the underlying
+// prompt-generation logic changed server-side, or that the user just wants to force a re-run —
+// permanently disabling a box for those cases is confusing, so a box is never unclickable.
+// Instead, a run that includes a stage with no detected work gets a strong warning in the
+// confirmation screen (see getGenerationPreflight('startRun', ...) in app.js) rather than being
+// silently blocked. This is in-memory only (resets on reload, same as any other transient UI
+// state) and always re-derives its default from live status, not a stored preference.
 const ALL_STAGES = ['planning', 'images', 'audio', 'video', 'subtitles'];
 const manualSelectionOverride = {};
 
@@ -773,11 +774,14 @@ export function classifyPlanningRun(planningStatus, { force = false } = {}) {
   return 'current';
 }
 
-// Returns { planning, images, audio, video } booleans: whether each box is currently selected to
-// be included the next time Start runs.
+// Returns { planning, images, audio, video, subtitles } booleans: whether each box is currently
+// selected to be included the next time Start runs. Default is only the first pipeline stage with
+// actionable work — keeps a Start click from chaining a long multi-stage run unless the user
+// explicitly checks more boxes.
 export function getStageSelection(status) {
+  const firstWithWork = ALL_STAGES.find((stage) => stageHasActionableWork(stage, status[stage]));
   return ALL_STAGES.reduce((acc, stage) => {
-    const hasWork = stageHasActionableWork(stage, status[stage]);
+    const hasWork = stage === firstWithWork;
     const override = manualSelectionOverride[stage];
     acc[stage] = override === undefined ? hasWork : override;
     return acc;

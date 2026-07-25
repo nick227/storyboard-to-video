@@ -442,19 +442,19 @@ test('getStageSelection: a brand-new project (no scenes yet) selects Planning bu
   assert.equal(selection.subtitles, false);
 });
 
-test('getStageSelection: defaults to selected for any stage with missing/stale/failed work, unselected when already up to date', async () => {
+test('getStageSelection: defaults to only the first pipeline stage with missing/stale/failed work', async () => {
   const { getStageSelection } = await stagesPromise;
   const status = {
     planning: { total: 5, missing: 0, stale: 0, failed: 0 }, // fully planned, nothing to do
-    images: { total: 5, missing: 0, stale: 2, failed: 0 }, // stale — should default-select
-    audio: { total: 5, missing: 5, stale: 0, failed: 0 }, // missing — should default-select
+    images: { total: 5, missing: 0, stale: 2, failed: 0 }, // first with work — should default-select
+    audio: { total: 5, missing: 5, stale: 0, failed: 0 }, // also needs work, but not the first — leave unchecked
     video: { total: 5, missing: 0, stale: 0, failed: 0 }, // up to date — should NOT default-select
     subtitles: { total: 5, missing: 0, stale: 0, failed: 0 }, // up to date — should NOT default-select
   };
   const selection = getStageSelection(status);
   assert.equal(selection.planning, false, 'a fully up-to-date Planning box has nothing to select');
-  assert.equal(selection.images, true);
-  assert.equal(selection.audio, true);
+  assert.equal(selection.images, true, 'first unrun/stale stage is selected');
+  assert.equal(selection.audio, false, 'later stages with work stay unchecked to limit long runs');
   assert.equal(selection.video, false);
   assert.equal(selection.subtitles, false);
 });
