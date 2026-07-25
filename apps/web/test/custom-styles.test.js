@@ -88,18 +88,18 @@ test('custom style writing guidance can be updated independently of the visual p
   }
 });
 
-test('system style markdown keeps visual prompt separate from writing guidance', async () => {
+test('system styles load writing guidance from styles/writing companion files', async () => {
   const f = fixture();
   try {
-    fs.writeFileSync(
-      path.join(f.root, 'styles', 'stick.md'),
-      '# Stick\nBold outlines only.\n\n## Writing guidance\nShort action sentences. One prop per beat.\n',
-    );
+    const stylesDir = path.join(f.root, 'styles');
+    fs.writeFileSync(path.join(stylesDir, 'stick.md'), '# Stick\nBold outlines only.\n');
+    fs.mkdirSync(path.join(stylesDir, 'writing'), { recursive: true });
+    fs.writeFileSync(path.join(stylesDir, 'writing', 'stick.md'), 'Short action sentences. One prop per beat.\n');
     const style = f.service.find('stick', 'user-1');
     assert.equal(style.name, 'Stick');
     assert.equal(style.promptText, 'Bold outlines only.');
     assert.equal(style.writingGuidance, 'Short action sentences. One prop per beat.');
-    assert.doesNotMatch(style.promptText, /Writing guidance/i);
+    assert.doesNotMatch(style.promptText, /Writing guidance|One prop per beat/i);
   } finally {
     f.cleanup();
   }

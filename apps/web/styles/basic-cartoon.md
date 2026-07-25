@@ -4,6 +4,3 @@ Dead-simple faceless stick figures: thick black outlines, minimal flat color, mo
 Set the scene with a few minimal iconographic shapes, not a filled background — a doorway, a tree, a desk, a steering wheel, a cloud, a single prop or line of horizon — just enough for the location and activity to read, then leave the rest white. Since faces carry no detail, tell the story through pose, gesture, and stick-limb angles; distinguish multiple characters with one simple trait each (a hat, hair shape, height) rather than drawn expressions.
 
 No shading, gradients, or rendered backgrounds; no facial features or expression lines; no clutter or busy detail — every frame should reduce to a handful of clean lines.
-
-## Writing guidance
-Spare stick-figure storytelling. Short plain sentences: who does what with which one clear prop or place. Favor pose and action over mood. No cinematic atmosphere, no camera talk, no purple prose.

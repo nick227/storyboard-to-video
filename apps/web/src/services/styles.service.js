@@ -72,27 +72,31 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
     world: referenceFiles(id, 'world', userId, options.all).map(publicRecord)
   });
   function publicRecord({ fileName, url, type, isUserUploaded }) { return { fileName, url, type, isUserUploaded }; }
+  function readSystemWritingGuidance(id) {
+    const file = path.join(config.paths.styles, 'writing', `${sanitize(id)}.md`);
+    if (!fs.existsSync(file)) return '';
+    return cleanText(fs.readFileSync(file, 'utf8'), 1_000);
+  }
   function parseSystemStyleMarkdown(content, id, file) {
     const trimmed = String(content || '').trim();
     const lines = trimmed.split('\n');
-    const name = (lines[0] || '').replace(/^#\s*/, '').trim() || id;
-    const body = lines.slice(1).join('\n').trim();
-    const match = body.match(/^([\s\S]*?)\n##\s*Writing guidance\s*\n([\s\S]*)$/i);
     return {
       id,
-      name,
-      promptText: (match ? match[1] : body).trim(),
-      writingGuidance: cleanText(match ? match[2] : '', 1_000),
+      name: (lines[0] || '').replace(/^#\s*/, '').trim() || id,
+      promptText: lines.slice(1).join('\n').trim(),
+      writingGuidance: readSystemWritingGuidance(id),
       file,
       kind: 'system',
       editable: false,
     };
   }
   function list(userId) {
-    return fs.readdirSync(config.paths.styles).filter((file) => file.endsWith('.md')).map((file) => {
-      const id = file.replace(/\.md$/, '');
-      return parseSystemStyleMarkdown(fs.readFileSync(path.join(config.paths.styles, file), 'utf8'), id, file);
-    });
+    return fs.readdirSync(config.paths.styles)
+      .filter((file) => file.endsWith('.md') && !file.includes(path.sep))
+      .map((file) => {
+        const id = file.replace(/\.md$/, '');
+        return parseSystemStyleMarkdown(fs.readFileSync(path.join(config.paths.styles, file), 'utf8'), id, file);
+      });
   }
   const find = (id, userId) => list(userId).find((style) => style.id === id) || null;
   const customRecord = (style) => style ? {

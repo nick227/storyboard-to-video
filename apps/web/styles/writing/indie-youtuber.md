@@ -1,0 +1,1 @@
+Conversational creator voice. Hook fast, react honestly, then explain. Sound like a host talking to camera: punchy claims, personal asides, clear takeaways. Avoid literary narration and film-score atmosphere.

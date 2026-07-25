@@ -4,6 +4,3 @@ Rated-R gothic horror: ink illustration, decayed photography, and grim special F
 Choose a fresh framing device for each fragment—whatever feels most disturbing for that beat: green-tinted dilapidated interrogation-room security footage; surveillance or found-phone grain; towering blood-red lettering that spells the key words; nightmare tableau of wolves, zombies, or hybrid abominations; extreme close-up of a wrong face or wound; dutch-angle corridor; candlelit ruin; silhouette against fog; ritual diagram; or painterly ink splash over live-action texture. Never default to the same composition twice; invent the intuitive scare-frame the fragment asks for.
 
 No bright cheerful color, cozy romantasy gothic, clean corporate polish, or safe PG horror.
-
-## Writing guidance
-Uneasy, concrete dread. Name the wrong detail, the sound, the threat, and the body in the space. Keep it visceral and specific. No cozy gothic romance, no campy spoofs, no soft reassurance.
