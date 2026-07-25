@@ -27,6 +27,7 @@ const { createImageProviders } = require('./providers/image');
 const { createAudioProviders } = require('./providers/audio');
 const { createAlignmentProvider } = require('./providers/alignment');
 const { createVideoProviders } = require('./providers/video');
+const { createStockProviders } = require('./providers/stock');
 const { createLocalVideoAssetTransport } = require('./providers/video/asset-transport');
 const { createVideoExecutionService } = require('./services/video-execution.service');
 const { VideoGenerationAttemptStore } = require('./storage/video-generation-attempt-store');
@@ -114,6 +115,7 @@ function createDependencies(config, overrides = {}) {
   const textProviders = createTextProviders(config, cancellation, usageTracker, providerAdmission);
   const imageProvider = createImageProviders(config, textProviders, cancellation, usageTracker, providerAdmission);
   const audioProvider = createAudioProviders(config, cancellation, usageTracker, providerAdmission);
+  const stockProvider = createStockProviders(config, providerAdmission);
   const alignmentProvider = createAlignmentProvider(config, cancellation, usageTracker, providerAdmission);
   const videoProviders = createVideoProviders(config, cancellation, usageTracker, overrides.videoProviderAdapters, providerAdmission);
   const videoExecution = createVideoExecutionService({ providers: videoProviders, attempts: videoAttemptRepository, usageTracker, assetTransport: overrides.videoAssetTransport || createLocalVideoAssetTransport(), attemptTimeoutMs: config.videoAttemptTimeoutMs, providerAdmission });
@@ -137,7 +139,7 @@ function createDependencies(config, overrides = {}) {
 
   return {
     config, prisma, projectStore, scriptStore, scripts, writersStore, writers, queue, providerAdmission, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, spendSummary, generationContext, identityStore,
-    styles, prompts, referenceGeneration, dialogue, sceneSplit, shotPlanning, images, audio, videos, subtitles, shotReferences, exports, voices, imageProvider, mediaOutput,
+    styles, prompts, referenceGeneration, dialogue, sceneSplit, shotPlanning, images, audio, videos, subtitles, shotReferences, exports, voices, imageProvider, stockProvider, mediaOutput,
     upload: createUpload(config),
     auth,
     authenticate: auth.middleware(),

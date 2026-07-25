@@ -70,15 +70,24 @@ function registerMiddleware(app, { config, auth, payments }) {
 }
 
 function createSendPage(pagesDir) {
-  const topbarPartial = path.join(pagesDir, 'partials', 'topbar.html');
-  const workbarPartial = path.join(pagesDir, 'partials', 'workbar.html');
   return (filename) => (req, res) => {
     const filePath = path.isAbsolute(filename) ? filename : path.join(pagesDir, filename);
-    const topbar = fs.readFileSync(topbarPartial, 'utf8').trim();
-    const workbar = fs.readFileSync(workbarPartial, 'utf8').trim();
-    const html = fs.readFileSync(filePath, 'utf8')
-      .replaceAll('<!--topbar-->', topbar)
-      .replaceAll('<!--workbar-->', workbar);
+    let html = fs.readFileSync(filePath, 'utf8');
+
+    const topbar = fs.readFileSync(path.join(pagesDir, 'partials', 'topbar.html'), 'utf8').trim();
+    const workbar = fs.readFileSync(path.join(pagesDir, 'partials', 'workbar.html'), 'utf8').trim();
+    html = html.replaceAll('<!--topbar-->', topbar).replaceAll('<!--workbar-->', workbar);
+
+    const dialogRegex = /<!--dialogs\/([a-zA-Z0-9_-]+)-->/g;
+    html = html.replace(dialogRegex, (match, slug) => {
+      const dialogPath = path.join(pagesDir, 'partials', 'dialogs', `${slug}.html`);
+      if (fs.existsSync(dialogPath)) {
+        return fs.readFileSync(dialogPath, 'utf8').trim();
+      }
+      console.warn(`[Template Warning] Dialog partial not found: ${dialogPath}`);
+      return `<!-- Missing Dialog: ${slug} -->`;
+    });
+
     res.type('html').send(html);
   };
 }
@@ -216,7 +225,7 @@ function registerRoutes(app, d) {
   app.use(assetsRoutes(d.controllers.assets));
   app.use('/api/projects', createProjectRouter({
     store: d.projectStore, queue: d.queue, upload: d.upload, shotReferences: d.shotReferences,
-    styles: d.styles, prompts: d.prompts, referenceGeneration: d.referenceGeneration, imageProvider: d.imageProvider, identityStore: d.identityStore, prisma: d.prisma, config: d.config, spendSummary: d.spendSummary, scripts: d.scripts,
+    styles: d.styles, prompts: d.prompts, referenceGeneration: d.referenceGeneration, imageProvider: d.imageProvider, stockProvider: d.stockProvider, identityStore: d.identityStore, prisma: d.prisma, config: d.config, spendSummary: d.spendSummary, scripts: d.scripts,
   }));
   app.use('/api/scripts', createScriptsRouter({ scripts: d.scripts, projectStore: d.projectStore }));
   app.use('/api/writers', createWritersRouter({ writers: d.writers }));

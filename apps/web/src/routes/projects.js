@@ -10,9 +10,22 @@ const { mergeMediaIntent, resolveImageOutput } = require('../shared/media-output
 const { VIDEO_PROVIDER_CAPABILITIES } = require('../shared/video-provider-capabilities');
 const { dezgoModelForProvider, isDezgoProvider } = require('../providers/image/dezgo-settings');
 
-function createProjectRouter({ store, queue, upload, shotReferences, styles, prompts, referenceGeneration, imageProvider, identityStore, prisma, config, spendSummary, scripts }) {
+function createProjectRouter({ store, queue, upload, shotReferences, styles, prompts, referenceGeneration, imageProvider, stockProvider, identityStore, prisma, config, spendSummary, scripts }) {
   const router = express.Router();
   const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+
+  // Only pixabay.com/cdn.pixabay.com URLs may be fetched server-side here -- the URL otherwise
+  // comes straight from client request input, so without this allowlist a crafted fullUrl would
+  // let a caller make the server fetch arbitrary internal/external addresses (SSRF).
+  function assertPixabayAssetUrl(rawUrl) {
+    let parsed;
+    try { parsed = new URL(String(rawUrl)); } catch (_) { throw new AppError('VALIDATION_ERROR', 'Invalid stock asset URL', { status: 400 }); }
+    const host = parsed.hostname.toLowerCase();
+    if (parsed.protocol !== 'https:' || !(host === 'pixabay.com' || host.endsWith('.pixabay.com'))) {
+      throw new AppError('VALIDATION_ERROR', 'Stock asset URL is not from a supported provider', { status: 400 });
+    }
+    return parsed;
+  }
 
   async function attachScript(project, req) {
     if (!scripts) return project;
@@ -241,6 +254,42 @@ function createProjectRouter({ store, queue, upload, shotReferences, styles, pro
       }
       throw err;
     }
+  }));
+
+  // GET /:projectId/stock/search
+  router.get('/:projectId/stock/search', asyncRoute(async (req, res) => {
+    if (!stockProvider) throw new AppError('NOT_CONFIGURED', 'Stock media search is not configured', { status: 501 });
+    await store.read(req.params.projectId, { ownerId: req.auth.tenantId });
+    const { query, page, provider } = req.query;
+    const data = await stockProvider.search({ provider: provider || 'pixabay', mediaType: 'image', query, page: Number(page) || 1, perPage: 24 });
+    res.json({ ok: true, ...data });
+  }));
+
+  // POST /:projectId/stock/select -- downloads the chosen Pixabay result server-side and commits
+  // it into the project's own asset storage via the same path AI generations/uploads already use.
+  router.post('/:projectId/stock/select', asyncRoute(async (req, res) => {
+    if (!stockProvider) throw new AppError('NOT_CONFIGURED', 'Stock media search is not configured', { status: 501 });
+    const projectId = req.params.projectId;
+    const { provider = 'pixabay', fullUrl } = req.body || {};
+    if (provider !== 'pixabay') throw new AppError('VALIDATION_ERROR', 'Unsupported stock provider', { status: 400 });
+    if (!fullUrl) throw new AppError('VALIDATION_ERROR', 'fullUrl is required', { status: 400 });
+    const parsedUrl = assertPixabayAssetUrl(fullUrl);
+
+    const lease = await store.acquireLease(projectId, { ownerId: req.auth.tenantId, userId: req.auth.userId });
+    const response = await fetch(parsedUrl);
+    if (!response.ok) throw new AppError('PROVIDER_ERROR', `Failed to download stock image (${response.status})`, { status: 502 });
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const extension = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
+
+    const fileName = `stock-pixabay-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.${extension}`;
+    const staged = path.join(config.paths.generated, `.${fileName}.upload`);
+    fs.mkdirSync(config.paths.generated, { recursive: true });
+    fs.writeFileSync(staged, buffer);
+    const asset = await store.commitAsset(lease, 'ai-references', staged, { fileName, mimeType: contentType });
+    fs.rmSync(staged, { force: true });
+
+    res.json({ ok: true, path: asset.path, fileName: asset.fileName });
   }));
 
   // POST /:projectId/scenes/:sceneId/images/upload
