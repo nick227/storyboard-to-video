@@ -1,7 +1,7 @@
 export const SCENE_ENTITY_TYPES = Object.freeze(['action', 'prompt', 'dialogue', 'image', 'audio', 'video', 'subtitle']);
 
 export const SCENE_ENTITY_LABELS = Object.freeze({
-  action: 'Physical action',
+  action: 'Still action',
   prompt: 'Visual prompt',
   dialogue: 'Narration',
   image: 'Image',

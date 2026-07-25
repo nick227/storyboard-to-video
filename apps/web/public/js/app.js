@@ -4,10 +4,10 @@ import { parseWorkPath } from './core/app-paths.js';
 import { initWorkbar } from './shared/workbar.js';
 import { initRendering, renderScenes, renderEntityOperationState } from './studio/rendering.js';
 import { initTimeline } from './studio/timeline.js';
-import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, renderStageBar, renderStyleReferenceOperationState, initImageLibraryModal, openImageLibrary, populateTokensInfoModal } from './studio/ui.js';
+import { renderStoryboardPicker, loadStyles, loadStyleReferences, uploadStyleReferences, prefillCommonPrompt, renderVoicesPanel, renderStageBar, renderRunResults, renderStyleReferenceOperationState, initImageLibraryModal, openImageLibrary, populateTokensInfoModal } from './studio/ui.js';
 import { downloadZip } from './generation/workflows.js';
 import { initializeAuth } from './core/auth.js';
-import { refreshRecentJobs, refreshSpend, replanStory, regenerateAllStage, runCreateStoryFlow } from './generation/stages.js';
+import { refreshRecentJobs, refreshSpend, replanStory, regenerateAllStage, retryFailedStage, runCreateStoryFlow } from './generation/stages.js';
 import {
   refreshVoicesForCurrentProvider, cloneVoice, switchMicrophone,
   closeVoiceLibraryCleanup, toggleVoiceRecording,
@@ -121,6 +121,9 @@ const els = {
   statusText: document.getElementById('statusText'),
   statusPanel: document.getElementById('statusPanel'),
   generationSummaryText: document.getElementById('generationSummaryText'),
+  runResultsPanel: document.getElementById('runResultsPanel'),
+  runResultsRows: document.getElementById('runResultsRows'),
+  runResultsDismissBtn: document.getElementById('runResultsDismissBtn'),
   storyboardSection: document.getElementById('storyboardSection'),
   storyboardGrid: document.getElementById('storyboardGrid'),
   storyboardSlider: document.getElementById('storyboardSlider'),
@@ -280,6 +283,8 @@ const els = {
   entityModalDeleteBtn: document.getElementById('entityModalDeleteBtn'),
   entityModalBeatField: document.getElementById('entityModalBeatField'),
   entityModalBeat: document.getElementById('entityModalBeat'),
+  entityModalVideoPromptField: document.getElementById('entityModalVideoPromptField'),
+  entityModalVideoPrompt: document.getElementById('entityModalVideoPrompt'),
   entityModalRegenBeatBtn: document.getElementById('entityModalRegenBeatBtn'),
   entityModalTextField: document.getElementById('entityModalTextField'),
   entityModalTextFieldLabel: document.getElementById('entityModalTextFieldLabel'),
@@ -531,13 +536,18 @@ function initControllers(getSession) {
     regenerateVideoBtn: els.settingsRegenerateVideoBtn,
     regenerateSubtitlesBtn: els.settingsRegenerateSubtitlesBtn,
     startPauseBtn: els.startPauseBtn,
+    runResultsPanel: els.runResultsPanel,
+    runResultsRows: els.runResultsRows,
+    runResultsDismissBtn: els.runResultsDismissBtn,
   }, {
     setStatus,
     replan: () => replanStory(els, setStatus),
     regenerate: (stage) => regenerateAllStage(stage, els, setStatus),
     runFlow: (options) => runCreateStoryFlow('custom', els, setStatus, options),
+    retryFailed: (stage) => retryFailedStage(stage, els, setStatus),
     renderStatus: () => renderStageBar(els),
     renderStoryboard: renderScenes,
+    renderRunResults: (results) => renderRunResults(els, results),
   });
 
   settingsController = initSettingsController({
@@ -632,7 +642,8 @@ function initControllers(getSession) {
 
 async function init() {
   assertElements('Studio shell', els, [
-    'statusText', 'statusPanel', 'storyboardGrid', 'storyboardSlider', 'storyboardViewToggle', 'sceneCardTemplate', 'storyboardTitle',
+    'statusText', 'statusPanel', 'runResultsPanel', 'runResultsRows', 'runResultsDismissBtn',
+    'storyboardGrid', 'storyboardSlider', 'storyboardViewToggle', 'sceneCardTemplate', 'storyboardTitle',
     'storyboardPickerToggle', 'storyboardPickerList', 'newStoryboardBtn',
     'saveStateBtn', 'resizeSceneList', 'downloadZipBtn', 'downloadConfirmModal',
     'downloadConfirmCloseBtn', 'downloadConfirmCancelBtn', 'downloadConfirmRunBtn',

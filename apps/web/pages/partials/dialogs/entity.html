@@ -1,0 +1,146 @@
+<dialog id="entityModal" class="entity-modal scene-controller-modal">
+  <div class="modal-header scene-controller-header">
+    <div>
+      <div class="eyebrow" id="entityModalSceneLabel"></div>
+      <h2 id="entityModalTitle"></h2>
+      <p id="entityModalSummary" class="scene-controller-summary"></p>
+    </div>
+    <button type="button" id="closeEntityModalBtn" class="secondary text-button" aria-label="Close">✕</button>
+  </div>
+
+  <nav class="scene-controller-navigation" aria-label="Scene navigation">
+    <button type="button" id="entityModalPreviousBtn">← Previous scene</button>
+    <strong id="entityModalPosition"></strong>
+    <button type="button" id="entityModalNextBtn">Next scene →</button>
+  </nav>
+
+  <section class="scene-controller-source">
+    <div>
+      <strong>Original script fragment</strong>
+      <p id="entityModalSourceText"></p>
+    </div>
+    <span class="entity-status-badge status-source">Source</span>
+  </section>
+
+  <div id="entityControllerRows" class="entity-controller-rows"></div>
+
+  <section id="entityModalDetail" class="entity-modal-detail" hidden>
+    <div class="modal-header">
+      <h3 id="entityModalDetailTitle"></h3>
+      <button type="button" id="entityModalDetailCloseBtn" class="secondary text-button" aria-label="Close details">✕</button>
+    </div>
+
+  <label id="entityModalBeatField" class="entity-modal-field" hidden>
+    <span class="field-heading">
+      <span>Still action — what the still depicts</span>
+      <button type="button" id="entityModalRegenBeatBtn" class="text-button">Regenerate</button>
+    </span>
+    <textarea id="entityModalBeat" rows="2"></textarea>
+  </label>
+
+  <label id="entityModalVideoPromptField" class="entity-modal-field" hidden>
+    <span class="field-heading">
+      <span>Video motion — what changes during playback</span>
+    </span>
+    <textarea id="entityModalVideoPrompt" rows="3"></textarea>
+    <small class="field-note">Planned with visuals. Cleared when still action or narration changes until visuals are replanned.</small>
+  </label>
+
+  <label id="entityModalTextField" class="entity-modal-field" hidden>
+    <span class="field-heading">
+      <span id="entityModalTextFieldLabel"></span>
+      <button type="button" id="entityModalRegenTextBtn" class="text-button">Regenerate</button>
+    </span>
+    <textarea id="entityModalTextarea" rows="8"></textarea>
+    <small id="entityModalTextHint" class="field-note" hidden>Plain spoken narration — preserved dialogue and bridging narration together, read exactly as written.</small>
+  </label>
+
+  <label id="entityModalInstructionField" class="entity-modal-field" hidden>
+    <span class="field-heading"><span>Regeneration instruction (optional)</span></span>
+    <input type="text" id="entityModalInstruction" placeholder="e.g. preserve original dialogue more closely, reduce narration..." maxlength="500" />
+  </label>
+
+  <div id="entityModalStaleWarning" class="entity-modal-warning" hidden>
+    This visual or motion plan may be stale — still action or narration changed after it was generated.
+  </div>
+
+  <div id="entityModalFallbackWarning" class="entity-modal-warning" hidden>
+    This is fallback placeholder text (the scene's action beat), not AI-generated narration — regenerate once a provider is available.
+  </div>
+
+  <div id="entityModalExpandSection" class="entity-modal-expand" hidden>
+    <p id="entityModalExpandText"></p>
+    <button type="button" id="entityModalExpandBtn" class="secondary text-button"></button>
+  </div>
+
+  <div id="entityModalMedia" class="entity-modal-media" hidden>
+    <img id="entityModalImage" alt="Scene image" hidden />
+    <video id="entityModalVideo" controls playsinline hidden></video>
+    <audio id="entityModalAudio" controls hidden></audio>
+    <div id="entityModalAudioCaption" class="subtitle-karaoke-text" hidden></div>
+    <div id="entityModalSubtitleOverlay" class="subtitle-karaoke-text entity-modal-subtitle-overlay" hidden></div>
+    <div id="entityModalMediaMeta" class="entity-modal-media-meta" style="font-size: 11px; color: var(--muted); margin-top: 8px; text-align: center;"></div>
+    <div id="entityModalMediaEmpty" class="entity-modal-media-empty">No version yet</div>
+  </div>
+
+  <section id="sceneAudioRecorder" class="scene-audio-recorder" hidden aria-label="Record scene audio">
+    <div class="scene-audio-recorder-heading">
+      <div><strong>Record scene audio</strong><p class="field-note">Watch the current scene visual while you perform the take.</p></div>
+    </div>
+    <div class="scene-audio-record-visual">
+      <img id="sceneAudioRecordImage" alt="Current scene visual" hidden />
+      <video id="sceneAudioRecordVideo" controls muted playsinline hidden></video>
+      <div id="sceneAudioRecordEmpty" class="entity-modal-media-empty">No scene visual available</div>
+    </div>
+    <label class="entity-modal-field"><span>Microphone</span><select id="sceneAudioMicSelect"></select></label>
+    <label class="scene-audio-monitor"><input type="checkbox" id="sceneAudioMonitorMic" /> <span>Hear microphone in headphones</span></label>
+    <label class="scene-audio-monitor"><input type="checkbox" id="sceneAudioReduceNoise" checked /> <span>Reduce background noise</span></label>
+    <span class="field-note scene-audio-monitor-note">Use wired headphones for the clearest, lowest-latency monitoring.</span>
+    <canvas id="sceneAudioWaveform" class="voice-waveform-canvas" width="640" height="64"></canvas>
+    <span id="sceneAudioRecordStatus" class="field-note" role="status" aria-live="polite"></span>
+    <audio id="sceneAudioRecordPreview" controls hidden></audio>
+    <div class="scene-audio-record-actions">
+      <button type="button" id="sceneAudioRecordToggle" class="primary" disabled>Start recording</button>
+      <button type="button" id="sceneAudioPreviewBtn" class="secondary" hidden>Play</button>
+      <button type="button" id="sceneAudioRetakeBtn" class="secondary" hidden>Retake</button>
+      <button type="button" id="sceneAudioSubmitBtn" class="primary positive" hidden>Use recording</button>
+      <button type="button" id="sceneAudioCancelBtn" class="secondary">Cancel</button>
+    </div>
+  </section>
+
+  <div class="entity-modal-actions">
+    <span id="entityModalStatus" class="field-note"></span>
+    <div class="entity-modal-action-buttons" style="display: flex; gap: 8px; align-items: center;">
+      <button type="button" id="entityModalLibraryBtn" class="secondary flex-btn" style="display: flex; align-items: center; gap: 6px;" hidden>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0-2-.9-2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+        </svg>
+        <span>Library</span>
+      </button>
+      <button type="button" id="entityModalReferencesBtn" class="secondary flex-btn" style="display: flex; align-items: center; gap: 6px;" hidden>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <rect width="14" height="14" x="3" y="3" rx="2"/>
+          <path d="m17 7 4 4v8a2 2 0 0 1-2 2h-8l-4-4M7 12l2-2 4 4 2-2 2 2"/>
+          <circle cx="8" cy="8" r="1"/>
+        </svg>
+        <span>References</span>
+      </button>
+      <button type="button" id="entityModalRecordAudioBtn" class="secondary" hidden>Record</button>
+      <button type="button" id="entityModalRegenBtn" class="primary">Regenerate</button>
+    </div>
+  </div>
+
+  <div id="entityModalHistory" class="entity-modal-history" hidden>
+    <div class="history-heading"><strong>History</strong><span id="entityModalHistoryCount"></span></div>
+    <div id="entityModalHistoryList" class="version-list"></div>
+  </div>
+  </section>
+
+  <section class="scene-controller-danger">
+    <div>
+      <strong>Delete scene</strong>
+      <p>Remove this scene and retire media used only by it.</p>
+    </div>
+    <button type="button" id="entityModalDeleteBtn" class="danger-outline">Delete scene</button>
+  </section>
+</dialog>

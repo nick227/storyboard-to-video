@@ -5,9 +5,7 @@ function createStoryboardController({ styles, prompts, dialogue, sceneSplit, sho
     narrationPrompts(_req, res) {
       return res.json({ prompts: narrationPromptDefaults() });
     },
-    // The planning entry point: narration is generated and locked first, then shots are planned
-    // from that immutable narration in narration-sized chunks. The returned scene list length IS
-    // the final shot count -- nothing upstream guesses a count or reconciles one after the fact.
+    // DEPRECATED: do not extend. Prefer prepare-narration + plan-visuals. Kept for tests/old clients.
     async planShots(req, res) {
       const style = await styles.resolve(req.body.styleId || 'basic-cartoon', req.auth.userId);
       if (!style) return res.status(400).json({ error: 'Unknown style' });

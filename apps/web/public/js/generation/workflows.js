@@ -34,6 +34,14 @@ export function getPayloadBase(els) {
   };
 }
 
+function invalidateVideoMotion(scene) {
+  scene.videoPrompt = '';
+  scene.videoPromptGeneratedFromBeat = '';
+  scene.videoPromptGeneratedFromNarration = null;
+}
+
+export { invalidateVideoMotion };
+
 export function normalizeScene(scene, index) {
   const projectPrefix = `/projects/${encodeURIComponent(projectStore.get().currentId || '')}/assets/`;
   const sourceShot = imageShot(scene);
@@ -72,6 +80,8 @@ export function normalizeScene(scene, index) {
     title: String(scene?.title || `Scene ${index + 1}`),
     beat: String(scene?.beat || ''),
     videoPrompt: String(scene?.videoPrompt || ''),
+    videoPromptGeneratedFromBeat: typeof scene?.videoPromptGeneratedFromBeat === 'string' ? scene.videoPromptGeneratedFromBeat : '',
+    videoPromptGeneratedFromNarration: typeof scene?.videoPromptGeneratedFromNarration === 'string' ? scene.videoPromptGeneratedFromNarration : null,
     shots: [{
       ...sourceShot,
       // plan-visuals / older payloads may still ship the visual prompt at scene.prompt while
@@ -241,7 +251,10 @@ export async function regenerateAction(index, els, setStatus) {
     });
 
     scene.beat = data.beat || scene.beat;
-    if (!data.usedFallback) recordEntityGeneration(scene, 'action', entityConfig);
+    if (!data.usedFallback) {
+      invalidateVideoMotion(scene);
+      recordEntityGeneration(scene, 'action', entityConfig);
+    }
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
     if (record) {
@@ -566,7 +579,10 @@ export async function regenerateDialogue(index, els, setStatus, instruction = ''
 
     scene.narrationText = textValue(data.narrationText, ['narrationText']) || textValue(scene.narrationText, ['narrationText']);
     scene.narrationIsFallback = Boolean(data.usedFallback);
-    if (!data.usedFallback) recordEntityGeneration(scene, 'dialogue', entityConfig);
+    if (!data.usedFallback) {
+      invalidateVideoMotion(scene);
+      recordEntityGeneration(scene, 'dialogue', entityConfig);
+    }
     sceneStore.set({ scenes: [...scenes] });
     const record = getCurrentStoryboardRecord();
     if (record) {

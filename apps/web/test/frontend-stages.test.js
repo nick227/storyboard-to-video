@@ -23,6 +23,22 @@ function scene(overrides = {}) {
   };
 }
 
+test('computeStaleness: videoPrompt is stale when beat changed since motion was planned', async () => {
+  const { computeStaleness } = await stagesPromise;
+  const fresh = scene({
+    videoPrompt: 'Mara throws the door open with force.',
+    videoPromptGeneratedFromBeat: 'Mara opens the door.',
+    videoPromptGeneratedFromNarration: null,
+  });
+  assert.equal(computeStaleness(fresh).videoPromptStale, false);
+  const staleBeat = scene({
+    beat: 'Mara kicks the door open.',
+    videoPrompt: 'Mara throws the door open with force.',
+    videoPromptGeneratedFromBeat: 'Mara opens the door.',
+  });
+  assert.equal(computeStaleness(staleBeat).videoPromptStale, true);
+});
+
 test('computeStaleness: prompt is stale when beat changed since the prompt was generated', async () => {
   const { computeStaleness } = await stagesPromise;
   const fresh = scene();

@@ -101,11 +101,15 @@ function videoManifestStaleness(scene, shot, activeImage, version) {
     if (Object.entries(requested).some(([key, value]) => version.output.requested[key] !== value)) return true;
   }
   const inputs = structuredClone(version.manifest.inputs);
+  const storedPrompt = inputs.prompt || {};
+  const storedHadVideo = Object.prototype.hasOwnProperty.call(storedPrompt, 'video');
   inputs.prompt = {
-    ...(inputs.prompt || {}),
+    ...storedPrompt,
     scene: shot.prompt || '',
     beat: scene.beat || '',
-    video: scene.videoPrompt || '',
+    ...(storedHadVideo || scene.videoPrompt
+      ? { video: scene.videoPrompt || '' }
+      : {}),
     style: style.promptText || '',
     common: additionalCommonPrompt(style.promptText, record.commonPromptText),
   };
@@ -151,10 +155,16 @@ export function computeStaleness(scene) {
   const subtitleConfig = resolvedEntityConfig(scene, 'subtitle', { record: getCurrentStoryboardRecord() });
 
   const hasPrompt = hasText(scenePromptText(scene));
+  const hasVideoPrompt = hasText(scene.videoPrompt);
   const promptStale = hasPrompt && (
     Boolean(scene.structuralContextStale) ||
     String(scene.beat || '') !== String(scene.promptGeneratedFromBeat || '') ||
     (scene.promptGeneratedFromNarration != null && String(scene.narrationText || '') !== String(scene.promptGeneratedFromNarration))
+  );
+  const videoPromptStale = hasVideoPrompt && (
+    Boolean(scene.structuralContextStale) ||
+    String(scene.beat || '') !== String(scene.videoPromptGeneratedFromBeat || '') ||
+    (scene.videoPromptGeneratedFromNarration != null && String(scene.narrationText || '') !== String(scene.videoPromptGeneratedFromNarration))
   );
 
   // Compare against `scenePrompt` (the raw scene-level prompt), not `prompt` — the version's
@@ -176,7 +186,10 @@ export function computeStaleness(scene) {
   );
   const videoManifestStale = videoManifestStaleness(scene, shot, activeImage, activeVideo);
   const selectedStartFrame = shot.startFrame || activeImage?.path || '';
-  const videoStale = Boolean(activeVideo?.path) && (videoManifestStale ?? String(activeVideo.sourceImagePath || '') !== String(selectedStartFrame));
+  const videoStale = Boolean(activeVideo?.path) && (
+    videoPromptStale
+    || (videoManifestStale ?? String(activeVideo.sourceImagePath || '') !== String(selectedStartFrame))
+  );
   const subtitleStale = Boolean(activeSubtitle?.path) && (
     audioStale ||
     String(activeSubtitle.sourceAudioPath || '') !== String(activeAudio?.path || '') ||
@@ -184,7 +197,7 @@ export function computeStaleness(scene) {
       && String(activeSubtitle.captionStyle || activeSubtitle.style) !== String(subtitleConfig.style || 'classic'))
   );
 
-  return { promptStale, imageStale, audioStale, videoStale, subtitleStale };
+  return { promptStale, videoPromptStale, imageStale, audioStale, videoStale, subtitleStale };
 }
 
 // --- Stage status ------------------------------------------------------------
@@ -269,7 +282,12 @@ export function computeStageStatus(scenes, batchState, uiOperation, recentJobs =
 
   const promptsReady = scenes.filter((scene) => hasText(scenePromptText(scene))).length;
   const dialogueReady = scenes.filter((scene) => hasText(scene.narrationText)).length;
-  const promptsStaleCount = scenes.filter((scene) => hasText(scenePromptText(scene)) && computeStaleness(scene).promptStale).length;
+  const promptsStaleCount = scenes.filter((scene) => {
+    const freshness = computeStaleness(scene);
+    return (hasText(scenePromptText(scene)) && freshness.promptStale)
+      || (hasText(scene.videoPrompt) && freshness.videoPromptStale)
+      || (hasText(scenePromptText(scene)) && !hasText(scene.videoPrompt));
+  }).length;
   const lastPlanningJob = [...(recentJobs || [])]
     .filter((job) => PLANNING_JOB_TYPES.has(job.type) && !job.sceneId)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
@@ -400,8 +418,9 @@ export async function patchPlanning(els, setStatus, range, { refreshAll = false 
   let indexes = scenes
     .map((scene, index) => {
       const hasPrompt = hasText(scenePromptText(scene));
+      const freshness = computeStaleness(scene);
       if (refreshAll) return index;
-      if (!hasPrompt || computeStaleness(scene).promptStale) return index;
+      if (!hasPrompt || freshness.promptStale || freshness.videoPromptStale || !hasText(scene.videoPrompt)) return index;
       return -1;
     })
     .filter((index) => index !== -1);
@@ -414,10 +433,9 @@ export async function patchPlanning(els, setStatus, range, { refreshAll = false 
 
   uiStore.set({ operation: { type: refreshAll ? 'planningRefresh' : 'planningPatch' } });
   try {
-    for (const index of indexes) {
-      await regeneratePrompt(index, els, setStatus, true); // withinSerial=true: never regenerateDialogue
-    }
-    if (setStatus) setStatus(`Updated ${indexes.length} prompt${indexes.length === 1 ? '' : 's'}.`);
+    // Visual plan refreshes prompt + beat + videoPrompt together for selected scenes only.
+    await planVisuals(els, setStatus, { onlyMissing: !refreshAll });
+    if (setStatus) setStatus(`Updated planning for ${indexes.length} scene${indexes.length === 1 ? '' : 's'}.`);
   } finally {
     uiStore.set({ operation: null });
   }

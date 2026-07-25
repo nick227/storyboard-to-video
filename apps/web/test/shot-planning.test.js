@@ -108,6 +108,42 @@ test('planVisuals writes the visual prompt onto shots[0] as well as scene.prompt
   assert.equal(result.scenes[0].shots[0].prompt, 'Derek jolts awake in a dark cluttered motel room.');
   assert.equal(result.scenes[0].beat, 'Derek jolts awake and scans the room.');
   assert.equal(result.scenes[0].videoPrompt, 'Derek jolts upright and sweeps the cluttered room with his eyes.');
+  assert.equal(result.scenes[0].videoPromptGeneratedFromBeat, 'Derek jolts awake and scans the room.');
+});
+
+test('planVisuals onlyMissing refreshes scenes whose videoPrompt is missing even when prompt exists', async () => {
+  let calls = 0;
+  const service = createShotPlanningService({
+    textProviders: {
+      call: async () => {
+        calls += 1;
+        return JSON.stringify({
+          visuals: [{
+            sceneNumber: 1,
+            visualPrompt: 'Refreshed visual.',
+            actionPrompt: 'Subject acts.',
+            videoPrompt: 'Subject acts with clear continuous motion.',
+          }],
+        });
+      },
+    },
+  });
+  const result = await service.planVisuals({
+    scenes: [{
+      id: 'needs-motion',
+      narrationText: 'Subject acts.',
+      prompt: 'Existing visual stays until replanned.',
+      beat: 'Subject acts.',
+      promptGeneratedFromBeat: 'Subject acts.',
+      promptGeneratedFromNarration: 'Subject acts.',
+    }],
+    provider: 'gemini',
+    style: { id: 'basic', promptText: 'simple' },
+    fallbackPolicy: 'fail',
+    onlyMissing: true,
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.scenes[0].videoPrompt, 'Subject acts with clear continuous motion.');
 });
 
 test('planVisuals onlyMissing skips scenes that already have prompts and preserves their media', async () => {
@@ -128,6 +164,11 @@ test('planVisuals onlyMissing skips scenes that already have prompts and preserv
       narrationText: 'Already planned.',
       prompt: 'Keep this exact prompt.',
       beat: 'Keep beat.',
+      videoPrompt: 'Keep this exact motion.',
+      promptGeneratedFromBeat: 'Keep beat.',
+      promptGeneratedFromNarration: 'Already planned.',
+      videoPromptGeneratedFromBeat: 'Keep beat.',
+      videoPromptGeneratedFromNarration: 'Already planned.',
       versions: [{ path: 'images/kept.png' }],
       activeVersionIndex: 0,
     },

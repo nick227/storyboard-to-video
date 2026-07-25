@@ -588,10 +588,22 @@ function createShotPlanningService({ textProviders, generationCache }) {
       const shotPrompt = Array.isArray(scene?.shots) && scene.shots[0] ? cleanText(scene.shots[0].prompt, 20_000) : '';
       return Boolean(cleanText(scene?.prompt, 20_000) || shotPrompt);
     };
+    const sceneHasVideoPrompt = (scene) => Boolean(cleanText(scene?.videoPrompt, 4_000));
+    const sceneNeedsVisualPlan = (scene) => {
+      if (!sceneHasPrompt(scene) || !sceneHasVideoPrompt(scene)) return true;
+      if (scene.structuralContextStale) return true;
+      if (String(scene.beat || '') !== String(scene.videoPromptGeneratedFromBeat || '')) return true;
+      if (scene.videoPromptGeneratedFromNarration != null
+        && String(scene.narrationText || '') !== String(scene.videoPromptGeneratedFromNarration)) return true;
+      if (String(scene.beat || '') !== String(scene.promptGeneratedFromBeat || '')) return true;
+      if (scene.promptGeneratedFromNarration != null
+        && String(scene.narrationText || '') !== String(scene.promptGeneratedFromNarration)) return true;
+      return false;
+    };
     const work = onlyMissing
       ? sourceScenes
         .map((scene, index) => ({ scene, index }))
-        .filter(({ scene }) => !sceneHasPrompt(scene))
+        .filter(({ scene }) => sceneNeedsVisualPlan(scene))
       : sourceScenes.map((scene, index) => ({ scene, index }));
     if (!work.length) return { scenes: sourceScenes, usedFallback: false, warning: '' };
 
@@ -691,6 +703,8 @@ function createShotPlanningService({ textProviders, generationCache }) {
           shots: [{ ...primaryShot, prompt: visualPrompt }, ...existingShots.slice(1)],
           promptGeneratedFromBeat: actionPrompt,
           promptGeneratedFromNarration: item.scene.narrationText,
+          videoPromptGeneratedFromBeat: actionPrompt,
+          videoPromptGeneratedFromNarration: item.scene.narrationText,
           promptIsFallback: batchUsedFallback,
           structuralContextStale: false,
         });
@@ -700,12 +714,8 @@ function createShotPlanningService({ textProviders, generationCache }) {
     return { scenes: planned, usedFallback, warning: warnings.join(' ') };
   }
 
-  // The one entry point: raw script in, a final, locked shot list out. Narration is generated and
-  // treated as immutable before any shot boundary is decided -- shot count is never guessed, it
-  // falls out of how many shots the planning calls actually returned for the finished narration.
-  // maxShots is a ceiling, not a target: it's passed into each chunk's planning call as guidance
-  // (overall cap + a soft per-chunk budget), and only enforced as a hard guarantee by the final
-  // trim below if the model doesn't land within it on its own.
+  // DEPRECATED: do not extend. Studio Start/Replan use prepareNarration + planVisuals ([A][B][C]).
+  // Kept for tests and old plan-shots clients until removed.
   async function plan({ scriptText, provider, styleId, style, commonPromptText, enrich = true, fallbackPolicy = 'local', tenantId, bypassCache = false, maxShots }) {
     const narration = await narrateScript({
       scriptText,
@@ -781,6 +791,8 @@ function createShotPlanningService({ textProviders, generationCache }) {
       videoPrompt: shot.videoPrompt || fallbackVideoPrompt(shot.actionPrompt),
       promptGeneratedFromBeat: shot.actionPrompt,
       promptGeneratedFromNarration: shot.narrationText,
+      videoPromptGeneratedFromBeat: shot.actionPrompt,
+      videoPromptGeneratedFromNarration: shot.narrationText,
       promptIsFallback: Boolean(shot.isFallback),
     }));
 

@@ -1,5 +1,5 @@
 import { sceneStore, generationStore, uiStore, projectStore, debounce } from '../core/store.js';
-import { regeneratePrompt, regenerateAction, regenerateDialogue, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles, splitSceneInPlace } from '../generation/workflows.js';
+import { regeneratePrompt, regenerateAction, regenerateDialogue, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles, splitSceneInPlace, invalidateVideoMotion } from '../generation/workflows.js';
 import { renderCaptionInto } from '../media/subtitle-overlay.js';
 import { ensureProjectSynced, getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from '../core/persistence.js';
 import { loadProtectedAsset } from '../core/assets.js';
@@ -90,9 +90,9 @@ function setElementProtectedAsset(element, propertyName, path, cacheKeyName = pr
 
 const ENTITY_CONFIG = {
   action: {
-    title: 'Physical Action',
+    title: 'Still Action',
     kind: 'text',
-    fieldLabel: 'Physical action',
+    fieldLabel: 'Still action — what the still depicts',
     getValue: (scene) => textValue(scene.beat, ['beat']),
     setValue: (scene, value) => { scene.beat = value; },
     regen: (index, els, cb) => regenerateAction(index, els, cb),
@@ -181,7 +181,7 @@ function sceneFreshnessByType(scene) {
     dialogue: false,
     image: freshness.imageStale,
     audio: freshness.audioStale,
-    video: freshness.videoStale,
+    video: freshness.videoStale || freshness.videoPromptStale || !String(scene.videoPrompt || '').trim(),
     subtitle: freshness.subtitleStale,
   };
 }
@@ -1065,10 +1065,19 @@ function renderEntityDetail() {
   els.entityModalDetailTitle.textContent = config.title;
 
   const showBeat = type === 'prompt';
+  const showVideoPrompt = type === 'video';
   const hasBeatRegen = Boolean(config.regenBeat);
   els.entityModalBeatField.hidden = !showBeat;
   if (showBeat && document.activeElement !== els.entityModalBeat) els.entityModalBeat.value = scene.beat || '';
   els.entityModalBeat.disabled = busy;
+
+  if (els.entityModalVideoPromptField) {
+    els.entityModalVideoPromptField.hidden = !showVideoPrompt;
+    if (showVideoPrompt && els.entityModalVideoPrompt && document.activeElement !== els.entityModalVideoPrompt) {
+      els.entityModalVideoPrompt.value = scene.videoPrompt || '';
+    }
+    if (els.entityModalVideoPrompt) els.entityModalVideoPrompt.disabled = busy;
+  }
 
   const isText = config.kind === 'text';
   els.entityModalTextField.hidden = !isText;
@@ -1111,8 +1120,14 @@ function renderEntityDetail() {
   els.entityModalRegenTextBtn.classList.toggle('is-loading', promptFieldLoading);
   els.entityModalRegenTextBtn.textContent = promptFieldLoading ? (hasExisting ? 'Regenerating…' : 'Generating…') : (hasExisting ? 'Regenerate' : 'Generate');
 
-  const stale = type === 'prompt' && computeStaleness(scene).promptStale;
+  const stale = (type === 'prompt' && computeStaleness(scene).promptStale)
+    || (type === 'video' && (computeStaleness(scene).videoPromptStale || computeStaleness(scene).videoStale || !String(scene.videoPrompt || '').trim()));
   els.entityModalStaleWarning.hidden = !stale;
+  if (stale && type === 'video' && !String(scene.videoPrompt || '').trim()) {
+    els.entityModalStaleWarning.textContent = 'Video motion is missing or was cleared — replan visuals before generating video, or video will fall back to still action.';
+  } else if (stale) {
+    els.entityModalStaleWarning.textContent = 'This visual or motion plan may be stale — still action or narration changed after it was generated.';
+  }
 
   els.entityModalRegenBtn.hidden = isText;
   els.entityModalRegenBtn.disabled = controlsBusy;
@@ -1394,7 +1409,7 @@ function setupEntityModal() {
     if (!config.regenBeat) return;
     const scene = sceneStore.get().scenes[index];
     const verb = Boolean(String(scene.beat || '').trim()) ? 'Regenerate' : 'Generate';
-    confirmRegeneration(`${verb} the physical action for scene ${index + 1}? This does not change the visual prompt.`, verb, { entityType: 'action' }).then((confirmed) => {
+    confirmRegeneration(`${verb} the still action for scene ${index + 1}? This marks the visual prompt and video motion as needing update.`, verb, { entityType: 'action' }).then((confirmed) => {
       if (confirmed) config.regenBeat(index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
     });
   });
@@ -1414,12 +1429,35 @@ function setupEntityModal() {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
     const value = els.entityModalBeat.value;
-    const scenes = sceneStore.get().scenes.map((scene, i) => (i === index ? { ...scene, beat: value } : scene));
+    const scenes = sceneStore.get().scenes.map((scene, i) => {
+      if (i !== index) return scene;
+      const next = { ...scene, beat: value };
+      invalidateVideoMotion(next);
+      return next;
+    });
     sceneStore.set({ scenes });
     const record = getCurrentStoryboardRecord();
     if (record) record.scenes = scenes;
     debouncedQueueSync();
   });
+
+  if (els.entityModalVideoPrompt) {
+    els.entityModalVideoPrompt.addEventListener('input', () => {
+      const index = currentEntityModalSceneIndex();
+      if (index === -1) return;
+      const value = els.entityModalVideoPrompt.value;
+      const scenes = sceneStore.get().scenes.map((scene, i) => (i === index ? {
+        ...scene,
+        videoPrompt: value,
+        videoPromptGeneratedFromBeat: scene.beat || '',
+        videoPromptGeneratedFromNarration: scene.narrationText || null,
+      } : scene));
+      sceneStore.set({ scenes });
+      const record = getCurrentStoryboardRecord();
+      if (record) record.scenes = scenes;
+      debouncedQueueSync();
+    });
+  }
 
   els.entityModalTextarea.addEventListener('input', () => {
     const index = currentEntityModalSceneIndex();
@@ -1429,6 +1467,7 @@ function setupEntityModal() {
       if (i !== index) return scene;
       const next = { ...scene };
       ENTITY_CONFIG[modalState.type].setValue(next, value);
+      if (modalState.type === 'dialogue' || modalState.type === 'action') invalidateVideoMotion(next);
       return next;
     });
     sceneStore.set({ scenes });

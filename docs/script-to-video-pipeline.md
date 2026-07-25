@@ -168,11 +168,13 @@ Legend:
 **Produces:** `scene.prompt` / `shots[0].prompt`, `scene.beat`, `scene.videoPrompt`  
 **Does not** change scene count.
 
+[C] does three jobs in one call (still description, still action, video motion). That is acceptable while the JSON schema stays strict and each field remains independently recoverable (regen beat vs regen visual vs replan visuals for motion). Style enters `videoPrompt` only as light motion seasoning inside the planned string — never as a second visual/style dump at [G].
+
 System rules (inline in service):
 
 - `visualPrompt`: 15–40 words, subject/pose/object/location/composition; carry setting; no motion/style wording
-- `actionPrompt`: 8–28 words, still-frame physical action for the image; source-faithful
-- `videoPrompt`: ~25–60 words; primary subject action first, then light environment/style motion; do not restate look
+- `actionPrompt` / `beat`: 8–28 words — **what the still depicts** (pose/gesture)
+- `videoPrompt`: ~25–60 words — **what changes during playback**; action first, then light environment/style motion; do not restate look
 
 ---
 
@@ -302,16 +304,18 @@ Builds cues/SRT from active audio alignment words. Requires prior [E] alignment.
 
 ## Alternate / legacy planning path
 
-### [L] Plan-shots monolith — `POST /api/storyboard/plan-shots`
+### [L] Plan-shots monolith — **DEPRECATED**
 
-`shotPlanning.plan()` still exists: narrate ([A]-like) → **sequence.scan** → **shot.plan** chunks that emit narration+visual+action together.
+> Deprecated. Do not extend. Studio Start/Replan use **prepare-narration + plan-visuals** ([A][B][C]) only. `POST /api/storyboard/plan-shots` / `shotPlanning.plan()` remains for tests and old clients until removed.
+
+`shotPlanning.plan()` still exists: narrate ([A]-like) → **sequence.scan** → **shot.plan** chunks that emit narration+visual+action(+video) together.
 
 | Cache op | Role |
 |---|---|
 | `sequence.scan` | Broad sequence labels/intents over full narration (tone context only) |
-| `shot.plan` | Per ~300-word narration chunk → shots with narration + visual + action |
+| `shot.plan` | Per ~300-word narration chunk → shots with narration + visual + action + video |
 
-Studio Start/Replan prefer **prepare-narration + plan-visuals** ([A][B][C]). Treat [L] as alternate/legacy bundled planning.
+Treat [L] as a frozen alternate pipeline — not a second evolving path.
 
 ### Internal helpers (not primary Start path)
 
@@ -363,13 +367,13 @@ Stub providers skip network and return deterministic local fallbacks.
 
 | UI | Affects calls |
 |---|---|
-| Style picker | [A] writing, [B] orchestrator, [C][D][G] style.md, refs |
+| Style picker | [A] writing, [B] orchestrator, [C][D] style.md + refs ([G] inherits look via start still only) |
 | Script- / Narration-driven | [A] enrich off/on (and some regenerate source preference) |
 | Narration style / prompt editor | [A]/[H] base rules override |
 | Narration guidance / helpers | [A] USER GUIDANCE |
 | Shot limit | [B] soft ceiling + post-merge trim |
-| Common prompt | [C][D][G] additional look direction |
-| Motion intensity | [G] intensity filler when no beat/override |
+| Common prompt | [C][D] additional look direction (not composed into [G]) |
+| Motion intensity | [G] intensity filler when no videoPrompt/beat/override |
 | Image / audio / video provider | Which backend executes [D][E][G] |
 
 ---
@@ -380,8 +384,8 @@ Stub providers skip network and return deterministic local fallbacks.
 |---|---|---|
 | `narrationText` | [A] then sliced by [B]; or [H] | [C][E][I][K], audio alignment |
 | `sourceScriptFragment` | [B] / [K] | [C] continuity, regenerate fallbacks |
-| `beat` | [C] / [J] / [K] | [I] action cue; [G] fallback if no `videoPrompt` |
-| `videoPrompt` | [C] | [G] primary motion string |
+| `beat` | [C] / [J] / [K] | Still action (what the still depicts); [I] cue; [G] fallback if no `videoPrompt` |
+| `videoPrompt` | [C] | [G] primary motion (what changes in playback). Cleared/stale when beat or narration changes |
 | `prompt` / `shots[0].prompt` | [C] / [I] | [D] image |
 | Image version | [D] | [G] start frame; UI |
 | Audio version + alignment | [E] | [F] subtitles; playback |
