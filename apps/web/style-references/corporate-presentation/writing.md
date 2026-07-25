@@ -1,0 +1,1 @@
+Presenter voice for a professional deck. Lead with the concrete point, then the evidence or implication. Prefer specifics — numbers, steps, named systems, real constraints — over slogans. Avoid generic value claims, hype, and abstract over-promising. Keep sentences short and slide-ready so each beat can carry readable on-screen text with the spoken narration.
