@@ -13,11 +13,12 @@ scriptText
     ▼
 narrationText  (+ STYLE VOICE from writing.md)
     │
-    │  [B] narration.segment       (chunked)
+    │  [B] narration.segment       (chunked) — director composition lock
     ▼
 scenes[] {
   narrationText,           ← exact slice of narration
   sourceScriptFragment,    ← aligned script slice
+  cutReason,               ← why this card starts here
 }
     │
     │  [C] visual.plan             (batched)
@@ -27,6 +28,7 @@ scenes[] {
   beat,                    ← actionPrompt (still / image physical action)
   prompt / shots[0].prompt ← visualPrompt (still description)
   videoPrompt,             ← I2V motion brief (action-first)
+  videoPromptGeneratedFromBeat / …FromNarration  ← provenance for staleness
 }
     │
     ├─[D] image.generate ──────────► still image versions
@@ -48,8 +50,10 @@ scenes[] {
 | Companion | Injects into |
 |---|---|
 | `writing.md` | [A] narration only |
-| `orchestrator.md` | [B] style composition / director cuts |
-| `style.md` | [C] visual plan, [D] image |
+| `orchestrator.md` | [B] STYLE COMPOSITION (director cuts) |
+| `style.md` | [C] visual plan, [D] image — **not** composed into [G] |
+
+Look stays on the start still for I2V. Common prompt is look direction for [C]/[D] only.
 
 ---
 
@@ -64,16 +68,29 @@ apps/web/style-references/<style-id>/
   world/             # optional refs
 ```
 
-Loaded by `styles.service.js`. Custom styles: DB `promptText` + `writingGuidance`; orchestrator empty today.
+Loaded by `styles.service.js` (`cleanText` cap 1000 per companion). Custom styles: DB `promptText` + `writingGuidance`; orchestrator empty today → [B] uses DEFAULT COMPOSITION.
 
-| Style | Look | Voice | Cuts |
+### `orchestrator.md` brief shape
+
+Each pack uses the same director brief (Intent / Unit / Cut on / Prefer / Never / Watch):
+
+| Line | Meaning |
+|---|---|
+| Intent | What kind of show this is (gag cards, coverage, explainer, …) |
+| Unit | What one scene is allowed to carry |
+| Cut on | When a new card must start |
+| Prefer | Bias when ambiguous |
+| Never | Hard anti-patterns for this style |
+| Watch | Too-few vs too-many failure modes |
+
+| Style | Look | Voice | Composition intent |
 |---|---|---|---|
-| `basic-cartoon` | Stick figures | Spare action | Pose/prop unit |
-| `cinematic-reality` | Photoreal film | Filmic sensory | Establish/act/react |
-| `dark-gothic` | Horror mixed media | Visceral dread | Scare focus |
-| `indie-youtuber` | Talking-head / PiP | Creator-to-camera | Vlog beats |
-| `vox-style` | Explainer collage | Claim → detail | Teaching point |
-| `corporate-presentation` | Enterprise slides | Presenter, concrete | Claim/slide/evidence |
+| `basic-cartoon` | Stick figures | Spare action | Readable gag cards — one stick action per still |
+| `cinematic-reality` | Photoreal film | Filmic sensory | Coverage — one motivated frame change |
+| `dark-gothic` | Horror mixed media | Visceral dread | Scare focus — one wrong detail / threat |
+| `indie-youtuber` | Talking-head / PiP | Creator-to-camera | Vlog energy — one talk or subject beat |
+| `vox-style` | Explainer collage | Claim → detail | Explainer clarity — one teaching point |
+| `corporate-presentation` | Enterprise slides | Presenter, concrete | Deck grammar — one claim / slide |
 
 ---
 
@@ -88,6 +105,8 @@ Loaded by `styles.service.js`. Custom styles: DB `promptText` + `writingGuidance
 Routes: `POST /api/storyboard/prepare-narration`, `POST /api/storyboard/plan-visuals`  
 Code: `shot-planning.service.js` (`prepareNarration`, `planVisuals`)  
 UI: `workflows.js` / `stages.js`
+
+Studio labels: **Still action** = `beat`; **Video motion** = `videoPrompt` (entity modal + video detail).
 
 ---
 
@@ -108,6 +127,7 @@ Legend:
 | **When** | prepare-narration / plan-shots |
 | **Chunking** | ~900 words of **script** per call |
 | **Builder** | `buildNarrateChunkRequest` |
+| **Cache** | `narration.plan` v3 |
 | **Returns** | `{ narrationText }` per chunk → joined |
 
 **Prompt stack (order):**
@@ -131,20 +151,24 @@ Legend:
 | **When** | prepare-narration (after [A]) |
 | **Chunking** | ~300 words of **narration** per call |
 | **Builder** | `buildNarrationSegmentationRequest` |
+| **Cache** | `narration.segment` v6 |
 | **Returns** | `{ segments: [{ sourceScriptFragment, narrationText, cutReason }] }` |
 
-**Role:** director composition pass. Locks scene count and source alignment before any visuals. Bad cuts here overload cards, waste media, or unground later regeneration — treat as edit-lock, not sentence chopping.
+**Role:** director composition pass. Locks scene count, seams, and source alignment before any visuals. Bad cuts overload cards, waste media, or unground later regeneration — edit-lock, not sentence chopping.
 
 **Prompt stack:**
 
-1. Director mandate — plan composition beats before emitting JSON; warn against too-few / too-many failure modes
-2. HARD RULES — exact narration copy; exact source alignment; required `cutReason`
-3. Pacing check — soft ~45-word density / optional shot-limit share (secondary to composition)
-4. **STYLE COMPOSITION** ← `orchestrator.md` (primary when present)
-5. Narration excerpt + source excerpt
+1. Director mandate — each segment must earn its own still; warn against too-few / too-many / bad seams
+2. DIRECTOR PLAN — identify composition beats → decide cut points → check pacing → only then emit JSON
+3. HARD RULES — exact narration copy; exact source alignment; required `cutReason` (≤20 words, composition reason, not a paraphrase)
+4. Pacing check — soft ~45-word / 15–20s density or shot-limit share (**secondary** to composition; never pad/starve to hit the number)
+5. **STYLE COMPOSITION** ← `orchestrator.md` when present; else **DEFAULT COMPOSITION** (one showable unit; split early on focus/claim/action/reveal)
 
 **Consumes:** output of [A]  
-**Produces:** scene list + `cutReason` — **locks scene count** (unless later split/replan)
+**Produces:** scene list + `cutReason` — **locks scene count** (unless later split/replan)  
+**Post:** optional maxShots merge-down preserves survivor prompts and prefers neighbor `cutReason`.
+
+`cutReason` is stored on each scene (`normalizeScene`) for grounding / future UI; not yet a primary studio control.
 
 ---
 
@@ -156,6 +180,7 @@ Legend:
 | **When** | plan-visuals |
 | **Batching** | scenes in batches |
 | **Builder** | `buildVisualPlanningRequest` |
+| **Cache** | `visual.plan` v5 |
 | **Returns** | `{ visuals: [{ sceneNumber, visualPrompt, actionPrompt, videoPrompt }] }` |
 
 **Prompt stack:**
@@ -167,7 +192,7 @@ Legend:
 5. Per scene: narration, optional source, neighbor continuity
 
 **Consumes:** scenes from [B], `style.md`  
-**Produces:** `scene.prompt` / `shots[0].prompt`, `scene.beat`, `scene.videoPrompt`  
+**Produces:** `scene.prompt` / `shots[0].prompt`, `scene.beat`, `scene.videoPrompt`, plus provenance stamps  
 **Does not** change scene count.
 
 [C] does three jobs in one call (still description, still action, video motion). That is acceptable while the JSON schema stays strict and each field remains independently recoverable (regen beat vs regen visual vs replan visuals for motion). Style enters `videoPrompt` only as light motion seasoning inside the planned string — never as a second visual/style dump at [G].
@@ -177,6 +202,8 @@ System rules (inline in service):
 - `visualPrompt`: 15–40 words, subject/pose/object/location/composition; carry setting; no motion/style wording
 - `actionPrompt` / `beat`: 8–28 words — **what the still depicts** (pose/gesture)
 - `videoPrompt`: ~25–60 words — **what changes during playback**; action first, then light environment/style motion; do not restate look
+
+**`onlyMissing`:** refreshes scenes missing `prompt`/`beat`/`videoPrompt`, or whose `videoPrompt` is stale vs provenance (beat or narration changed). Full replan sets `onlyMissing: false`.
 
 ---
 
@@ -249,6 +276,8 @@ Builds cues/SRT from active audio alignment words. Requires prior [E] alignment.
 **Consumes:** [C] videoPrompt (or beat fallback) + [D] still  
 **Produces:** video version
 
+No `style.md` / common dump at [G].
+
 ---
 
 ## Secondary / per-scene AI calls
@@ -262,7 +291,8 @@ Builds cues/SRT from active audio alignment words. Requires prior [E] alignment.
 | **Builder** | `buildRegenerateRequest` (`dialogue.service.js`) |
 
 **Prompt:** source-of-truth → narration rules / project narration prompt → optional instruction → scene source block → current narration.  
-**Produces:** new `scene.narrationText` (does not auto re-run [B]/[C]; visuals/audio may go stale).
+**Produces:** new `scene.narrationText` (does not auto re-run [B]/[C]).  
+**Side effect:** successful regen clears `videoPrompt` + provenance (`invalidateVideoMotion`) so motion must be replanned.
 
 ---
 
@@ -275,7 +305,7 @@ Builds cues/SRT from active audio alignment words. Requires prior [E] alignment.
 | **Service** | `prompt-generation.service.js` |
 
 **Prompt:** new visual from canonical narration (else script fragment) + beat + continuity rule + `style.md` + common + optional user instruction. **Does not** feed the previous prompt.  
-**Produces:** new `scene.prompt` / shot prompt.
+**Produces:** new `scene.prompt` / shot prompt. Does not rewrite `videoPrompt`.
 
 ---
 
@@ -287,7 +317,8 @@ Builds cues/SRT from active audio alignment words. Requires prior [E] alignment.
 | **Route** | `POST /api/storyboard/regenerate-action` |
 
 **Prompt:** rewrite physical beat 8–28 words from script fragment + BEAT RULES (dynamic verbs, source-faithful).  
-**Produces:** new `scene.beat` (still/image action; [G] falls back to beat only if `videoPrompt` is empty).
+**Produces:** new `scene.beat` (still/image action).  
+**Side effect:** successful regen clears `videoPrompt` + provenance (`invalidateVideoMotion`). [G] falls back to beat only while `videoPrompt` is empty.
 
 ---
 
@@ -314,8 +345,8 @@ Builds cues/SRT from active audio alignment words. Requires prior [E] alignment.
 
 | Cache op | Role |
 |---|---|
-| `sequence.scan` | Broad sequence labels/intents over full narration (tone context only) |
-| `shot.plan` | Per ~300-word narration chunk → shots with narration + visual + action + video |
+| `sequence.scan` v1 | Broad sequence labels/intents over full narration (tone context only) |
+| `shot.plan` v5 | Per ~300-word narration chunk → shots with narration + visual + action + video |
 
 Treat [L] as a frozen alternate pipeline — not a second evolving path.
 
@@ -373,7 +404,7 @@ Stub providers skip network and return deterministic local fallbacks.
 | Script- / Narration-driven | [A] enrich off/on (and some regenerate source preference) |
 | Narration style / prompt editor | [A]/[H] base rules override |
 | Narration guidance / helpers | [A] USER GUIDANCE |
-| Shot limit | [B] soft ceiling + post-merge trim |
+| Shot limit | [B] soft ceiling + post-merge trim (composition still primary) |
 | Common prompt | [C][D] additional look direction (not composed into [G]) |
 | Motion intensity | [G] intensity filler when no videoPrompt/beat/override |
 | Image / audio / video provider | Which backend executes [D][E][G] |
@@ -386,8 +417,10 @@ Stub providers skip network and return deterministic local fallbacks.
 |---|---|---|
 | `narrationText` | [A] then sliced by [B]; or [H] | [C][E][I][K], audio alignment |
 | `sourceScriptFragment` | [B] / [K] | [C] continuity, regenerate fallbacks |
+| `cutReason` | [B] | Stored for composition grounding; merge-down may carry forward |
 | `beat` | [C] / [J] / [K] | Still action (what the still depicts); [I] cue; [G] fallback if no `videoPrompt` |
-| `videoPrompt` | [C] | [G] primary motion (what changes in playback). Cleared/stale when beat or narration changes |
+| `videoPrompt` | [C] (manual edit in video modal) | [G] primary motion. Cleared when beat or narration regenerates |
+| `videoPromptGeneratedFromBeat` / `…FromNarration` | [C] (or manual videoPrompt save) | Staleness for `onlyMissing` / stage freshness |
 | `prompt` / `shots[0].prompt` | [C] / [I] | [D] image |
 | Image version | [D] | [G] start frame; UI |
 | Audio version + alignment | [E] | [F] subtitles; playback |
@@ -402,8 +435,8 @@ Stub providers skip network and return deterministic local fallbacks.
 |---|---|---|
 | `MAX_WORDS_PER_NARRATION_CHUNK` | 900 | [A] |
 | `MAX_WORDS_PER_SHOT_CHUNK` | 300 | [B], shot.plan |
-| `TARGET_WORDS_PER_SCENE` | 45 | [B] density |
-| Companion cleanText cap | 1000 | writing / orchestrator |
+| `TARGET_WORDS_PER_SCENE` | 45 | [B] pacing check (secondary) |
+| Companion cleanText cap | 1000 | writing / orchestrator load |
 | Script max | 200k chars | schemas |
 | Visual plan batch | service batching | [C] |
 | Dialogue / prompt legacy batch | 5 | helpers |
