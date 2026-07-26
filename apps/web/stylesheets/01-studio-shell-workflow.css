@@ -31,17 +31,23 @@
 .storyboard-combo:focus-within { border-bottom-color: var(--line); background-color: color-mix(in srgb, var(--glass-ink) 3%, transparent); }
 .settings-modal-body .screenplay-logo,
 .storyboard-combo .screenplay-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
   padding: 0;
+  margin: 0;
   border: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
   border-radius: 4px;
   background: color-mix(in srgb, var(--panel, #fff) 88%, transparent);
   color: color-mix(in srgb, var(--muted, #888) 85%, transparent);
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
   overflow: hidden;
   flex: 0 0 auto;
+  line-height: 0;
 }
 .settings-modal-body .screenplay-logo {
   width: 100px;
@@ -64,16 +70,23 @@
   color: transparent;
 }
 .screenplay-logo-image {
+  grid-area: 1 / 1;
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
+.screenplay-logo-image[hidden],
+.screenplay-logo:not(.has-cover) .screenplay-logo-image {
+  display: none;
+}
 .screenplay-logo:not(.has-cover)::after {
   content: '+';
+  grid-area: 1 / 1;
   font-size: 1.1em;
   font-weight: 600;
   line-height: 1;
+  pointer-events: none;
 }
 .storyboard-combo .screenplay-logo:not(.has-cover)::after {
   font-size: 0.95rem;
