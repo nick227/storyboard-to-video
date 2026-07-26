@@ -55,7 +55,16 @@ async function main() {
     console.log('skip: IMAGE_SERVICE_URL unset (Modal SDXL disabled)');
     return;
   }
-  await health();
+  try {
+    await health();
+  } catch (error) {
+    // prestart uses --health-only; a down Modal workspace must not block local web.
+    if (healthOnly) {
+      console.warn(`warn: ${error.message || error} (continuing; SDXL may be unavailable)`);
+      return;
+    }
+    throw error;
+  }
   if (!healthOnly) await generate();
 }
 
