@@ -1,5 +1,5 @@
 const test=require('node:test');const assert=require('node:assert/strict');
-const {createShotPlanningService,softSegmentTarget,TARGET_WORDS_PER_SCENE}=require('../src/services/shot-planning.service');
+const {createShotPlanningService,softSegmentTarget,TARGET_WORDS_PER_SCENE,collectEnvironmentContext}=require('../src/services/shot-planning.service');
 
 function mockPrepareProvider({ narrationText, beats, segments, onCoverage, onSegment }) {
   return async (_provider, request) => {
@@ -115,9 +115,32 @@ test('planVisuals actionPrompt rules ask for grounded motion-friendly actions', 
   assert.match(request, /First responsibility: state the primary subject action/);
   assert.match(request, /Carry the established setting into every frame/);
   assert.match(request, /Established setting \(carry into every visual unless narration clearly changes location\):/);
+  assert.match(request, /25-60 words/);
+  assert.match(request, /concrete environment/);
   assert.match(request, /int motel room night/i);
+  assert.match(request, /She locks the apartment door and listens/);
   assert.match(request, /Previous narration \(continuity only\): She locks the apartment door and listens\./);
   assert.match(request, /Next narration \(continuity only\): She backs away from the door\./);
+});
+
+test('collectEnvironmentContext prefers sluglines, following action lines, and early narration', () => {
+  const context = collectEnvironmentContext([
+    {
+      sourceScriptFragment: 'INT. MOTEL ROOM - NIGHT\nDerek jolts awake among clutter.\nHe stares at the door.',
+      narrationText: 'Derek jolts awake in the dark motel room.',
+    },
+    {
+      sourceScriptFragment: 'EXT. PARKING LOT - CONTINUOUS\nRain sheets across empty cars.',
+      narrationText: 'Rain hammers the empty lot outside.',
+    },
+    { narrationText: 'A neon sign flickers across wet asphalt.' },
+  ]);
+  assert.match(context, /INT\. MOTEL ROOM - NIGHT/i);
+  assert.match(context, /Derek jolts awake among clutter/);
+  assert.match(context, /EXT\. PARKING LOT - CONTINUOUS/i);
+  assert.match(context, /Rain sheets across empty cars/);
+  assert.match(context, /Derek jolts awake in the dark motel room/);
+  assert.match(context, /Rain hammers the empty lot outside/);
 });
 
 test('planVisuals writes the visual prompt onto shots[0] as well as scene.prompt', async () => {

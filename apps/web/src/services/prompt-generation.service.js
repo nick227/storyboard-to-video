@@ -7,7 +7,7 @@ const { imageShot } = require('../shared/scene-shots');
 const PROMPT_BATCH_SIZE = 5;
 const FRAGMENT_MAX_LENGTH = 20_000;
 
-const PROMPT_TEMPLATE_VERSION = 4;
+const PROMPT_TEMPLATE_VERSION = 5;
 const ACTION_TEMPLATE_VERSION = 5;
 
 const BEAT_RULES = `BEAT RULES:
@@ -19,6 +19,12 @@ const BEAT_RULES = `BEAT RULES:
 - Avoid camera instructions, style, or backstory.`;
 
 const CONTINUITY_RULE = 'Keep recurring named characters, objects, and the established setting consistent across adjacent scenes. Carry place, lighting mood, and durable environment traits into the visual unless the source clearly changes location.';
+
+const VISUAL_PROMPT_RULES = `- Describe the keyframe at the action's clearest physical moment in 25-60 words.
+- Always include (1) subject and pose, (2) any important object, (3) concrete environment -- place, spatial layout, lighting/time-of-day, and durable set details visible in frame, and (4) composition.
+- Prefer specific visible detail over vague place names.
+- Carry established setting/environment into the frame unless the source clearly changes location.
+- No motion sequence, camera movement, or style wording.`;
 
 function buildSceneSourceContext(fragment, enrich) {
   const hasNarration = enrich && fragment.narrationText && !fragment.narrationIsFallback;
@@ -39,9 +45,7 @@ Create scenes ${batchStartIndex + 1}-${batchStartIndex + batchFragments.length} 
 ${BEAT_RULES}
 
 PROMPT RULES:
-- Describe the keyframe at the action's clearest physical moment in 15-40 words.
-- State subject, pose, important object, location, and composition.
-- No motion sequence, camera movement, or style wording.
+${VISUAL_PROMPT_RULES}
 
 Style context: ${style.promptText}.
 Additional: ${additional || 'none'}.
@@ -158,7 +162,10 @@ function createPromptGenerationService({ textProviders, limits, generationCache 
       : `Fallback scene script excerpt: ${scriptSource}`;
 
     const generateFn = async () => {
-      const request = `Return strict JSON only: {"prompt":"..."}. Create a brand-new Visual Prompt from the canonical source below. Do not rewrite, preserve, or infer wording from any previous visual prompt. Show this physical action: ${scene.beat || ''}. State subject, pose, important object, location, and composition. Carry established setting/environment into the frame unless the source clearly changes location. Use the selected style context to shape the visual interpretation. ${CONTINUITY_RULE} ${sourceBlock}. Optional user instruction: ${extraPromptText || 'none'}. Selected style context: ${style.promptText}. Additional style direction: ${getAdditionalCommonPrompt(style.promptText, commonPromptText) || 'none'}.`;
+      const request = `Return strict JSON only: {"prompt":"..."}. Create a brand-new Visual Prompt from the canonical source below. Do not rewrite, preserve, or infer wording from any previous visual prompt. Show this physical action: ${scene.beat || ''}.
+PROMPT RULES:
+${VISUAL_PROMPT_RULES}
+Use the selected style context to shape the visual interpretation. ${CONTINUITY_RULE} ${sourceBlock}. Optional user instruction: ${extraPromptText || 'none'}. Selected style context: ${style.promptText}. Additional style direction: ${getAdditionalCommonPrompt(style.promptText, commonPromptText) || 'none'}.`;
       const raw = providerOutput(await textProviders.call(provider, request));
       const value = extractTextField(raw, ['prompt', 'visualPrompt', 'visual_prompt', 'text', 'content'], limits.prompt);
       if (!value) {

@@ -33,7 +33,7 @@ const SUBSTANTIAL_OVERAGE_RATIO = 1.25;
 
 const ACTION_PROMPT_RULES = `actionPrompt: still-frame physical action for the image in 8-28 words, simple present tense: subject + verb + object/direction. Ground it in this scene's narration (and source script when provided); keep spatial relationships implied by neighboring narration and the established setting. Prefer a readable pose/gesture the still can show. Add concrete visible detail only when faithful to the source -- do not invent props, people, or gestures the narration does not support. No camera instructions, motion timelines, or style wording.`;
 
-const VISUAL_PROMPT_RULES = `visualPrompt: describe the clearest still visual moment in 15-40 words. State subject, pose, important object, location, and composition. Carry the established setting into every frame unless this scene's narration clearly changes location -- keep place, time-of-day/lighting mood, and durable environment traits (e.g. dark cluttered motel room). Outside or adjacent beats stay tied to that setting. No motion, camera movement, or style wording.`;
+const VISUAL_PROMPT_RULES = `visualPrompt: describe the clearest still visual moment in 25-60 words. Always include (1) subject and pose, (2) any important object, (3) concrete environment -- place, spatial layout, lighting/time-of-day, and durable set details visible in frame, and (4) composition. Prefer specific visible detail over vague place names. Carry the established setting into every frame unless this scene's narration clearly changes location -- keep place, time-of-day/lighting mood, and durable environment traits (e.g. dark cluttered motel room with stained carpet and neon bleed through blinds). Outside or adjacent beats stay tied to that setting. No motion, camera movement, or style wording.`;
 
 const VIDEO_PROMPT_RULES = `videoPrompt: one image-to-video motion brief in about 25-60 words. First responsibility: state the primary subject action clearly (who does what, direction, pace). Second: only then enhance with light environment motion and style-appropriate motion feel that fits the start still. Do not re-describe look, wardrobe, or art style in detail -- the start frame owns that. One primary action; avoid stacking multiple beats. No preserve clauses or bracketed camera syntax.`;
 
@@ -50,22 +50,28 @@ function fallbackVideoPrompt(actionPrompt) {
   return cleanText(`${actionPrompt} Clear continuous subject movement and follow-through.`, 4_000);
 }
 
+const SLUGLINE_RE = /^(?:\.?int\.?\/?ext\.?|\.?int\.?|\.?ext\.?|\.?i\/e)\b/i;
+
 function collectEnvironmentContext(scenes = []) {
   const sluglines = [];
   const establishing = [];
   for (const scene of scenes) {
-    const source = cleanText(scene?.sourceScriptFragment || scene?.scriptFragment, 1_000);
-    for (const line of source.split(/\n+/)) {
-      const trimmed = line.trim();
-      if (/^(?:\.?int\.?\/?ext\.?|\.?int\.?|\.?ext\.?|\.?i\/e)\b/i.test(trimmed)) {
-        sluglines.push(trimmed.replace(/^\./, ''));
-      }
+    const source = cleanText(scene?.sourceScriptFragment || scene?.scriptFragment, 2_000);
+    const lines = source.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i];
+      if (!SLUGLINE_RE.test(trimmed)) continue;
+      sluglines.push(trimmed.replace(/^\./, ''));
+      const next = lines[i + 1];
+      if (next && !SLUGLINE_RE.test(next) && next.length <= 160) establishing.push(next);
     }
   }
-  const firstNarration = cleanText(scenes[0]?.narrationText, 400);
-  if (firstNarration) establishing.push(firstNarration);
+  for (const scene of scenes.slice(0, 3)) {
+    const narration = cleanText(scene?.narrationText, 220);
+    if (narration) establishing.push(narration);
+  }
   const parts = [...new Set([...sluglines, ...establishing])].filter(Boolean);
-  return parts.slice(0, 3).join(' | ');
+  return parts.slice(0, 6).join(' | ');
 }
 
 // Splits `text` into pieces of at most `maxWords`, by computing the fragment count
@@ -376,7 +382,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
     try {
       const shots = generationCache
         ? await generationCache.runCached({
-            tenantId, operation: 'shot.plan', provider, promptTemplateVersion: 5,
+            tenantId, operation: 'shot.plan', provider, promptTemplateVersion: 6,
             source: { chunkText, sequenceContext, environmentContext, maxShots: maxShots || null, chunkBudget: chunkBudget || null }, settings: { style: style?.id, additional }, bypassCache, generateFn,
           })
         : await generateFn();
@@ -687,7 +693,7 @@ function createShotPlanningService({ textProviders, generationCache }) {
         try {
           visuals = generationCache
             ? await generationCache.runCached({
-                tenantId, operation: 'visual.plan', provider, promptTemplateVersion: 5,
+                tenantId, operation: 'visual.plan', provider, promptTemplateVersion: 6,
                 source: {
                   environmentContext,
                   scenes: batch.map((item) => ({
@@ -832,4 +838,4 @@ function createShotPlanningService({ textProviders, generationCache }) {
   return { plan, prepareNarration, planVisuals };
 }
 
-module.exports = { createShotPlanningService, chunkByWords, softSegmentTarget, TARGET_WORDS_PER_SCENE };
+module.exports = { createShotPlanningService, chunkByWords, softSegmentTarget, TARGET_WORDS_PER_SCENE, collectEnvironmentContext };

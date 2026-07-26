@@ -203,13 +203,13 @@ Legend:
 | **When** | plan-visuals |
 | **Batching** | scenes in batches |
 | **Builder** | `buildVisualPlanningRequest` |
-| **Cache** | `visual.plan` v5 |
+| **Cache** | `visual.plan` v6 |
 | **Returns** | `{ visuals: [{ sceneNumber, visualPrompt, actionPrompt, videoPrompt }] }` |
 
 **Prompt stack:**
 
 1. Fixed VISUAL + ACTION + VIDEO rules (still description; still action; I2V motion brief)
-2. Established setting (sluglines + early narration)
+2. Established setting (sluglines + following action lines + early narration)
 3. **Style context** ← `style.md` / `promptText`
 4. Additional common prompt
 5. Per scene: narration, optional source, neighbor continuity
@@ -222,7 +222,7 @@ Legend:
 
 System rules (inline in service):
 
-- `visualPrompt`: 15–40 words, subject/pose/object/location/composition; carry setting; no motion/style wording
+- `visualPrompt`: 25–60 words; subject/pose/object + concrete environment (place, layout, lighting, set detail) + composition; carry setting; no motion/style wording
 - `actionPrompt` / `beat`: 8–28 words — **what the still depicts** (pose/gesture)
 - `videoPrompt`: ~25–60 words — **what changes during playback**; action first, then light environment/style motion; do not restate look
 
