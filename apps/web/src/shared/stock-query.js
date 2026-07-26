@@ -16,6 +16,7 @@ const STYLE_KEYWORDS = {
   'cinematic-reality': 'cinematic',
   'corporate-presentation': 'corporate',
   'dark-gothic': 'gothic',
+  'history-education': 'historical',
   'indie-youtuber': 'vlog',
   'vox-style': 'pop art',
 };
