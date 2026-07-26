@@ -418,7 +418,9 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
       } else {
         suffix = `${style.title} world design exemplar. A wide angle landscape establishing shot, clean environmental style, scenery detail, background setting reference, architectural layout and color palette key.`;
       }
-      const prompt = [style.promptText, suffix].filter(Boolean).join('\n\n');
+      // Subject description first: CLIP-based providers truncate at 77 tokens, and style.promptText
+      // alone often exceeds that, so the trailing style text is what gets cut, not the subject.
+      const prompt = [suffix, style.promptText].filter(Boolean).join('\n\n');
 
       result = await imageProvider.generate({
         provider: selection.provider,

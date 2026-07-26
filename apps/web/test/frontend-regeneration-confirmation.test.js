@@ -8,16 +8,24 @@ const renderingPromise = import(path.join(webRoot, 'public', 'js', 'studio', 're
 
 test('regeneration confirmation uses the entity-specific provider selection', async () => {
   const { regenerationProviderSelection } = await renderingPromise;
-  const select = (value, label) => ({ value, selectedOptions: [{ textContent: label }] });
+  const select = (value, label, options = []) => ({ value, selectedOptions: [{ textContent: label }], options });
   const els = {
-    textProvider: select('openai', 'OpenAI'),
-    imageProvider: select('gemini', 'Gemini'),
-    videoProvider: select('minimax', 'MiniMax'),
+    textProvider: select('openai', 'OpenAI', [{ value: 'openai', textContent: 'OpenAI' }]),
+    imageProvider: select('gemini', 'Gemini', [{ value: 'gemini', textContent: 'Gemini' }, { value: 'openai', textContent: 'OpenAI (DALL-E)' }]),
+    videoProvider: select('minimax', 'MiniMax', [{ value: 'minimax', textContent: 'MiniMax' }]),
   };
 
   assert.deepEqual(regenerationProviderSelection('image', els), { kind: 'Image provider', label: 'Gemini' });
   assert.deepEqual(regenerationProviderSelection('prompt', els), { kind: 'LLM provider', label: 'OpenAI' });
   assert.deepEqual(regenerationProviderSelection('video', els), { kind: 'Video provider', label: 'MiniMax' });
+
+  // Test scene overrides
+  const scene = {
+    entityOverrides: {
+      image: { provider: 'openai' }
+    }
+  };
+  assert.deepEqual(regenerationProviderSelection('image', els, scene), { kind: 'Image provider', label: 'OpenAI (DALL-E)' });
 });
 
 test('hidden regeneration summaries cannot leak the previous video provider', () => {

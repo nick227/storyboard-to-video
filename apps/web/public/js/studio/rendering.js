@@ -1,14 +1,22 @@
 import { sceneStore, generationStore, uiStore, projectStore, debounce } from '../core/store.js';
-import { regeneratePrompt, regenerateAction, regenerateDialogue, regenerateImage, regenerateAudio, regenerateVideo, regenerateSubtitles, splitSceneInPlace, invalidateVideoMotion } from '../generation/workflows.js';
+import {
+  splitSceneInPlace,
+  invalidateVideoMotion,
+  regeneratePrompt,
+  regenerateAction,
+  regenerateDialogue,
+  regenerateImage,
+  regenerateAudio,
+  regenerateVideo,
+  regenerateSubtitles,
+} from '../generation/workflows.js';
 import { renderCaptionInto } from '../media/subtitle-overlay.js';
-import { ensureProjectSynced, getCurrentStoryboardRecord, persistStoryboardLibrary, queueSync } from '../core/persistence.js';
-import { loadProtectedAsset } from '../core/assets.js';
+import { ensureProjectSynced, getCurrentStoryboardRecord } from '../core/persistence.js';
 import { api } from '../core/api.js';
 import { suggestSceneCountFromNarration } from '../generation/scene-count.js';
 import { computeStaleness, resolveSelectedSceneIndex, getCachedJobs, refreshRecentJobs, refreshSpend, buildLatestJobsByScene } from '../generation/stages.js';
-import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVersion, setImagePrompt, setVideoKeyframes } from '../core/scene-shots.js';
+import { imageShot } from '../core/scene-shots.js';
 import { REFERENCE_ROLES, REFERENCE_ROLE_LABELS, normalizeReferenceRole } from '../core/reference-roles.js';
-import { textValue } from '../core/text-values.js';
 import {
   SCENE_ENTITY_TYPES,
   SCENE_ENTITY_LABELS,
@@ -24,9 +32,63 @@ import {
   toggleSceneAudioRecording,
 } from '../media/scene-audio-recorder.js';
 
+// Extracted seams imports
+import {
+  bindProtectedAsset,
+  setupScenePlayback,
+  pauseActiveScenePlayback,
+  handleAssetError,
+  setElementProtectedAsset,
+} from './media/protected-media-binding.js';
+
+/** @deprecated Import from protected-media-binding.js */
+export { setupScenePlayback };
+
+import {
+  replaceScene,
+  updateScene,
+  updateSceneById,
+  applySceneConfigOverride,
+  clearSceneConfigOverride,
+  selectSceneEntityVersion,
+  applyVideoKeyframes,
+  replaceSceneFromServer,
+  toggleDefaultReference,
+} from './scene-controller/scene-actions.js';
+
+import { ENTITY_CONFIG } from './scene-controller/entity-registry.js';
+
+import {
+  isEntityLoading,
+  hasExistingEntity,
+  sceneFreshnessByType,
+  entityStatuses,
+  sceneStatusSummary,
+} from './scene-controller/entity-status.js';
+
 let els = {};
-let activeScenePlayback = null;
 let scenePlaybackCleanups = new Map();
+
+function runGenerationWorkflow(type, index, domEls, cb, instruction = '') {
+  switch (type) {
+    case 'action':
+      return regenerateAction(index, domEls, cb);
+    case 'prompt':
+      return regeneratePrompt(index, domEls, cb);
+    case 'dialogue':
+      return regenerateDialogue(index, domEls, cb, instruction);
+    case 'image':
+      return regenerateImage(index, null, domEls, cb).catch((error) => cb(error.message));
+    case 'audio':
+      return regenerateAudio(index, null, domEls, cb).catch((error) => cb(error.message));
+    case 'video':
+      return regenerateVideo(index, null, domEls, cb).catch((error) => cb(error.message));
+    case 'subtitle':
+      return regenerateSubtitles(index, null, domEls, cb).catch((error) => cb(error.message));
+    default:
+      return Promise.reject(new Error(`Unknown entity type: ${type}`));
+  }
+}
 
 export function renderEntityOperationState() {
   const busy = Boolean(uiStore.get().operation);
@@ -36,11 +98,6 @@ export function renderEntityOperationState() {
     button.disabled = busy || button.classList.contains('is-current');
   });
 }
-
-const debouncedQueueSync = debounce(() => {
-  const record = getCurrentStoryboardRecord();
-  if (record) { queueSync(record, (t) => els.statusText.textContent = t); }
-}, 500);
 
 const modalState = {
   confirmResolve: null,
@@ -58,198 +115,14 @@ const modalState = {
 const referenceModalState = { sceneId: null };
 const MISSING_ENTITY_STATUS = Object.freeze({ key: 'missing', label: 'Never generated' });
 
-const handleAssetError = (err) => {
-  if (err.name !== 'AbortError') console.error('Asset load error:', err);
-};
-
-function setElementProtectedAsset(element, propertyName, path, cacheKeyName = propertyName) {
-  const datasetKey = cacheKeyName + 'Path';
-  const abortKey = '_' + cacheKeyName + 'Abort';
-  
-  if (element.dataset[datasetKey] !== path) {
-    element.dataset[datasetKey] = path;
-    if (element[abortKey]) {
-      element[abortKey].abort();
-      element[abortKey] = null;
-    }
-    if (path) {
-      const controller = new AbortController();
-      element[abortKey] = controller;
-      loadProtectedAsset(path, { signal: controller.signal })
-        .then(url => {
-          if (url && element.dataset[datasetKey] === path) {
-            element[propertyName] = url;
-          }
-        })
-        .catch(handleAssetError);
-    } else {
-      element.removeAttribute(propertyName);
-    }
-  }
-}
-
-const ENTITY_CONFIG = {
-  action: {
-    title: 'Still Action',
-    kind: 'text',
-    fieldLabel: 'Still action — what the still depicts',
-    getValue: (scene) => textValue(scene.beat, ['beat']),
-    setValue: (scene, value) => { scene.beat = value; },
-    regen: (index, els, cb) => regenerateAction(index, els, cb),
-  },
-  prompt: {
-    title: 'Image Prompt',
-    kind: 'text',
-    fieldLabel: 'Visual prompt',
-    getValue: (scene) => textValue(scene.prompt, ['prompt']),
-    setValue: (scene, value) => { setImagePrompt(scene, value); },
-    regen: (index, els, cb) => regeneratePrompt(index, els, cb),
-    regenBeat: (index, els, cb) => regenerateAction(index, els, cb),
-  },
-  dialogue: {
-    title: 'Spoken Narration',
-    kind: 'text',
-    fieldLabel: 'Spoken Narration',
-    getValue: (scene) => textValue(scene.narrationText, ['narrationText']),
-    setValue: (scene, value) => { scene.narrationText = value; scene.narrationIsFallback = false; },
-    regen: (index, els, cb) => regenerateDialogue(index, els, cb, els.entityModalInstruction?.value.trim() || ''),
-  },
-  image: {
-    title: 'Image',
-    kind: 'image',
-    versions: (scene) => imageShot(scene).versions,
-    activeIndex: (scene) => imageShot(scene).activeVersionIndex,
-    selectVersion: (scene, vIndex) => { setActiveImageVersion(scene, vIndex); scene.activeVisualType = 'image'; },
-    // regenerate* throws deliberately on unmet prerequisites so the caller "has to consciously deal
-    // with it" rather than silently no-op-ing — surface that via the same setStatus callback used
-    // for progress messages, instead of discarding it.
-    regen: (index, els, cb) => regenerateImage(index, null, els, cb).catch((error) => cb(error.message)),
-  },
-  audio: {
-    title: 'Audio',
-    kind: 'audio',
-    versions: (scene) => scene.audioVersions || [],
-    activeIndex: (scene) => scene.activeAudioVersionIndex,
-    selectVersion: (scene, vIndex) => { scene.activeAudioVersionIndex = vIndex; },
-    regen: (index, els, cb) => regenerateAudio(index, null, els, cb).catch((error) => cb(error.message)),
-  },
-  video: {
-    title: 'Video',
-    kind: 'video',
-    versions: (scene) => imageShot(scene).videoVersions || [],
-    activeIndex: (scene) => imageShot(scene).activeVideoVersionIndex,
-    selectVersion: (scene, vIndex) => { setActiveVideoVersion(scene, vIndex); scene.activeVisualType = 'video'; },
-    regen: (index, els, cb) => regenerateVideo(index, null, els, cb).catch((error) => cb(error.message)),
-  },
-  subtitle: {
-    title: 'Subtitles',
-    kind: 'subtitle',
-    versions: (scene) => scene.subtitleVersions || [],
-    activeIndex: (scene) => scene.activeSubtitleVersionIndex,
-    selectVersion: (scene, vIndex) => { scene.activeSubtitleVersionIndex = vIndex; },
-    regen: (index, els, cb) => regenerateSubtitles(index, null, els, cb).catch((error) => cb(error.message)),
-  },
-};
-
-function isEntityLoading(type, scene, operation) {
-  if (!operation) return false;
-  switch (type) {
-    case 'prompt': return operation.type === 'prompts' || ((operation.type === 'prompt' || operation.type === 'action') && operation.sceneId === scene.id);
-    case 'action': return operation.type === 'action' && operation.sceneId === scene.id;
-    case 'image': return ['image', 'imagesSerial'].includes(operation.type) && operation.sceneId === scene.id;
-    case 'dialogue': return operation.type === 'dialogueAll' || (operation.type === 'dialogue' && operation.sceneId === scene.id);
-    case 'audio': return ['audio', 'audioSerial'].includes(operation.type) && operation.sceneId === scene.id;
-    case 'video': return ['video', 'videosSerial'].includes(operation.type) && operation.sceneId === scene.id;
-    case 'subtitle': return ['subtitle', 'subtitlesSerial'].includes(operation.type) && operation.sceneId === scene.id;
-    default: return false;
-  }
-}
-
-// Distinguishes "nothing here yet" from "there's already a version" so entity-modal buttons/confirm
-// copy can say Generate vs. Regenerate accurately instead of always claiming a version exists.
-function hasExistingEntity(type, scene) {
-  const config = ENTITY_CONFIG[type];
-  if (config.kind === 'text') return Boolean(String(config.getValue(scene) || '').trim());
-  return (config.versions(scene) || []).some((version) => Boolean(version?.path));
-}
-
-function sceneFreshnessByType(scene) {
-  const freshness = computeStaleness(scene);
-  return {
-    action: false,
-    prompt: freshness.promptStale,
-    dialogue: false,
-    image: freshness.imageStale,
-    audio: freshness.audioStale,
-    video: freshness.videoStale || freshness.videoPromptStale || !String(scene.videoPrompt || '').trim(),
-    subtitle: freshness.subtitleStale,
-  };
-}
-
-function comparableConfig(config = {}) {
-  return Object.fromEntries(Object.entries(config)
-    .filter(([key, value]) => key !== 'generatedAt' && value !== undefined));
-}
-
-function entityStatuses(scene, operation, recentJobs = getCachedJobs(), latestJobs = null) {
-  const staleByType = sceneFreshnessByType(scene);
-  const record = getCurrentStoryboardRecord() || {};
-  const statuses = {};
-
-  for (const type of SCENE_ENTITY_TYPES) {
-    const present = hasExistingEntity(type, scene);
-    const loading = isEntityLoading(type, scene, operation);
-    const lastJob = (latestJobs?.[type] || buildLatestJobsByScene(recentJobs, type)).get(scene.id);
-    const failed = !loading && lastJob?.status === 'failed';
-    const nextConfig = resolvedEntityConfig(scene, type, { record, elements: els });
-    const previousConfig = scene.entityGenerationProvenance?.[type];
-    const configChanged = Boolean(present && previousConfig
-      && JSON.stringify(comparableConfig(previousConfig)) !== JSON.stringify(comparableConfig(nextConfig)));
-    const stale = Boolean(present && (staleByType[type] || configChanged));
-
-    let key = 'ready';
-    let label = 'Ready';
-    let reason = '';
-    if (loading) {
-      key = 'generating';
-      label = 'Generating';
-    } else if (failed) {
-      key = 'failed';
-      label = 'Issue';
-      reason = lastJob?.error?.message || (typeof lastJob?.error === 'string' ? lastJob.error : null) || lastJob?.message || 'The latest generation attempt failed.';
-    } else if (!present) {
-      ({ key, label } = MISSING_ENTITY_STATUS);
-    } else if (stale) {
-      key = 'stale';
-      label = 'Needs update';
-      reason = configChanged ? 'Scene generation settings changed.' : 'An upstream scene input changed.';
-    }
-    statuses[type] = { type, present, loading, failed, stale, key, label, reason, config: nextConfig };
-  }
-  return statuses;
-}
-
-function sceneStatusSummary(statuses) {
-  const values = Object.values(statuses);
-  const ready = values.filter((status) => status.present && !status.stale && !status.failed).length;
-  const failed = values.filter((status) => status.failed).length;
-  const loading = values.filter((status) => status.loading).length;
-  const stale = values.filter((status) => status.stale && !status.failed).length;
-  const missing = values.filter((status) => !status.present && !status.loading && !status.failed).length;
-
-  if (failed) return `${ready}/7 ready · ${failed} issue${failed === 1 ? '' : 's'}`;
-  if (loading) return `Generating ${loading} of 7`;
-  if (stale) return `${ready}/7 ready · ${stale} update${stale === 1 ? '' : 's'}`;
-  if (missing === 7) return 'Not started';
-  if (missing) return `${ready}/7 ready · ${missing} not run`;
-  return '7/7 ready';
-}
-
 function configDescription(type, config) {
   const values = [];
   if (config.provider) values.push(String(config.provider));
   if (config.model) values.push(String(config.model));
-  if (type === 'audio' && config.voice) values.push(`Voice: ${config.voice}`);
+  if (type === 'audio' && config.voice) {
+    const voiceLabel = typeof config.voice === 'object' ? (config.voice.label || config.voice.voiceId) : config.voice;
+    if (voiceLabel) values.push(`Voice: ${voiceLabel}`);
+  }
   if (config.aspectRatio) values.push(config.aspectRatio);
   if (config.resolutionTier) values.push(config.resolutionTier);
   if (config.quality) values.push(config.quality);
@@ -257,21 +130,6 @@ function configDescription(type, config) {
   if (config.motionIntensity) values.push(`${config.motionIntensity} motion`);
   if (config.style) values.push(`${config.style} style`);
   return values.length ? values.join(' · ') : 'Project generation settings';
-}
-
-function replaceScene(index, update) {
-  const scenes = sceneStore.get().scenes.map((scene, sceneIndex) => {
-    if (sceneIndex !== index) return scene;
-    const next = { ...scene };
-    update(next);
-    return next;
-  });
-  sceneStore.set({ scenes });
-  const record = getCurrentStoryboardRecord();
-  if (record) {
-    record.scenes = scenes;
-    queueSync(record, (message) => { if (els.statusText) els.statusText.textContent = message; });
-  }
 }
 
 function setupConfirmModal() {
@@ -299,7 +157,7 @@ function selectedOptionLabel(select, fallback = '') {
   return select?.selectedOptions?.[0]?.textContent?.trim() || select?.value || fallback;
 }
 
-export function regenerationProviderSelection(type, domEls) {
+export function regenerationProviderSelection(type, domEls, scene = null) {
   const selections = {
     prompt: { kind: 'LLM provider', select: domEls.textProvider },
     action: { kind: 'LLM provider', select: domEls.textProvider },
@@ -310,11 +168,21 @@ export function regenerationProviderSelection(type, domEls) {
   };
   const selection = selections[type];
   if (!selection) return null;
-  return { kind: selection.kind, label: selectedOptionLabel(selection.select, selection.fallback) };
+
+  let label = '';
+  const overrideProvider = scene?.entityOverrides?.[type]?.provider;
+  if (overrideProvider && selection.select) {
+    const option = Array.from(selection.select.options).find((opt) => opt.value === overrideProvider);
+    label = option ? (option.textContent?.trim() || '') : overrideProvider.replace(/^./, (letter) => letter.toUpperCase());
+  } else {
+    label = selectedOptionLabel(selection.select, selection.fallback);
+  }
+
+  return { kind: selection.kind, label };
 }
 
-function configureRegenerationProvider(type) {
-  const selection = regenerationProviderSelection(type, els);
+function configureRegenerationProvider(type, scene = null) {
+  const selection = regenerationProviderSelection(type, els, scene);
   if (!els.confirmVideoSummary) return;
   els.confirmVideoSummary.hidden = !selection;
   if (!selection) return;
@@ -382,12 +250,8 @@ function configureVideoKeyframeConfirmation(scene, sceneIndex) {
     .map((reference) => ({ role: reference.role || '', path: reference.path || '' }))
     .sort((a, b) => `${a.role}:${a.path}`.localeCompare(`${b.role}:${b.path}`)));
   const showPreview = (element, assetPath) => {
-    element.removeAttribute('src');
-    element.dataset.assetPath = assetPath || '';
     element.hidden = !assetPath;
-    if (assetPath) loadProtectedAsset(assetPath).then((url) => {
-      if (url && element.dataset.assetPath === assetPath) element.src = url;
-    }).catch(handleAssetError);
+    bindProtectedAsset(element, assetPath);
   };
   const refresh = () => {
     const start = els.confirmVideoStartFrame.value;
@@ -412,15 +276,7 @@ function configureVideoKeyframeConfirmation(scene, sceneIndex) {
   refresh();
 
   modalState.confirmApply = () => {
-    const scenes = sceneStore.get().scenes.map((current, index) => {
-      if (index !== sceneIndex) return current;
-      const next = { ...current };
-      setVideoKeyframes(next, els.confirmVideoStartFrame.value, els.confirmVideoEndFrame.value || null);
-      return next;
-    });
-    sceneStore.set({ scenes });
-    const currentRecord = getCurrentStoryboardRecord();
-    if (currentRecord) { currentRecord.scenes = scenes; queueSync(currentRecord); }
+    applyVideoKeyframes(sceneIndex, els.confirmVideoStartFrame.value, els.confirmVideoEndFrame.value || null);
   };
 }
 
@@ -431,7 +287,9 @@ function confirmRegeneration(message, confirmLabel = 'Regenerate', options = {})
     if (els.confirmVideoKeyframes) els.confirmVideoKeyframes.hidden = true;
     if (els.confirmVideoSummary) els.confirmVideoSummary.hidden = true;
     if (els.confirmVideoNeedsImageNote) els.confirmVideoNeedsImageNote.hidden = true;
-    configureRegenerationProvider(options.entityType);
+    const sceneIndex = currentEntityModalSceneIndex();
+    const scene = options.videoScene || (sceneIndex !== -1 ? sceneStore.get().scenes[sceneIndex] : null);
+    configureRegenerationProvider(options.entityType, scene);
     if (options.videoScene) configureVideoKeyframeConfirmation(options.videoScene, options.sceneIndex);
     els.confirmRegenMessage.textContent = message;
     els.confirmRegenConfirmBtn.textContent = confirmLabel;
@@ -535,18 +393,6 @@ function renderSceneReferencesModal() {
   renderEntityOperationState();
 }
 
-function replaceSceneFromReferenceResponse(data) {
-  const updated = adaptSceneImageShot(data.scene);
-  const scenes = sceneStore.get().scenes.map((scene) => scene.id === updated.id ? updated : scene);
-  sceneStore.set({ scenes });
-  const record = getCurrentStoryboardRecord();
-  if (record) {
-    record.scenes = scenes;
-    record.revision = data.revision;
-    persistStoryboardLibrary();
-  }
-}
-
 function setupSceneReferencesModal() {
   const modal = els.sceneReferencesModal;
   if (!modal || modal.dataset.wired) return;
@@ -560,18 +406,7 @@ function setupSceneReferencesModal() {
     const index = currentReferenceSceneIndex();
     if (!checkbox || index === -1) return;
     const url = checkbox.dataset.defaultReference;
-    const scenes = sceneStore.get().scenes.map((scene, sceneIndex) => {
-      if (sceneIndex !== index) return scene;
-      const next = adaptSceneImageShot({ ...scene, shots: (scene.shots || []).map((shot) => ({ ...shot })) });
-      const shot = imageShot(next);
-      const disabled = new Set(shot.disabledStyleReferencePaths || []);
-      if (checkbox.checked) disabled.delete(url); else disabled.add(url);
-      shot.disabledStyleReferencePaths = [...disabled];
-      return next;
-    });
-    sceneStore.set({ scenes });
-    const record = getCurrentStoryboardRecord();
-    if (record) { record.scenes = scenes; queueSync(record, (text) => { els.sceneReferencesSaveNote.textContent = text; }); }
+    toggleDefaultReference(index, url, checkbox.checked, (text) => { els.sceneReferencesSaveNote.textContent = text; });
   });
 
   els.sceneReferenceInput.addEventListener('change', async (event) => {
@@ -585,7 +420,7 @@ function setupSceneReferencesModal() {
       await ensureProjectSynced();
       const form = new FormData(); [...files].forEach((file) => form.append('files', file));
       const data = await api(`/api/projects/${encodeURIComponent(record.id)}/scenes/${encodeURIComponent(scene.id)}/references`, { method: 'POST', body: form });
-      replaceSceneFromReferenceResponse(data); els.sceneReferencesSaveNote.textContent = 'Uploaded';
+      replaceSceneFromServer(data); els.sceneReferencesSaveNote.textContent = 'Uploaded';
     } catch (error) { els.sceneReferencesSaveNote.textContent = `Upload failed: ${error.message}`; }
     finally { modal.removeAttribute('aria-busy'); event.target.value = ''; renderSceneReferencesModal(); }
   });
@@ -599,7 +434,7 @@ function setupSceneReferencesModal() {
       modal.setAttribute('aria-busy', 'true'); els.sceneReferencesSaveNote.textContent = 'Deleting…';
       await ensureProjectSynced();
       const data = await api(`/api/projects/${encodeURIComponent(record.id)}/scenes/${encodeURIComponent(scene.id)}/references`, { method: 'DELETE', body: JSON.stringify({ path: button.dataset.sceneReferencePath }) });
-      replaceSceneFromReferenceResponse(data); els.sceneReferencesSaveNote.textContent = 'Deleted';
+      replaceSceneFromServer(data); els.sceneReferencesSaveNote.textContent = 'Deleted';
     } catch (error) { els.sceneReferencesSaveNote.textContent = `Delete failed: ${error.message}`; }
     finally { modal.removeAttribute('aria-busy'); renderSceneReferencesModal(); }
   });
@@ -616,7 +451,7 @@ function setupSceneReferencesModal() {
         method: 'PATCH',
         body: JSON.stringify({ path: select.dataset.sceneReferenceRole, role: select.value }),
       });
-      replaceSceneFromReferenceResponse(data); els.sceneReferencesSaveNote.textContent = 'Role saved';
+      replaceSceneFromServer(data); els.sceneReferencesSaveNote.textContent = 'Role saved';
     } catch (error) { els.sceneReferencesSaveNote.textContent = `Role update failed: ${error.message}`; }
     finally { modal.removeAttribute('aria-busy'); renderSceneReferencesModal(); }
   });
@@ -686,42 +521,33 @@ function renderEntityModalMedia(scene, type, config) {
   modalState.mediaAbortController = new AbortController();
   const signal = modalState.mediaAbortController.signal;
 
+  const guard = () => modalState.mediaPath === path;
   if (type === 'image') {
-    els.entityModalImage.dataset.assetPath = path;
-    loadProtectedAsset(path, { signal }).then((url) => { if (url && els.entityModalImage.dataset.assetPath === path && modalState.mediaPath === path) els.entityModalImage.src = url; }).catch(handleAssetError);
+    bindProtectedAsset(els.entityModalImage, path, { signal, extraGuard: guard });
     els.entityModalImage.hidden = false;
   } else if (type === 'video') {
-    els.entityModalVideo.dataset.assetPath = path;
-    loadProtectedAsset(path, { signal }).then((url) => { if (url && els.entityModalVideo.dataset.assetPath === path && modalState.mediaPath === path) els.entityModalVideo.src = url; }).catch(handleAssetError);
+    bindProtectedAsset(els.entityModalVideo, path, { signal, extraGuard: guard });
     els.entityModalVideo.hidden = false;
   } else if (type === 'audio') {
-    els.entityModalAudio.dataset.assetPath = path;
-    loadProtectedAsset(path, { signal }).then((url) => { if (url && els.entityModalAudio.dataset.assetPath === path && modalState.mediaPath === path) els.entityModalAudio.src = url; }).catch(handleAssetError);
+    bindProtectedAsset(els.entityModalAudio, path, { signal, extraGuard: guard });
     els.entityModalAudio.hidden = false;
     const words = active?.alignment?.words || [];
     modalState.alignmentWords = words;
     modalState.captionTarget = els.entityModalAudioCaption;
     renderCaptionInto(els.entityModalAudioCaption, words, 0);
   } else if (type === 'subtitle') {
-    // A subtitle version has no visual asset of its own, so preview it against the scene's current
-    // image/video. Audio is different: play `sourceAudioPath` (the exact clip this version's word
-    // timing was computed against), not necessarily the scene's current active audio -- if audio has
-    // since been regenerated, the two would drift apart and the karaoke preview would look broken
-    // (captions no longer matching the words actually being spoken) instead of just being stale.
     const shot = imageShot(scene);
     const visualVersions = scene.activeVisualType === 'video' ? shot.videoVersions : shot.versions;
     const visualIndex = scene.activeVisualType === 'video' ? shot.activeVideoVersionIndex : shot.activeVersionIndex;
     const visualPath = visualVersions?.[visualIndex]?.path || null;
     const visualEl = scene.activeVisualType === 'video' ? els.entityModalVideo : els.entityModalImage;
     if (visualPath) {
-      visualEl.dataset.assetPath = visualPath;
-      loadProtectedAsset(visualPath, { signal }).then((url) => { if (url && visualEl.dataset.assetPath === visualPath && modalState.mediaPath === path) visualEl.src = url; }).catch(handleAssetError);
+      bindProtectedAsset(visualEl, visualPath, { signal, extraGuard: guard });
       visualEl.hidden = false;
     }
     const audioPath = active?.sourceAudioPath || null;
     if (audioPath) {
-      els.entityModalAudio.dataset.assetPath = audioPath;
-      loadProtectedAsset(audioPath, { signal }).then((url) => { if (url && els.entityModalAudio.dataset.assetPath === audioPath && modalState.mediaPath === path) els.entityModalAudio.src = url; }).catch(handleAssetError);
+      bindProtectedAsset(els.entityModalAudio, audioPath, { signal, extraGuard: guard });
       els.entityModalAudio.hidden = false;
     }
     const words = active?.words || [];
@@ -784,8 +610,7 @@ function renderEntityModalHistory(scene, type, config, busy) {
       meta.append(label, provider);
       const audio = document.createElement('audio');
       audio.controls = true;
-      audio.dataset.assetPath = version.path;
-      loadProtectedAsset(version.path, { signal }).then((url) => { if (url && audio.dataset.assetPath === version.path) audio.src = url; }).catch(handleAssetError);
+      bindProtectedAsset(audio, version.path, { signal });
       const selectBtn = document.createElement('button');
       selectBtn.type = 'button';
       selectBtn.className = 'audio-version-select';
@@ -815,8 +640,7 @@ function renderEntityModalHistory(scene, type, config, busy) {
       mediaEl = document.createElement('img');
       mediaEl.alt = `Scene version ${vIndex + 1}`;
     }
-    mediaEl.dataset.assetPath = version.path;
-    loadProtectedAsset(version.path, { signal }).then((url) => { if (url && mediaEl.dataset.assetPath === version.path) mediaEl.src = url; }).catch(handleAssetError);
+    bindProtectedAsset(mediaEl, version.path, { signal });
     const meta = document.createElement('div');
     meta.className = 'version-meta';
     const providerName = version.provider ? String(version.provider).replace(/^./, (letter) => letter.toUpperCase()) : '';
@@ -863,9 +687,7 @@ function rowMediaPreview(scene, type) {
       : shot.versions?.[shot.activeVersionIndex];
     media = document.createElement(scene.activeVisualType === 'video' ? 'video' : 'img');
     path && (media.dataset.subtitlePath = path);
-    if (visual?.path) {
-      loadProtectedAsset(visual.path).then((url) => { if (url) media.src = url; }).catch(handleAssetError);
-    }
+    bindProtectedAsset(media, visual?.path);
     const caption = document.createElement('span');
     caption.className = 'entity-row-caption-preview';
     caption.textContent = `${active.cues?.length || active.words?.length || 0} timed captions`;
@@ -875,10 +697,7 @@ function rowMediaPreview(scene, type) {
     media = document.createElement('img');
     media.alt = `${SCENE_ENTITY_LABELS[type]} preview`;
   }
-  media.dataset.assetPath = path;
-  loadProtectedAsset(path).then((url) => {
-    if (url && media.dataset.assetPath === path) media.src = url;
-  }).catch(handleAssetError);
+  bindProtectedAsset(media, path);
   container.appendChild(media);
   return container;
 }
@@ -1019,11 +838,13 @@ function entityControllerRow(scene, status) {
   generate.disabled = Boolean(uiStore.get().operation);
   controls.appendChild(generate);
   if (config.kind !== 'text' && status.present) {
-    const details = document.createElement('button');
-    details.type = 'button';
+    const details = document.createElement('a');
+    details.href = '#';
+    details.style.color = 'white';
+    details.style.fontSize = '12px';
     details.className = 'secondary entity-row-secondary';
     details.dataset.entityDetails = type;
-    details.textContent = 'History & tools';
+    details.textContent = 'more info';
     controls.appendChild(details);
   }
   body.append(content, controls);
@@ -1066,7 +887,7 @@ function renderEntityDetail() {
 
   const showBeat = type === 'prompt';
   const showVideoPrompt = type === 'video';
-  const hasBeatRegen = Boolean(config.regenBeat);
+  const hasBeatRegen = type === 'prompt';
   els.entityModalBeatField.hidden = !showBeat;
   if (showBeat && document.activeElement !== els.entityModalBeat) els.entityModalBeat.value = scene.beat || '';
   els.entityModalBeat.disabled = busy;
@@ -1177,10 +998,10 @@ function generateControllerEntity(type) {
     entityType: type,
     ...(type === 'video' ? { videoScene: scene, sceneIndex: index } : {}),
   };
-  confirmRegeneration(`Generate ${config.title.toLowerCase()} for scene ${index + 1}? Existing versions will remain in history.`, 'Generate', confirmationOptions)
+  confirmRegeneration(`Generate ${config.title.toLowerCase()} for scene ${index + 1}?`, 'Generate', confirmationOptions)
     .then((confirmed) => {
       if (!confirmed) return;
-      config.regen(index, els, (message) => { els.statusText.textContent = message; })
+      runGenerationWorkflow(type, index, els, (message) => { els.statusText.textContent = message; })
         .then(refreshJobsAndRerenderScenes)
         .then(renderEntityModal);
     });
@@ -1261,7 +1082,7 @@ function setupEntityModal() {
     const useDefault = event.target.closest('[data-entity-use-default]');
     if (useDefault) {
       const index = currentEntityModalSceneIndex();
-      replaceScene(index, (scene) => clearEntityOverride(scene, useDefault.dataset.entityUseDefault));
+      clearSceneConfigOverride(index, useDefault.dataset.entityUseDefault);
       modalState.configType = null;
       return;
     }
@@ -1281,7 +1102,7 @@ function setupEntityModal() {
           ? (control.value === '' ? null : Number(control.value))
           : control.value;
       }
-      replaceScene(currentEntityModalSceneIndex(), (scene) => setEntityOverride(scene, type, override));
+      applySceneConfigOverride(currentEntityModalSceneIndex(), type, override);
       modalState.configType = null;
     }
   });
@@ -1370,9 +1191,6 @@ function setupEntityModal() {
     const config = ENTITY_CONFIG[modalState.type];
     const scene = sceneStore.get().scenes[index];
     const verb = hasExistingEntity(modalState.type, scene) ? 'Regenerate' : 'Generate';
-    // Scene expansion is a deliberate storyboard-edit operation (see the "Expand into scenes"
-    // action on the narration view), never an incidental side effect of regenerating an image —
-    // this button always just regenerates, regardless of how long the scene's narration has grown.
     const confirmationOptions = {
       entityType: modalState.type,
       ...(modalState.type === 'video' ? { videoScene: scene, sceneIndex: index } : {}),
@@ -1383,7 +1201,7 @@ function setupEntityModal() {
       // synchronously inside regenerate* before its first await) is visible right away, instead of
       // running invisibly behind a modal that never closes itself.
       els.entityModal.close();
-      config.regen(index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
+      runGenerationWorkflow(modalState.type, index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
     });
   });
 
@@ -1405,12 +1223,11 @@ function setupEntityModal() {
   els.entityModalRegenBeatBtn.addEventListener('click', () => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
-    const config = ENTITY_CONFIG[modalState.type];
-    if (!config.regenBeat) return;
+    if (modalState.type !== 'prompt') return;
     const scene = sceneStore.get().scenes[index];
     const verb = Boolean(String(scene.beat || '').trim()) ? 'Regenerate' : 'Generate';
     confirmRegeneration(`${verb} the still action for scene ${index + 1}? This marks the visual prompt and video motion as needing update.`, verb, { entityType: 'action' }).then((confirmed) => {
-      if (confirmed) config.regenBeat(index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
+      if (confirmed) runGenerationWorkflow('action', index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
     });
   });
 
@@ -1421,7 +1238,7 @@ function setupEntityModal() {
     const scene = sceneStore.get().scenes[index];
     const verb = hasExistingEntity(modalState.type, scene) ? 'Regenerate' : 'Generate';
     confirmRegeneration(`${verb} the ${(config.fieldLabel || config.title).toLowerCase()} for scene ${index + 1}? This replaces the current version.`, verb, { entityType: modalState.type }).then((confirmed) => {
-      if (confirmed) config.regen(index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
+      if (confirmed) runGenerationWorkflow(modalState.type, index, els, (t) => els.statusText.textContent = t).then(refreshJobsAndRerenderScenes);
     });
   });
 
@@ -1429,16 +1246,10 @@ function setupEntityModal() {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
     const value = els.entityModalBeat.value;
-    const scenes = sceneStore.get().scenes.map((scene, i) => {
-      if (i !== index) return scene;
-      const next = { ...scene, beat: value };
-      invalidateVideoMotion(next);
-      return next;
-    });
-    sceneStore.set({ scenes });
-    const record = getCurrentStoryboardRecord();
-    if (record) record.scenes = scenes;
-    debouncedQueueSync();
+    updateScene(index, (scene) => {
+      scene.beat = value;
+      invalidateVideoMotion(scene);
+    }, { sync: 'debounced', statusCallback: (msg) => { els.statusText.textContent = msg; } });
   });
 
   if (els.entityModalVideoPrompt) {
@@ -1446,16 +1257,11 @@ function setupEntityModal() {
       const index = currentEntityModalSceneIndex();
       if (index === -1) return;
       const value = els.entityModalVideoPrompt.value;
-      const scenes = sceneStore.get().scenes.map((scene, i) => (i === index ? {
-        ...scene,
-        videoPrompt: value,
-        videoPromptGeneratedFromBeat: scene.beat || '',
-        videoPromptGeneratedFromNarration: scene.narrationText || null,
-      } : scene));
-      sceneStore.set({ scenes });
-      const record = getCurrentStoryboardRecord();
-      if (record) record.scenes = scenes;
-      debouncedQueueSync();
+      updateScene(index, (scene) => {
+        scene.videoPrompt = value;
+        scene.videoPromptGeneratedFromBeat = scene.beat || '';
+        scene.videoPromptGeneratedFromNarration = scene.narrationText || null;
+      }, { sync: 'debounced', statusCallback: (msg) => { els.statusText.textContent = msg; } });
     });
   }
 
@@ -1463,17 +1269,10 @@ function setupEntityModal() {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
     const value = els.entityModalTextarea.value;
-    const scenes = sceneStore.get().scenes.map((scene, i) => {
-      if (i !== index) return scene;
-      const next = { ...scene };
-      ENTITY_CONFIG[modalState.type].setValue(next, value);
-      if (modalState.type === 'dialogue' || modalState.type === 'action') invalidateVideoMotion(next);
-      return next;
-    });
-    sceneStore.set({ scenes });
-    const record = getCurrentStoryboardRecord();
-    if (record) record.scenes = scenes;
-    debouncedQueueSync();
+    updateScene(index, (scene) => {
+      ENTITY_CONFIG[modalState.type].setValue(scene, value);
+      if (modalState.type === 'dialogue' || modalState.type === 'action') invalidateVideoMotion(scene);
+    }, { sync: 'debounced', statusCallback: (msg) => { els.statusText.textContent = msg; } });
   });
 
   els.entityModalHistoryList.addEventListener('click', (event) => {
@@ -1482,15 +1281,7 @@ function setupEntityModal() {
     const target = event.target.closest('.audio-version-select') || event.target.closest('.version-thumb');
     if (!target || target.disabled) return;
     const vIndex = parseInt(target.dataset.vindex, 10);
-    const scenes = sceneStore.get().scenes.map((scene, i) => {
-      if (i !== index) return scene;
-      const next = { ...scene };
-      ENTITY_CONFIG[modalState.type].selectVersion(next, vIndex);
-      return next;
-    });
-    sceneStore.set({ scenes });
-    const record = getCurrentStoryboardRecord();
-    if (record) { record.scenes = scenes; queueSync(record); }
+    selectSceneEntityVersion(index, modalState.type, vIndex);
   });
 }
 
@@ -1530,110 +1321,7 @@ export function initRendering(domEls) {
   uiStore.subscribe(() => { renderScenes(); renderEntityModal(); });
 }
 
-export function setupScenePlayback({ toggle, video, audio, hasVideo, hasAudio, words, captionEl }) {
-  let playing = false;
-  let duration = 0;
-  let currentTime = 0;
-  let startedAt = 0;
-  let animationFrame = null;
 
-  const mediaDuration = (element, enabled) => enabled && Number.isFinite(element.duration) ? element.duration : 0;
-  const setToggleState = (state) => {
-    toggle.dataset.state = state;
-    const action = state === 'playing' ? 'Pause' : state === 'ended' ? 'Replay' : 'Play';
-    toggle.setAttribute('aria-label', `${action} scene`);
-  };
-  const updateDuration = () => {
-    duration = Math.max(mediaDuration(video, hasVideo), mediaDuration(audio, hasAudio));
-    toggle.disabled = duration <= 0;
-    currentTime = Math.min(currentTime, duration || 0);
-  };
-  const positionMedia = (target, shouldPlay) => {
-    const videoDuration = mediaDuration(video, hasVideo);
-    const audioDuration = mediaDuration(audio, hasAudio);
-    if (videoDuration) {
-      const loopsForAudio = audioDuration > videoDuration;
-      const videoTime = loopsForAudio ? target % videoDuration : Math.min(target, videoDuration);
-      video.loop = loopsForAudio;
-      if (Math.abs(video.currentTime - videoTime) > 0.15) video.currentTime = videoTime;
-      if (shouldPlay && target < duration && (target < videoDuration || loopsForAudio)) video.play().catch(() => {});
-      else video.pause();
-    }
-    if (audioDuration) {
-      const audioTime = Math.min(target, audioDuration);
-      if (Math.abs(audio.currentTime - audioTime) > 0.15) audio.currentTime = audioTime;
-      if (shouldPlay && target < audioDuration) audio.play().catch(() => {});
-      else audio.pause();
-    }
-  };
-  const pause = () => {
-    if (animationFrame) cancelAnimationFrame(animationFrame);
-    animationFrame = null;
-    playing = false;
-    video.pause();
-    audio.pause();
-    setToggleState(currentTime >= duration && duration ? 'ended' : 'paused');
-    if (activeScenePlayback === controller) activeScenePlayback = null;
-  };
-  const tick = (now) => {
-    currentTime = Math.min(duration, (now - startedAt) / 1000);
-    if (captionEl) renderCaptionInto(captionEl, words, currentTime);
-    if (currentTime >= duration) {
-      positionMedia(duration, false);
-      pause();
-      return;
-    }
-    animationFrame = requestAnimationFrame(tick);
-  };
-  const play = () => {
-    if (!duration) return;
-    if (activeScenePlayback && activeScenePlayback !== controller) activeScenePlayback.pause();
-    document.querySelectorAll('.audio-version-thumb audio').forEach((element) => element.pause());
-    [els.timelineVideo, els.timelineAudio].forEach((element) => { if (element && !element.paused) element.pause(); });
-    if (currentTime >= duration) currentTime = 0;
-    activeScenePlayback = controller;
-    playing = true;
-    setToggleState('playing');
-    startedAt = performance.now() - currentTime * 1000;
-    positionMedia(currentTime, true);
-    // Paint immediately rather than waiting for the first tick(), so resuming from a paused
-    // mid-scene position doesn't show a stale (or missing) caption for one frame.
-    if (captionEl) renderCaptionInto(captionEl, words, currentTime);
-    animationFrame = requestAnimationFrame(tick);
-  };
-  const togglePlayback = () => { if (playing) pause(); else play(); };
-  const controller = {
-    pause,
-    cleanup() {
-      pause();
-      // The renderer owns the media sources. A playback controller is replaced whenever the
-      // scene's video/audio/subtitle combination changes, often while the same DOM node and the
-      // same audio asset are being reused. Removing src here left the renderer's dataset cache
-      // claiming that the audio was still installed, so generating a video made the next preview
-      // silently play only that (muted) video.
-      toggle.removeEventListener('click', togglePlayback);
-      video.removeEventListener('loadedmetadata', updateDuration);
-      video.removeEventListener('durationchange', updateDuration);
-      audio.removeEventListener('loadedmetadata', updateDuration);
-      audio.removeEventListener('durationchange', updateDuration);
-      // A stale caption from this scene must not survive into whatever scene reuses this DOM node
-      // next -- nodes are reused across renders (see renderScenes's existingNodesMap).
-      if (captionEl) { captionEl.hidden = true; captionEl.textContent = ''; }
-    },
-  };
-
-  toggle.hidden = !(hasVideo || hasAudio);
-  toggle.disabled = true;
-  video.loop = false;
-  setToggleState('paused');
-  video.addEventListener('loadedmetadata', updateDuration);
-  video.addEventListener('durationchange', updateDuration);
-  audio.addEventListener('loadedmetadata', updateDuration);
-  audio.addEventListener('durationchange', updateDuration);
-  toggle.addEventListener('click', togglePlayback);
-  updateDuration();
-  return controller.cleanup;
-}
 
 export function renderScenes() {
   const scenes = sceneStore.get().scenes;
@@ -1776,6 +1464,10 @@ export function renderScenes() {
         hasAudio,
         words: subtitleWords,
         captionEl,
+        onPlayStart: () => {
+          document.querySelectorAll('.audio-version-thumb audio').forEach((element) => element.pause());
+          [els.timelineVideo, els.timelineAudio].forEach((element) => { if (element && !element.paused) element.pause(); });
+        }
       }));
       node.dataset.playbackKey = playbackKey;
     } else {

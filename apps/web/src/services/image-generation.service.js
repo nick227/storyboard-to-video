@@ -159,7 +159,10 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
         }
         const { style, referencePlan } = resolved;
         const common = getAdditionalCommonPrompt(style.promptText, input.commonPromptText);
-        const prompt = [style.promptText, common, input.scenePrompt, input.extraPromptText].filter(Boolean).join('\n\n');
+        // CLIP-based providers (sdxl, local-safetensors, dezgo SD1) hard-truncate at 77 tokens, and
+        // style.promptText alone often exceeds that. Put the subject description first so the main
+        // subject survives truncation even when the trailing style boilerplate gets cut off.
+        const prompt = [input.scenePrompt, input.extraPromptText, common, style.promptText].filter(Boolean).join('\n\n');
         const selectedReferences = referencePlan.included;
         const references = selectedReferences.map((item) => item.localPath);
         const { sceneReferenceCount, defaultReferenceCount } = resolved;
@@ -190,7 +193,7 @@ function createImageGenerationService({ config, styles, provider, projectStore, 
           fs.writeFileSync(staged, result.buffer);
           const asset = await projectStore.commitAsset(lease, 'images', staged, { signal, mimeType: result.mimeType });
           // `scenePrompt` is the raw scene-level prompt (what staleness compares against); `prompt` is
-          // the full composed prompt actually sent to the provider (style + common + scene + extra) —
+          // the full composed prompt actually sent to the provider (scene + extra + common + style) —
           // the two are never equal, so staleness must compare against `scenePrompt`, not `prompt`.
           const createdAt = new Date().toISOString();
           const manifest = createGenerationManifest({

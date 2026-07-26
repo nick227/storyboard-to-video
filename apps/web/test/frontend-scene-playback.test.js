@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const renderingPromise = import(path.join(__dirname, '..', 'public', 'js', 'studio', 'rendering.js'));
+const playbackPromise = import(path.join(__dirname, '..', 'public', 'js', 'studio', 'media', 'protected-media-binding.js'));
 
 function fakeEventTarget(properties = {}) {
   const listeners = new Map();
@@ -19,7 +19,7 @@ function fakeEventTarget(properties = {}) {
 }
 
 test('replacing scene playback preserves renderer-owned audio and video sources', async () => {
-  const { setupScenePlayback } = await renderingPromise;
+  const { setupScenePlayback } = await playbackPromise;
   const toggle = fakeEventTarget({ disabled: false, hidden: false, setAttribute() {} });
   const video = fakeEventTarget({ duration: 4, currentTime: 0, loop: false, src: 'blob:video', pause() {} });
   const audio = fakeEventTarget({ duration: 6, currentTime: 0, src: 'blob:audio', pause() {} });
