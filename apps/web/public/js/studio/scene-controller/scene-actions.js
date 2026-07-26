@@ -1,6 +1,6 @@
 import { sceneStore, debounce } from '../../core/store.js';
 import { getCurrentStoryboardRecord, queueSync, persistStoryboardLibrary } from '../../core/persistence.js';
-import { adaptSceneImageShot, imageShot, setActiveImageVersion, setActiveVideoVersion, setVideoKeyframes } from '../../core/scene-shots.js';
+import { adaptSceneImageShot, imageShot, removeActiveImageVersion, setActiveImageVersion, setActiveVideoVersion, setVideoKeyframes } from '../../core/scene-shots.js';
 import { clearEntityOverride, setEntityOverride } from '../../core/scene-entity-config.js';
 import { invalidateVideoMotion } from '../../generation/workflows.js';
 
@@ -74,6 +74,12 @@ export function selectSceneEntityVersion(index, type, versionIndex) {
     } else if (type === 'subtitle') {
       scene.activeSubtitleVersionIndex = versionIndex;
     }
+  }, { sync: 'immediate' });
+}
+
+export function clearSceneImage(index) {
+  updateScene(index, (scene) => {
+    removeActiveImageVersion(scene);
   }, { sync: 'immediate' });
 }
 

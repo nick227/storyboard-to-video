@@ -1,7 +1,7 @@
 import { projectStore, sceneStore, generationStore } from '../core/store.js';
 import { getCurrentStoryboardRecord, queueSync } from '../core/persistence.js';
 import { loadProtectedAssetBlob } from '../core/assets.js';
-import { adaptSceneImageShot, imageShot, setActiveImageVersion } from '../core/scene-shots.js';
+import { adaptSceneImageShot, imageShot, removeActiveImageVersion, setActiveImageVersion } from '../core/scene-shots.js';
 import { api } from '../core/api.js';
 
 function emptyState(token = 0) {
@@ -485,14 +485,21 @@ export class ImageLibraryController {
     if (this.state.mode === 'scene-image') {
       button.textContent = item.isActive ? 'Active' : 'Make Active';
       button.addEventListener('click', () => { if (!item.isActive) this.selectSceneVersion(item.index); });
+      actions.append(button);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = 'Remove';
+      remove.addEventListener('click', () => this.removeSceneImageVersion(item.index));
+      actions.append(remove);
     } else if (this.state.mode === 'screenplay-cover') {
       button.textContent = 'Current';
       button.disabled = true;
+      actions.append(button);
     } else {
       button.textContent = 'Remove';
       button.addEventListener('click', () => this.removeImageFromActive(item));
+      actions.append(button);
     }
-    actions.append(button);
     card.append(image, actions);
     return card;
   }
@@ -889,6 +896,26 @@ export class ImageLibraryController {
       queueSync(record);
     }
     this.renderActiveList();
+  }
+
+  removeSceneImageVersion(versionIndex) {
+    const context = this.context();
+    if (!this.isCurrent(context)) return;
+    const scenes = sceneStore.get().scenes.map((scene) => {
+      if (scene.id !== context.sceneId) return scene;
+      const next = adaptSceneImageShot({ ...scene, shots: (scene.shots || []).map((shot) => ({ ...shot })) });
+      setActiveImageVersion(next, versionIndex);
+      removeActiveImageVersion(next);
+      return next;
+    });
+    sceneStore.set({ scenes });
+    const record = getCurrentStoryboardRecord();
+    if (record) {
+      record.scenes = scenes;
+      queueSync(record);
+    }
+    this.renderActiveList();
+    this.state.setStatus?.('Scene image removed.');
   }
 }
 

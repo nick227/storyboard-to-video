@@ -22,6 +22,7 @@
 .entity-row-media img, .entity-row-media video { display: block; width: 100%; height: auto; object-fit: cover; }
 .entity-row-media audio { width: calc(100% - 16px); min-width: 210px; }
 .entity-row-media-empty { color: var(--muted); font-size: 11px; }
+.entity-row-prompt { display: -webkit-box; overflow: hidden; margin: 6px 0 0; max-width: min(100%, 260px); color: var(--muted); font-size: 11px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .entity-row-caption-preview { position: absolute; right: 0; bottom: 0; left: 0; overflow: hidden; padding: 16px 8px 6px; color: white; font-size: 11px; text-align: center; text-overflow: ellipsis; white-space: nowrap; background: linear-gradient(transparent, rgba(0, 0, 0, .78)); }
 .entity-row-controls { display: grid; width: 118px; gap: 6px; }
 .entity-primary-action, .entity-row-secondary { width: 100%; min-height: 36px; padding: 6px 10px; }

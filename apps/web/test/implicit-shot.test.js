@@ -178,6 +178,34 @@ test('active image switching updates shots[0] and serialization omits compatibil
   });
 });
 
+test('removeActiveImageVersion drops the active still and repairs start frame', async () => {
+  const helpers = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'scene-shots.js'));
+  const scene = helpers.adaptSceneImageShot({
+    id: 'scene-1',
+    activeVisualType: 'image',
+    shots: [{
+      prompt: 'Door opens',
+      versions: [{ path: '/first.png' }, { path: '/second.png' }],
+      activeVersionIndex: 1,
+      startFrame: '/second.png',
+      endFrame: '/first.png',
+    }],
+  });
+
+  helpers.removeActiveImageVersion(scene);
+  assert.deepEqual(scene.shots[0].versions.map((version) => version.path), ['/first.png']);
+  assert.equal(scene.shots[0].activeVersionIndex, 0);
+  assert.equal(scene.shots[0].startFrame, '/first.png');
+  assert.equal(scene.shots[0].endFrame, '/first.png');
+
+  helpers.removeActiveImageVersion(scene);
+  assert.deepEqual(scene.shots[0].versions, []);
+  assert.equal(scene.shots[0].activeVersionIndex, 0);
+  assert.equal(scene.shots[0].startFrame, null);
+  assert.equal(scene.shots[0].endFrame, null);
+  assert.equal(scene.activeVisualType, 'image');
+});
+
 test('active video switching updates shots[0] while legacy reads remain compatible', async () => {
   const helpers = await import(path.join(__dirname, '..', 'public', 'js', 'core', 'scene-shots.js'));
   const scene = helpers.adaptSceneImageShot({

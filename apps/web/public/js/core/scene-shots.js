@@ -109,6 +109,30 @@ export function setActiveImageVersion(scene, index) {
   scene.shots[0].activeVersionIndex = versions.length ? Math.min(Math.max(Number(index) || 0, 0), versions.length - 1) : 0;
 }
 
+export function removeActiveImageVersion(scene) {
+  adaptSceneImageShot(scene);
+  const shot = scene.shots[0];
+  const versions = shot.versions;
+  if (!versions.length) return;
+  const index = Math.min(Math.max(shot.activeVersionIndex, 0), versions.length - 1);
+  const [removed] = versions.splice(index, 1);
+  shot.activeVersionIndex = versions.length ? Math.min(index, versions.length - 1) : 0;
+  if (removed?.path && shot.startFrame === removed.path) {
+    shot.startFrame = versions[shot.activeVersionIndex]?.path || null;
+  }
+  if (removed?.path && shot.endFrame === removed.path) shot.endFrame = null;
+  if (removed?.path && (
+    shot.videoKeyframeSelection?.startFrame === removed.path
+    || shot.videoKeyframeSelection?.endFrame === removed.path
+  )) {
+    shot.videoKeyframeSelection = null;
+  }
+  if (!versions.length) {
+    const hasVideo = (shot.videoVersions || []).some((version) => Boolean(version?.path));
+    scene.activeVisualType = hasVideo ? 'video' : 'image';
+  }
+}
+
 export function setStartFrame(scene, path) {
   adaptSceneImageShot(scene);
   const selected = String(path || '');

@@ -50,6 +50,7 @@ import {
   updateSceneById,
   applySceneConfigOverride,
   clearSceneConfigOverride,
+  clearSceneImage,
   selectSceneEntityVersion,
   applyVideoKeyframes,
   replaceSceneFromServer,
@@ -469,11 +470,12 @@ function openSceneReferencesModal(index) {
 function renderEntityModalMedia(scene, type, config) {
   const versions = config.versions(scene);
   const active = versions?.[config.activeIndex(scene)];
-  const path = active?.path || null;
+  const rawPath = active?.path || null;
+  const path = type === 'video' && !isVideoAssetPath(rawPath) ? null : rawPath;
   els.entityModalMediaEmpty.hidden = Boolean(path);
 
   if (els.entityModalMediaMeta) {
-    if (active) {
+    if (active && path) {
       const providerName = active.provider ? String(active.provider).replace(/^./, (letter) => letter.toUpperCase()) : '';
       const styleId = active.manifest?.inputs?.style?.id || active.styleId;
       const styleObj = styleId ? generationStore.get().styles.find((s) => s.id === styleId) : null;
@@ -488,7 +490,7 @@ function renderEntityModalMedia(scene, type, config) {
       if (ar) parts.push(`Aspect Ratio: <strong>${ar}</strong>`);
       
       els.entityModalMediaMeta.innerHTML = parts.join(' · ');
-      els.entityModalMediaMeta.hidden = false;
+      els.entityModalMediaMeta.hidden = parts.length === 0;
     } else {
       els.entityModalMediaMeta.textContent = '';
       els.entityModalMediaMeta.hidden = true;
@@ -660,7 +662,7 @@ function rowMediaPreview(scene, type) {
   const config = ENTITY_CONFIG[type];
   const versions = config.versions(scene) || [];
   const active = versions[config.activeIndex(scene)];
-  const path = active?.path;
+  const path = type === 'video' && !isVideoAssetPath(active?.path) ? null : active?.path;
 
   if (!path) {
     const empty = document.createElement('span');
@@ -677,6 +679,7 @@ function rowMediaPreview(scene, type) {
     media.preload = 'metadata';
   } else if (type === 'video') {
     media = document.createElement('video');
+    media.controls = true;
     media.muted = true;
     media.playsInline = true;
     media.preload = 'metadata';
@@ -700,6 +703,35 @@ function rowMediaPreview(scene, type) {
   bindProtectedAsset(media, path);
   container.appendChild(media);
   return container;
+}
+
+function isVideoAssetPath(path) {
+  const value = String(path || '');
+  return /\/videos\//.test(value) || /\.(mp4|webm|mov)(\?|$)/i.test(value);
+}
+
+function imageVersionPrompt(scene, version) {
+  const uploaded = /^uploaded shot image$/i.test(String(version?.prompt || '').trim());
+  const text = uploaded
+    ? (version?.scenePrompt || imageShot(scene).prompt || '')
+    : (version?.scenePrompt || version?.prompt || imageShot(scene).prompt || '');
+  return String(text).trim();
+}
+
+function openSceneImageLibrary(scene, index) {
+  import('./image-library-controller.js').then(({ openImageLibrary }) => {
+    openImageLibrary({
+      mode: 'scene-image',
+      sceneId: scene.id,
+      sceneNumber: index + 1,
+      sceneTitle: scene.title,
+      domEls: els,
+      setStatus: (msg) => {
+        const statusText = document.getElementById('statusText');
+        if (statusText) statusText.textContent = msg;
+      },
+    });
+  });
 }
 
 function configFieldSource(type, key) {
@@ -806,6 +838,17 @@ function entityControllerRow(scene, status) {
     content.appendChild(textarea);
   } else {
     content.appendChild(rowMediaPreview(scene, type));
+    if (type === 'image') {
+      const shot = imageShot(scene);
+      const promptText = imageVersionPrompt(scene, shot.versions?.[shot.activeVersionIndex]);
+      if (promptText) {
+        const prompt = document.createElement('p');
+        prompt.className = 'entity-row-prompt';
+        prompt.title = promptText;
+        prompt.textContent = promptText;
+        content.appendChild(prompt);
+      }
+    }
   }
 
   const meta = document.createElement('div');
@@ -837,6 +880,21 @@ function entityControllerRow(scene, status) {
   generate.textContent = status.loading ? 'Generating…' : 'Generate';
   generate.disabled = Boolean(uiStore.get().operation);
   controls.appendChild(generate);
+  if (type === 'image') {
+    const library = document.createElement('button');
+    library.type = 'button';
+    library.className = 'secondary entity-row-secondary';
+    library.dataset.entityLibrary = 'image';
+    library.textContent = 'Library';
+    library.disabled = Boolean(uiStore.get().operation);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'secondary entity-row-secondary';
+    remove.dataset.entityRemoveImage = 'true';
+    remove.textContent = 'Remove';
+    remove.disabled = Boolean(uiStore.get().operation) || !hasExistingEntity('image', scene);
+    controls.append(library, remove);
+  }
   body.append(content, controls);
   row.append(heading, body);
   if (modalState.configType === type) row.appendChild(configEditor(scene, type, status.config));
@@ -1049,6 +1107,18 @@ function setupEntityModal() {
       generateControllerEntity(generate.dataset.entityGenerate);
       return;
     }
+    const library = event.target.closest('[data-entity-library]');
+    if (library && !library.disabled) {
+      const index = currentEntityModalSceneIndex();
+      if (index === -1) return;
+      openSceneImageLibrary(sceneStore.get().scenes[index], index);
+      return;
+    }
+    const removeImage = event.target.closest('[data-entity-remove-image]');
+    if (removeImage && !removeImage.disabled) {
+      clearSceneImage(currentEntityModalSceneIndex());
+      return;
+    }
     const change = event.target.closest('[data-entity-config]');
     if (change) {
       modalState.configType = modalState.configType === change.dataset.entityConfig ? null : change.dataset.entityConfig;
@@ -1142,21 +1212,7 @@ function setupEntityModal() {
   libraryBtn?.addEventListener('click', () => {
     const index = currentEntityModalSceneIndex();
     if (index === -1) return;
-    const scene = sceneStore.get().scenes[index];
-    els.entityModal.close();
-    import('./image-library-controller.js').then(({ openImageLibrary }) => {
-      openImageLibrary({
-        mode: 'scene-image',
-        sceneId: scene.id,
-        sceneNumber: index + 1,
-        sceneTitle: scene.title,
-        domEls: els,
-        setStatus: (msg) => {
-          const statusText = document.getElementById('statusText');
-          if (statusText) statusText.textContent = msg;
-        }
-      });
-    });
+    openSceneImageLibrary(sceneStore.get().scenes[index], index);
   });
 
   const referencesBtn = document.getElementById('entityModalReferencesBtn');
