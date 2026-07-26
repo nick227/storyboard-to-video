@@ -143,11 +143,14 @@ export class ImageLibraryController {
   }
 
   isCurrent(context) {
+    if (!context || !this.dom?.modal.open || context.token !== this.state.token) return false;
+    if (context.mode === 'screenplay-cover') {
+      return context.mode === this.state.mode
+        && context.projectId === this.state.projectId
+        && context.projectId === projectStore.get().currentId;
+    }
     return Boolean(
-      context
-      && this.dom?.modal.open
-      && context.token === this.state.token
-      && context.projectId === this.state.projectId
+      context.projectId === this.state.projectId
       && context.projectId === projectStore.get().currentId
       && context.mode === this.state.mode
       && context.styleId === this.state.styleId
@@ -210,6 +213,10 @@ export class ImageLibraryController {
       this.dom.activeLabel.textContent = 'Current cover art';
     }
 
+    const uploadChipLabel = this.dom.modal.querySelector('.upload-chip span');
+    if (uploadChipLabel) {
+      uploadChipLabel.textContent = mode === 'screenplay-cover' ? 'Upload cover' : 'Upload New';
+    }
     this.selectTab('uploads');
     this.renderActiveList();
     appendEmptyState(this.dom.uploadsPane, 'Loading library…');
@@ -357,7 +364,8 @@ export class ImageLibraryController {
     if (!files?.length || !context.projectId) return;
     this.state.setStatus?.('Uploading library images...');
     const form = new FormData();
-    [...files].forEach((file) => form.append('files', file));
+    const fileList = [...files];
+    fileList.forEach((file) => form.append('files', file));
 
     try {
       const data = await api(`/api/projects/${encodeURIComponent(context.projectId)}/images/upload-reference`, {
@@ -369,8 +377,15 @@ export class ImageLibraryController {
       event.target.value = '';
       await this.refreshLibraryLists(context);
       if (!this.isCurrent(context)) return;
+
+      if (context.mode === 'screenplay-cover') {
+        // Prefer the original File so cover apply does not depend on a second asset fetch.
+        await this.applyScreenplayCoverFile(fileList[0], this.context());
+        return;
+      }
+
       this.state.setStatus?.('Uploaded images to library.');
-      if (context.mode !== 'scene-image' && context.mode !== 'screenplay-cover') {
+      if (context.mode !== 'scene-image') {
         for (const fileRecord of data.files || []) {
           if (!this.isCurrent(context)) return;
           await this.addImageToActive(fileRecord.path, fileRecord.fileName, context);
@@ -809,28 +824,50 @@ export class ImageLibraryController {
   }
 
   async applyScreenplayCover(path, fileName, context = this.context()) {
-    if (!context.scriptId) {
+    const scriptId = this.state.scriptId || context.scriptId;
+    if (!scriptId) {
       this.state.setStatus?.('Save the screenplay before setting cover art.');
       return;
     }
     try {
       this.state.setStatus?.('Setting cover art...');
       const file = await this.assetFile(path, fileName || 'cover.png', context);
-      if (!file) return;
+      if (!file) {
+        if (this.dom?.modal.open) this.state.setStatus?.('Could not read image for cover art.');
+        return;
+      }
+      await this.applyScreenplayCoverFile(file, context, scriptId);
+    } catch (error) {
+      if (this.dom?.modal.open) this.state.setStatus?.(`Failed to set cover art: ${error.message}`);
+    }
+  }
+
+  async applyScreenplayCoverFile(file, context = this.context(), scriptId = this.state.scriptId || context.scriptId) {
+    if (!scriptId) {
+      this.state.setStatus?.('Save the screenplay before setting cover art.');
+      return;
+    }
+    if (!file) {
+      this.state.setStatus?.('Cover image is required.');
+      return;
+    }
+    try {
+      this.state.setStatus?.('Setting cover art...');
       const form = new FormData();
       form.append('file', file);
-      const data = await api(`/api/scripts/${encodeURIComponent(context.scriptId)}/cover`, {
+      const data = await api(`/api/scripts/${encodeURIComponent(scriptId)}/cover`, {
         method: 'POST',
         signal: context.signal,
         body: form,
       });
-      if (!this.isCurrent(context)) return;
+      if (!this.dom?.modal.open || context.token !== this.state.token) return;
       this.state.coverUrl = data.script?.coverUrl || null;
+      this.state.scriptId = data.script?.id || scriptId;
       this.state.onCoverApplied?.(data.script);
       this.renderActiveList();
       this.state.setStatus?.('Cover art updated.');
     } catch (error) {
-      if (this.isCurrent(context)) this.state.setStatus?.(`Failed to set cover art: ${error.message}`);
+      if (this.dom?.modal.open) this.state.setStatus?.(`Failed to set cover art: ${error.message}`);
     }
   }
 
