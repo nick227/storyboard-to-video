@@ -30,7 +30,7 @@ function artifactLabel(artifact) {
   return artifact.charAt(0).toUpperCase() + artifact.slice(1);
 }
 
-export function initScriptPublishControls(elements, { setStatus, getArtifact = activeArtifact } = {}) {
+export function initScriptPublishControls(elements, { setStatus, getArtifact = activeArtifact, openImageLibrary } = {}) {
   const toggle = elements.workVisibilityToggle;
   const shareBtns = [elements.scriptShareBtn, elements.workShareBtn].filter(Boolean);
   if (!toggle && !shareBtns.length) return { syncFromRecord() {} };
@@ -203,7 +203,6 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
   });
 
   bindCoverArtControls({
-    fileInput: elements.scriptCoverInput,
     triggers: [
       elements.screenplayCoverBtn,
       elements.scriptCoverBtn,
@@ -213,6 +212,10 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
     ensureScript: () => ensureScript(getCurrentStoryboardRecord()),
     applyScript,
     setStatus,
+    openImageLibrary,
+    closeMetaModal,
+    getStyleId: () => elements.styleSelect?.value || '',
+    domEls: elements,
   });
 
   return { syncFromRecord, ensureScript, applyScript };

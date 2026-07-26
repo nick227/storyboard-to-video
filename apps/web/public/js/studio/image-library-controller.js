@@ -11,6 +11,9 @@ function emptyState(token = 0) {
     projectId: '',
     styleId: '',
     sceneId: '',
+    scriptId: '',
+    coverUrl: null,
+    onCoverApplied: null,
     sceneNumber: 1,
     domEls: null,
     setStatus: null,
@@ -134,8 +137,8 @@ export class ImageLibraryController {
   }
 
   context() {
-    const { token, projectId, mode, styleId, sceneId } = this.state;
-    return { token, projectId, mode, styleId, sceneId, signal: this.contextAbortController?.signal };
+    const { token, projectId, mode, styleId, sceneId, scriptId } = this.state;
+    return { token, projectId, mode, styleId, sceneId, scriptId, signal: this.contextAbortController?.signal };
   }
 
   isCurrent(context) {
@@ -153,7 +156,7 @@ export class ImageLibraryController {
     );
   }
 
-  async open({ mode, styleId, sceneId, sceneNumber, domEls, setStatus }) {
+  async open({ mode, styleId, sceneId, sceneNumber, scriptId, coverUrl, onCoverApplied, domEls, setStatus }) {
     if (!this.initialized || !this.dom) return;
     this.contextAbortController?.abort();
     this.clearAllPreviewScopes();
@@ -165,6 +168,9 @@ export class ImageLibraryController {
       projectId,
       styleId: styleId || '',
       sceneId: sceneId || '',
+      scriptId: scriptId || '',
+      coverUrl: coverUrl || null,
+      onCoverApplied: typeof onCoverApplied === 'function' ? onCoverApplied : null,
       sceneNumber: sceneNumber || 1,
       domEls,
       setStatus,
@@ -196,6 +202,10 @@ export class ImageLibraryController {
       this.dom.contextLabel.textContent = `Scene ${this.state.sceneNumber} Image`;
       this.dom.modalTitle.textContent = 'Scene Image Library';
       this.dom.activeLabel.textContent = 'Versions for this scene';
+    } else if (mode === 'screenplay-cover') {
+      this.dom.contextLabel.textContent = 'Screenplay';
+      this.dom.modalTitle.textContent = 'Cover Art Library';
+      this.dom.activeLabel.textContent = 'Current cover art';
     }
 
     this.selectTab('uploads');
@@ -285,6 +295,8 @@ export class ImageLibraryController {
       if (!this.isCurrent(context)) return;
       if (context.mode === 'scene-image') {
         await this.selectLibraryImage(data.path, data.fileName, context);
+      } else if (context.mode === 'screenplay-cover') {
+        await this.applyScreenplayCover(data.path, data.fileName, context);
       } else {
         await this.addImageToActive(data.path, data.fileName, context);
       }
@@ -314,7 +326,7 @@ export class ImageLibraryController {
       await this.refreshLibraryLists(context);
       if (!this.isCurrent(context)) return;
       this.state.setStatus?.('Uploaded images to library.');
-      if (context.mode !== 'scene-image') {
+      if (context.mode !== 'scene-image' && context.mode !== 'screenplay-cover') {
         for (const fileRecord of data.files || []) {
           if (!this.isCurrent(context)) return;
           await this.addImageToActive(fileRecord.path, fileRecord.fileName, context);
@@ -382,10 +394,18 @@ export class ImageLibraryController {
         index,
         isActive: index === shot.activeVersionIndex,
       }));
+    } else if (mode === 'screenplay-cover' && this.state.coverUrl) {
+      activeItems = [{
+        path: this.state.coverUrl,
+        fileName: 'Current cover',
+        isActive: true,
+      }];
     }
 
     if (!activeItems.length) {
-      appendEmptyState(this.dom.activeList, 'No active images. Select or generate one below.');
+      appendEmptyState(this.dom.activeList, mode === 'screenplay-cover'
+        ? 'No cover art yet. Generate, upload, or pick one below.'
+        : 'No active images. Select or generate one below.');
       return;
     }
     this.dom.activeList.replaceChildren(...activeItems.map((item) => this.createActiveCard(item)));
@@ -405,6 +425,9 @@ export class ImageLibraryController {
     if (this.state.mode === 'scene-image') {
       button.textContent = item.isActive ? 'Active' : 'Make Active';
       button.addEventListener('click', () => { if (!item.isActive) this.selectSceneVersion(item.index); });
+    } else if (this.state.mode === 'screenplay-cover') {
+      button.textContent = 'Current';
+      button.disabled = true;
     } else {
       button.textContent = 'Remove';
       button.addEventListener('click', () => this.removeImageFromActive(item));
@@ -555,6 +578,8 @@ export class ImageLibraryController {
       if (!this.isCurrent(context)) return;
       if (context.mode === 'scene-image') {
         await this.selectLibraryImage(data.path, data.fileName, context);
+      } else if (context.mode === 'screenplay-cover') {
+        await this.applyScreenplayCover(data.path, data.fileName, context);
       } else {
         await this.addImageToActive(data.path, data.fileName, context);
       }
@@ -682,6 +707,10 @@ export class ImageLibraryController {
   }
 
   async selectLibraryImage(path, fileName, context = this.context()) {
+    if (context.mode === 'screenplay-cover') {
+      await this.applyScreenplayCover(path, fileName, context);
+      return;
+    }
     if (context.mode === 'character-reference' || context.mode === 'world-reference') {
       if (!path.startsWith('/style-references/') && !path.startsWith('/user-style-references/')) {
         await this.addImageToActive(path, fileName, context);
@@ -732,6 +761,32 @@ export class ImageLibraryController {
       this.state.setStatus?.('Scene image updated.');
     } catch (error) {
       if (this.isCurrent(context)) this.state.setStatus?.(`Failed to set scene image: ${error.message}`);
+    }
+  }
+
+  async applyScreenplayCover(path, fileName, context = this.context()) {
+    if (!context.scriptId) {
+      this.state.setStatus?.('Save the screenplay before setting cover art.');
+      return;
+    }
+    try {
+      this.state.setStatus?.('Setting cover art...');
+      const file = await this.assetFile(path, fileName || 'cover.png', context);
+      if (!file) return;
+      const form = new FormData();
+      form.append('file', file);
+      const data = await api(`/api/scripts/${encodeURIComponent(context.scriptId)}/cover`, {
+        method: 'POST',
+        signal: context.signal,
+        body: form,
+      });
+      if (!this.isCurrent(context)) return;
+      this.state.coverUrl = data.script?.coverUrl || null;
+      this.state.onCoverApplied?.(data.script);
+      this.renderActiveList();
+      this.state.setStatus?.('Cover art updated.');
+    } catch (error) {
+      if (this.isCurrent(context)) this.state.setStatus?.(`Failed to set cover art: ${error.message}`);
     }
   }
 

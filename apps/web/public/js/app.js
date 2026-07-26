@@ -55,7 +55,6 @@ const els = {
   scriptCoverBtn: document.getElementById('scriptCoverBtn'),
   scriptCoverChangeBtn: document.getElementById('scriptCoverChangeBtn'),
   scriptCoverRemoveBtn: document.getElementById('scriptCoverRemoveBtn'),
-  scriptCoverInput: document.getElementById('scriptCoverInput'),
 
   // Studio page navigation
   pageTabs: document.querySelector('.sf-artifact-tabs') || document.querySelector('.page-tabs'),
@@ -419,8 +418,8 @@ function initControllers(getSession) {
     scriptCoverBtn: els.scriptCoverBtn,
     scriptCoverChangeBtn: els.scriptCoverChangeBtn,
     scriptCoverRemoveBtn: els.scriptCoverRemoveBtn,
-    scriptCoverInput: els.scriptCoverInput,
-  }, { setStatus });
+    styleSelect: els.styleSelect,
+  }, { setStatus, openImageLibrary });
   scriptController = initScriptController({
     scriptText: els.scriptText,
     modeSelect: els.scriptModeSelect,

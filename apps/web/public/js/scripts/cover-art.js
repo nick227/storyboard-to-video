@@ -1,4 +1,5 @@
 import { api } from '../core/api.js';
+import { ensureProjectSynced, getCurrentStoryboardRecord } from '../core/persistence.js';
 
 export function syncScreenplayLogos(coverUrl = null) {
   for (const root of document.querySelectorAll('.screenplay-logo')) {
@@ -18,55 +19,48 @@ export function syncScreenplayLogos(coverUrl = null) {
   if (removeBtn) removeBtn.hidden = !coverUrl;
 }
 
-export async function uploadScriptCover(scriptId, file) {
-  const form = new FormData();
-  form.append('file', file);
-  return api(`/api/scripts/${encodeURIComponent(scriptId)}/cover`, {
-    method: 'POST',
-    body: form,
-  });
-}
-
 export async function removeScriptCover(scriptId) {
   return api(`/api/scripts/${encodeURIComponent(scriptId)}/cover`, { method: 'DELETE' });
 }
 
 export function bindCoverArtControls({
-  fileInput,
   triggers = [],
   removeBtn,
   ensureScript,
   applyScript,
   setStatus,
+  openImageLibrary,
+  closeMetaModal,
+  getStyleId,
+  domEls,
 } = {}) {
-  if (!fileInput) return;
-
-  function openPicker() {
-    fileInput.value = '';
-    fileInput.click();
+  async function openCoverLibrary() {
+    try {
+      closeMetaModal?.();
+      const script = await ensureScript();
+      await ensureProjectSynced();
+      const projectId = getCurrentStoryboardRecord()?.id;
+      if (!projectId) throw new Error('Save the work before setting cover art.');
+      openImageLibrary?.({
+        mode: 'screenplay-cover',
+        scriptId: script.id,
+        coverUrl: script.coverUrl || null,
+        styleId: typeof getStyleId === 'function' ? getStyleId() : '',
+        onCoverApplied: applyScript,
+        domEls,
+        setStatus,
+      });
+    } catch (error) {
+      setStatus?.(error.message || 'Could not open cover art library.');
+    }
   }
 
   for (const el of triggers.filter(Boolean)) {
     el.addEventListener('click', (event) => {
       event.preventDefault();
-      openPicker();
+      openCoverLibrary();
     });
   }
-
-  fileInput.addEventListener('change', async () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
-    try {
-      const script = await ensureScript();
-      const response = await uploadScriptCover(script.id, file);
-      applyScript(response.script);
-      setStatus?.('Cover art updated.');
-    } catch (error) {
-      setStatus?.(error.message || 'Could not upload cover art.');
-    } finally {
-      fileInput.value = '';
-    }
-  });
 
   removeBtn?.addEventListener('click', async () => {
     try {

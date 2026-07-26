@@ -37,10 +37,8 @@
   padding: 0;
   border: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
   border-radius: 4px;
-  background:
-    linear-gradient(165deg, color-mix(in srgb, var(--glass-ink) 4%, transparent), transparent),
-    color-mix(in srgb, var(--panel, #fff) 88%, transparent);
-  color: inherit;
+  background: color-mix(in srgb, var(--panel, #fff) 88%, transparent);
+  color: color-mix(in srgb, var(--muted, #888) 85%, transparent);
   cursor: pointer;
   overflow: hidden;
   flex: 0 0 auto;
@@ -57,11 +55,13 @@
 .screenplay-logo:hover,
 .screenplay-logo:focus-visible {
   border-color: var(--accent, #4a6cf7);
+  color: var(--accent, #4a6cf7);
   outline: none;
 }
 .screenplay-logo.has-cover {
   border-style: solid;
   background: transparent;
+  color: transparent;
 }
 .screenplay-logo-image {
   width: 100%;
@@ -70,12 +70,16 @@
   display: block;
 }
 .screenplay-logo:not(.has-cover)::after {
-  content: '';
-  width: 42%;
-  height: 54%;
-  border: 1.5px solid color-mix(in srgb, var(--muted, #888) 70%, transparent);
-  border-radius: 2px;
-  box-shadow: 2px 2px 0 color-mix(in srgb, var(--muted, #888) 35%, transparent);
+  content: '+';
+  font-size: 1.1em;
+  font-weight: 600;
+  line-height: 1;
+}
+.storyboard-combo .screenplay-logo:not(.has-cover)::after {
+  font-size: 0.95rem;
+}
+.settings-modal-body .screenplay-logo:not(.has-cover)::after {
+  font-size: 1.75rem;
 }
 .script-cover-field { display: grid; gap: 0.45rem; }
 .script-cover-row {
