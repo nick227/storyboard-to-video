@@ -59,14 +59,6 @@
   margin-bottom: 160px;
 }
 .storyboard-slider:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.storyboard-slider-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  max-width: 100%;
-  margin: 0 auto;
-  padding: 12px auto;
-}
 .storyboard-slider-stage-shell {
   position: relative;
   display: grid;
@@ -104,22 +96,6 @@
   transform: translateY(-1px);
 }
 .storyboard-slider-nav:disabled { opacity: .28; box-shadow: none; }
-.storyboard-slider-position {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  justify-content: center;
-  gap: 10px;
-  text-align: center;
-}
-.storyboard-slider-current {
-  overflow: hidden;
-  font-size: 15px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.storyboard-slider-count { flex: 0 0 auto; color: var(--muted); font-size: 12px; }
 .storyboard-slider-stage {
   width: 100%;
   min-height: 360px;

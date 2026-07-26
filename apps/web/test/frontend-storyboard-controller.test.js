@@ -58,3 +58,42 @@ test('storyboard stage swipe leaves scene-card buttons clickable', async () => {
 
   assert.equal(capturedPointer, null);
 });
+
+test('filmstrip drag-scroll defers pointer capture until move so thumbs stay clickable', async () => {
+  const { enableDragScroll } = await import(path.join(__dirname, '..', 'public', 'js', 'studio', 'storyboard-gestures.js'));
+  const listeners = {};
+  let capturedPointer = null;
+  const element = {
+    dataset: {},
+    classList: { add() {}, remove() {} },
+    scrollLeft: 0,
+    scrollTop: 0,
+    addEventListener(type, handler) { listeners[type] = handler; },
+    removeEventListener() {},
+    setPointerCapture(pointerId) { capturedPointer = pointerId; },
+    releasePointerCapture() { capturedPointer = null; },
+  };
+  const thumbTarget = {
+    closest() { return null; },
+  };
+
+  enableDragScroll(element, { axis: 'x' });
+  listeners.pointerdown({
+    pointerType: 'mouse',
+    button: 0,
+    pointerId: 3,
+    clientX: 40,
+    clientY: 20,
+    target: thumbTarget,
+  });
+  assert.equal(capturedPointer, null, 'click without drag must not capture (retargets click away from thumb)');
+
+  listeners.pointermove({
+    pointerId: 3,
+    clientX: 52,
+    clientY: 20,
+    cancelable: true,
+    preventDefault() {},
+  });
+  assert.equal(capturedPointer, 3, 'capture starts only after the drag threshold');
+});

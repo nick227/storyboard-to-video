@@ -1505,14 +1505,10 @@ function renderStoryboardSlider(scenes, selectedIndex) {
   const safeIndex = Math.min(Math.max(selectedIndex, 0), Math.max(scenes.length - 1, 0));
   const activeScene = scenes[safeIndex];
   const stage = slider.querySelector('.storyboard-slider-stage');
-  const current = slider.querySelector('.storyboard-slider-current');
-  const count = slider.querySelector('.storyboard-slider-count');
   const previous = slider.querySelector('.storyboard-slider-prev');
   const next = slider.querySelector('.storyboard-slider-next');
   const filmstrip = slider.querySelector('.storyboard-filmstrip');
 
-  current.textContent = activeScene?.title || `Scene ${safeIndex + 1}`;
-  count.textContent = scenes.length ? `${safeIndex + 1} of ${scenes.length}` : 'No scenes';
   previous.disabled = safeIndex <= 0;
   next.disabled = safeIndex >= scenes.length - 1;
 

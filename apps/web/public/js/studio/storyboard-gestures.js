@@ -39,7 +39,9 @@ export function enableDragScroll(element, { axis = 'x' } = {}) {
     startScrollTop = element.scrollTop;
     moved = false;
     element.classList.add('is-grabbing');
-    try { element.setPointerCapture(pointerId); } catch (_) {}
+    // Defer capture until the pointer actually moves. Capturing on
+    // pointerdown retargets the eventual click to this container, so
+    // filmstrip thumb buttons never receive their click.
   };
 
   const onPointerMove = (event) => {
@@ -47,7 +49,10 @@ export function enableDragScroll(element, { axis = 'x' } = {}) {
     const dx = event.clientX - startX;
     const dy = event.clientY - startY;
     if (!moved && Math.hypot(dx, dy) < 4) return;
-    moved = true;
+    if (!moved) {
+      moved = true;
+      try { element.setPointerCapture(pointerId); } catch (_) {}
+    }
     if (event.cancelable) event.preventDefault();
     if (axis === 'x' || axis === 'both') element.scrollLeft = startScrollLeft - dx;
     if (axis === 'y' || axis === 'both') element.scrollTop = startScrollTop - dy;
