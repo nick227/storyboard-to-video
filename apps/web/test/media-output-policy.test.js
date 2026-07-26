@@ -96,16 +96,16 @@ test('local-safetensors maps image quality to three step counts', () => {
     model: 'biglove-xl1',
     intent: mergeMediaIntent({ modality: 'image', override: { image: { quality: 'high' } } }),
   });
-  assert.equal(low.resolved.providerSettings.steps, 15);
-  assert.equal(medium.resolved.providerSettings.steps, 25);
-  assert.equal(high.resolved.providerSettings.steps, 40);
+  assert.equal(low.resolved.providerSettings.steps, 8);
+  assert.equal(medium.resolved.providerSettings.steps, 30);
+  assert.equal(high.resolved.providerSettings.steps, 60);
 
   const lightningHigh = resolveImageOutput({
     provider: 'local-safetensors',
     model: 'dreamshaper-xl-lightning',
     intent: mergeMediaIntent({ modality: 'image', override: { image: { quality: 'high' } } }),
   });
-  assert.equal(lightningHigh.resolved.providerSettings.steps, 12);
+  assert.equal(lightningHigh.resolved.providerSettings.steps, 60);
 });
 
 test('a video provider with no registered output resolver fails clearly instead of a generic dimension error', () => {

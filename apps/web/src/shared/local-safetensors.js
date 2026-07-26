@@ -18,9 +18,8 @@ const LOCAL_SAFETENSORS_SD15_KEYS = Object.freeze(new Set([
   'another-realistic-comic-mix2',
 ]));
 
-// Image quality select → inference steps (low / medium / high).
-const LOCAL_SAFETENSORS_QUALITY_STEPS = Object.freeze({ low: 15, medium: 25, high: 40 });
-const LOCAL_SAFETENSORS_LIGHTNING_QUALITY_STEPS = Object.freeze({ low: 4, medium: 8, high: 12 });
+// Image quality select → inference steps (Fooocus-style low / medium / high).
+const LOCAL_SAFETENSORS_QUALITY_STEPS = Object.freeze({ low: 8, medium: 30, high: 60 });
 
 function localSafetensorsConfigured(config) {
   return Boolean(config?.localSafetensors?.enabled && config.localSafetensors?.baseUrl);
@@ -28,11 +27,9 @@ function localSafetensorsConfigured(config) {
 
 function localSafetensorsRunSettings(model, aspectRatio, resolutionTier, quality = 'medium') {
   const sd15 = LOCAL_SAFETENSORS_SD15_KEYS.has(model);
-  const lightning = model === 'dreamshaper-xl-lightning';
-  const stepsByQuality = lightning ? LOCAL_SAFETENSORS_LIGHTNING_QUALITY_STEPS : LOCAL_SAFETENSORS_QUALITY_STEPS;
   return Object.freeze({
     size: sd15 ? 'square-small' : sizeKeyForAspectRatio(aspectRatio),
-    steps: stepsByQuality[quality] ?? stepsByQuality.medium,
+    steps: LOCAL_SAFETENSORS_QUALITY_STEPS[quality] ?? LOCAL_SAFETENSORS_QUALITY_STEPS.medium,
     shortEdge: sd15 ? 512 : (resolutionTier === 'draft' ? 768 : 1024),
   });
 }
@@ -77,7 +74,6 @@ module.exports = {
   LOCAL_SAFETENSORS_MODEL_KEYS,
   LOCAL_SAFETENSORS_SD15_KEYS,
   LOCAL_SAFETENSORS_QUALITY_STEPS,
-  LOCAL_SAFETENSORS_LIGHTNING_QUALITY_STEPS,
   encodeLocalSafetensorsSelection,
   localSafetensorsConfigured,
   localSafetensorsRunSettings,
