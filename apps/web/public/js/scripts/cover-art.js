@@ -34,31 +34,37 @@ export function bindCoverArtControls({
   getStyleId,
   domEls,
 } = {}) {
-  async function openCoverLibrary() {
-    try {
-      closeMetaModal?.();
-      const script = await ensureScript();
-      await ensureProjectSynced();
-      const projectId = getCurrentStoryboardRecord()?.id;
-      if (!projectId) throw new Error('Save the work before setting cover art.');
-      openImageLibrary?.({
-        mode: 'screenplay-cover',
-        scriptId: script.id,
-        coverUrl: script.coverUrl || null,
-        styleId: typeof getStyleId === 'function' ? getStyleId() : '',
-        onCoverApplied: applyScript,
-        domEls,
-        setStatus,
-      });
-    } catch (error) {
-      setStatus?.(error.message || 'Could not open cover art library.');
-    }
+  function openCoverLibrary() {
+    closeMetaModal?.();
+    const existing = getCurrentStoryboardRecord()?.script || null;
+    openImageLibrary?.({
+      mode: 'screenplay-cover',
+      scriptId: existing?.id || '',
+      coverUrl: existing?.coverUrl || null,
+      styleId: typeof getStyleId === 'function' ? getStyleId() : '',
+      onCoverApplied: applyScript,
+      domEls,
+      setStatus,
+      prepare: async () => {
+        const script = await ensureScript();
+        await ensureProjectSynced();
+        const projectId = getCurrentStoryboardRecord()?.id;
+        if (!projectId) throw new Error('Save the work before setting cover art.');
+        return {
+          scriptId: script.id,
+          coverUrl: script.coverUrl || null,
+          projectId,
+        };
+      },
+    });
   }
 
   for (const el of triggers.filter(Boolean)) {
     el.addEventListener('click', (event) => {
       event.preventDefault();
+      el.classList.add('is-busy');
       openCoverLibrary();
+      requestAnimationFrame(() => el.classList.remove('is-busy'));
     });
   }
 

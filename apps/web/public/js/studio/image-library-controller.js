@@ -132,6 +132,7 @@ export class ImageLibraryController {
     this.contextAbortController?.abort();
     this.contextAbortController = null;
     this.clearAllPreviewScopes();
+    this.setLoading(false);
     this.state = emptyState(this.state.token + 1);
     this.dom?.controls?.classList.remove('is-generating');
   }
@@ -156,14 +157,15 @@ export class ImageLibraryController {
     );
   }
 
-  async open({ mode, styleId, sceneId, sceneNumber, scriptId, coverUrl, onCoverApplied, domEls, setStatus }) {
+  async open({ mode, styleId, sceneId, sceneNumber, scriptId, coverUrl, onCoverApplied, prepare, domEls, setStatus }) {
     if (!this.initialized || !this.dom) return;
     this.contextAbortController?.abort();
     this.clearAllPreviewScopes();
     this.contextAbortController = new AbortController();
+    const openToken = this.state.token + 1;
     const projectId = projectStore.get().currentId || '';
     this.state = {
-      ...emptyState(this.state.token + 1),
+      ...emptyState(openToken),
       mode,
       projectId,
       styleId: styleId || '',
@@ -209,19 +211,61 @@ export class ImageLibraryController {
     }
 
     this.selectTab('uploads');
+    this.renderActiveList();
+    appendEmptyState(this.dom.uploadsPane, 'Loading library…');
+    appendEmptyState(this.dom.generationsPane, 'Loading library…');
+    this.setLoading(true);
     this.dom.modal.showModal();
-    if (referenceMode) {
-      const isCustom = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(styleId);
-      if (isCustom) {
-        try {
-          const refsData = await api(`/api/custom-styles/${encodeURIComponent(styleId)}/references`, { signal: this.contextAbortController.signal });
-          generationStore.set({ styleReferences: refsData.references || { characters: [], world: [] }, styleReferencesStyleId: styleId });
-        } catch (error) {
-          // ignore abort
+
+    try {
+      if (typeof prepare === 'function') {
+        const prepared = await prepare();
+        if (this.state.token !== openToken || !this.dom.modal.open) return;
+        if (prepared?.scriptId) this.state.scriptId = prepared.scriptId;
+        if (prepared?.coverUrl !== undefined) this.state.coverUrl = prepared.coverUrl || null;
+        if (prepared?.projectId) this.state.projectId = prepared.projectId;
+        else this.state.projectId = projectStore.get().currentId || this.state.projectId;
+        this.renderActiveList();
+      }
+
+      if (referenceMode) {
+        const isCustom = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(this.state.styleId);
+        if (isCustom) {
+          try {
+            const refsData = await api(`/api/custom-styles/${encodeURIComponent(this.state.styleId)}/references`, {
+              signal: this.contextAbortController.signal,
+            });
+            if (this.state.token !== openToken || !this.dom.modal.open) return;
+            generationStore.set({
+              styleReferences: refsData.references || { characters: [], world: [] },
+              styleReferencesStyleId: this.state.styleId,
+            });
+            this.renderActiveList();
+          } catch (_) {
+            // ignore abort / fetch errors; lists still load below
+          }
         }
       }
+
+      if (this.state.projectId) await this.refreshLibraryLists(this.context());
+      else {
+        appendEmptyState(this.dom.uploadsPane, 'Save the work to load library images.');
+        appendEmptyState(this.dom.generationsPane, 'Save the work to load library images.');
+      }
+    } catch (error) {
+      if (this.state.token === openToken && this.dom.modal.open) {
+        this.state.setStatus?.(error.message || 'Could not open image library.');
+        appendEmptyState(this.dom.uploadsPane, error.message || 'Could not load library.');
+      }
+    } finally {
+      if (this.state.token === openToken) this.setLoading(false);
     }
-    if (projectId) await this.refreshLibraryLists(this.context());
+  }
+
+  setLoading(loading) {
+    if (!this.dom?.modal) return;
+    this.dom.modal.classList.toggle('is-loading', Boolean(loading));
+    this.dom.modal.setAttribute('aria-busy', String(Boolean(loading)));
   }
 
   selectTab(tab) {
