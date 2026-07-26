@@ -5,7 +5,7 @@ const {
   createScript, updateScript, scriptVisibility, publicScriptListQuery,
 } = require('../schemas');
 
-function createScriptsRouter({ scripts, projectStore }) {
+function createScriptsRouter({ scripts, projectStore, upload }) {
   const router = express.Router();
 
   router.get('/', asyncRoute(async (req, res) => {
@@ -25,6 +25,26 @@ function createScriptsRouter({ scripts, projectStore }) {
       ok: true,
       stats: await scripts.getOwnerStats(req.params.scriptId, { tenantId: req.auth.tenantId }),
     });
+  }));
+
+  router.get('/:scriptId/cover', asyncRoute(async (req, res) => {
+    await scripts.pipeCover(res, await scripts.coverStream(req.params.scriptId, {
+      tenantId: req.auth.tenantId,
+    }));
+  }));
+
+  router.post('/:scriptId/cover', upload.single('file'), asyncRoute(async (req, res) => {
+    const script = await scripts.uploadCover(req.params.scriptId, req.file, {
+      tenantId: req.auth.tenantId,
+    });
+    res.json({ ok: true, script });
+  }));
+
+  router.delete('/:scriptId/cover', asyncRoute(async (req, res) => {
+    const script = await scripts.removeCover(req.params.scriptId, {
+      tenantId: req.auth.tenantId,
+    });
+    res.json({ ok: true, script });
   }));
 
   router.get('/:scriptId', asyncRoute(async (req, res) => {
@@ -116,6 +136,10 @@ function createPublicScriptsRouter({ scripts, optionalAuth }) {
         category: req.query.category,
       }),
     });
+  }));
+
+  router.get('/:slug/cover', asyncRoute(async (req, res) => {
+    await scripts.pipeCover(res, await scripts.publicCoverStream(req.params.slug));
   }));
 
   router.get('/:slug', asyncRoute(async (req, res) => {

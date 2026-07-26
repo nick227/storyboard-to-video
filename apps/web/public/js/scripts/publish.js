@@ -2,6 +2,7 @@ import { api } from '../core/api.js';
 import { ensureProjectSynced, getCurrentStoryboardRecord, saveStoryboard } from '../core/persistence.js';
 import { shareUrl } from './chrome.js';
 import { fetchCategories, fetchScriptStats, updateScriptMeta } from './api.js';
+import { bindCoverArtControls, syncScreenplayLogos } from './cover-art.js';
 import { parseWorkPath, workPath } from '../core/app-paths.js';
 
 function parseTagSlugs(value = '') {
@@ -52,6 +53,7 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
     if (elements.scriptTagsInput) {
       elements.scriptTagsInput.value = (script?.tags || []).map((tag) => tag.slug || tag.name).join(', ');
     }
+    syncScreenplayLogos(script?.coverUrl || null);
   }
 
   async function refreshStats(scriptId) {
@@ -198,6 +200,19 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
     } catch (error) {
       setStatus?.(error.message || 'Could not save publishing details.');
     }
+  });
+
+  bindCoverArtControls({
+    fileInput: elements.scriptCoverInput,
+    triggers: [
+      elements.screenplayCoverBtn,
+      elements.scriptCoverBtn,
+      elements.scriptCoverChangeBtn,
+    ],
+    removeBtn: elements.scriptCoverRemoveBtn,
+    ensureScript: () => ensureScript(getCurrentStoryboardRecord()),
+    applyScript,
+    setStatus,
   });
 
   return { syncFromRecord, ensureScript, applyScript };

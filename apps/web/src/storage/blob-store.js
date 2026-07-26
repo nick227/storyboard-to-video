@@ -8,6 +8,7 @@ const { createReadFallbackBlobStore } = require('./read-fallback-blob-store');
 
 const PROJECT_ASSET_KEY_PATTERN = /^projects\/([a-zA-Z0-9][a-zA-Z0-9_-]{0,79})\/assets\/(images|audio|videos|subtitles|exports|ai-references|scene-images)\/([^/]+)$/;
 const CUSTOM_STYLE_ASSET_KEY_PATTERN = /^users\/([a-zA-Z0-9][a-zA-Z0-9_-]{0,79})\/custom-styles\/([a-zA-Z0-9][a-zA-Z0-9_-]{0,79})\/references\/([^/]+)$/;
+const SCRIPT_COVER_KEY_PATTERN = /^scripts\/([a-zA-Z0-9][a-zA-Z0-9_-]{0,79})\/cover\/([^/]+)$/;
 
 function buildProjectAssetStorageKey(projectId, type, fileName) {
   const safeName = path.basename(String(fileName || ''));
@@ -40,11 +41,23 @@ function buildCustomStyleReferenceStorageKey(userId, styleId, fileName) {
   return `users/${safeOwner}/custom-styles/${safeStyle}/references/${safeName}`;
 }
 
+function buildScriptCoverStorageKey(scriptId, fileName) {
+  const safeName = path.basename(String(fileName || ''));
+  const safeScript = String(scriptId || '');
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(safeScript)
+    || !safeName || safeName !== fileName || safeName.includes('\\')) {
+    throw new AppError('INVALID_PATH', 'Invalid script cover path', { status: 400 });
+  }
+  return `scripts/${safeScript}/cover/${safeName}`;
+}
+
 function localPathForStorageKey(root, storageKey) {
   const projectMatch = String(storageKey || '').match(PROJECT_ASSET_KEY_PATTERN);
   if (projectMatch) return path.join(root, projectMatch[1], 'assets', projectMatch[2], projectMatch[3]);
   const styleMatch = String(storageKey || '').match(CUSTOM_STYLE_ASSET_KEY_PATTERN);
   if (styleMatch) return path.join(root, '_users', styleMatch[1], 'custom-styles', styleMatch[2], 'references', styleMatch[3]);
+  const coverMatch = String(storageKey || '').match(SCRIPT_COVER_KEY_PATTERN);
+  if (coverMatch) return path.join(root, '_scripts', coverMatch[1], 'cover', coverMatch[2]);
   throw new AppError('INVALID_PATH', 'Invalid asset storage key', { status: 400 });
 }
 
@@ -132,6 +145,7 @@ module.exports = {
   buildProjectAssetStorageKey,
   buildProjectAssetPublicPath,
   buildCustomStyleReferenceStorageKey,
+  buildScriptCoverStorageKey,
   parseProjectAssetStorageKey,
   createLocalBlobStore,
   createR2BlobStore,

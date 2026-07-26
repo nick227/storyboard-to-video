@@ -1,6 +1,7 @@
 import { fetchCategories, fetchPublicScripts, fetchTags } from '../scripts/api.js';
 import { api } from '../core/api.js';
 import { renderBreadcrumbs, renderFilterNav, scriptCoverCard, escapeHtml } from '../scripts/chrome.js';
+import { coverArtMarkup } from '../scripts/cover-art.js';
 import { authorSlugFromSession, libraryQueryPath, workPath, scriptSlugFromRecord } from '../core/app-paths.js';
 
 const params = new URLSearchParams(window.location.search);
@@ -66,13 +67,17 @@ function mineCard(project, session, artifact) {
   editUrl.searchParams.set('project', project.id);
   const editHref = `${editUrl.pathname}${editUrl.search}`;
   const viewHref = isPublic ? workPath(author, slug, artifact) : '';
-  return `<article class="script-cover-card library-mine-card">
-    <p class="cover-label" data-artifact="${escapeHtml(artifact)}">${escapeHtml(artifact)}</p>
-    <h2 class="cover-title">${escapeHtml(project.title || 'Untitled')}</h2>
-    <p class="cover-meta">${isPublic ? 'Public' : 'Private'}</p>
-    <div class="library-card-actions">
-      ${isOwner ? `<a class="script-chip is-active" href="${escapeHtml(editHref)}">Edit</a>` : ''}
-      ${viewHref ? `<a class="script-chip" href="${escapeHtml(viewHref)}">View</a>` : ''}
+  const coverUrl = project.script?.coverUrl || '';
+  return `<article class="script-cover-card library-mine-card${coverUrl ? ' has-cover-art' : ''}">
+    ${coverArtMarkup(coverUrl)}
+    <div class="cover-body">
+      <p class="cover-label" data-artifact="${escapeHtml(artifact)}">${escapeHtml(artifact)}</p>
+      <h2 class="cover-title">${escapeHtml(project.title || 'Untitled')}</h2>
+      <p class="cover-meta">${isPublic ? 'Public' : 'Private'}</p>
+      <div class="library-card-actions">
+        ${isOwner ? `<a class="script-chip is-active" href="${escapeHtml(editHref)}">Edit</a>` : ''}
+        ${viewHref ? `<a class="script-chip" href="${escapeHtml(viewHref)}">View</a>` : ''}
+      </div>
     </div>
   </article>`;
 }

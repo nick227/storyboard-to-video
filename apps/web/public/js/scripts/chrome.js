@@ -1,6 +1,7 @@
 import {
   libraryCategoryPath, libraryHomePath, libraryTagPath, workPath,
 } from '../core/app-paths.js';
+import { coverArtMarkup } from './cover-art.js';
 
 export function escapeHtml(value = '') {
   return String(value)
@@ -44,7 +45,10 @@ export function scriptTrail(script = {}) {
 }
 
 export function scriptCoverCard(script, { compact = false, artifact = 'screenplay' } = {}) {
-  const classes = compact ? 'script-cover-card is-compact' : 'script-cover-card';
+  const classes = [
+    compact ? 'script-cover-card is-compact' : 'script-cover-card',
+    script.coverUrl ? 'has-cover-art' : '',
+  ].filter(Boolean).join(' ');
   const likes = Number(script.likeCount || 0);
   const logline = !compact && script.logline
     ? `<p class="cover-logline">${escapeHtml(script.logline)}</p>`
@@ -56,11 +60,14 @@ export function scriptCoverCard(script, { compact = false, artifact = 'screenpla
       : (script.category?.name || 'Screenplay');
   const href = script.sharePath || workPath(script.writer?.profileSlug, script.slug, kind);
   return `<a class="${classes}" href="${escapeHtml(href)}">
-    <p class="cover-label" data-artifact="${escapeHtml(kind)}">${escapeHtml(label)}</p>
-    <h2 class="cover-title">${escapeHtml(script.title || 'Untitled')}</h2>
-    ${logline}
-    <p class="cover-author">${escapeHtml(script.author || 'Anonymous')}</p>
-    ${meta}
+    ${coverArtMarkup(script.coverUrl)}
+    <div class="cover-body">
+      <p class="cover-label" data-artifact="${escapeHtml(kind)}">${escapeHtml(label)}</p>
+      <h2 class="cover-title">${escapeHtml(script.title || 'Untitled')}</h2>
+      ${logline}
+      <p class="cover-author">${escapeHtml(script.author || 'Anonymous')}</p>
+      ${meta}
+    </div>
   </a>`;
 }
 
@@ -81,18 +88,21 @@ export function scriptCoverPage(script) {
   const category = script.category
     ? `<a class="script-chip" href="${escapeHtml(libraryCategoryPath(script.category.slug))}">${escapeHtml(script.category.name)}</a>`
     : '';
-  return `<header class="script-cover-page" aria-label="Screenplay cover">
-    <div class="script-cover-page-top">
-      <p class="script-cover-page-label">Screenplay</p>
-      <div class="script-chip-row">${category}${tags}</div>
-    </div>
-    <div class="script-cover-page-mid">
-      <h1>${escapeHtml(script.title || 'Untitled')}</h1>
-      ${logline}
-      <p class="script-cover-page-author">Written by<br><strong>${author}</strong></p>
-    </div>
-    <div class="script-cover-page-bottom">
-      ${date ? `<p class="script-cover-page-date">${escapeHtml(date)}</p>` : ''}
+  return `<header class="script-cover-page${script.coverUrl ? ' has-cover-art' : ''}" aria-label="Screenplay cover">
+    ${coverArtMarkup(script.coverUrl, { className: 'script-cover-page-art' })}
+    <div class="script-cover-page-copy">
+      <div class="script-cover-page-top">
+        <p class="script-cover-page-label">Screenplay</p>
+        <div class="script-chip-row">${category}${tags}</div>
+      </div>
+      <div class="script-cover-page-mid">
+        <h1>${escapeHtml(script.title || 'Untitled')}</h1>
+        ${logline}
+        <p class="script-cover-page-author">Written by<br><strong>${author}</strong></p>
+      </div>
+      <div class="script-cover-page-bottom">
+        ${date ? `<p class="script-cover-page-date">${escapeHtml(date)}</p>` : ''}
+      </div>
     </div>
   </header>`;
 }

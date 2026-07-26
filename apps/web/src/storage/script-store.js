@@ -65,6 +65,8 @@ class ScriptStore {
       artifacts,
       author: row.author,
       logline: row.logline || '',
+      coverStorageKey: row.coverStorageKey || null,
+      coverMimeType: row.coverMimeType || null,
       categoryId: row.categoryId || null,
       category: this.mapCategory(row.categoryId),
       tags: this.mapTags(row.id),
@@ -136,6 +138,8 @@ class ScriptStore {
     if (patch.author != null) next.author = cleanText(patch.author, 200) || 'Anonymous';
     if (patch.scriptText != null) next.scriptText = String(patch.scriptText);
     if (patch.logline != null) next.logline = cleanText(patch.logline, 280);
+    if (patch.coverStorageKey !== undefined) next.coverStorageKey = patch.coverStorageKey || null;
+    if (patch.coverMimeType !== undefined) next.coverMimeType = patch.coverMimeType || null;
     if (patch.slug != null) next.slug = await this.allocateSlug(patch.slug, { excludeId: id });
     if (patch.categoryId !== undefined) {
       if (patch.categoryId && !this.categories.has(patch.categoryId)) {

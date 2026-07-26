@@ -29,6 +29,66 @@
 }
 .storyboard-combo:hover { border-bottom-color: var(--line); }
 .storyboard-combo:focus-within { border-bottom-color: var(--line); background-color: color-mix(in srgb, var(--glass-ink) 3%, transparent); }
+.settings-modal-body .screenplay-logo,
+.storyboard-combo .screenplay-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 4px;
+  background:
+    linear-gradient(165deg, color-mix(in srgb, var(--glass-ink) 4%, transparent), transparent),
+    color-mix(in srgb, var(--panel, #fff) 88%, transparent);
+  color: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.settings-modal-body .screenplay-logo {
+  width: 100px;
+  height: 100px;
+}
+.storyboard-combo .screenplay-logo {
+  width: 30px;
+  height: 30px;
+  margin-right: 10px;
+}
+.screenplay-logo:hover,
+.screenplay-logo:focus-visible {
+  border-color: var(--accent, #4a6cf7);
+  outline: none;
+}
+.screenplay-logo.has-cover {
+  border-style: solid;
+  background: transparent;
+}
+.screenplay-logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.screenplay-logo:not(.has-cover)::after {
+  content: '';
+  width: 42%;
+  height: 54%;
+  border: 1.5px solid color-mix(in srgb, var(--muted, #888) 70%, transparent);
+  border-radius: 2px;
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--muted, #888) 35%, transparent);
+}
+.script-cover-field { display: grid; gap: 0.45rem; }
+.script-cover-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.script-cover-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
 .storyboard-title {
   flex: 1 1 auto;
   min-width: 0;

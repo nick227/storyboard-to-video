@@ -194,6 +194,50 @@ test('storyboard and timeline publish independently of screenplay', async () => 
   assert.ok(String(allListed[0].publishedAt || '') >= String(allListed[1].publishedAt || ''));
 });
 
+test('script cover art upload replace and public stream', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'script-cover-'));
+  try {
+    const { createLocalBlobStore } = require('../src/storage/blob-store');
+    const blobStore = createLocalBlobStore({ root });
+    const store = new ScriptStore();
+    const scripts = createScriptsService({ store, blobStore });
+    const created = await scripts.create({
+      title: 'Covered',
+      scriptText: 'FADE IN:',
+    }, { tenantId: 't1', userId: 'u1' });
+    assert.equal(created.coverUrl, null);
+    assert.equal(created.hasCover, false);
+
+    const png = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    ]);
+    const uploaded = await scripts.uploadCover(created.id, {
+      buffer: png,
+      mimetype: 'image/png',
+    }, { tenantId: 't1' });
+    assert.equal(uploaded.hasCover, true);
+    assert.match(uploaded.coverUrl, new RegExp(`/api/scripts/${created.id}/cover\\?v=`));
+
+    await scripts.setVisibility(created.id, 'public', { tenantId: 't1' });
+    const listed = await scripts.listPublic();
+    assert.match(listed[0].coverUrl, /\/api\/public\/scripts\/covered\/cover\?v=/);
+
+    const stream = await scripts.publicCoverStream('covered');
+    assert.equal(stream.mimeType, 'image/png');
+    const chunks = [];
+    for await (const chunk of stream.stream) chunks.push(chunk);
+    assert.ok(Buffer.concat(chunks).length >= 8);
+
+    const removed = await scripts.removeCover(created.id, { tenantId: 't1' });
+    assert.equal(removed.hasCover, false);
+    assert.equal(removed.coverUrl, null);
+    await assert.rejects(() => scripts.publicCoverStream('covered'), (error) => error.code === 'COVER_NOT_FOUND');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('public storyboard view returns sanitized project scenes without a cover payload', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'storyboard-public-view-'));
   const store = new ScriptStore();

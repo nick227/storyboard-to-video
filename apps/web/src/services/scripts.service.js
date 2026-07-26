@@ -1,8 +1,27 @@
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { pipeline } = require('node:stream/promises');
 const { AppError } = require('../errors');
 const { cleanText } = require('../shared/text');
 const { sharePathFor } = require('../shared/app-paths');
 const { isArtifact, isArtifactPublic, hasAnyPublicArtifact, artifactState, artifactsFromRow, ARTIFACT_FIELDS, ARTIFACTS } = require('../shared/script-artifacts');
 const { publicProjectView } = require('../shared/public-artifact-view');
+const { detectImageExtension } = require('../media/image-format');
+const { buildScriptCoverStorageKey } = require('../storage/blob-store');
+
+function ownerCoverUrl(script) {
+  if (!script?.coverStorageKey) return null;
+  const bust = path.basename(script.coverStorageKey);
+  return `/api/scripts/${encodeURIComponent(script.id)}/cover?v=${encodeURIComponent(bust)}`;
+}
+
+function publicCoverUrl(script) {
+  if (!script?.coverStorageKey || !script?.slug) return null;
+  const bust = path.basename(script.coverStorageKey);
+  return `/api/public/scripts/${encodeURIComponent(script.slug)}/cover?v=${encodeURIComponent(bust)}`;
+}
 
 function publicSummary(script, { artifact = 'screenplay' } = {}) {
   const key = isArtifact(artifact) ? artifact : 'screenplay';
@@ -13,6 +32,7 @@ function publicSummary(script, { artifact = 'screenplay' } = {}) {
     slug: script.slug,
     author: script.author,
     logline: script.logline || '',
+    coverUrl: publicCoverUrl(script),
     category: script.category || null,
     tags: script.tags || [],
     artifact: key,
@@ -34,8 +54,11 @@ function publicSummary(script, { artifact = 'screenplay' } = {}) {
 }
 
 function ownerView(script) {
+  const { coverStorageKey, ...rest } = script;
   return {
-    ...script,
+    ...rest,
+    coverUrl: ownerCoverUrl(script),
+    hasCover: Boolean(coverStorageKey),
     artifacts: script.artifacts || artifactsFromRow(script),
     likeCount: Number(script.likeCount || 0),
     viewCount: Number(script.viewCount || 0),
@@ -48,7 +71,7 @@ function ownerView(script) {
   };
 }
 
-function createScriptsService({ store, projectStore } = {}) {
+function createScriptsService({ store, projectStore, blobStore } = {}) {
   function resolveAuthor(author) {
     return cleanText(author || 'Anonymous', 200) || 'Anonymous';
   }
@@ -251,11 +274,92 @@ function createScriptsService({ store, projectStore } = {}) {
     return sharePathFor(script, key);
   }
 
+  async function uploadCover(scriptId, file, { tenantId }) {
+    if (!blobStore) throw new AppError('STORAGE_UNAVAILABLE', 'Cover storage is unavailable', { status: 503 });
+    if (!file?.buffer?.length) throw new AppError('VALIDATION_ERROR', 'Cover image is required', { status: 400 });
+    const extension = detectImageExtension(file.buffer);
+    if (!extension) {
+      throw new AppError('INVALID_IMAGE', 'Only valid PNG, JPEG, WebP, and GIF images are accepted', { status: 400 });
+    }
+    const existing = await store.read(scriptId, { tenantId });
+    const fileName = `${crypto.randomUUID()}.${extension}`;
+    const storageKey = buildScriptCoverStorageKey(scriptId, fileName);
+    const mimeType = file.mimetype || `image/${extension === 'jpg' ? 'jpeg' : extension}`;
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'script-cover-'));
+    const staged = path.join(tempDir, fileName);
+    fs.writeFileSync(staged, file.buffer);
+    try {
+      await blobStore.put(storageKey, staged, { mimeType, byteSize: file.buffer.length });
+      let updated;
+      try {
+        updated = await store.update(scriptId, {
+          coverStorageKey: storageKey,
+          coverMimeType: mimeType,
+        }, { tenantId });
+      } catch (error) {
+        await blobStore.delete(storageKey).catch(() => {});
+        throw error;
+      }
+      if (existing.coverStorageKey && existing.coverStorageKey !== storageKey) {
+        await blobStore.delete(existing.coverStorageKey).catch(() => {});
+      }
+      return ownerView(updated);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  async function removeCover(scriptId, { tenantId }) {
+    if (!blobStore) throw new AppError('STORAGE_UNAVAILABLE', 'Cover storage is unavailable', { status: 503 });
+    const existing = await store.read(scriptId, { tenantId });
+    const updated = await store.update(scriptId, {
+      coverStorageKey: null,
+      coverMimeType: null,
+    }, { tenantId });
+    if (existing.coverStorageKey) {
+      await blobStore.delete(existing.coverStorageKey).catch(() => {});
+    }
+    return ownerView(updated);
+  }
+
+  async function coverStream(scriptId, { tenantId } = {}) {
+    if (!blobStore) throw new AppError('STORAGE_UNAVAILABLE', 'Cover storage is unavailable', { status: 503 });
+    const script = await store.read(scriptId, tenantId ? { tenantId } : {});
+    if (!script.coverStorageKey) throw new AppError('COVER_NOT_FOUND', 'Cover art not found', { status: 404 });
+    return {
+      mimeType: script.coverMimeType || 'application/octet-stream',
+      stream: await blobStore.getStream(script.coverStorageKey),
+    };
+  }
+
+  async function publicCoverStream(slug) {
+    if (!blobStore) throw new AppError('STORAGE_UNAVAILABLE', 'Cover storage is unavailable', { status: 503 });
+    const script = await store.findBySlug(slug);
+    if (!script || !hasAnyPublicArtifact(script) || !script.coverStorageKey) {
+      throw new AppError('COVER_NOT_FOUND', 'Cover art not found', { status: 404 });
+    }
+    return {
+      mimeType: script.coverMimeType || 'application/octet-stream',
+      stream: await blobStore.getStream(script.coverStorageKey),
+    };
+  }
+
+  async function pipeCover(res, source) {
+    res.type(source.mimeType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    try {
+      await pipeline(source.stream, res);
+    } catch (err) {
+      if (err.code !== 'ERR_STREAM_PREMATURE_CLOSE') throw err;
+    }
+  }
+
   return {
     create, list, get, update, setVisibility, listPublic, listPublicByCategory, listPublicByTag,
     listCategories, listTags, getPublicBySlug, resolveSharePath, toggleLike, getOwnerStats, ensureForProject, syncFromProject,
-    listProjects, canPublicReadProjectMedia, publicSummary, ownerView,
+    listProjects, canPublicReadProjectMedia, uploadCover, removeCover, coverStream, publicCoverStream, pipeCover,
+    publicSummary, ownerView,
   };
 }
 
-module.exports = { createScriptsService, publicSummary, ownerView };
+module.exports = { createScriptsService, publicSummary, ownerView, ownerCoverUrl, publicCoverUrl };

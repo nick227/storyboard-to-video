@@ -133,6 +133,46 @@ body.scripts-shell {
   border: 1px solid var(--scripts-line);
   box-shadow: 0 1px 0 color-mix(in srgb, var(--glass-ink) 5%, transparent) inset, 0 12px 28px rgba(0, 0, 0, 0.25);
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  overflow: hidden;
+  position: relative;
+}
+
+.script-cover-card .cover-art {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  z-index: 0;
+}
+
+.script-cover-card.has-cover-art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(8, 10, 14, 0.18) 0%, rgba(8, 10, 14, 0.72) 62%, rgba(8, 10, 14, 0.88) 100%);
+  pointer-events: none;
+}
+
+.script-cover-card .cover-body {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.script-cover-card.has-cover-art {
+  color: #f4f1ea;
+  border-color: color-mix(in srgb, var(--scripts-line) 55%, transparent);
+}
+
+.script-cover-card.has-cover-art .cover-author,
+.script-cover-card.has-cover-art .cover-meta,
+.script-cover-card.has-cover-art .cover-logline {
+  color: color-mix(in srgb, #f4f1ea 72%, transparent);
 }
 
 .script-cover-card.is-compact { padding: 0.8rem 0.65rem 0.75rem; }
@@ -359,6 +399,31 @@ body.scripts-shell {
     linear-gradient(165deg, var(--scripts-paper) 0%, var(--scripts-paper) 60%, var(--scripts-paper-edge) 100%);
   border: 1px solid var(--scripts-line);
   box-shadow: 0 20px 44px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  position: relative;
+}
+
+.script-cover-page.has-cover-art {
+  grid-template-rows: minmax(11rem, 38%) auto;
+  padding: 0;
+  text-align: left;
+}
+
+.script-cover-page-art {
+  min-height: 11rem;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.script-cover-page-copy {
+  display: contents;
+}
+
+.script-cover-page.has-cover-art .script-cover-page-copy {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.25rem 1.5rem 1.4rem;
 }
 
 .script-cover-page-top,
@@ -369,6 +434,11 @@ body.scripts-shell {
   place-content: center;
   gap: 0.75rem;
   padding: 0.5rem 0;
+}
+
+.script-cover-page.has-cover-art .script-cover-page-mid {
+  place-content: start;
+  padding: 0;
 }
 
 .script-cover-page-label {

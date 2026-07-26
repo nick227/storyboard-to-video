@@ -78,7 +78,7 @@ function createDependencies(config, overrides = {}) {
   const scriptStore = overrides.scriptStore || (useTestAdapters
     ? new ScriptStore()
     : new PrismaScriptRepository(prisma));
-  const scripts = overrides.scripts || createScriptsService({ store: scriptStore, projectStore });
+  const scripts = overrides.scripts || createScriptsService({ store: scriptStore, projectStore, blobStore });
   const writersStore = overrides.writersStore || (useTestAdapters
     ? new MemoryWritersRepository()
     : new PrismaWritersRepository(prisma));

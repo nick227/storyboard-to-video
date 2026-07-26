@@ -232,7 +232,7 @@ function registerRoutes(app, d) {
     store: d.projectStore, queue: d.queue, upload: d.upload, shotReferences: d.shotReferences,
     styles: d.styles, prompts: d.prompts, referenceGeneration: d.referenceGeneration, imageProvider: d.imageProvider, stockProvider: d.stockProvider, identityStore: d.identityStore, prisma: d.prisma, config: d.config, spendSummary: d.spendSummary, scripts: d.scripts,
   }));
-  app.use('/api/scripts', createScriptsRouter({ scripts: d.scripts, projectStore: d.projectStore }));
+  app.use('/api/scripts', createScriptsRouter({ scripts: d.scripts, projectStore: d.projectStore, upload: d.upload }));
   app.use('/api/writers', createWritersRouter({ writers: d.writers }));
   app.use('/api/jobs', createJobRouter({ queue: d.queue, store: d.projectStore, videoAttempts: d.videoAttemptRepository, videoExecution: d.videoExecution }));
   app.use('/api/admin/usage', usageRoutes(d.usageRepository));
