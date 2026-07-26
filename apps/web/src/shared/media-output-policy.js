@@ -1,6 +1,6 @@
 const { AppError } = require('../errors');
 const { VIDEO_PROVIDERS } = require('./video-provider-capabilities');
-const { sizeKeyForAspectRatio } = require('./local-safetensors');
+const { localSafetensorsRunSettings } = require('./local-safetensors');
 const { isMiniMaxOutputSupported, minimaxResolutionForTier } = require('./minimax-video-output');
 
 const RESOLUTION_TIERS = Object.freeze(['draft', 'standard', 'high', 'ultra']);
@@ -126,16 +126,16 @@ function resolveImageOutput({ provider, model, intent }) {
     dimensions = shortEdgeDimensions(intent.aspectRatio, edge);
     providerSettings = {};
   } else if (provider === 'local-safetensors') {
-    const shortEdge = intent.resolutionTier === 'draft' ? 768 : 1024;
+    const run = localSafetensorsRunSettings(model, intent.aspectRatio, intent.resolutionTier);
     dimensions = intent.resolutionTier === 'standard' || intent.resolutionTier === 'draft'
-      ? shortEdgeDimensions(intent.aspectRatio, shortEdge)
+      ? shortEdgeDimensions(intent.aspectRatio, run.shortEdge)
       : null;
     if (dimensions) {
       providerSettings = {
-        size: sizeKeyForAspectRatio(intent.aspectRatio),
+        size: run.size,
         width: dimensions.width,
         height: dimensions.height,
-        steps: 25,
+        steps: run.steps,
       };
     }
   } else if (provider === 'sdxl') {
