@@ -1,6 +1,7 @@
 const { AppError } = require('../errors');
 const { VIDEO_PROVIDERS } = require('./video-provider-capabilities');
 const { sizeKeyForAspectRatio } = require('./local-safetensors');
+const { isMiniMaxOutputSupported, minimaxResolutionForTier } = require('./minimax-video-output');
 
 const RESOLUTION_TIERS = Object.freeze(['draft', 'standard', 'high', 'ultra']);
 const IMAGE_QUALITY_LEVELS = Object.freeze(['low', 'medium', 'high']);
@@ -157,16 +158,6 @@ function resolveImageOutput({ provider, model, intent }) {
   });
 }
 
-function minimaxResolution(model, tier) {
-  // Preserve the pre-policy MiniMax default at 768P for now. This means draft and standard are
-  // currently aliases for Hailuo; a future tier migration can map image-to-video draft to 512P,
-  // while first/last-frame mode must continue rejecting 512P as unsupported by MiniMax.
-  const currentHailuo = model === 'MiniMax-Hailuo-02' || /^MiniMax-Hailuo-2(?:\.|$)/.test(String(model || ''));
-  if (tier === 'draft' || tier === 'standard') return currentHailuo ? '768P' : '720P';
-  if (tier === 'high') return '1080P';
-  return null;
-}
-
 // Adding a new video provider means registering a resolver here, not adding another branch to a
 // growing if/else chain. Each resolver returns { dimensions, providerSettings } or null when the
 // requested settings are unsupported.
@@ -178,13 +169,12 @@ const VIDEO_OUTPUT_RESOLVERS = Object.freeze({
     return { dimensions, providerSettings: { width: dimensions.width, height: dimensions.height, ...(intent.durationSeconds ? { duration: intent.durationSeconds } : {}) } };
   },
   minimax(model, intent, mode) {
-    const resolution = minimaxResolution(model, intent.resolutionTier);
+    const resolution = minimaxResolutionForTier(model, intent.resolutionTier);
     const duration = intent.durationSeconds || 6;
     if (mode === 'first_last_frame' && model !== 'MiniMax-Hailuo-02') return null;
-    if (mode === 'first_last_frame' && !['768P', '1080P'].includes(resolution)) return null;
-    if (resolution && duration === 6) return { dimensions: null, providerSettings: { resolution, duration } };
-    if (resolution === '768P' && duration === 10) return { dimensions: null, providerSettings: { resolution, duration } };
-    return null;
+    // Reject unsupported tuples (including 512P first/last-frame) instead of silently upgrading.
+    if (!resolution || !isMiniMaxOutputSupported({ model, mode, resolution, duration })) return null;
+    return { dimensions: null, providerSettings: { resolution, duration } };
   },
   // Veo only accepts 16:9/9:16, resolution draft/standard->720p, high->1080p, ultra->4k, and a
   // duration of exactly 4, 6, or 8 seconds -- 8 is required once resolution reaches 1080p/4k.

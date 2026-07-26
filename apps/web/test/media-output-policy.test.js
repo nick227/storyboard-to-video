@@ -48,14 +48,36 @@ test('two-second test clips are supported only by providers that can actually pr
   );
 });
 
-test('the platform default draft resolution tier does not immediately fail on MiniMax', () => {
+test('the platform default draft resolution tier maps Hailuo to the economy 512P test preset', () => {
   const draftIntent = mergeMediaIntent({ modality: 'video', platform: PLATFORM_MEDIA_DEFAULTS });
   assert.equal(draftIntent.resolutionTier, 'draft');
   const minimax = resolveVideoOutput({ provider: 'minimax', model: 'video-01', intent: draftIntent });
   assert.deepEqual(minimax.resolved.providerSettings, { resolution: '720P', duration: 6 });
-  const hailuo = resolveVideoOutput({ provider: 'minimax', model: 'MiniMax-Hailuo-02', mode: 'first_last_frame', intent: draftIntent });
-  assert.deepEqual(hailuo.resolved.providerSettings, { resolution: '768P', duration: 6 });
+  const hailuo = resolveVideoOutput({ provider: 'minimax', model: 'MiniMax-Hailuo-02', mode: 'image_to_video', intent: draftIntent });
+  assert.deepEqual(hailuo.resolved.providerSettings, { resolution: '512P', duration: 6 });
+  assert.throws(
+    () => resolveVideoOutput({ provider: 'minimax', model: 'MiniMax-Hailuo-02', mode: 'first_last_frame', intent: draftIntent }),
+    (error) => error.code === 'UNSUPPORTED_MEDIA_OUTPUT',
+  );
   assert.throws(() => resolveVideoOutput({ provider: 'minimax', model: 'video-01-keyframe', mode: 'first_last_frame', intent: draftIntent }), (error) => error.code === 'UNSUPPORTED_MEDIA_OUTPUT');
+});
+
+test('Hailuo economy 512P accepts 6s and 10s without upgrading to 768P', () => {
+  const six = resolveVideoOutput({
+    provider: 'minimax', model: 'MiniMax-Hailuo-02', mode: 'image_to_video',
+    intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'draft', durationSeconds: 6 } } }),
+  });
+  assert.deepEqual(six.resolved.providerSettings, { resolution: '512P', duration: 6 });
+  const ten = resolveVideoOutput({
+    provider: 'minimax', model: 'MiniMax-Hailuo-02', mode: 'image_to_video',
+    intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'draft', durationSeconds: 10 } } }),
+  });
+  assert.deepEqual(ten.resolved.providerSettings, { resolution: '512P', duration: 10 });
+  const production = resolveVideoOutput({
+    provider: 'minimax', model: 'MiniMax-Hailuo-02', mode: 'image_to_video',
+    intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'standard', durationSeconds: 6 } } }),
+  });
+  assert.deepEqual(production.resolved.providerSettings, { resolution: '768P', duration: 6 });
 });
 
 test('a video provider with no registered output resolver fails clearly instead of a generic dimension error', () => {

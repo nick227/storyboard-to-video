@@ -83,9 +83,18 @@ const CANONICAL_PRICES = [
     versionKey: 'minimax-hailuo-02-2026-observability-v1',
     provider: 'minimax', modality: 'video', model: 'MiniMax-Hailuo-02',
     billingTier: 'customer_metered',
-    rateCard: { type: 'flat', quantityKey: 'videos', nanoUsdPerUnit: 270_000_000 },
-    reservationNanoUsd: 300_000_000n,
-    reconciliationNotes: 'Estimated ~$0.27/video for typical 6s clip; pending vendor invoice reconciliation.',
+    rateCard: {
+      type: 'matrix',
+      entries: [
+        { when: { resolution: '512P', seconds: 6 }, nanoUsdPerUnit: 100_000_000, quantityKey: 'videos' },
+        { when: { resolution: '512P', seconds: 10 }, nanoUsdPerUnit: 150_000_000, quantityKey: 'videos' },
+        { when: { resolution: '768P', seconds: 6 }, nanoUsdPerUnit: 270_000_000, quantityKey: 'videos' },
+        { when: { resolution: '768P', seconds: 10 }, nanoUsdPerUnit: 450_000_000, quantityKey: 'videos' },
+        { when: { resolution: '1080P', seconds: 6 }, nanoUsdPerUnit: 490_000_000, quantityKey: 'videos' },
+      ],
+    },
+    reservationNanoUsd: 100_000_000n,
+    reconciliationNotes: 'Matrix prices: 512P/6s ~$0.10 (economy test), 512P/10s ~$0.15, 768P/6s ~$0.27; pending vendor invoice reconciliation.',
   },
   {
     versionKey: 'ltx-video-observability-v1',

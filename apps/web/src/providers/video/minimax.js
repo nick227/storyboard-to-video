@@ -4,12 +4,24 @@ const { signal, providerError } = require('../http');
 const { providerRequestId, providerResult } = require('../result');
 const { encodeLocalFileToBase64DataUri, downloadRemoteVideo } = require('./asset-transport');
 const { estimatedUsage } = require('../../shared/media-output-policy');
+const {
+  MINIMAX_TEST_PRESET,
+  assertMiniMaxVideoOutput,
+} = require('../../shared/minimax-video-output');
 
 function createMiniMaxAdapter(config, getCancellation) {
   const env = config?.env || process.env;
   const baseUrl = (env.MINIMAX_API_HOST || 'https://api.minimax.io').replace(/\/+$/, '');
   const apiKey = env.MINIMAX_API_KEY || '';
-  const defaultModel = env.MINIMAX_VIDEO_MODEL || 'MiniMax-Hailuo-02';
+
+  function positiveInteger(value, fallback) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  const defaultModel = env.MINIMAX_VIDEO_MODEL || MINIMAX_TEST_PRESET.model;
+  const defaultResolution = env.MINIMAX_VIDEO_RESOLUTION || MINIMAX_TEST_PRESET.resolution;
+  const defaultDuration = positiveInteger(env.MINIMAX_VIDEO_DURATION, MINIMAX_TEST_PRESET.duration);
 
   function positiveInteger(value, fallback) {
     const parsed = Number.parseInt(value, 10);
@@ -65,7 +77,14 @@ function createMiniMaxAdapter(config, getCancellation) {
     if (!apiKey) {
       throw new AppError('NOT_CONFIGURED', 'MiniMax API key is missing', { status: 401, retryable: false });
     }
-    return { ok: true, provider: 'minimax', model: model || defaultModel, mode: mode || 'image_to_video' };
+    return {
+      ok: true,
+      provider: 'minimax',
+      model: model || defaultModel,
+      mode: mode || 'image_to_video',
+      resolution: defaultResolution,
+      duration: defaultDuration,
+    };
   }
 
   async function prepareAssets(request, transport) {
@@ -122,7 +141,13 @@ function createMiniMaxAdapter(config, getCancellation) {
     if (mode === 'first_last_frame') {
       if (model !== 'MiniMax-Hailuo-02') throw new AppError('UNSUPPORTED_VIDEO_MODE', `${model} does not support MiniMax first/last-frame generation`, { status: 400 });
       if (!firstFrameImage || !lastFrameImage) throw new AppError('VIDEO_FRAME_REQUIRED', 'MiniMax first/last-frame generation requires both frame images', { status: 400 });
+    } else if (mode === 'image_to_video') {
+      if (!firstFrameImage) throw new AppError('VIDEO_FRAME_REQUIRED', 'MiniMax image-to-video requires a valid first-frame image', { status: 400 });
     }
+
+    const resolution = request.outputSelection.resolved.providerSettings.resolution;
+    const duration = request.outputSelection.resolved.providerSettings.duration;
+    assertMiniMaxVideoOutput({ model, mode, resolution, duration });
 
     const payload = {
       model,
@@ -130,8 +155,8 @@ function createMiniMaxAdapter(config, getCancellation) {
       ...(firstFrameImage ? { first_frame_image: firstFrameImage } : {}),
       ...(lastFrameImage ? { last_frame_image: lastFrameImage } : {}),
       prompt_optimizer: request.promptOptimizer !== false,
-      resolution: request.outputSelection.resolved.providerSettings.resolution,
-      duration: request.outputSelection.resolved.providerSettings.duration,
+      resolution,
+      duration,
       ...(request.seed !== undefined && request.seed !== null ? { seed: Number(request.seed) } : {}),
     };
 
@@ -312,6 +337,8 @@ function createMiniMaxAdapter(config, getCancellation) {
   return {
     name: 'minimax',
     model: defaultModel,
+    resolution: defaultResolution,
+    duration: defaultDuration,
     // MiniMax work is intentionally admitted through the durable attempt FIFO one full provider
     // lifecycle at a time. Serializing only submit() calls is insufficient: submit returns a task
     // id immediately while the paid remote render continues running.
@@ -328,4 +355,5 @@ function createMiniMaxAdapter(config, getCancellation) {
 
 module.exports = {
   createMiniMaxAdapter,
+  MINIMAX_TEST_PRESET,
 };

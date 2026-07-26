@@ -20,9 +20,13 @@ test('frozen provider rate cards reproduce the July validation costs exactly', (
 
 test('matrix rate cards price the exact resolved provider tuple and reject unpriced output', () => {
   const rate = { type: 'matrix', entries: [
+    { when: { resolution: '512P', seconds: 6 }, nanoUsdPerUnit: 100000000, quantityKey: 'videos' },
+    { when: { resolution: '512P', seconds: 10 }, nanoUsdPerUnit: 150000000, quantityKey: 'videos' },
     { when: { resolution: '768P', seconds: 6 }, nanoUsdPerUnit: 500000000, quantityKey: 'videos' },
     { when: { resolution: '1080P', seconds: 6 }, nanoUsdPerUnit: 1000000000, quantityKey: 'videos' },
   ] };
+  assert.equal(calculateProviderCost(rate, { resolution: '512P', seconds: 6, videos: 1 }).nanoUsd, 100000000n);
+  assert.equal(calculateProviderCost(rate, { resolution: '512P', seconds: 10, videos: 1 }).nanoUsd, 150000000n);
   assert.equal(calculateProviderCost(rate, { resolution: '1080P', seconds: 6, videos: 2 }).nanoUsd, 2000000000n);
   assert.throws(() => calculateProviderCost(rate, { resolution: '1080P', seconds: 10, videos: 1 }), /No provider price matches/);
 });

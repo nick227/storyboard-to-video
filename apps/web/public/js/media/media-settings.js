@@ -1,4 +1,5 @@
 import { assertElements } from '../core/dom-contract.js';
+import { MINIMAX_TEST_PRESET_LABEL } from '../generation/video-provider-capabilities.js';
 
 export function selectedMediaSettings(elements, { clearInheritedDuration = false } = {}) {
   return {
@@ -51,6 +52,18 @@ export function initMediaSettings(elements, {
   };
   const selectedSettings = (options) => selectedMediaSettings(elements, options);
   const projectScope = () => getProjectScope?.() || {};
+
+  const effectiveVideoProvider = () => elements.videoProvider?.value || activePolicy?.defaults?.video?.provider || '';
+
+  const refreshVideoResolutionLabels = () => {
+    const minimax = effectiveVideoProvider() === 'minimax';
+    for (const option of elements.videoResolutionTier.options) {
+      if (!option.dataset.baseLabel) option.dataset.baseLabel = option.textContent;
+      option.textContent = minimax && option.value === 'draft'
+        ? MINIMAX_TEST_PRESET_LABEL
+        : option.dataset.baseLabel;
+    }
+  };
 
   const refreshVideoDurationOptions = async () => {
     const sequence = ++videoOptionsSequence;
@@ -207,6 +220,8 @@ export function initMediaSettings(elements, {
     .forEach((element) => element.addEventListener('change', saveAndRefreshQuote));
   [elements.aspectRatio, elements.videoResolutionTier, elements.videoProvider]
     .forEach((element) => element.addEventListener('change', refreshVideoDurationOptions));
+  [elements.videoProvider]
+    .forEach((element) => element.addEventListener('change', refreshVideoResolutionLabels));
   [elements.aspectRatio, elements.imageProvider]
     .forEach((element) => element.addEventListener('change', refreshImageOutputOptions));
   [elements.imageResolutionTier, elements.imageQuality]
@@ -262,6 +277,7 @@ export function initMediaSettings(elements, {
       if (body.ok && body.defaults) {
         activePolicy = body;
         updateHelperLabels();
+        refreshVideoResolutionLabels();
       }
     })
     .catch(() => {});
@@ -275,6 +291,7 @@ export function initMediaSettings(elements, {
     refreshCostPreview,
     refreshImageOutputOptions,
     refreshVideoDurationOptions,
+    refreshVideoResolutionLabels,
     selectedSettings,
   };
 }

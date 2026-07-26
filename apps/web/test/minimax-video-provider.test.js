@@ -9,8 +9,8 @@ const { videoProviderCapabilities } = require('../src/shared/video-provider-capa
 const { mergeMediaIntent, resolveVideoOutput } = require('../src/shared/media-output-policy');
 const { validateMiniMaxInterpolationFrames } = require('../src/services/video-generation.service');
 
-function outputSelection(model = 'MiniMax-Hailuo-02', mode = 'image_to_video') {
-  return resolveVideoOutput({ provider: 'minimax', model, mode, intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'standard', durationSeconds: 6 } } }) });
+function outputSelection(model = 'MiniMax-Hailuo-02', mode = 'image_to_video', resolutionTier = 'standard') {
+  return resolveVideoOutput({ provider: 'minimax', model, mode, intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier, durationSeconds: 6 } } }) });
 }
 
 function pngHeader(width, height) {
@@ -70,7 +70,7 @@ test('MiniMax submit task constructs correct JSON payload with base64 image', as
       prompt: 'A dragon flies through dramatic sunset clouds.',
       preparedInputs: [{ role: 'start_frame', assetPath: f.startFrame }],
       outputPath: path.join(f.root, 'output.mp4'),
-      outputSelection: outputSelection(),
+      outputSelection: outputSelection('video-01'),
     };
 
     const task = await adapter.submit(request);
@@ -279,27 +279,39 @@ test('MiniMax inspect transitions task state between running, completed, and fai
 });
 
 test('MiniMax handles API errors and malformed JSON responses', async () => {
-  const mockFetchError = async () => new Response('Internal Gateway Error', { status: 502 });
-  const adapter = createMiniMaxAdapter({ env: { MINIMAX_API_KEY: 'test-key' }, fetch: mockFetchError });
+  const f = fixture();
+  try {
+    const request = {
+      model: 'MiniMax-Hailuo-02',
+      prompt: 'Test prompt',
+      preparedInputs: [{ role: 'start_frame', assetPath: f.startFrame }],
+      outputPath: path.join(f.root, 'output.mp4'),
+      outputSelection: outputSelection(),
+    };
+    const mockFetchError = async () => new Response('Internal Gateway Error', { status: 502 });
+    const adapter = createMiniMaxAdapter({ env: { MINIMAX_API_KEY: 'test-key' }, fetch: mockFetchError });
 
-  await assert.rejects(
-    adapter.submit({ prompt: 'Test prompt', outputSelection: outputSelection() }),
-    (error) => {
-      assert.equal(error.code, 'PROVIDER_ERROR');
-      return true;
-    }
-  );
+    await assert.rejects(
+      adapter.submit(request),
+      (error) => {
+        assert.equal(error.code, 'PROVIDER_ERROR');
+        return true;
+      }
+    );
 
-  const mockMalformed = async () => new Response(JSON.stringify({ base_resp: { status_code: 1001, status_msg: 'Invalid parameter' } }), { status: 200 });
-  const adapterMalformed = createMiniMaxAdapter({ env: { MINIMAX_API_KEY: 'test-key' }, fetch: mockMalformed });
+    const mockMalformed = async () => new Response(JSON.stringify({ base_resp: { status_code: 1001, status_msg: 'Invalid parameter' } }), { status: 200 });
+    const adapterMalformed = createMiniMaxAdapter({ env: { MINIMAX_API_KEY: 'test-key' }, fetch: mockMalformed });
 
-  await assert.rejects(
-    adapterMalformed.submit({ prompt: 'Test prompt', outputSelection: outputSelection() }),
-    (error) => {
-      assert.equal(error.code, 'MINIMAX_ERROR');
-      return true;
-    }
-  );
+    await assert.rejects(
+      adapterMalformed.submit(request),
+      (error) => {
+        assert.equal(error.code, 'MINIMAX_ERROR');
+        return true;
+      }
+    );
+  } finally {
+    f.cleanup();
+  }
 });
 
 test('MiniMax fetchResult retrieves download URL if missing and streams output file', async () => {
@@ -347,6 +359,111 @@ test('MiniMax provider model capability differences are enforced in capabilities
   assert.equal(capsKeyframe.maxInputs, 2);
 
   assert.throws(() => videoProviderCapabilities('minimax', 'video-01', 'first_last_frame'), /does not implement video mode: first_last_frame/);
+});
+
+test('MiniMax economy test preset submits exact 512P/6s settings without upgrading', async () => {
+  const f = fixture();
+  try {
+    let sentBody = null;
+    let fetchCalled = false;
+    const mockFetch = async (url, options) => {
+      fetchCalled = true;
+      sentBody = JSON.parse(options.body);
+      return new Response(JSON.stringify({ task_id: 'task-economy', base_resp: { status_code: 0, status_msg: 'success' } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    const adapter = createMiniMaxAdapter({
+      env: {
+        MINIMAX_API_KEY: 'test-key',
+        MINIMAX_VIDEO_MODEL: 'MiniMax-Hailuo-02',
+        MINIMAX_VIDEO_RESOLUTION: '512P',
+        MINIMAX_VIDEO_DURATION: '6',
+      },
+      fetch: mockFetch,
+    });
+    assert.equal(adapter.model, 'MiniMax-Hailuo-02');
+    assert.equal(adapter.resolution, '512P');
+    assert.equal(adapter.duration, 6);
+
+    const output = resolveVideoOutput({
+      provider: 'minimax',
+      model: 'MiniMax-Hailuo-02',
+      mode: 'image_to_video',
+      intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'draft', durationSeconds: 6 } } }),
+    });
+    await adapter.submit({
+      model: 'MiniMax-Hailuo-02',
+      generationMode: 'image_to_video',
+      prompt: 'A calm wave.',
+      preparedInputs: [{ role: 'start_frame', assetPath: f.startFrame }],
+      outputPath: path.join(f.root, 'output.mp4'),
+      outputSelection: output,
+    });
+
+    assert.equal(fetchCalled, true);
+    assert.equal(sentBody.model, 'MiniMax-Hailuo-02');
+    assert.equal(sentBody.resolution, '512P');
+    assert.equal(sentBody.duration, 6);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('MiniMax rejects 512P first/last-frame and missing first-frame before any provider request', async () => {
+  const f = fixture();
+  try {
+    let fetchCalled = false;
+    const adapter = createMiniMaxAdapter({
+      env: { MINIMAX_API_KEY: 'test-key' },
+      fetch: async () => {
+        fetchCalled = true;
+        return new Response('{}', { status: 200 });
+      },
+    });
+
+    const economy = resolveVideoOutput({
+      provider: 'minimax',
+      model: 'MiniMax-Hailuo-02',
+      mode: 'image_to_video',
+      intent: mergeMediaIntent({ modality: 'video', override: { aspectRatio: '16:9', video: { resolutionTier: 'draft', durationSeconds: 6 } } }),
+    });
+    await assert.rejects(adapter.submit({
+      model: 'MiniMax-Hailuo-02',
+      generationMode: 'image_to_video',
+      prompt: 'Missing frame.',
+      preparedInputs: [],
+      outputPath: path.join(f.root, 'output.mp4'),
+      outputSelection: economy,
+    }), (error) => {
+      assert.equal(error.code, 'VIDEO_FRAME_REQUIRED');
+      return true;
+    });
+    assert.equal(fetchCalled, false);
+
+    await assert.rejects(adapter.submit({
+      model: 'MiniMax-Hailuo-02',
+      generationMode: 'first_last_frame',
+      prompt: 'Illegal 512P interpolation.',
+      preparedInputs: [
+        { role: 'start_frame', assetPath: f.startFrame },
+        { role: 'end_frame', assetPath: f.endFrame },
+      ],
+      outputPath: path.join(f.root, 'output.mp4'),
+      outputSelection: {
+        ...economy,
+        resolved: { ...economy.resolved, mode: 'first_last_frame', providerSettings: { resolution: '512P', duration: 6 } },
+      },
+    }), (error) => {
+      assert.equal(error.code, 'UNSUPPORTED_MEDIA_OUTPUT');
+      assert.match(error.message, /512P/);
+      return true;
+    });
+    assert.equal(fetchCalled, false);
+  } finally {
+    f.cleanup();
+  }
 });
 
 test('MiniMax interpolation validates frame dimensions and rejects provider-side cropping', () => {

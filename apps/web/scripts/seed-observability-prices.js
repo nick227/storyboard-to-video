@@ -11,10 +11,19 @@ const { createPrismaClient } = require('../src/storage/prisma-client');
 const ROWS = [
   {
     versionKey: 'minimax-hailuo-02-2026-observability-v1', provider: 'minimax', modality: 'video', model: 'MiniMax-Hailuo-02',
-    rateCard: { type: 'flat', quantityKey: 'videos', nanoUsdPerUnit: 270_000_000 },
-    reservationNanoUsd: 300_000_000n,
+    rateCard: {
+      type: 'matrix',
+      entries: [
+        { when: { resolution: '512P', seconds: 6 }, nanoUsdPerUnit: 100_000_000, quantityKey: 'videos' },
+        { when: { resolution: '512P', seconds: 10 }, nanoUsdPerUnit: 150_000_000, quantityKey: 'videos' },
+        { when: { resolution: '768P', seconds: 6 }, nanoUsdPerUnit: 270_000_000, quantityKey: 'videos' },
+        { when: { resolution: '768P', seconds: 10 }, nanoUsdPerUnit: 450_000_000, quantityKey: 'videos' },
+        { when: { resolution: '1080P', seconds: 6 }, nanoUsdPerUnit: 490_000_000, quantityKey: 'videos' },
+      ],
+    },
+    reservationNanoUsd: 100_000_000n,
     sourceReference: 'https://fal.ai/models/fal-ai/minimax/hailuo-02/standard/image-to-video',
-    reconciliationNotes: 'Estimated from fal.ai\'s published Hailuo-02 Standard (768p) rate of ~$0.045/sec for a typical ~6s generation ($0.27/video); this app calls MiniMax directly, so the real per-account rate may differ. Placeholder pending dashboard reconciliation.',
+    reconciliationNotes: 'Matrix: 512P/6s ~$0.10 economy test, 512P/10s ~$0.15, 768P/6s ~$0.27 from fal.ai Standard; pending dashboard reconciliation.',
   },
   {
     versionKey: 'ltx-video-observability-v1', provider: 'ltx', modality: 'video', model: 'ltx-video',

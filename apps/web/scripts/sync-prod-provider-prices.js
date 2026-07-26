@@ -30,9 +30,18 @@ const ROWS = [
   {
     versionKey: 'minimax-hailuo-02-2026-observability-v1', create: true, billingTier: 'customer_metered', billable: true,
     provider: 'minimax', modality: 'video', model: 'MiniMax-Hailuo-02', currency: 'USD',
-    rateCard: { type: 'flat', quantityKey: 'videos', nanoUsdPerUnit: 270000000 }, reservationNanoUsd: 300000000n,
+    rateCard: {
+      type: 'matrix',
+      entries: [
+        { when: { resolution: '512P', seconds: 6 }, nanoUsdPerUnit: 100000000, quantityKey: 'videos' },
+        { when: { resolution: '512P', seconds: 10 }, nanoUsdPerUnit: 150000000, quantityKey: 'videos' },
+        { when: { resolution: '768P', seconds: 6 }, nanoUsdPerUnit: 270000000, quantityKey: 'videos' },
+        { when: { resolution: '768P', seconds: 10 }, nanoUsdPerUnit: 450000000, quantityKey: 'videos' },
+        { when: { resolution: '1080P', seconds: 6 }, nanoUsdPerUnit: 490000000, quantityKey: 'videos' },
+      ],
+    }, reservationNanoUsd: 100000000n,
     evidenceStatus: 'estimated', sourceReference: 'https://fal.ai/models/fal-ai/minimax/hailuo-02/standard/image-to-video',
-    reconciliationNotes: 'Accepted under prototype billing policy (customer-metered; estimated evidence sufficient), not a real dashboard check. Real usage evidence gathered 2026-07-22 via scripts/reconcile-minimax-price.js: task id 422549537878267, 6s image-to-video clip, computed cost $0.27.',
+    reconciliationNotes: 'Accepted under prototype billing policy (customer-metered; estimated evidence sufficient), not a real dashboard check. Matrix: 512P/6s ~$0.10 economy test, 768P/6s ~$0.27 from fal.ai Standard.',
   },
 
   // platform_overhead -- missing entirely in prod, must be created (exact values from local/dev).

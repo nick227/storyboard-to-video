@@ -53,6 +53,10 @@ test('video duration options come from the server resolver for the selected prov
     const minimax = await service.videoDurationOptions({ provider: 'minimax', outputIntent: { aspectRatio: '16:9', video: { resolutionTier: 'standard' } } });
     assert.equal(minimax.providerDefault.output.resolved.durationSeconds, 6);
     assert.deepEqual(minimax.options.filter((item) => item.supported).map((item) => item.durationSeconds), [6, 10]);
+
+    const economy = await service.videoDurationOptions({ provider: 'minimax', outputIntent: { aspectRatio: '16:9', video: { resolutionTier: 'draft' } } });
+    assert.equal(economy.providerDefault.output.resolved.providerSettings.resolution, '512P');
+    assert.deepEqual(economy.options.filter((item) => item.supported).map((item) => item.durationSeconds), [6, 10]);
   } finally {
     f.cleanup();
   }

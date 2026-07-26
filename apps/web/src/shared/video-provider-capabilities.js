@@ -154,4 +154,19 @@ function videoProviderCapabilities(provider, model, mode = 'image_to_video') {
   });
 }
 
-module.exports = { VIDEO_GENERATION_MODES, VIDEO_INPUT_ROLES, VIDEO_PROVIDER_CAPABILITIES, VIDEO_PROVIDERS, videoProviderCapabilities };
+const {
+  MINIMAX_TEST_PRESET,
+  MINIMAX_PRODUCTION_PRESET,
+  MINIMAX_TEST_PRESET_LABEL,
+} = require('./minimax-video-output');
+
+module.exports = {
+  VIDEO_GENERATION_MODES,
+  VIDEO_INPUT_ROLES,
+  VIDEO_PROVIDER_CAPABILITIES,
+  VIDEO_PROVIDERS,
+  videoProviderCapabilities,
+  MINIMAX_TEST_PRESET,
+  MINIMAX_PRODUCTION_PRESET,
+  MINIMAX_TEST_PRESET_LABEL,
+};
