@@ -5,7 +5,7 @@
   "description": "Storyboard prompt and image generation POC",
   "main": "server.js",
   "scripts": {
-    "prestart": "npm run css:build && npm run prisma:build",
+    "prestart": "npm run css:build && npm run prisma:build && npm run smoke:image-service:health",
     "start": "nodemon --watch server.js --watch src --watch pages --watch public --watch stylesheets --watch style-references --ignore public/css --ext js,json,html,css,md,png --exec \"npm run css:build && node server.js\"",
     "test": "npm run prisma:build && node --require ./test/setup.js --test test/*.test.js",
     "test:db": "npm run prisma:build && prisma migrate deploy && PRISMA_INTEGRATION_TESTS=1 node --require ./test/setup.js --test --test-concurrency=1 test/prisma-*.test.js",
@@ -22,7 +22,9 @@
     "credits:reseed": "npm run prisma:build && node scripts/reseed-site-credit-rate-and-packs.js",
     "validate:providers": "npm run prisma:build && node scripts/validate-provider-usage.js",
     "setup:piper": "node scripts/setup-piper.js",
-    "smoke:planning-preserve": "node --require ./test/setup.js scripts/smoke-test-planning-preserve.js"
+    "smoke:planning-preserve": "node --require ./test/setup.js scripts/smoke-test-planning-preserve.js",
+    "smoke:image-service": "node scripts/smoke-image-service.js",
+    "smoke:image-service:health": "node scripts/smoke-image-service.js --health-only"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1092.0",

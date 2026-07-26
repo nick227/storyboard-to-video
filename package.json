@@ -1,7 +1,7 @@
 {
   "name": "storyboard-monorepo",
   "private": true,
-  "description": "Root orchestrator for apps/web (Node, Railway), apps/voice-service (Spark-TTS, Modal), apps/piper-service (Piper TTS, Modal), and apps/alignment-service (WhisperX, local). No dependencies of its own.",
+  "description": "Root orchestrator for apps/web (Node, Railway), apps/voice-service (Spark-TTS, Modal), apps/piper-service (Piper TTS, Modal), apps/image-service (SDXL, Modal), and apps/alignment-service (WhisperX, local). No dependencies of its own.",
   "scripts": {
     "start": "trap 'kill 0' INT TERM EXIT; npm run dev:web & npm run dev:voice & npm run dev:align & wait",
     "dev:web": "npm --prefix apps/web start",
@@ -13,6 +13,7 @@
     "setup:piper": "npm --prefix apps/web run setup:piper",
     "setup:spark": "bash apps/voice-service/setup.sh",
     "setup:align": "bash apps/alignment-service/setup.sh",
-    "modal:bootstrap": "bash .github/scripts/modal-bootstrap.sh"
+    "modal:bootstrap": "bash .github/scripts/modal-bootstrap.sh",
+    "smoke:image-service": "npm --prefix apps/web run smoke:image-service"
   }
 }
