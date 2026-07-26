@@ -734,6 +734,54 @@ function openSceneImageLibrary(scene, index) {
   });
 }
 
+function entityMediaIconButton({ datasetKey, datasetValue, label, path, disabled = false }) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'entity-row-media-action';
+  button.dataset[datasetKey] = datasetValue;
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  button.disabled = disabled;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '14');
+  svg.setAttribute('height', '14');
+  svg.setAttribute('aria-hidden', 'true');
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  icon.setAttribute('fill', 'currentColor');
+  icon.setAttribute('d', path);
+  svg.appendChild(icon);
+  button.appendChild(svg);
+  return button;
+}
+
+function imageMediaWithActions(scene) {
+  const frame = document.createElement('div');
+  frame.className = 'entity-row-media-frame';
+  frame.appendChild(rowMediaPreview(scene, 'image'));
+  const actions = document.createElement('div');
+  actions.className = 'entity-row-media-actions';
+  const busy = Boolean(uiStore.get().operation);
+  actions.append(
+    entityMediaIconButton({
+      datasetKey: 'entityLibrary',
+      datasetValue: 'image',
+      label: 'Library',
+      path: 'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0-2-.9-2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z',
+      disabled: busy,
+    }),
+    entityMediaIconButton({
+      datasetKey: 'entityRemoveImage',
+      datasetValue: 'true',
+      label: 'Remove image',
+      path: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
+      disabled: busy || !hasExistingEntity('image', scene),
+    }),
+  );
+  frame.appendChild(actions);
+  return frame;
+}
+
 function configFieldSource(type, key) {
   if (key === 'provider') {
     if (['action', 'prompt', 'dialogue'].includes(type)) return els.textProvider;
@@ -837,8 +885,8 @@ function entityControllerRow(scene, status) {
     textarea.placeholder = `${SCENE_ENTITY_LABELS[type]} has not been generated`;
     content.appendChild(textarea);
   } else {
-    content.appendChild(rowMediaPreview(scene, type));
     if (type === 'image') {
+      content.appendChild(imageMediaWithActions(scene));
       const shot = imageShot(scene);
       const promptText = imageVersionPrompt(scene, shot.versions?.[shot.activeVersionIndex]);
       if (promptText) {
@@ -848,6 +896,8 @@ function entityControllerRow(scene, status) {
         prompt.textContent = promptText;
         content.appendChild(prompt);
       }
+    } else {
+      content.appendChild(rowMediaPreview(scene, type));
     }
   }
 
@@ -880,21 +930,6 @@ function entityControllerRow(scene, status) {
   generate.textContent = status.loading ? 'Generating…' : 'Generate';
   generate.disabled = Boolean(uiStore.get().operation);
   controls.appendChild(generate);
-  if (type === 'image') {
-    const library = document.createElement('button');
-    library.type = 'button';
-    library.className = 'secondary entity-row-secondary';
-    library.dataset.entityLibrary = 'image';
-    library.textContent = 'Library';
-    library.disabled = Boolean(uiStore.get().operation);
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'secondary entity-row-secondary';
-    remove.dataset.entityRemoveImage = 'true';
-    remove.textContent = 'Remove';
-    remove.disabled = Boolean(uiStore.get().operation) || !hasExistingEntity('image', scene);
-    controls.append(library, remove);
-  }
   body.append(content, controls);
   row.append(heading, body);
   if (modalState.configType === type) row.appendChild(configEditor(scene, type, status.config));
