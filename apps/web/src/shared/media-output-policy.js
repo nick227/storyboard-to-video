@@ -96,7 +96,13 @@ function fitDezgoFluxDimensions({ width, height }) {
 
 function resolveImageOutput({ provider, model, intent }) {
   const requested = Object.freeze({ ...intent });
-  if (provider !== 'openai' && provider !== 'stub' && provider !== 'pixabay' && intent.quality !== 'medium') {
+  if (
+    provider !== 'openai'
+    && provider !== 'stub'
+    && provider !== 'pixabay'
+    && provider !== 'local-safetensors'
+    && intent.quality !== 'medium'
+  ) {
     throw outputPolicyError(`${provider}/${model || 'default'} does not expose image quality ${intent.quality}`, { modality: 'image', provider, model: model || null, requested });
   }
   let dimensions;
@@ -126,7 +132,7 @@ function resolveImageOutput({ provider, model, intent }) {
     dimensions = shortEdgeDimensions(intent.aspectRatio, edge);
     providerSettings = {};
   } else if (provider === 'local-safetensors') {
-    const run = localSafetensorsRunSettings(model, intent.aspectRatio, intent.resolutionTier);
+    const run = localSafetensorsRunSettings(model, intent.aspectRatio, intent.resolutionTier, intent.quality);
     dimensions = intent.resolutionTier === 'standard' || intent.resolutionTier === 'draft'
       ? shortEdgeDimensions(intent.aspectRatio, run.shortEdge)
       : null;

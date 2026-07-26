@@ -80,6 +80,34 @@ test('Hailuo economy 512P accepts 6s and 10s without upgrading to 768P', () => {
   assert.deepEqual(production.resolved.providerSettings, { resolution: '768P', duration: 6 });
 });
 
+test('local-safetensors maps image quality to three step counts', () => {
+  const low = resolveImageOutput({
+    provider: 'local-safetensors',
+    model: 'biglove-xl1',
+    intent: mergeMediaIntent({ modality: 'image', override: { image: { quality: 'low' } } }),
+  });
+  const medium = resolveImageOutput({
+    provider: 'local-safetensors',
+    model: 'biglove-xl1',
+    intent: mergeMediaIntent({ modality: 'image', override: { image: { quality: 'medium' } } }),
+  });
+  const high = resolveImageOutput({
+    provider: 'local-safetensors',
+    model: 'biglove-xl1',
+    intent: mergeMediaIntent({ modality: 'image', override: { image: { quality: 'high' } } }),
+  });
+  assert.equal(low.resolved.providerSettings.steps, 15);
+  assert.equal(medium.resolved.providerSettings.steps, 25);
+  assert.equal(high.resolved.providerSettings.steps, 40);
+
+  const lightningHigh = resolveImageOutput({
+    provider: 'local-safetensors',
+    model: 'dreamshaper-xl-lightning',
+    intent: mergeMediaIntent({ modality: 'image', override: { image: { quality: 'high' } } }),
+  });
+  assert.equal(lightningHigh.resolved.providerSettings.steps, 12);
+});
+
 test('a video provider with no registered output resolver fails clearly instead of a generic dimension error', () => {
   const intent = mergeMediaIntent({ modality: 'video', platform: PLATFORM_MEDIA_DEFAULTS });
   assert.throws(

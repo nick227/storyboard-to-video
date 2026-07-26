@@ -122,8 +122,12 @@ export function initMediaSettings(elements, {
     for (const option of elements.imageQuality.options) {
       const result = imageCombinations.find((item) => item.resolutionTier === resolutionTier && item.quality === option.value);
       const baseLabel = option.dataset.baseLabel || option.textContent;
+      const steps = result?.supported !== false
+        ? result?.output?.resolved?.providerSettings?.steps
+        : null;
+      const stepsSuffix = Number.isFinite(steps) ? ` · ${steps} steps` : '';
       option.disabled = result?.supported === false;
-      option.textContent = `${baseLabel}${result?.supported === false ? ' · Unsupported' : ''}`;
+      option.textContent = `${baseLabel}${stepsSuffix}${result?.supported === false ? ' · Unsupported' : ''}`;
       option.title = result?.reason || '';
     }
   };
