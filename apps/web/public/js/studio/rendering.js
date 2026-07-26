@@ -837,16 +837,6 @@ function entityControllerRow(scene, status) {
   generate.textContent = status.loading ? 'Generating…' : 'Generate';
   generate.disabled = Boolean(uiStore.get().operation);
   controls.appendChild(generate);
-  if (config.kind !== 'text' && status.present) {
-    const details = document.createElement('a');
-    details.href = '#';
-    details.style.color = 'white';
-    details.style.fontSize = '12px';
-    details.className = 'secondary entity-row-secondary';
-    details.dataset.entityDetails = type;
-    details.textContent = 'more info';
-    controls.appendChild(details);
-  }
   body.append(content, controls);
   row.append(heading, body);
   if (modalState.configType === type) row.appendChild(configEditor(scene, type, status.config));
@@ -1057,14 +1047,6 @@ function setupEntityModal() {
     const generate = event.target.closest('[data-entity-generate]');
     if (generate && !generate.disabled) {
       generateControllerEntity(generate.dataset.entityGenerate);
-      return;
-    }
-    const details = event.target.closest('[data-entity-details]');
-    if (details) {
-      modalState.type = details.dataset.entityDetails;
-      modalState.mediaPath = undefined;
-      renderEntityModal();
-      els.entityModalDetail.scrollIntoView({ block: 'start', behavior: 'smooth' });
       return;
     }
     const change = event.target.closest('[data-entity-config]');

@@ -24,11 +24,8 @@
   align-items: center;
   flex: 1 1 auto;
   min-width: 0;
-  border-bottom: 1px solid transparent;
   background-color: transparent !important;
 }
-.storyboard-combo:hover { border-bottom-color: var(--line); }
-.storyboard-combo:focus-within { border-bottom-color: var(--line); background-color: color-mix(in srgb, var(--glass-ink) 3%, transparent); }
 .settings-modal-body .screenplay-logo,
 .storyboard-combo .screenplay-logo {
   position: relative;
@@ -54,7 +51,7 @@
   height: 100px;
 }
 .storyboard-combo .screenplay-logo {
-  width: 30px;
+  width: 60px;
   height: 30px;
   margin-right: 10px;
 }
@@ -95,8 +92,9 @@
   font-size: 1.75rem;
 }
 .script-cover-field { display: grid; gap: 0.45rem; }
-.script-cover-row {
+.script-cover-column {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 0.75rem;
 }
