@@ -54,32 +54,40 @@ export function initCustomStylesController(elements, services = {}) {
     const charLimit = state.references.characters.length >= 4;
     const worldLimit = state.references.world.length >= 4;
     const canGen = state.selectedId && state.selectedId !== 'new' && !state.dirty && !disabled;
+    const canUpload = state.selectedId && state.selectedId !== 'new' && !disabled;
 
-    elements.customStyleCharacterInput.disabled = !state.selectedId || disabled || charLimit;
-    elements.customStyleWorldInput.disabled = !state.selectedId || disabled || worldLimit;
+    elements.customStyleCharacterInput.disabled = !canUpload || charLimit;
+    elements.customStyleWorldInput.disabled = !canUpload || worldLimit;
     elements.customStyleCharacterGenerateBtn.disabled = !canGen || charLimit;
     elements.customStyleWorldGenerateBtn.disabled = !canGen || worldLimit;
-    elements.customStyleCharacterLibraryBtn.disabled = !state.selectedId || disabled || charLimit;
-    elements.customStyleWorldLibraryBtn.disabled = !state.selectedId || disabled || worldLimit;
-    elements.customStyleCharacterUploadBtn.disabled = !state.selectedId || disabled || charLimit;
-    elements.customStyleWorldUploadBtn.disabled = !state.selectedId || disabled || worldLimit;
+    elements.customStyleCharacterLibraryBtn.disabled = !canUpload || charLimit;
+    elements.customStyleWorldLibraryBtn.disabled = !canUpload || worldLimit;
+    elements.customStyleCharacterUploadBtn.disabled = !canUpload || charLimit;
+    elements.customStyleWorldUploadBtn.disabled = !canUpload || worldLimit;
   }
 
   function updateGenerateButtonTitles() {
     const charLimit = state.references.characters.length >= 4;
     const worldLimit = state.references.world.length >= 4;
-    
-    let titleMsg = '';
-    if (!state.selectedId || state.selectedId === 'new') {
-      titleMsg = 'Save this style before generating references';
+    const unsaved = !state.selectedId || state.selectedId === 'new';
+
+    let genTitle = '';
+    let uploadTitle = '';
+    if (unsaved) {
+      genTitle = 'Save this style before generating references';
+      uploadTitle = 'Save this style before uploading references';
     } else if (state.dirty) {
-      titleMsg = 'Save custom style changes first before generating references';
+      genTitle = 'Save custom style changes first before generating references';
     } else if (state.loading) {
-      titleMsg = 'Generation in progress…';
+      genTitle = 'Generation in progress…';
     }
 
-    elements.customStyleCharacterGenerateBtn.title = charLimit ? 'Reference limit reached (4 of 4)' : titleMsg;
-    elements.customStyleWorldGenerateBtn.title = worldLimit ? 'Reference limit reached (4 of 4)' : titleMsg;
+    elements.customStyleCharacterGenerateBtn.title = charLimit ? 'Reference limit reached (4 of 4)' : genTitle;
+    elements.customStyleWorldGenerateBtn.title = worldLimit ? 'Reference limit reached (4 of 4)' : genTitle;
+    elements.customStyleCharacterUploadBtn.title = charLimit ? 'Reference limit reached (4 of 4)' : uploadTitle;
+    elements.customStyleWorldUploadBtn.title = worldLimit ? 'Reference limit reached (4 of 4)' : uploadTitle;
+    elements.customStyleCharacterLibraryBtn.title = charLimit ? 'Reference limit reached (4 of 4)' : uploadTitle;
+    elements.customStyleWorldLibraryBtn.title = worldLimit ? 'Reference limit reached (4 of 4)' : uploadTitle;
   }
 
   function setDirty(dirty = true) {
@@ -375,8 +383,13 @@ export function initCustomStylesController(elements, services = {}) {
   }
 
   async function uploadReferences(category, files) {
-    if (!state.selectedId || state.selectedId === 'new' || !files?.length) return;
+    if (!files?.length) return;
+    if (!state.selectedId || state.selectedId === 'new') {
+      setStatus('Save this style before uploading references.');
+      return;
+    }
     state.loading = true;
+    setEditorDisabled(true);
     setStatus('Uploading references…');
     const form = new FormData();
     [...files].forEach((file) => form.append('files', file));
@@ -384,14 +397,23 @@ export function initCustomStylesController(elements, services = {}) {
       const data = await api(`/api/custom-styles/${encodeURIComponent(state.selectedId)}/references?type=${encodeURIComponent(category)}`, { method: 'POST', body: form });
       state.references = data.references || { characters: [], world: [] };
       renderReferences();
-      if (elements.styleSelect.value === state.selectedId) await services.loadStyleReferences?.(state.selectedId);
-      setStatus('References uploaded');
+      if (elements.styleSelect.value === state.selectedId) {
+        generationStore.set({
+          styleReferences: state.references,
+          styleReferencesStyleId: state.selectedId,
+        });
+        await services.loadStyleReferences?.(state.selectedId);
+      }
+      const count = (state.references[category] || []).length;
+      setStatus(`${category === 'world' ? 'World' : 'Character'} reference uploaded (${count} of 4).`);
     } catch (error) {
       setStatus(`Upload failed: ${error.message}`);
     } finally {
       state.loading = false;
+      setEditorDisabled(false);
       elements.customStyleCharacterInput.value = '';
       elements.customStyleWorldInput.value = '';
+      updateGenerateButtonTitles();
     }
   }
 

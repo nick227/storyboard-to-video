@@ -143,15 +143,24 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
       fileName: reference.fileName,
       url: `/api/custom-styles/${encodeURIComponent(styleId)}/references/${encodeURIComponent(reference.id)}/content`,
       type: reference.category,
-      isUserUploaded: true,
+      status: reference.status || 'active',
+      source: reference.source || 'user_upload',
+      provider: reference.provider || null,
+      model: reference.model || null,
+      aspectRatio: reference.aspectRatio || null,
+      promptSnapshot: reference.promptSnapshot || null,
+      generationRequestId: reference.generationRequestId || null,
+      isUserUploaded: (reference.source || 'user_upload') === 'user_upload',
       isCustomStyle: true,
     };
   }
+
   async function resolveReferences(id, userId, options = {}) {
     if (find(id, userId)) return references(id, userId, options);
     const style = await resolve(id, userId);
     if (!style) throw new AppError('STYLE_NOT_FOUND', 'Unknown style', { status: 404 });
-    const rows = await customStyles.listReferences(id, userId);
+    const rows = (await customStyles.listReferences(id, userId))
+      .filter((item) => item.status === 'active' || item.status === 'pending');
     return {
       characters: rows.filter((item) => item.category === 'characters').map((item) => customReferenceRecord(id, item)),
       world: rows.filter((item) => item.category === 'world').map((item) => customReferenceRecord(id, item)),
@@ -280,6 +289,12 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
     const prepared = files.map((file) => ({ file, extension: detectImageExtension(file.buffer) }));
     if (prepared.some((item) => !item.extension)) throw new AppError('INVALID_IMAGE', 'Only valid PNG, JPEG, WebP, and GIF images are accepted', { status: 400 });
 
+    const occupiedSlots = new Set(existing.map((item) => item.sortOrder));
+    const freeSlots = [0, 1, 2, 3].filter((slot) => !occupiedSlots.has(slot));
+    if (freeSlots.length < prepared.length) {
+      throw new AppError('REFERENCE_LIMIT', `A custom style can have at most 4 ${normalized} references`, { status: 400 });
+    }
+
     for (const [offset, item] of prepared.entries()) {
       const referenceId = crypto.randomUUID();
       const fileName = `${referenceId}.${item.extension}`;
@@ -297,7 +312,9 @@ function createStylesService(config, { customStyles = null, blobStore = null } =
             storageKey,
             mimeType: item.file.mimetype || `image/${item.extension}`,
             byteSize: item.file.buffer.length,
-            sortOrder: existing.length + offset,
+            sortOrder: freeSlots[offset],
+            status: 'active',
+            source: 'user_upload',
           });
         } catch (error) {
           await blobStore.delete(storageKey).catch(() => {});

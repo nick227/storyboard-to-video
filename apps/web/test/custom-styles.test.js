@@ -158,6 +158,20 @@ test('custom style references persist in blob storage, reorder, enforce limits, 
     await f.service.removeCustomReference(style.id, rows[0].id, 'user-1');
     assert.equal(await f.blobStore.exists(removedKey), false);
     assert.equal((await f.repository.listReferences(style.id, 'user-1')).length, 1);
+
+    // Deleting a slot must not block re-upload when sortOrder has gaps.
+    references = await f.service.uploadCustomReferences(
+      style.id,
+      'characters',
+      [image('replacement.png')],
+      'user-1',
+    );
+    assert.equal(references.characters.length, 2);
+    assert.ok(references.characters.every((item) => item.status === 'active'));
+    assert.ok(references.characters.some((item) => item.fileName === 'replacement.png'));
+    const linked = await f.service.resolveReferenceSources(style.id, 'user-1');
+    assert.equal(linked.length, 2);
+    assert.ok(linked.every((item) => item.storageKey && item.url));
   } finally {
     f.cleanup();
   }

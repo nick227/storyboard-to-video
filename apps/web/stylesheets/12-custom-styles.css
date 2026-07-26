@@ -16,6 +16,18 @@
 .custom-style-reference-heading div { display: grid; gap: 2px; }
 .custom-style-reference-heading small { color: var(--muted); }
 .custom-style-reference-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-height: 140px; }
+.custom-style-reference-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.custom-style-reference-actions-row .secondary {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 650;
+}
 .custom-style-reference-empty { grid-column: 1 / -1; align-self: center; color: var(--muted); font-size: 11px; text-align: center; }
 .custom-style-reference-card { position: relative; overflow: hidden; aspect-ratio: 1; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-input); }
 .custom-style-reference-card img { width: 100%; height: 100%; object-fit: cover; }
