@@ -68,6 +68,7 @@ export class ImageLibraryController {
       doneBtn: byId('closeImageLibraryDoneBtn'),
       generateBtn: byId('libraryGenerateBtn'),
       uploadInput: byId('libraryUploadInput'),
+      uploadBtn: byId('libraryUploadBtn'),
       useStoryCheckbox: byId('libraryUseStory'),
       providerSelect: byId('libraryProviderSelect'),
       promptTextarea: byId('libraryAiPrompt'),
@@ -116,6 +117,7 @@ export class ImageLibraryController {
     modal.addEventListener('cancel', () => this.invalidate());
     modal.addEventListener('close', () => this.invalidate());
     this.dom.generateBtn?.addEventListener('click', () => this.generate());
+    this.dom.uploadBtn?.addEventListener('click', () => this.dom.uploadInput?.click());
     this.dom.uploadInput?.addEventListener('change', (event) => this.upload(event));
     this.dom.retrievePastBtn?.addEventListener('click', () => this.retrievePastStoryboards());
     this.dom.stockSearchBtn?.addEventListener('click', () => this.searchStock());
@@ -213,9 +215,8 @@ export class ImageLibraryController {
       this.dom.activeLabel.textContent = 'Current cover art';
     }
 
-    const uploadChipLabel = this.dom.modal.querySelector('.upload-chip span');
-    if (uploadChipLabel) {
-      uploadChipLabel.textContent = mode === 'screenplay-cover' ? 'Upload cover' : 'Upload New';
+    if (this.dom.uploadBtn) {
+      this.dom.uploadBtn.textContent = mode === 'screenplay-cover' ? 'Upload cover' : 'Upload';
     }
     this.selectTab('uploads');
     this.renderActiveList();
