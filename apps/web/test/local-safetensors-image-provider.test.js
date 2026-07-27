@@ -43,6 +43,7 @@ test('local safetensors is hidden when disabled or missing base URL', () => {
   assert.equal(localSafetensorsConfigured({ localSafetensors: { enabled: false, baseUrl: 'http://x' } }), false);
   assert.equal(localSafetensorsConfigured({ localSafetensors: { enabled: true, baseUrl: '' } }), false);
   assert.equal(localSafetensorsConfigured(enabledConfig()), true);
+  assert.equal(localSafetensorsSelectOptionsHtml().includes('local-safetensors:wai-illustrious-sdxl-v140'), true);
   assert.equal(localSafetensorsSelectOptionsHtml().includes('local-safetensors:dreamshaper-xl-lightning'), true);
   assert.equal(localSafetensorsSelectOptionsHtml().includes('local-safetensors:realistic-comic-book'), true);
   assert.equal(localSafetensorsSelectOptionsHtml().includes('local-safetensors:another-realistic-comic-mix2'), true);
@@ -53,6 +54,7 @@ test('ready local safetensors models are registered', () => {
   assert.deepEqual(LOCAL_SAFETENSORS_MODEL_KEYS, [
     'realistic-stock-photo',
     'biglove-xl1',
+    'wai-illustrious-sdxl-v140',
     'dreamshaper-xl-lightning',
     'realistic-comic-book',
     'another-realistic-comic-mix2',

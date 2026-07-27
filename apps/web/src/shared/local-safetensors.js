@@ -5,6 +5,7 @@ const LOCAL_SAFETENSORS_PROVIDER = 'local-safetensors';
 const LOCAL_SAFETENSORS_MODELS = Object.freeze([
   Object.freeze({ key: 'realistic-stock-photo', label: 'Realistic Stock Photo v2.0' }),
   Object.freeze({ key: 'biglove-xl1', label: 'BigLove XL1' }),
+  Object.freeze({ key: 'wai-illustrious-sdxl-v140', label: 'WAI Illustrious SDXL v1.40' }),
   Object.freeze({ key: 'dreamshaper-xl-lightning', label: 'DreamShaper XL Lightning' }),
   Object.freeze({ key: 'realistic-comic-book', label: 'Realistic Comic Book v10' }),
   Object.freeze({ key: 'another-realistic-comic-mix2', label: 'Another Realistic Comic Mix 2 v10' }),
