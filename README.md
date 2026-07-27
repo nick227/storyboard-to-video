@@ -148,6 +148,74 @@ A zero-shot, commercial-safe cloning daemon located in `apps/voice-service/`. Re
 
 ---
 
+## Local Safetensors Image Models (Windows)
+
+The `local-safetensors` image provider talks to an external **Safetensors Image Generator** API on the Windows host (historically `C:\projects\safetensors-image-generator`), not Modal `apps/image-service`. Checkpoints usually live under Fooocus, e.g. `C:\Program Files (x86)\fooocus\Fooocus\models\checkpoints\`.
+
+### Enable from WSL / this monorepo
+
+In `apps/web/.env`:
+
+```dotenv
+LOCAL_SAFETENSORS_ENABLED=true
+LOCAL_SAFETENSORS_BASE_URL=http://host.docker.internal:8011
+```
+
+Start the Windows API bound so WSL can reach it (`127.0.0.1` alone is not enough):
+
+```powershell
+cd C:\projects\safetensors-image-generator
+.venv\Scripts\python.exe -m uvicorn src.app.api:app --reload --host 0.0.0.0 --port 8011
+```
+
+Confirm from WSL: `curl -sS http://host.docker.internal:8011/api/health`
+
+Optional smoke: `node apps/web/scripts/smoke-local-safetensors.js`
+
+**Image quality** (Low / Medium / High) maps to Fooocus-style steps **8 / 30 / 60**.
+
+### How to add a local model
+
+Dropping a `.safetensors` file into the checkpoints folder is **not** enough. Register it in **both** places with the **same key**:
+
+#### 1. Windows generator — `models.local.json`
+
+Edit `C:\projects\safetensors-image-generator\models.local.json` (preferred over `models.json`). Example SDXL entry:
+
+```json
+"my-model-key": {
+  "label": "My Model Label",
+  "path": "C:\\Program Files (x86)\\fooocus\\Fooocus\\models\\checkpoints\\myCheckpoint_v1.safetensors",
+  "pipeline": "sdxl",
+  "width": 1024,
+  "height": 1024
+}
+```
+
+| Field | Notes |
+| :--- | :--- |
+| `pipeline` | `sdxl` (~6–7GB XL checkpoints), `sd` (~2GB SD 1.5), or `flux` |
+| `width` / `height` | Defaults for the model; the app still sends named size presets (`square`, `square-small`, …) |
+| SD 1.5 | Use `"pipeline": "sd"` and typically `512`×`512` |
+
+Verify the key appears: `curl -sS http://host.docker.internal:8011/api/config` → `models[].key`
+
+#### 2. Web app allowlist — `apps/web/src/shared/local-safetensors.js`
+
+Add a matching entry to `LOCAL_SAFETENSORS_MODELS`:
+
+```js
+Object.freeze({ key: 'my-model-key', label: 'My Model Label' }),
+```
+
+- Prefer kebab-case keys (`wai-illustrious-sdxl-v140`).
+- For SD 1.5 models, also add the key to `LOCAL_SAFETENSORS_SD15_KEYS` (forces `square-small` / 512).
+- Restart or let nodemon reload `apps/web`, then **hard-refresh** the studio page. Options are injected into Settings / Image Library via `<!--local-safetensors-image-options-->`.
+
+Until both registries list the same key, the model either will not appear in the dropdown or will fail at generation start.
+
+---
+
 ## Storage Design
 
 Committed project media (images, audio, video, subtitles, exports, references) goes through a **BlobStore** persistence boundary. Generation APIs that need filesystem paths use a separate **AssetMaterializer** — temp/cache only, never the source of truth.
