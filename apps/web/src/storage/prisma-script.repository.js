@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const { Prisma } = require('../../dist/generated/prisma/client.js');
 const { AppError } = require('../errors');
 const { ScriptStore } = require('./script-store');
-const { slugify, cleanText } = require('../shared/text');
+const { slugify, cleanText, isPlaceholderSlug } = require('../shared/text');
 const {
   artifactsFromRow, artifactVisibilityPatch, normalizeVisibility,
   visibilityWhere, publishedAtOrder, ARTIFACTS,
@@ -133,7 +133,13 @@ class PrismaScriptRepository extends ScriptStore {
     if (patch.logline != null) data.logline = cleanText(patch.logline, 280);
     if (patch.coverStorageKey !== undefined) data.coverStorageKey = patch.coverStorageKey || null;
     if (patch.coverMimeType !== undefined) data.coverMimeType = patch.coverMimeType || null;
-    if (patch.slug != null) data.slug = await this.allocateSlug(patch.slug, { excludeId: id });
+    if (patch.slug != null) {
+      data.slug = await this.allocateSlug(patch.slug, { excludeId: id });
+    } else if (patch.title != null && isPlaceholderSlug(existing.slug) && !isPlaceholderSlug(slugify(patch.title))) {
+      // First real title after "Untitled" — resync the slug once, then leave it alone so
+      // shared links never go stale on later renames.
+      data.slug = await this.allocateSlug(patch.title, { excludeId: id });
+    }
     if (patch.categoryId !== undefined) data.categoryId = patch.categoryId || null;
     if (patch.visibility === 'public' || patch.visibility === 'private') {
       const next = artifactVisibilityPatch('screenplay', patch.visibility, existing);

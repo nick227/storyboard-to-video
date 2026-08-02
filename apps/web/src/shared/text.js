@@ -1,4 +1,7 @@
 function slugify(input = '') { return String(input).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'item'; }
+// Matches the auto-assigned slug a script gets while its project is still titled "Untitled".
+// Used to resync the slug from the title exactly once (placeholder -> real slug), then leave it alone.
+function isPlaceholderSlug(slug) { return /^untitled(-\d+)?$/.test(String(slug || '')); }
 function cleanText(value, maxLength) { return String(value || '').trim().slice(0, maxLength); }
 function clampSceneCount(value) { const count = Number.parseInt(value, 10); return Number.isFinite(count) ? Math.min(50, Math.max(1, count)) : 6; }
 function getAdditionalCommonPrompt(stylePrompt, commonPrompt, max = 20_000) {
@@ -31,4 +34,4 @@ function compactWords(value, maxWords) {
 function compactAction(value, fallback = 'Subject moves.') {
   return compactWords(value, 28) || fallback;
 }
-module.exports = { clampSceneCount, cleanText, extractJson, extractTextField, getAdditionalCommonPrompt, slugify, compactWords, compactAction };
+module.exports = { clampSceneCount, cleanText, extractJson, extractTextField, getAdditionalCommonPrompt, isPlaceholderSlug, slugify, compactWords, compactAction };

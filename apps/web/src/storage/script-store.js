@@ -1,6 +1,6 @@
 const crypto = require('node:crypto');
 const { AppError } = require('../errors');
-const { slugify, cleanText } = require('../shared/text');
+const { slugify, cleanText, isPlaceholderSlug } = require('../shared/text');
 const {
   artifactsFromRow, artifactVisibilityPatch, isArtifactPublic, normalizeVisibility, publishedAtOrder,
 } = require('../shared/script-artifacts');
@@ -140,7 +140,13 @@ class ScriptStore {
     if (patch.logline != null) next.logline = cleanText(patch.logline, 280);
     if (patch.coverStorageKey !== undefined) next.coverStorageKey = patch.coverStorageKey || null;
     if (patch.coverMimeType !== undefined) next.coverMimeType = patch.coverMimeType || null;
-    if (patch.slug != null) next.slug = await this.allocateSlug(patch.slug, { excludeId: id });
+    if (patch.slug != null) {
+      next.slug = await this.allocateSlug(patch.slug, { excludeId: id });
+    } else if (patch.title != null && isPlaceholderSlug(existing.slug) && !isPlaceholderSlug(slugify(patch.title))) {
+      // First real title after "Untitled" — resync the slug once, then leave it alone so
+      // shared links never go stale on later renames.
+      next.slug = await this.allocateSlug(patch.title, { excludeId: id });
+    }
     if (patch.categoryId !== undefined) {
       if (patch.categoryId && !this.categories.has(patch.categoryId)) {
         throw new AppError('CATEGORY_NOT_FOUND', 'Category not found', { status: 404 });

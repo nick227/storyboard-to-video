@@ -57,6 +57,21 @@ test('scripts service creates slug, publishes, and 404s private on public read',
   await assert.rejects(() => scripts.getPublicBySlug('the-odyssey'), (error) => error.code === 'SCRIPT_NOT_FOUND');
 });
 
+test('script update resyncs slug from placeholder once, then locks it', async () => {
+  const store = new ScriptStore();
+  const scripts = createScriptsService({ store });
+  const created = await scripts.create({ title: 'Untitled' }, { tenantId: 'tenant-1', userId: 'user-1' });
+  assert.equal(created.slug, 'untitled');
+
+  const renamed = await scripts.update(created.id, { title: 'Angel Devil Gin v' }, { tenantId: 'tenant-1' });
+  assert.equal(renamed.slug, 'angel-devil-gin-v');
+  assert.equal(renamed.title, 'Angel Devil Gin v');
+
+  const renamedAgain = await scripts.update(created.id, { title: 'Final Cut' }, { tenantId: 'tenant-1' });
+  assert.equal(renamedAgain.slug, 'angel-devil-gin-v');
+  assert.equal(renamedAgain.title, 'Final Cut');
+});
+
 test('public reader lists more scripts by createdByUserId not author string', async () => {
   const store = new ScriptStore();
   const scripts = createScriptsService({ store });
