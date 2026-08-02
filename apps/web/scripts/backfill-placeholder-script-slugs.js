@@ -54,15 +54,19 @@ async function main() {
       return;
     }
 
+    // Default 5s interactive-transaction timeout is tuned for request-scoped work; a batch of
+    // rows over a remote (e.g. Railway public proxy) connection needs more room.
+    const txOptions = { timeout: 120_000, maxWait: 30_000 };
+
     let results;
     if (args.apply) {
-      results = await prisma.$transaction((tx) => resyncRows(tx, stale));
+      results = await prisma.$transaction((tx) => resyncRows(tx, stale), txOptions);
     } else {
       try {
         await prisma.$transaction(async (tx) => {
           results = await resyncRows(tx, stale);
           throw new DryRunRollback();
-        });
+        }, txOptions);
       } catch (error) {
         if (!(error instanceof DryRunRollback)) throw error;
       }
