@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createScreenplayAssistantService } = require('../src/services/screenplay-assistant.service');
+const { createScreenplayAssistantService, normalizeFountainContinuation } = require('../src/services/screenplay-assistant.service');
 
 test('chat: stub mode returns a placeholder reply without calling the provider', async () => {
   const service = createScreenplayAssistantService({ textProviders: { call() { throw new Error('should not be called'); } } });
@@ -63,7 +63,7 @@ test('addNextLines: sends only the script tail and the requested line count, and
   const result = await service.addNextLines({ scriptText, lineCount: 10, provider: 'gemini', fallbackPolicy: 'fail' });
   assert.match(request, /INT\. COFFEE SHOP - DAY/);
   assert.doesNotMatch(request, /INT\. OLD START - DAY/);
-  assert.match(request, /approximately 10 lines/);
+  assert.match(request, /approximately 10 printed lines/);
   assert.equal(result.addedText, 'MARCUS\nWe should go.');
   assert.equal(result.usedFallback, false);
 });
@@ -82,4 +82,41 @@ test('addNextLines: fallbackPolicy fail rethrows a 502 AppError on an empty prov
     () => service.addNextLines({ scriptText: '', lineCount: 10, provider: 'gemini', fallbackPolicy: 'fail' }),
     (error) => { assert.equal(error.code, 'INVALID_PROVIDER_RESPONSE'); assert.equal(error.statusCode, 502); return true; },
   );
+});
+
+test('addNextLines: normalizes the provider output before returning it', async () => {
+  const service = createScreenplayAssistantService({ textProviders: { call: async () => JSON.stringify({ addedText: 'MARCUS\nHello there.\nSARAH\nHi Marcus.' }) } });
+  const result = await service.addNextLines({ scriptText: '', lineCount: 10, provider: 'gemini', fallbackPolicy: 'fail' });
+  assert.equal(result.addedText, 'MARCUS\nHello there.\n\nSARAH\nHi Marcus.');
+});
+
+test('normalizeFountainContinuation: inserts a blank line between one character\'s dialogue and the next character\'s cue', () => {
+  // Without the blank line, this app's own Fountain classifier (FountainAdapter.js) demotes SARAH
+  // to an ACTION line instead of recognizing it as a new character cue -- merging both characters'
+  // lines together. This is the actual corruption risk, not the reverse.
+  const result = normalizeFountainContinuation('MARCUS\nHello there.\nSARAH\nHi Marcus.');
+  assert.equal(result, 'MARCUS\nHello there.\n\nSARAH\nHi Marcus.');
+});
+
+test('normalizeFountainContinuation: uppercases a lowercase scene heading and separates it from surrounding lines', () => {
+  const result = normalizeFountainContinuation('Marcus enters.\nint. office - day\nHe sits.');
+  assert.equal(result, 'Marcus enters.\n\nINT. OFFICE - DAY\nHe sits.');
+});
+
+test('normalizeFountainContinuation: inserts a blank line between a dialogue block and the following action', () => {
+  const result = normalizeFountainContinuation('MARCUS\nHello there.\nHe walks away.');
+  assert.equal(result, 'MARCUS\nHello there.\n\nHe walks away.');
+});
+
+test('normalizeFountainContinuation: never inserts a blank line between a character cue and its own dialogue or parenthetical', () => {
+  // A blank line here would be actively harmful -- the classifier requires dialogue/parentheticals
+  // to stay adjacent to their character cue to be recognized as belonging to it.
+  const result = normalizeFountainContinuation('MARCUS\n(smiling)\nHello there.');
+  assert.equal(result, 'MARCUS\n(smiling)\nHello there.');
+});
+
+test('normalizeFountainContinuation: uppercases transitions and leaves well-formed text unchanged (idempotent)', () => {
+  const wellFormed = 'INT. COFFEE SHOP - DAY\n\nMARCUS enters.\n\nMARCUS\nHello.\n\nSARAH\nHi.';
+  assert.equal(normalizeFountainContinuation(wellFormed), wellFormed);
+  assert.equal(normalizeFountainContinuation('Marcus leaves.\ncut to:\nEXT. STREET - DAY'), 'Marcus leaves.\n\nCUT TO:\n\nEXT. STREET - DAY');
 });

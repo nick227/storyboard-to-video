@@ -25,6 +25,70 @@ function historyBlock(messages) {
     .join('\n');
 }
 
+// Mirrors apps/web/public/js/screenplay-editor/js/adapters/FountainAdapter.js's toDocument() line
+// classifier exactly (kept in sync manually -- the editor module is ESM, this service is CommonJS,
+// so it can't be required directly). That classifier is sequence-based, not blank-line-based: a
+// character cue is only recognized when the immediately preceding line's format is null/header/
+// action. The real corruption risk isn't a missing blank line between a cue and ITS OWN dialogue
+// (dialogue must stay adjacent to its cue to be recognized at all) -- it's a missing blank line
+// between one character's dialogue and the NEXT character's cue, which silently demotes the next
+// cue to an ACTION line and merges two characters' lines together.
+const HEADER_RE = /^(INT\.|EXT\.|INT\/EXT\.|I\/E\.|EST\.)/i;
+const TRANSITION_RE = /^(FADE (IN|OUT|TO BLACK)|CUT TO|DISSOLVE TO|SMASH CUT TO|MATCH CUT TO|WIPE TO|IRIS (IN|OUT)|TO BLACK)[:.]?$/i;
+
+function isTransitionLine(trimmed) {
+  if (TRANSITION_RE.test(trimmed)) return true;
+  return trimmed === trimmed.toUpperCase() && !/[a-z]/.test(trimmed) && / TO:$/.test(trimmed) && trimmed.length < 40;
+}
+
+function classifyFountainLine(trimmed, prevFormat) {
+  if (HEADER_RE.test(trimmed)) return 'header';
+  if (isTransitionLine(trimmed)) return 'transition';
+  if (trimmed.startsWith('(') && trimmed.endsWith(')')) return 'directions';
+  if (trimmed === trimmed.toUpperCase() && !/[a-z]/.test(trimmed) && trimmed.length < 40
+    && (prevFormat == null || prevFormat === 'header' || prevFormat === 'action')) return 'speaker';
+  if (prevFormat === 'speaker' || prevFormat === 'directions') return 'dialog';
+  return 'action';
+}
+
+// Best-effort normalization, not a hard parser gate -- always runs before injection, per the
+// "auto-normalize then inject" decision. Uppercases scene headings/character cues/transitions
+// (case-insensitive to this app's own classifier, but other exports/tools expect it) and inserts
+// blank lines exactly where the classifier above needs them to avoid misreading the model's intent.
+function normalizeFountainContinuation(text) {
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  const output = [];
+  let prevFormat = null;
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      if (output.length && output[output.length - 1] !== '') output.push('');
+      prevFormat = null;
+      continue;
+    }
+
+    let format = classifyFountainLine(trimmed, prevFormat);
+    // A fresh candidate cue or a plain line landing right after a dialogue block both need a
+    // separating blank line -- without it the classifier folds them into the prior block instead
+    // of starting a new one (see comment above).
+    const exitingDialogueBlock = format === 'action' && (prevFormat === 'speaker' || prevFormat === 'directions' || prevFormat === 'dialog');
+    const needsBlankBefore = output.length > 0 && output[output.length - 1] !== ''
+      && (format === 'header' || format === 'transition' || exitingDialogueBlock);
+    if (needsBlankBefore) {
+      output.push('');
+      prevFormat = null;
+      format = classifyFountainLine(trimmed, prevFormat);
+    }
+
+    const content = (format === 'header' || format === 'speaker' || format === 'transition') ? trimmed.toUpperCase() : trimmed;
+    output.push(content);
+    prevFormat = format;
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '');
+}
+
 function buildChatRequest({ scriptText, messages, userMessage }) {
   return `Return strict JSON only: {"reply":"..."}. You are a screenwriting assistant helping a writer discuss and improve their screenplay. Answer conversationally and helpfully. Never silently rewrite or replace the screenplay -- only discuss it, unless the writer explicitly asks you to draft replacement text within your reply.
 
@@ -40,8 +104,8 @@ function buildContinuationRequest({ scriptText, lineCount }) {
 
 Rules:
 1. Write only NEW content that comes after the excerpt below -- never repeat or rephrase existing lines.
-2. Target approximately ${lineCount} lines (a soft guideline, not a hard requirement to satisfy exactly).
-3. Use standard Fountain conventions: scene headings like "INT. LOCATION - DAY" or "EXT. LOCATION - NIGHT", character cues in ALL CAPS on their own line, parentheticals in parentheses, plain dialogue lines, and transitions like "CUT TO:" where appropriate.
+2. Target approximately ${lineCount} printed lines, counting every scene heading, character cue, parenthetical, and dialogue or action line separately (a multi-line dialogue speech counts as several lines, not one). This is a soft guideline, not a hard requirement to satisfy exactly.
+3. Use standard Fountain conventions: scene headings like "INT. LOCATION - DAY" or "EXT. LOCATION - NIGHT", character cues in ALL CAPS on their own line, parentheticals in parentheses, plain dialogue lines, and transitions like "CUT TO:" where appropriate. Always leave a blank line between one character's dialogue and the next character's cue.
 4. Preserve the established characters, tone, and location from the excerpt unless the story naturally moves on (e.g. a scene heading change).
 5. Do not include any commentary, explanation, or markdown -- addedText must be raw screenplay text only.
 
@@ -71,8 +135,9 @@ function createScreenplayAssistantService({ textProviders }) {
     try {
       const request = buildContinuationRequest({ scriptText, lineCount });
       const parsed = continuationResponseSchema.parse(extractJson(providerOutput(await textProviders.call(provider, request))));
-      const addedText = cleanText(parsed.addedText, ADDED_TEXT_MAX_LENGTH);
-      if (!addedText) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned an empty continuation', { status: 502 });
+      const cleaned = cleanText(parsed.addedText, ADDED_TEXT_MAX_LENGTH);
+      if (!cleaned) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned an empty continuation', { status: 502 });
+      const addedText = normalizeFountainContinuation(cleaned);
       return { addedText, usedFallback: false, warning: '' };
     } catch (error) {
       if (fallbackPolicy !== 'local') throw (error instanceof AppError ? error : new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned an invalid continuation', { status: 502, cause: error }));
@@ -83,4 +148,4 @@ function createScreenplayAssistantService({ textProviders }) {
   return { chat, addNextLines };
 }
 
-module.exports = { createScreenplayAssistantService };
+module.exports = { createScreenplayAssistantService, normalizeFountainContinuation };
