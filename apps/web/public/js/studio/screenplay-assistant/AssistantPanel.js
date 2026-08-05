@@ -77,11 +77,23 @@ export class AssistantPanel {
     actions.className = 'screenplay-assistant-actions';
     const addLinesBtn = document.createElement('button');
     addLinesBtn.type = 'button';
-    addLinesBtn.className = 'screenplay-assistant-add-lines-btn';
-    addLinesBtn.textContent = 'Add next 10 lines';
+    addLinesBtn.className = 'screenplay-assistant-action-btn';
+    addLinesBtn.textContent = 'Add 10 lines';
     addLinesBtn.addEventListener('click', () => this._runAddLines());
-    actions.append(addLinesBtn);
+    const summarizeBtn = document.createElement('button');
+    summarizeBtn.type = 'button';
+    summarizeBtn.className = 'screenplay-assistant-action-btn';
+    summarizeBtn.textContent = 'Summarize';
+    summarizeBtn.addEventListener('click', () => this._sendMessage('Summarize this screenplay so far.', 'summarize'));
+    const suggestBtn = document.createElement('button');
+    suggestBtn.type = 'button';
+    suggestBtn.className = 'screenplay-assistant-action-btn';
+    suggestBtn.textContent = 'Suggest';
+    suggestBtn.addEventListener('click', () => this._sendMessage('Suggest ways to improve this screenplay.', 'suggest'));
+    actions.append(addLinesBtn, summarizeBtn, suggestBtn);
     this.addLinesBtn = addLinesBtn;
+    this.summarizeBtn = summarizeBtn;
+    this.suggestBtn = suggestBtn;
 
     const inputRow = document.createElement('form');
     inputRow.className = 'screenplay-assistant-input-row';
@@ -94,14 +106,20 @@ export class AssistantPanel {
     sendBtn.className = 'screenplay-assistant-send-btn';
     sendBtn.textContent = 'Send';
     inputRow.append(textarea, sendBtn);
+    const submitTyped = () => {
+      const value = textarea.value.trim();
+      if (!value) return;
+      textarea.value = '';
+      this._sendMessage(value, 'send');
+    };
     inputRow.addEventListener('submit', (event) => {
       event.preventDefault();
-      this._runSend(textarea);
+      submitTyped();
     });
     textarea.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
-        this._runSend(textarea);
+        submitTyped();
       }
     });
     this.textarea = textarea;
@@ -117,39 +135,44 @@ export class AssistantPanel {
     this.panel = panel;
   }
 
-  async _runSend(textarea) {
-    const value = textarea.value.trim();
+  // `action` identifies which button is running, purely so _setBusy can show "Working…" on the
+  // one button actually doing work instead of every button at once, while still disabling all of
+  // them (only one request should ever be in flight at a time).
+  async _sendMessage(value, action) {
     if (!value || this.busy) return;
-    textarea.value = '';
-    this._setBusy(true);
+    this._setBusy(action);
     try {
       await this.onSend(value);
     } catch (_) {
       // Errors are already surfaced via setStatus by the controller; keep the widget usable.
     } finally {
-      this._setBusy(false);
+      this._setBusy(null);
       this.render();
     }
   }
 
   async _runAddLines() {
     if (this.busy) return;
-    this._setBusy(true);
+    this._setBusy('addLines');
     try {
       await this.onAddLines();
     } catch (_) {
       // Same as above -- controller reports the failure via setStatus.
     } finally {
-      this._setBusy(false);
+      this._setBusy(null);
       this.render();
     }
   }
 
-  _setBusy(busy) {
-    this.busy = busy;
-    this.sendBtn.disabled = busy;
-    this.addLinesBtn.disabled = busy;
-    this.addLinesBtn.textContent = busy ? 'Working…' : 'Add next 10 lines';
+  _setBusy(action) {
+    this.busy = Boolean(action);
+    this.sendBtn.disabled = this.busy;
+    this.addLinesBtn.disabled = this.busy;
+    this.summarizeBtn.disabled = this.busy;
+    this.suggestBtn.disabled = this.busy;
+    this.addLinesBtn.textContent = action === 'addLines' ? 'Working…' : 'Add 10 lines';
+    this.summarizeBtn.textContent = action === 'summarize' ? 'Working…' : 'Summarize';
+    this.suggestBtn.textContent = action === 'suggest' ? 'Working…' : 'Suggest';
   }
 
   render() {
@@ -165,7 +188,7 @@ export class AssistantPanel {
     if (!messages.length) {
       const empty = document.createElement('p');
       empty.className = 'screenplay-assistant-empty';
-      empty.textContent = 'Ask a question about your screenplay, or click "Add next 10 lines" to continue writing it.';
+      empty.textContent = 'Ask a question about your screenplay, or use the buttons below to add lines, summarize, or get suggestions.';
       this.messagesEl.append(empty);
     }
     for (const message of messages) {

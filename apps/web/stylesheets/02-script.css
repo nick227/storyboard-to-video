@@ -316,20 +316,26 @@ body.script-focus-active { overflow: hidden; }
   letter-spacing: 0.04em;
 }
 .screenplay-assistant-actions {
+  display: flex;
+  gap: 6px;
   padding: 0 12px 8px;
 }
-.screenplay-assistant-add-lines-btn {
-  width: 100%;
-  padding: 8px;
+.screenplay-assistant-action-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 4px;
   border-radius: var(--radius-control);
   border: 1px solid var(--border);
   background: var(--surface-button);
   color: var(--text);
   font-size: var(--text-sm);
   cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.screenplay-assistant-add-lines-btn:hover:not(:disabled) { border-color: var(--accent); }
-.screenplay-assistant-add-lines-btn:disabled { opacity: 0.6; cursor: default; }
+.screenplay-assistant-action-btn:hover:not(:disabled) { border-color: var(--accent); }
+.screenplay-assistant-action-btn:disabled { opacity: 0.6; cursor: default; }
 .screenplay-assistant-input-row {
   display: flex;
   gap: 8px;
