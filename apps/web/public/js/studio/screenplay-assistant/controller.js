@@ -53,9 +53,12 @@ export function initScreenplayAssistant({ container }, {
         setStatus?.(`Assistant unavailable: ${error.message}`);
       }
     },
+    // Returns the generated text for the panel to hold as an unaccepted preview -- nothing here
+    // touches scriptText or persisted chat history. That only happens in onAcceptAddLines below,
+    // once the writer explicitly accepts it.
     onAddLines: async () => {
       const record = getCurrentRecord?.();
-      if (!record) return;
+      if (!record) return '';
       try {
         const response = await api('/api/screenplay-assistant/add-lines', {
           method: 'POST',
@@ -69,14 +72,19 @@ export function initScreenplayAssistant({ container }, {
         });
         if (!response.addedText) {
           setStatus?.('The assistant could not generate a continuation.');
-          return;
+          return '';
         }
-        appendScriptText?.(response.addedText);
-        pushMessages(newMessage('assistant', response.addedText, { insertedIntoScript: true }));
+        return response.addedText;
       } catch (error) {
         setStatus?.(`Assistant unavailable: ${error.message}`);
+        return '';
       }
     },
+    onAcceptAddLines: async (text) => {
+      appendScriptText?.(text);
+      pushMessages(newMessage('assistant', text, { insertedIntoScript: true }));
+    },
+    onDiscardAddLines: () => {},
   });
 
   assistantUiStore.subscribe(() => panel.render());
