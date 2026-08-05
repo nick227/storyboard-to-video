@@ -364,6 +364,46 @@ test('split-scene splits one fragment into the requested number of sub-scenes', 
   response.body.scenes.forEach((scene) => assert.ok(typeof scene.scriptFragment === 'string' && scene.scriptFragment.length > 0));
 });
 
+test('screenplay-assistant chat and add-lines routes are usage-tracked via generationTrace without going through the job queue', async (t) => {
+  const projectId = id('assistant'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Assistant' }).expect(201);
+
+  const chatBody = { projectId, scriptText: 'INT. ROOM - DAY\nA man enters.', messages: [], userMessage: 'Is this a strong opening?', provider: 'stub' };
+  const chatResponse = await request(app).post('/api/screenplay-assistant/chat').set(auth()).set('Idempotency-Key', 'assistant-chat-001').send(chatBody).expect(200);
+  assert.equal(chatResponse.body.usedFallback, true);
+  assert.match(chatResponse.body.reply, /unavailable/i);
+  // No queued job is created for this route -- it must not compete with slow image/video batches.
+  assert.equal((await generationQueue.list(projectId)).length, 0);
+
+  const addLinesBody = { projectId, scriptText: 'INT. ROOM - DAY\nA man enters.', lineCount: 10, provider: 'stub' };
+  const addLinesResponse = await request(app).post('/api/screenplay-assistant/add-lines').set(auth()).set('Idempotency-Key', 'assistant-add-lines-001').send(addLinesBody).expect(200);
+  assert.equal(addLinesResponse.body.usedFallback, true);
+  assert.equal(addLinesResponse.body.addedText, '');
+  assert.equal((await generationQueue.list(projectId)).length, 0);
+});
+
+test('screenplay-assistant routes enforce request validation, project ownership, and Idempotency-Key requirements', async (t) => {
+  const projectId = id('assistant-auth'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Assistant auth' }).expect(201);
+
+  const missingKeyResponse = await request(app).post('/api/screenplay-assistant/chat').set(auth()).send({ projectId, userMessage: 'hi', provider: 'stub' }).expect(400);
+  assert.equal(missingKeyResponse.body.error.code, 'IDEMPOTENCY_KEY_REQUIRED');
+
+  const invalidBodyResponse = await request(app).post('/api/screenplay-assistant/chat').set(auth()).set('Idempotency-Key', 'assistant-validation-001').send({ projectId, userMessage: '', provider: 'stub' }).expect(400);
+  assert.equal(invalidBodyResponse.body.error.code, 'VALIDATION_ERROR');
+
+  await request(app).post('/api/screenplay-assistant/chat').set(auth('bob-token')).set('Idempotency-Key', 'assistant-cross-owner-001').send({ projectId, userMessage: 'hi', provider: 'stub' }).expect(404);
+});
+
+test('duplicate screenplay-assistant add-lines requests reuse the completed project-scoped result', async (t) => {
+  const projectId = id('assistant-idem'); t.after(() => cleanupProject(projectId));
+  await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Assistant idempotency' }).expect(201);
+  const body = { projectId, scriptText: 'INT. ROOM - DAY\nA man enters.', lineCount: 10, provider: 'stub' };
+  const first = await request(app).post('/api/screenplay-assistant/add-lines').set(auth()).set('Idempotency-Key', 'assistant-idem-001').send(body).expect(200);
+  const second = await request(app).post('/api/screenplay-assistant/add-lines').set(auth()).set('Idempotency-Key', 'assistant-idem-001').send(body).expect(200);
+  assert.deepEqual(second.body, first.body);
+});
+
 test('GET /api/projects/:projectId/tokens retrieves and aggregates project token spend details', async (t) => {
   const projectId = id('tokens'); t.after(() => cleanupProject(projectId));
   const project = await request(app).post('/api/projects').set(auth()).send({ id: projectId, title: 'Tokens Test' }).expect(201);
