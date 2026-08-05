@@ -9,9 +9,7 @@ export class AssistantPanel {
    *   container: HTMLElement,
    *   getMessages: () => Array<{id:string, role:'user'|'assistant', content:string, insertedIntoScript?:boolean}>,
    *   onSend: (userMessage: string) => Promise<void>,
-   *   onAddLines: () => Promise<string>,
-   *   onAcceptAddLines: (text: string) => Promise<void>,
-   *   onDiscardAddLines: () => void,
+   *   onAddLines: () => Promise<void>,
    *   getState: () => { open: boolean, minimized: boolean },
    *   onOpen: () => void,
    *   onMinimize: () => void,
@@ -23,17 +21,11 @@ export class AssistantPanel {
     this.getMessages = options.getMessages;
     this.onSend = options.onSend;
     this.onAddLines = options.onAddLines;
-    this.onAcceptAddLines = options.onAcceptAddLines;
-    this.onDiscardAddLines = options.onDiscardAddLines;
     this.getState = options.getState;
     this.onOpen = options.onOpen;
     this.onMinimize = options.onMinimize;
     this.onClose = options.onClose;
     this.busy = false;
-    // Not persisted, not yet injected -- a generation the writer hasn't accepted or discarded yet.
-    // Holding it here (rather than auto-injecting) is what makes a bad generation harmless: nothing
-    // touches scriptText or the persisted chat history until the writer explicitly accepts it.
-    this.pendingAddition = null;
     this._build();
     this.render();
   }
@@ -81,30 +73,6 @@ export class AssistantPanel {
     messages.className = 'screenplay-assistant-messages';
     this.messagesEl = messages;
 
-    const preview = document.createElement('div');
-    preview.className = 'screenplay-assistant-preview';
-    preview.hidden = true;
-    const previewText = document.createElement('p');
-    previewText.className = 'screenplay-assistant-preview-text';
-    const previewActions = document.createElement('div');
-    previewActions.className = 'screenplay-assistant-preview-actions';
-    const acceptBtn = document.createElement('button');
-    acceptBtn.type = 'button';
-    acceptBtn.className = 'screenplay-assistant-accept-btn';
-    acceptBtn.textContent = 'Add to script';
-    acceptBtn.addEventListener('click', () => this._acceptPending());
-    const discardBtn = document.createElement('button');
-    discardBtn.type = 'button';
-    discardBtn.className = 'screenplay-assistant-discard-btn';
-    discardBtn.textContent = 'Discard';
-    discardBtn.addEventListener('click', () => this._discardPending());
-    previewActions.append(acceptBtn, discardBtn);
-    preview.append(previewText, previewActions);
-    this.previewEl = preview;
-    this.previewText = previewText;
-    this.acceptBtn = acceptBtn;
-    this.discardBtn = discardBtn;
-
     const actions = document.createElement('div');
     actions.className = 'screenplay-assistant-actions';
     const addLinesBtn = document.createElement('button');
@@ -139,7 +107,7 @@ export class AssistantPanel {
     this.textarea = textarea;
     this.sendBtn = sendBtn;
 
-    body.append(messages, preview, actions, inputRow);
+    body.append(messages, actions, inputRow);
     panel.append(header, body);
     root.append(fab, panel);
     this.container.appendChild(root);
@@ -165,11 +133,10 @@ export class AssistantPanel {
   }
 
   async _runAddLines() {
-    if (this.busy || this.pendingAddition) return;
+    if (this.busy) return;
     this._setBusy(true);
     try {
-      const text = await this.onAddLines();
-      if (text) this.pendingAddition = text;
+      await this.onAddLines();
     } catch (_) {
       // Same as above -- controller reports the failure via setStatus.
     } finally {
@@ -178,35 +145,11 @@ export class AssistantPanel {
     }
   }
 
-  async _acceptPending() {
-    if (!this.pendingAddition || this.busy) return;
-    const text = this.pendingAddition;
-    this.pendingAddition = null;
-    this._setBusy(true);
-    try {
-      await this.onAcceptAddLines(text);
-    } catch (_) {
-      // Controller surfaces the failure via setStatus; nothing left in the panel to roll back.
-    } finally {
-      this._setBusy(false);
-      this.render();
-    }
-  }
-
-  _discardPending() {
-    if (!this.pendingAddition) return;
-    this.pendingAddition = null;
-    this.onDiscardAddLines?.();
-    this.render();
-  }
-
   _setBusy(busy) {
     this.busy = busy;
     this.sendBtn.disabled = busy;
-    this.addLinesBtn.disabled = busy || Boolean(this.pendingAddition);
-    this.addLinesBtn.textContent = busy && !this.pendingAddition ? 'Working…' : 'Add next 10 lines';
-    this.acceptBtn.disabled = busy;
-    this.discardBtn.disabled = busy;
+    this.addLinesBtn.disabled = busy;
+    this.addLinesBtn.textContent = busy ? 'Working…' : 'Add next 10 lines';
   }
 
   render() {
@@ -241,10 +184,6 @@ export class AssistantPanel {
       this.messagesEl.append(bubble);
     }
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
-
-    this.previewEl.hidden = !this.pendingAddition;
-    if (this.pendingAddition) this.previewText.textContent = this.pendingAddition;
-    this.addLinesBtn.disabled = this.busy || Boolean(this.pendingAddition);
   }
 
   destroy() {

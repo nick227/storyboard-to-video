@@ -8,6 +8,13 @@ function newMessage(role, content, extra = {}) {
   return { id: crypto.randomUUID(), role, content, createdAt: new Date().toISOString(), ...extra };
 }
 
+// Matches how the continuation prompt itself counts "lines" -- every non-blank printed line
+// separately, not one dialogue block per line (see buildContinuationRequest in
+// screenplay-assistant.service.js).
+function countScriptLines(text) {
+  return String(text || '').split('\n').filter((line) => line.trim()).length;
+}
+
 export function initScreenplayAssistant({ container }, {
   getCurrentRecord, appendScriptText, getScriptText, getProvider, getFallbackPolicy, setStatus, persist,
 } = {}) {
@@ -53,12 +60,9 @@ export function initScreenplayAssistant({ container }, {
         setStatus?.(`Assistant unavailable: ${error.message}`);
       }
     },
-    // Returns the generated text for the panel to hold as an unaccepted preview -- nothing here
-    // touches scriptText or persisted chat history. That only happens in onAcceptAddLines below,
-    // once the writer explicitly accepts it.
     onAddLines: async () => {
       const record = getCurrentRecord?.();
-      if (!record) return '';
+      if (!record) return;
       try {
         const response = await api('/api/screenplay-assistant/add-lines', {
           method: 'POST',
@@ -72,19 +76,15 @@ export function initScreenplayAssistant({ container }, {
         });
         if (!response.addedText) {
           setStatus?.('The assistant could not generate a continuation.');
-          return '';
+          return;
         }
-        return response.addedText;
+        appendScriptText?.(response.addedText);
+        const lineCount = countScriptLines(response.addedText);
+        pushMessages(newMessage('assistant', `Added ${lineCount} line${lineCount === 1 ? '' : 's'} to the script.`, { insertedIntoScript: true }));
       } catch (error) {
         setStatus?.(`Assistant unavailable: ${error.message}`);
-        return '';
       }
     },
-    onAcceptAddLines: async (text) => {
-      appendScriptText?.(text);
-      pushMessages(newMessage('assistant', text, { insertedIntoScript: true }));
-    },
-    onDiscardAddLines: () => {},
   });
 
   assistantUiStore.subscribe(() => panel.render());
