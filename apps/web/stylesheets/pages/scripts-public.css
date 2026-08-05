@@ -481,7 +481,6 @@ body.scripts-shell {
 
 /* Reader chrome only — page/line formatting comes from screenplay-editor-standalone.css */
 .screenplay-editor-wrapper.is-reader {
-  --max-height: none;
   height: auto;
   overflow: visible;
   border-radius: 0;

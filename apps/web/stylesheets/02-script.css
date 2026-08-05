@@ -1,5 +1,5 @@
 .script-field textarea,
-.script-textarea { min-height: var(--max-script-height); resize: vertical; }
+.script-textarea { resize: vertical; }
 
 .script-header-row {
   display: flex;
@@ -183,10 +183,18 @@ body.script-focus-active { overflow: hidden; }
   z-index: 90;
   padding: 18px;
   background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#scriptPagePanel.is-script-focus .script-header-row {
+  flex: 0 0 auto;
+  margin-bottom: 0;
 }
 #scriptPagePanel.is-script-focus .story-concept {
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
-  height: 100%;
   margin: 0 auto;
 }
 #scriptPagePanel.is-script-focus .script-textarea {
@@ -197,10 +205,14 @@ body.script-focus-active { overflow: hidden; }
 #scriptPagePanel.is-script-focus .screenplay-editor-container {
   flex: 1 1 auto;
   min-height: 0;
-  height: calc(100dvh - 57px - 64px);
 }
 #scriptPagePanel.is-script-focus .screenplay-editor-wrapper {
-  --max-height: calc(100dvh - 57px - 66px);
+  height: 100%;
+  overflow: hidden;
+}
+#scriptPagePanel.is-script-focus .screenplay-workspace {
+  overflow: auto;
+  min-height: 0;
 }
 
 .screenplay-assistant-fab {

@@ -27,11 +27,15 @@ export class PageScrollIndicator {
         this.el.setAttribute('aria-live', 'polite');
         this.el.title = 'Approximate page count until deterministic pagination';
         this.wrapper.appendChild(this.el);
+        // Listen on both: the workspace scrolls internally in fullscreen focus mode,
+        // while the default view has no inner scroll and relies on the window scrolling.
+        window.addEventListener('scroll', this._onScroll, { passive: true });
         this.workspace.addEventListener('scroll', this._onScroll, { passive: true });
         this.refresh(false);
     }
 
     destroy () {
+        window.removeEventListener('scroll', this._onScroll);
         this.workspace.removeEventListener('scroll', this._onScroll);
         if (this._hideTimer) clearTimeout(this._hideTimer);
         if (this._raf) cancelAnimationFrame(this._raf);
@@ -70,15 +74,17 @@ export class PageScrollIndicator {
         const total = Math.max(1, pages.length);
         if (pages.length === 0) return { current: 1, total: 1 };
 
-        const viewMid = this.workspace.scrollTop + this.workspace.clientHeight / 2;
-        const workspaceRect = this.workspace.getBoundingClientRect();
+        // Viewport-relative math works regardless of which element is actually
+        // scrolling: the browser window (default view) or the workspace itself
+        // (fullscreen focus mode, where the workspace keeps its own inner scroll).
+        const viewMid = this._visibleCenter();
 
         let best = pages[0];
         let bestDist = Infinity;
 
         for (const page of pages) {
             const rect = page.element.getBoundingClientRect();
-            const pageMid = (rect.top - workspaceRect.top) + this.workspace.scrollTop + rect.height / 2;
+            const pageMid = rect.top + rect.height / 2;
             const dist = Math.abs(pageMid - viewMid);
             if (dist < bestDist) {
                 bestDist = dist;
@@ -90,5 +96,14 @@ export class PageScrollIndicator {
             current: best.pageNumber || 1,
             total
         };
+    }
+
+    /** Vertical center (viewport coords) of the workspace's visible area, clipped to the window. */
+    _visibleCenter () {
+        const rect = this.workspace.getBoundingClientRect();
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        const top = Math.max(rect.top, 0);
+        const bottom = Math.min(rect.bottom, viewportHeight);
+        return (top + bottom) / 2;
     }
 }
