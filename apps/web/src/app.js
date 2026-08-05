@@ -5,6 +5,7 @@ const { errorMiddleware, notFound, AppError } = require('./errors');
 const { createProjectRouter } = require('./routes/projects');
 const { createJobRouter } = require('./routes/jobs');
 const { storyboardRoutes } = require('./routes/storyboard.routes');
+const { screenplayAssistantRoutes } = require('./routes/screenplay-assistant.routes');
 const { imagesRoutes } = require('./routes/images.routes');
 const { audioRoutes } = require('./routes/audio.routes');
 const { videosRoutes } = require('./routes/videos.routes');
@@ -243,6 +244,7 @@ function registerRoutes(app, d) {
   app.use('/api/styles', stylesRoutes({ controller: d.controllers.styles, upload: d.upload }));
   app.use('/api/custom-styles', customStylesRoutes({ controller: d.controllers.styles, upload: d.upload, generationTrace: d.generationTrace }));
   app.use('/api/storyboard', storyboardRoutes({ controller: d.controllers.storyboard, idempotency: d.idempotency, execute: d.execute }));
+  app.use('/api/screenplay-assistant', screenplayAssistantRoutes({ controller: d.controllers.screenplayAssistant, idempotency: d.idempotency, generationTrace: d.generationTrace }));
   app.use('/api/images', imagesRoutes({ controller: d.controllers.media, idempotency: d.idempotency, execute: d.execute }));
   app.use('/api/videos', videosRoutes({ controller: d.controllers.media, idempotency: d.idempotency, execute: d.execute }));
   app.use('/api/audio', audioRoutes({ controller: d.controllers.media, voices: d.controllers.voices, upload: d.upload, idempotency: d.idempotency, execute: d.execute, generationTrace: d.generationTrace }));

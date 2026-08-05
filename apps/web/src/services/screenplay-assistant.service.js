@@ -1,0 +1,86 @@
+const { z } = require('zod');
+const { AppError } = require('../errors');
+const { cleanText, extractJson } = require('../shared/text');
+const { providerOutput } = require('../providers/result');
+
+// Only the tail of the script is fed into either prompt -- chat is meant to discuss the whole
+// screenplay conversationally (a full read isn't needed to answer most questions), and continuation
+// only needs enough context to pick up tone/characters/location where the script currently ends.
+const CHAT_SCRIPT_TAIL_LENGTH = 20_000;
+const CONTINUATION_SCRIPT_TAIL_LENGTH = 6_000;
+const CHAT_REPLY_MAX_LENGTH = 4_000;
+const ADDED_TEXT_MAX_LENGTH = 6_000;
+
+const chatResponseSchema = z.object({ reply: z.string() });
+const continuationResponseSchema = z.object({ addedText: z.string() });
+
+function scriptTail(scriptText, maxLength) {
+  const text = String(scriptText || '').trim();
+  return text.length > maxLength ? text.slice(-maxLength) : text;
+}
+
+function historyBlock(messages) {
+  return messages
+    .map((message) => `${message.role === 'assistant' ? 'Assistant' : 'User'}: ${message.content}`)
+    .join('\n');
+}
+
+function buildChatRequest({ scriptText, messages, userMessage }) {
+  return `Return strict JSON only: {"reply":"..."}. You are a screenwriting assistant helping a writer discuss and improve their screenplay. Answer conversationally and helpfully. Never silently rewrite or replace the screenplay -- only discuss it, unless the writer explicitly asks you to draft replacement text within your reply.
+
+Current screenplay (may be truncated to its most recent portion):
+${scriptTail(scriptText, CHAT_SCRIPT_TAIL_LENGTH) || '(empty screenplay)'}
+
+${messages.length ? `Conversation so far:\n${historyBlock(messages)}\n` : ''}
+User: ${userMessage}`;
+}
+
+function buildContinuationRequest({ scriptText, lineCount }) {
+  return `Return strict JSON only: {"addedText":"..."}. Continue this screenplay in Fountain format.
+
+Rules:
+1. Write only NEW content that comes after the excerpt below -- never repeat or rephrase existing lines.
+2. Target approximately ${lineCount} lines (a soft guideline, not a hard requirement to satisfy exactly).
+3. Use standard Fountain conventions: scene headings like "INT. LOCATION - DAY" or "EXT. LOCATION - NIGHT", character cues in ALL CAPS on their own line, parentheticals in parentheses, plain dialogue lines, and transitions like "CUT TO:" where appropriate.
+4. Preserve the established characters, tone, and location from the excerpt unless the story naturally moves on (e.g. a scene heading change).
+5. Do not include any commentary, explanation, or markdown -- addedText must be raw screenplay text only.
+
+Excerpt (end of the current screenplay):
+${scriptTail(scriptText, CONTINUATION_SCRIPT_TAIL_LENGTH) || '(empty screenplay -- begin the story)'}`;
+}
+
+function createScreenplayAssistantService({ textProviders }) {
+  async function chat({ scriptText, messages = [], userMessage, provider, fallbackPolicy = 'local' }) {
+    if (provider === 'stub') return { reply: 'Stub text mode selected; the assistant is unavailable.', usedFallback: true, warning: 'Stub text mode selected; the assistant is unavailable.' };
+
+    try {
+      const request = buildChatRequest({ scriptText, messages, userMessage });
+      const parsed = chatResponseSchema.parse(extractJson(providerOutput(await textProviders.call(provider, request))));
+      const reply = cleanText(parsed.reply, CHAT_REPLY_MAX_LENGTH);
+      if (!reply) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned an empty reply', { status: 502 });
+      return { reply, usedFallback: false, warning: '' };
+    } catch (error) {
+      if (fallbackPolicy !== 'local') throw (error instanceof AppError ? error : new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned an invalid reply', { status: 502, cause: error }));
+      return { reply: 'The assistant is temporarily unavailable. Your message was saved.', usedFallback: true, warning: `Provider unavailable; a placeholder reply was returned. ${cleanText(error.message, 300)}` };
+    }
+  }
+
+  async function addNextLines({ scriptText, lineCount = 10, provider, fallbackPolicy = 'local' }) {
+    if (provider === 'stub') return { addedText: '', usedFallback: true, warning: 'Stub text mode selected; no continuation was generated.' };
+
+    try {
+      const request = buildContinuationRequest({ scriptText, lineCount });
+      const parsed = continuationResponseSchema.parse(extractJson(providerOutput(await textProviders.call(provider, request))));
+      const addedText = cleanText(parsed.addedText, ADDED_TEXT_MAX_LENGTH);
+      if (!addedText) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned an empty continuation', { status: 502 });
+      return { addedText, usedFallback: false, warning: '' };
+    } catch (error) {
+      if (fallbackPolicy !== 'local') throw (error instanceof AppError ? error : new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned an invalid continuation', { status: 502, cause: error }));
+      return { addedText: '', usedFallback: true, warning: `Provider unavailable; no continuation was generated. ${cleanText(error.message, 300)}` };
+    }
+  }
+
+  return { chat, addNextLines };
+}
+
+module.exports = { createScreenplayAssistantService };

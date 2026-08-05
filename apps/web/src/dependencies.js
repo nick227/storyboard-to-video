@@ -35,6 +35,7 @@ const { PrismaVideoGenerationAttemptRepository } = require('./storage/prisma-vid
 const { createPromptGenerationService } = require('./services/prompt-generation.service');
 const { createReferenceGenerationService } = require('./services/reference-generation.service');
 const { createDialogueService } = require('./services/dialogue.service');
+const { createScreenplayAssistantService } = require('./services/screenplay-assistant.service');
 const { createSceneSplitService } = require('./services/scene-split.service');
 const { createShotPlanningService } = require('./services/shot-planning.service');
 const { createImageGenerationService } = require('./services/image-generation.service');
@@ -54,6 +55,7 @@ const { AuthService } = require('./auth');
 const { PrismaIdentityRepository } = require('./storage/prisma-identity.repository');
 const { createUpload } = require('./middleware/upload');
 const { createStoryboardController } = require('./controllers/storyboard.controller');
+const { createScreenplayAssistantController } = require('./controllers/screenplay-assistant.controller');
 const { createMediaController } = require('./controllers/media.controller');
 const { createStylesController } = require('./controllers/styles.controller');
 const { createVoiceController } = require('./controllers/voice.controller');
@@ -122,6 +124,7 @@ function createDependencies(config, overrides = {}) {
   const prompts = createPromptGenerationService({ textProviders, styles, limits: config.limits, generationCache });
   const referenceGeneration = createReferenceGenerationService({ textProviders });
   const dialogue = createDialogueService({ textProviders, generationCache });
+  const screenplayAssistant = createScreenplayAssistantService({ textProviders });
   const sceneSplit = createSceneSplitService({ textProviders, generationCache });
   const shotPlanning = createShotPlanningService({ textProviders, generationCache });
   const images = createImageGenerationService({ config, styles, provider: imageProvider, projectStore, materializer });
@@ -139,7 +142,7 @@ function createDependencies(config, overrides = {}) {
 
   return {
     config, prisma, projectStore, scriptStore, scripts, writersStore, writers, queue, providerAdmission, idempotencyStore, generationCacheStore, generationCache, usageRepository, usageTracker, videoAttemptRepository, videoProviders, videoExecution, billingRepository, billing, adminRepository, paymentRepository, payments, spendSummary, generationContext, identityStore,
-    styles, prompts, referenceGeneration, dialogue, sceneSplit, shotPlanning, images, audio, videos, subtitles, shotReferences, exports, voices, imageProvider, stockProvider, mediaOutput,
+    styles, prompts, referenceGeneration, dialogue, screenplayAssistant, sceneSplit, shotPlanning, images, audio, videos, subtitles, shotReferences, exports, voices, imageProvider, stockProvider, mediaOutput,
     upload: createUpload(config),
     auth,
     authenticate: auth.middleware(),
@@ -148,6 +151,7 @@ function createDependencies(config, overrides = {}) {
     generationTrace: createGenerationTraceMiddleware(generationContext),
     controllers: {
       storyboard: createStoryboardController({ styles, prompts, dialogue, sceneSplit, shotPlanning, config }),
+      screenplayAssistant: createScreenplayAssistantController({ screenplayAssistant }),
       media,
       styles: createStylesController({ styles, imageProvider }),
       voices: createVoiceController(voices),

@@ -7,13 +7,30 @@ const {
 } = require('./shared/local-safetensors');
 
 const MAX_PROJECT_SCENES = 200;
+// Chat history grows one message per turn and rides along on every debounced project sync -- cap it
+// the same defensive way MAX_PROJECT_SCENES caps scenes, rather than letting it grow unboundedly.
+const MAX_ASSISTANT_MESSAGES = 200;
 
 const projectId = z.string().trim().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/);
 const fallbackPolicy = z.enum(['fail', 'local']).default('local');
+const screenplayAssistantMessage = z.object({
+  id: z.string().trim().min(1).max(80),
+  role: z.enum(['user', 'assistant']),
+  content: z.string().trim().max(8_000),
+  createdAt: z.string().trim().max(40),
+  // Only set on assistant messages produced by the "Add next lines" action, so the chat transcript
+  // can visually mark what was actually inserted into the script.
+  insertedIntoScript: z.boolean().optional(),
+});
+const screenplayAssistant = z.object({
+  version: z.literal(1).default(1),
+  messages: z.array(screenplayAssistantMessage).max(MAX_ASSISTANT_MESSAGES).default([]),
+}).optional();
 const projectDocument = z.object({
   id: projectId.optional(),
   title: z.string().trim().max(200).default('Untitled'),
   scenes: z.array(z.record(z.any())).max(MAX_PROJECT_SCENES).default([]),
+  screenplayAssistant,
 }).passthrough();
 
 const createProject = z.object({
@@ -226,6 +243,26 @@ const regenerateDialogue = z.object({
   bypassCache: z.boolean().default(false),
 });
 
+const assistantChat = z.object({
+  projectId,
+  scriptText: z.string().max(200_000).default(''),
+  messages: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().max(8_000),
+  })).max(MAX_ASSISTANT_MESSAGES).default([]),
+  userMessage: z.string().trim().min(1).max(4_000),
+  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
+  fallbackPolicy,
+});
+
+const assistantAddLines = z.object({
+  projectId,
+  scriptText: z.string().max(200_000).default(''),
+  lineCount: z.coerce.number().int().min(1).max(30).default(10),
+  provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
+  fallbackPolicy,
+});
+
 const tagSlugItem = z.string().trim().min(1).max(40);
 
 const createScript = z.object({
@@ -269,7 +306,7 @@ const updateWriterProfile = z.object({
 }).default({});
 
 module.exports = {
-  MAX_PROJECT_SCENES, audioGeneration, createProject, createScript, exportProject, fallbackPolicy,
+  MAX_PROJECT_SCENES, MAX_ASSISTANT_MESSAGES, assistantAddLines, assistantChat, audioGeneration, createProject, createScript, exportProject, fallbackPolicy,
   imageGeneration, mediaSettings, planShots, planVisuals, prepareNarration, projectDocument, projectId, publicScriptListQuery,
   regenerateAction, regenerateDialogue, regeneratePrompt, scriptVisibility, speechGeneration,
   splitScene, subtitleGeneration, updateScript, updateWriterProfile, videoGeneration,
