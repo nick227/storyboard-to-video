@@ -85,6 +85,14 @@ export const uiStore = new Store({
   selectedSceneId: null
 });
 
+// Screenplay assistant widget open/minimized state. Presentation-only -- resets on reload, same
+// convention as uiStore.selectedSceneId. The chat transcript itself lives on the project record
+// (record.screenplayAssistant) and is synced to the server; this store never is.
+export const assistantUiStore = new Store({
+  open: false,
+  minimized: false,
+});
+
 // A helper for global debounced events (e.g., text inputs)
 let debounceTimer;
 export function debounce(fn, ms = 300) {

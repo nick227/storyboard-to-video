@@ -17,6 +17,7 @@ import {
 
 import { initMediaSettings } from './media/media-settings.js';
 import { initScriptController } from './scripts/controller.js';
+import { initScreenplayAssistant } from './studio/screenplay-assistant/controller.js';
 import { initScriptPublishControls } from './scripts/publish.js';
 import { initRunController } from './studio/run-controller.js';
 import { assertElements } from './core/dom-contract.js';
@@ -369,6 +370,7 @@ let scriptController = null;
 let scriptPublishControls = null;
 let storyboardController = null;
 let settingsController = null;
+let screenplayAssistantController = null;
 
 async function loadStoryboardIntoUI() {
   // Make the selected work usable before optional provider/catalog requests settle.
@@ -448,6 +450,15 @@ function initControllers(getSession) {
       renderStageBar(els);
       scriptController?.syncRoute?.();
     },
+  });
+  screenplayAssistantController = initScreenplayAssistant({ container: els.scriptPagePanel }, {
+    getCurrentRecord: getCurrentStoryboardRecord,
+    appendScriptText: (text) => scriptController?.appendScriptText?.(text),
+    getScriptText: () => els.scriptText.value,
+    getProvider: () => els.textProvider.value,
+    getFallbackPolicy: () => els.fallbackPolicy.value,
+    setStatus,
+    persist: () => saveStoryboard(els, false),
   });
   storyboardController = initStoryboardController({
     title: els.storyboardTitle,

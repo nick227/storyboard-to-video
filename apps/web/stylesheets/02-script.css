@@ -202,3 +202,160 @@ body.script-focus-active { overflow: hidden; }
 #scriptPagePanel.is-script-focus .screenplay-editor-wrapper {
   --max-height: calc(100dvh - 57px - 66px);
 }
+
+.screenplay-assistant-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 80;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-round);
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  font-weight: 700;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.screenplay-assistant-fab:hover { background: var(--accent-hover); }
+.screenplay-assistant-panel {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 80;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+/* The [hidden] attribute selector has the same specificity as the class rule above and would
+   otherwise lose to it by source order, leaving the "closed" panel `display:flex` and able to
+   intercept clicks meant for the FAB underneath it. */
+.screenplay-assistant-panel[hidden] { display: none; }
+.screenplay-assistant.is-minimized .screenplay-assistant-body { display: none; }
+.screenplay-assistant-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.screenplay-assistant.is-minimized .screenplay-assistant-header { border-bottom: none; }
+.screenplay-assistant-title {
+  flex: 1 1 auto;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--text);
+}
+.screenplay-assistant-icon-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.screenplay-assistant-icon-btn:hover { background: var(--surface-button); color: var(--text); }
+.screenplay-assistant-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.screenplay-assistant-messages {
+  flex: 1 1 auto;
+  min-height: 160px;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.screenplay-assistant-empty {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.screenplay-assistant-message {
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  font-size: var(--text-sm);
+  max-width: 92%;
+}
+.screenplay-assistant-message p { margin: 0; white-space: pre-wrap; }
+.screenplay-assistant-message-user {
+  align-self: flex-end;
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.screenplay-assistant-message-assistant {
+  align-self: flex-start;
+  background: var(--surface-input);
+  color: var(--text);
+}
+.screenplay-assistant-message.is-inserted { border: 1px solid var(--accent-ring); }
+.screenplay-assistant-inserted-tag {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--accent-ink);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.screenplay-assistant-actions {
+  padding: 0 12px 8px;
+}
+.screenplay-assistant-add-lines-btn {
+  width: 100%;
+  padding: 8px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface-button);
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.screenplay-assistant-add-lines-btn:hover:not(:disabled) { border-color: var(--accent); }
+.screenplay-assistant-add-lines-btn:disabled { opacity: 0.6; cursor: default; }
+.screenplay-assistant-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.screenplay-assistant-input {
+  flex: 1 1 auto;
+  resize: none;
+  min-height: 36px;
+  max-height: 96px;
+  padding: 8px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface-input);
+  color: var(--text);
+  font: inherit;
+}
+.screenplay-assistant-send-btn {
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  border: none;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.screenplay-assistant-send-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.screenplay-assistant-send-btn:disabled { opacity: 0.6; cursor: default; }

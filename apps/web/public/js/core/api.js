@@ -1,7 +1,7 @@
 export async function api(url, options = {}) {
   const headers = { ...(options.headers || {}) };
   
-  if (options.method === 'POST' && /^\/api\/(storyboard\/(generate|regenerate|plan-shots|prepare-narration|plan-visuals|split-scene)|images\/generate|videos\/generate|audio\/(generate|recordings)|subtitles\/generate)/.test(url)) {
+  if (options.method === 'POST' && /^\/api\/(storyboard\/(generate|regenerate|plan-shots|prepare-narration|plan-visuals|split-scene)|images\/generate|videos\/generate|audio\/(generate|recordings)|subtitles\/generate|screenplay-assistant\/(chat|add-lines))/.test(url)) {
     headers['Idempotency-Key'] ||= options.idempotencyKey || crypto.randomUUID();
   }
   

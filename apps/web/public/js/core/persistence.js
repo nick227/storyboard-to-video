@@ -192,6 +192,9 @@ export async function hydrateCurrentProjectFromServer() {
         ? serverProject.scriptText
         : (record.scriptText ?? serverProject.scriptText ?? ''),
       scenes: mergedScenes.length ? mergedScenes : adaptSceneImageShots(serverProject.scenes),
+      // No server-side writer ever mutates this -- the server document is always authoritative
+      // once it exists, same as scriptId/script above.
+      screenplayAssistant: serverProject.screenplayAssistant || record.screenplayAssistant || { version: 1, messages: [] },
     });
     
     persistStoryboardLibrary();

@@ -265,5 +265,15 @@ export function initScriptController(elements, { setStatus, onScriptChange, onPa
     },
     syncRoute: () => applyPage(activePage, { persist: true }),
     activePage: () => activePage,
+    // editor.loadScript() only re-renders -- it never calls onChange/_notifyChange -- so
+    // updateScriptText() below is what actually dispatches the `input` event that fires
+    // onScriptChange (app.js) and the save pipeline, same as every manual keystroke.
+    appendScriptText: (text) => {
+      const trimmed = fountainScript().replace(/\s+$/, '');
+      const newRaw = `${trimmed}${trimmed ? '\n\n' : ''}${text.trim()}\n`;
+      if (editor && elements.modeSelect.value === 'screenplay') editor.loadScript(newRaw, 'fountain');
+      updateScriptText(newRaw);
+      return newRaw;
+    },
   };
 }
