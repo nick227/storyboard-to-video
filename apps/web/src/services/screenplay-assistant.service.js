@@ -10,13 +10,22 @@ const CHAT_SCRIPT_TAIL_LENGTH = 20_000;
 const CONTINUATION_SCRIPT_TAIL_LENGTH = 6_000;
 const CHAT_REPLY_MAX_LENGTH = 4_000;
 const ADDED_TEXT_MAX_LENGTH = 6_000;
+// Keep recent turns only so long sessions don't drown the cover brief / script tail.
+const CHAT_HISTORY_WINDOW = 12;
 
 const chatResponseSchema = z.object({ reply: z.string() });
 const continuationResponseSchema = z.object({ addedText: z.string() });
 
-function scriptTail(scriptText, maxLength) {
+function scriptExcerpt(scriptText, maxLength) {
   const text = String(scriptText || '').trim();
-  return text.length > maxLength ? text.slice(-maxLength) : text;
+  if (!text) return '';
+  if (text.length <= maxLength) return text;
+  return `[Earlier screenplay content omitted — showing the most recent portion only.]\n${text.slice(-maxLength)}`;
+}
+
+function windowMessages(messages = [], limit = CHAT_HISTORY_WINDOW) {
+  const list = Array.isArray(messages) ? messages : [];
+  return list.length > limit ? list.slice(-limit) : list;
 }
 
 function historyBlock(messages) {
@@ -89,37 +98,62 @@ function normalizeFountainContinuation(text) {
   return output.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '');
 }
 
-function summaryBlock(summary) {
+function summaryBlock(summary, { hasBody = false } = {}) {
   const text = String(summary || '').trim();
-  return text ? `Story summary:\n${text}\n` : '';
+  if (!text) return '';
+  const usage = hasBody
+    ? `- The screenplay body exists: stay consistent with this bible and prefer advancing its next unresolved beat.
+- Do not invent a conflicting premise, genre, central conflict, or ending.`
+    : `- The screenplay body is empty: treat this bible as the sole brief for discussion and for any drafting the writer requests.
+- Do not invent a conflicting premise, genre, or central conflict.`;
+  return `Story bible (authoritative):
+${text}
+
+Rules for using the bible:
+${usage}
+`;
 }
 
 function buildChatRequest({ scriptText, summary, messages, userMessage }) {
+  const hasBody = Boolean(String(scriptText || '').trim());
+  const hasSummary = Boolean(String(summary || '').trim());
+  const emptyGuidance = !hasBody && hasSummary
+    ? 'The screenplay body is empty. Ground every answer in the story bible above — outline beats, characters, and opening strategy from it unless the writer asks otherwise.'
+    : !hasBody
+      ? 'The screenplay body is empty. Ask for or wait on a story bible/summary before inventing a full premise, unless the writer supplies one in chat.'
+      : '';
+  const recent = windowMessages(messages);
+  const omitted = Array.isArray(messages) && messages.length > recent.length
+    ? `(${messages.length - recent.length} earlier turn${messages.length - recent.length === 1 ? '' : 's'} omitted.)\n`
+    : '';
+
   return `Return strict JSON only: {"reply":"..."}. You are a screenwriting assistant helping a writer discuss and improve their screenplay. Answer conversationally and helpfully. Never silently rewrite or replace the screenplay -- only discuss it, unless the writer explicitly asks you to draft replacement text within your reply.
 
-${summaryBlock(summary)}Current screenplay (may be truncated to its most recent portion):
-${scriptTail(scriptText, CHAT_SCRIPT_TAIL_LENGTH) || '(empty screenplay)'}
+${summaryBlock(summary, { hasBody })}${emptyGuidance ? `${emptyGuidance}\n\n` : ''}Current screenplay:
+${scriptExcerpt(scriptText, CHAT_SCRIPT_TAIL_LENGTH) || '(empty screenplay)'}
 
-${messages.length ? `Conversation so far:\n${historyBlock(messages)}\n` : ''}
-User: ${userMessage}`;
+${recent.length ? `Conversation so far:\n${omitted}${historyBlock(recent)}\n` : ''}User: ${userMessage}`;
 }
 
 function buildContinuationRequest({ scriptText, summary, lineCount }) {
   const hasBody = Boolean(String(scriptText || '').trim());
-  const emptyGuidance = hasBody
-    ? 'Preserve the established characters, tone, and location from the excerpt unless the story naturally moves on (e.g. a scene heading change).'
-    : 'The screenplay body is empty. Use the story summary as the primary brief and begin the screenplay from scratch in Fountain format.';
+  const hasSummary = Boolean(String(summary || '').trim());
+  const continuity = hasBody
+    ? 'Preserve the established characters, tone, and location from the excerpt unless the story naturally moves on (e.g. a scene heading change). If a story bible is present, advance its next unresolved beat and do not contradict its premise.'
+    : hasSummary
+      ? 'The screenplay body is empty. Use the story bible as the primary brief and begin the screenplay from scratch in Fountain format.'
+      : 'The screenplay body is empty. Begin the screenplay from scratch in Fountain format.';
   return `Return strict JSON only: {"addedText":"..."}. Continue this screenplay in Fountain format.
 
 Rules:
 1. Write only NEW content that comes after the excerpt below -- never repeat or rephrase existing lines.
 2. Target approximately ${lineCount} printed lines, counting every scene heading, character cue, parenthetical, and dialogue or action line separately (a multi-line dialogue speech counts as several lines, not one). This is a soft guideline, not a hard requirement to satisfy exactly.
 3. Use standard Fountain conventions: scene headings like "INT. LOCATION - DAY" or "EXT. LOCATION - NIGHT", character cues in ALL CAPS on their own line, parentheticals in parentheses, plain dialogue lines, and transitions like "CUT TO:" where appropriate. Always leave a blank line between one character's dialogue and the next character's cue.
-4. ${emptyGuidance}
+4. ${continuity}
 5. Do not include any commentary, explanation, or markdown -- addedText must be raw screenplay text only.
 
-${summaryBlock(summary)}Excerpt (end of the current screenplay):
-${scriptTail(scriptText, CONTINUATION_SCRIPT_TAIL_LENGTH) || '(empty screenplay -- begin the story)'}`;
+${summaryBlock(summary, { hasBody })}Excerpt (end of the current screenplay):
+${scriptExcerpt(scriptText, CONTINUATION_SCRIPT_TAIL_LENGTH) || '(empty screenplay -- begin the story)'}`;
 }
 
 function createScreenplayAssistantService({ textProviders }) {
@@ -157,4 +191,9 @@ function createScreenplayAssistantService({ textProviders }) {
   return { chat, addNextLines };
 }
 
-module.exports = { createScreenplayAssistantService, normalizeFountainContinuation };
+module.exports = {
+  createScreenplayAssistantService,
+  normalizeFountainContinuation,
+  windowMessages,
+  CHAT_HISTORY_WINDOW,
+};

@@ -60,10 +60,33 @@ test('chat: includes story summary in the provider prompt when present', async (
     provider: 'gemini',
     fallbackPolicy: 'fail',
   });
-  assert.match(request, /Story summary:/);
+  assert.match(request, /Story bible \(authoritative\):/);
   assert.match(request, /sealed letter before dawn/);
+  assert.match(request, /sole brief/);
   assert.match(request, /\(empty screenplay\)/);
   assert.equal(result.reply, 'Lean on the summary stakes.');
+});
+
+test('chat: windows long histories to the most recent turns', async () => {
+  let request;
+  const service = createScreenplayAssistantService({ textProviders: { call: async (_provider, value) => { request = value; return JSON.stringify({ reply: 'ok' }); } } });
+  const messages = Array.from({ length: 20 }, (_, index) => ({
+    role: index % 2 === 0 ? 'user' : 'assistant',
+    content: `turn-${index}`,
+  }));
+  await service.chat({
+    scriptText: 'INT. ROOM - DAY',
+    messages,
+    userMessage: 'latest?',
+    provider: 'gemini',
+    fallbackPolicy: 'fail',
+  });
+  assert.match(request, /earlier turn/);
+  assert.doesNotMatch(request, /turn-0/);
+  assert.doesNotMatch(request, /turn-7/);
+  assert.match(request, /turn-8/);
+  assert.match(request, /turn-19/);
+  assert.match(request, /latest\?/);
 });
 
 test('addNextLines: empty script uses summary as the primary brief', async () => {
@@ -76,10 +99,35 @@ test('addNextLines: empty script uses summary as the primary brief', async () =>
     provider: 'gemini',
     fallbackPolicy: 'fail',
   });
-  assert.match(request, /Story summary:/);
+  assert.match(request, /Story bible \(authoritative\):/);
   assert.match(request, /primary brief/);
   assert.match(request, /sealed letter before dawn/);
   assert.match(result.addedText, /INT\. ALLEY - NIGHT/);
+});
+
+test('addNextLines: mid-script continuation keeps summary as arc authority', async () => {
+  let request;
+  const service = createScreenplayAssistantService({ textProviders: { call: async (_provider, value) => { request = value; return JSON.stringify({ addedText: 'MARCUS\nWe keep moving.' }); } } });
+  await service.addNextLines({
+    scriptText: 'INT. ALLEY - NIGHT\n\nMARCUS runs.',
+    summary: 'A courier must deliver a sealed letter before dawn.',
+    lineCount: 6,
+    provider: 'gemini',
+    fallbackPolicy: 'fail',
+  });
+  assert.match(request, /Story bible \(authoritative\):/);
+  assert.match(request, /next unresolved beat/);
+  assert.match(request, /do not contradict/);
+});
+
+test('addNextLines: truncated tails are marked as omitted earlier content', async () => {
+  let request;
+  const service = createScreenplayAssistantService({ textProviders: { call: async (_provider, value) => { request = value; return JSON.stringify({ addedText: 'MARCUS\nWe should go.' }); } } });
+  const scriptText = `INT. OLD START - DAY\n${'Padding line. '.repeat(2000)}\nINT. COFFEE SHOP - DAY\nMARCUS enters.`;
+  await service.addNextLines({ scriptText, lineCount: 10, provider: 'gemini', fallbackPolicy: 'fail' });
+  assert.match(request, /Earlier screenplay content omitted/);
+  assert.match(request, /INT\. COFFEE SHOP - DAY/);
+  assert.doesNotMatch(request, /INT\. OLD START - DAY/);
 });
 
 test('addNextLines: stub mode returns no continuation without calling the provider', async () => {
