@@ -1,5 +1,6 @@
 import { updateScriptMeta } from './api.js';
 import { getCurrentStoryboardRecord } from '../core/persistence.js';
+import { formatPublishedDate } from './chrome.js';
 
 const SUMMARY_MAX = 4000;
 const SAVE_DEBOUNCE_MS = 600;
@@ -23,6 +24,7 @@ export function initStudioCoverPage(elements, {
   const art = elements.scriptCoverPageArt;
   const titleEl = elements.scriptCoverPageTitle;
   const authorEl = elements.scriptCoverPageAuthor;
+  const dateEl = elements.scriptCoverPageDate;
   const summaryEl = elements.scriptCoverPageSummary;
   const hintEl = elements.scriptCoverPageSummaryHint;
 
@@ -47,6 +49,18 @@ export function initStudioCoverPage(elements, {
     }
   }
 
+  function syncDate(script, record) {
+    if (!dateEl) return;
+    const date = formatPublishedDate(script?.publishedAt || script?.updatedAt || record?.updatedAt);
+    if (date) {
+      dateEl.textContent = date;
+      dateEl.hidden = false;
+    } else {
+      dateEl.textContent = '';
+      dateEl.hidden = true;
+    }
+  }
+
   function syncFromRecord(record = getCurrentStoryboardRecord()) {
     const script = record?.script || null;
     const title = (typeof getTitle === 'function' ? getTitle() : null)
@@ -58,6 +72,7 @@ export function initStudioCoverPage(elements, {
       || 'Anonymous';
     if (titleEl) titleEl.textContent = title;
     if (authorEl) authorEl.textContent = author;
+    syncDate(script, record);
     const summary = script?.summary || '';
     if (summaryEl && document.activeElement !== summaryEl) {
       summaryEl.value = summary;

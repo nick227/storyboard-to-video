@@ -1,22 +1,28 @@
 @import "../shared/tokens.css";
 
-/* Shared Letter-sized screenplay cover (studio + public View). */
+/* Shared half-Letter screenplay cover (studio + public View).
+ * Order: art → title → author/date → summary.
+ */
 .script-cover-page {
   --page-width: 8.5in;
-  --page-height: 11in;
+  --page-height: 5.5in;
   --page-scale: 1;
+  --cover-pad-x: 1.35rem;
+  --cover-pad-y: 1.1rem;
   display: grid;
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto 1fr;
+  gap: 0.85rem;
   width: calc(var(--page-width) * var(--page-scale));
   min-height: calc(var(--page-height) * var(--page-scale));
+  max-height: none;
   margin: 0 auto 1.25rem;
-  padding: 1.5rem 2rem;
+  padding: var(--cover-pad-y) var(--cover-pad-x);
   text-align: center;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--glass-ink, #fff) 5%, transparent), transparent 24%),
-    linear-gradient(165deg, var(--panel-2, #1f2630) 0%, var(--panel-2, #1f2630) 60%, var(--line, #30363d) 100%);
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-ink, #fff) 5%, transparent), transparent 28%),
+    linear-gradient(165deg, var(--panel-2, #1f2630) 0%, var(--panel-2, #1f2630) 62%, var(--line, #30363d) 100%);
   border: 1px solid var(--line, #30363d);
-  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.32);
   overflow: hidden;
   position: relative;
   box-sizing: border-box;
@@ -24,15 +30,21 @@
 }
 
 .script-cover-page.has-cover-art {
-  grid-template-rows: minmax(11rem, 38%) auto;
-  padding: 0;
-  text-align: left;
+  grid-template-rows: auto 1fr;
+  text-align: center;
 }
 
-.script-cover-page-art {
+.script-cover-page-art,
+.script-cover-page-art-btn {
   display: grid;
   place-items: center;
-  min-height: 11rem;
+  justify-self: center;
+  width: min(100%, 11rem);
+  height: 7.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--glass-ink, #fff) 4%, transparent);
   overflow: hidden;
 }
@@ -41,82 +53,85 @@
   display: block;
   width: 100%;
   height: 100%;
-  max-height: 100%;
   object-fit: contain;
   object-position: center;
 }
 
+.script-cover-page-art-btn {
+  color: inherit;
+  cursor: pointer;
+}
+
+.script-cover-page:not(.has-cover-art) .script-cover-page-art-btn {
+  border: 1px dashed var(--line, #30363d);
+}
+
+.script-cover-page-art-empty {
+  color: var(--muted, #9da7b3);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.script-cover-page.has-cover-art .script-cover-page-art-empty {
+  display: none;
+}
+
 .script-cover-page-copy {
-  display: contents;
-}
-
-.script-cover-page.has-cover-art .script-cover-page-copy {
   display: grid;
-  gap: 0.85rem;
-  padding: 1.25rem 1.5rem 1.4rem;
+  gap: 0.55rem;
+  align-content: start;
+  min-width: 0;
 }
 
-.script-cover-page-top,
-.script-cover-page-bottom { min-height: 0; }
-
-.script-cover-page-mid {
-  display: grid;
-  place-content: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0;
-}
-
-.script-cover-page.has-cover-art .script-cover-page-mid {
-  place-content: start;
-  padding: 0;
+.script-cover-page-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
 }
 
 .script-cover-page-label {
   margin: 0;
   color: var(--muted, #9da7b3);
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
 .script-cover-page h1 {
   margin: 0;
   font-family: "Courier Prime", Courier, "Courier New", monospace;
-  font-size: clamp(1.9rem, 5vw, 2.7rem);
+  font-size: clamp(1.45rem, 3.4vw, 2rem);
   font-weight: 700;
-  line-height: 1.08;
+  line-height: 1.12;
   text-wrap: balance;
 }
 
-.script-cover-page-summary,
-.script-cover-page-logline {
-  margin: 0 auto;
-  max-width: 42ch;
+.script-cover-page-byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35rem 0.85rem;
+  margin: 0;
   color: var(--muted, #9da7b3);
-  font-size: 0.98rem;
-  line-height: 1.45;
-  text-wrap: balance;
-  white-space: pre-wrap;
-}
-
-.script-cover-page.has-cover-art .script-cover-page-summary,
-.script-cover-page.has-cover-art .script-cover-page-logline {
-  margin-left: 0;
-  margin-right: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 .script-cover-page-author {
   margin: 0;
   color: var(--muted, #9da7b3);
-  font-size: 0.95rem;
-  line-height: 1.55;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .script-cover-page-author strong {
   color: var(--text, #e6edf3);
   font-family: "Courier Prime", Courier, "Courier New", monospace;
-  font-size: 1.12rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 
@@ -130,49 +145,41 @@
 .script-cover-page-date {
   margin: 0;
   color: var(--muted, #9da7b3);
-  font-size: 0.9rem;
+  font-size: 0.86rem;
 }
 
-/* Studio editable cover */
+.script-cover-page-date:not([hidden])::before {
+  content: "·";
+  margin-right: 0.85rem;
+  opacity: 0.55;
+}
+
+.script-cover-page-summary,
+.script-cover-page-logline {
+  margin: 0.15rem 0 0;
+  color: var(--muted, #9da7b3);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  text-wrap: pretty;
+  white-space: pre-wrap;
+  text-align: left;
+}
+
+/* Studio editable cover — summary is the only form control */
 .script-cover-page.is-studio {
   width: min(100%, calc(var(--page-width) * var(--page-scale)));
 }
 
-.script-cover-page-art-btn {
-  display: grid;
-  place-items: center;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  min-height: 11rem;
-  width: 100%;
-}
-
-.script-cover-page:not(.has-cover-art) .script-cover-page-art-btn {
-  border-bottom: 1px dashed var(--line, #30363d);
-}
-
-.script-cover-page-art-empty {
-  color: var(--muted, #9da7b3);
-  font-size: 0.9rem;
-  letter-spacing: 0.04em;
-}
-
-.script-cover-page.has-cover-art .script-cover-page-art-empty {
-  display: none;
-}
-
 .script-cover-page-summary-field {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+  text-align: left;
 }
 
 .script-cover-page-summary-label {
   color: var(--muted, #9da7b3);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -181,24 +188,18 @@
 .script-cover-page-summary-input {
   display: block;
   width: 100%;
-  max-width: 42ch;
-  margin: 0 auto;
-  padding: 0.65rem 0.75rem;
+  max-width: none;
+  margin: 0;
+  padding: 0.7rem 0.8rem;
   border: 1px solid var(--line, #30363d);
   border-radius: 8px;
   background: var(--surface-input, #0b0f14);
   color: var(--text, #e6edf3);
   font: inherit;
-  font-size: 0.98rem;
+  font-size: 0.95rem;
   line-height: 1.45;
   resize: vertical;
-  min-height: 6.5rem;
-}
-
-.script-cover-page.has-cover-art .script-cover-page-summary-input {
-  margin-left: 0;
-  margin-right: 0;
-  max-width: none;
+  min-height: 5.25rem;
 }
 
 .script-cover-page-summary-input:focus {
@@ -209,7 +210,8 @@
 .script-cover-page-summary-hint {
   margin: 0;
   color: var(--muted, #9da7b3);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
+  text-align: right;
 }
 
 @media print {

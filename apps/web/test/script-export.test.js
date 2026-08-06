@@ -59,6 +59,8 @@ test('printable export includes a cover page with contained art and escaped summ
   assert.match(html, /A dockworker finds a &lt;letter&gt;\./);
   assert.match(html, /https:\/\/example\.test\/cover\.png/);
   assert.match(html, /page-break-after: always/);
+  assert.match(html, /min-height: 5\.5in/);
+  assert.match(html, /cover-byline/);
 });
 
 test('FDX and RTF exports prepend title-page text from cover meta', async () => {

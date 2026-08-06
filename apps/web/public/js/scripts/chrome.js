@@ -93,21 +93,19 @@ export function scriptCoverPage(script) {
   const category = script.category
     ? `<a class="script-chip" href="${escapeHtml(libraryCategoryPath(script.category.slug))}">${escapeHtml(script.category.name)}</a>`
     : '';
+  const chips = (category || tags)
+    ? `<div class="script-cover-page-top"><div class="script-chip-row">${category}${tags}</div></div>`
+    : '';
   return `<header class="script-cover-page${script.coverUrl ? ' has-cover-art' : ''}" aria-label="Screenplay cover">
     ${coverArtMarkup(script.coverUrl, { className: 'script-cover-page-art', fit: 'contain' })}
     <div class="script-cover-page-copy">
-      <div class="script-cover-page-top">
-        <p class="script-cover-page-label">Screenplay</p>
-        <div class="script-chip-row">${category}${tags}</div>
-      </div>
-      <div class="script-cover-page-mid">
-        <h1>${escapeHtml(script.title || 'Untitled')}</h1>
-        ${blurbHtml}
-        <p class="script-cover-page-author">Written by<br><strong>${author}</strong></p>
-      </div>
-      <div class="script-cover-page-bottom">
-        ${date ? `<p class="script-cover-page-date">${escapeHtml(date)}</p>` : ''}
-      </div>
+      ${chips}
+      <h1>${escapeHtml(script.title || 'Untitled')}</h1>
+      <p class="script-cover-page-byline">
+        <span class="script-cover-page-author">Written by <strong>${author}</strong></span>
+        ${date ? `<span class="script-cover-page-date">${escapeHtml(date)}</span>` : ''}
+      </p>
+      ${blurbHtml}
     </div>
   </header>`;
 }

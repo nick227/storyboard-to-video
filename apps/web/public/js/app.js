@@ -61,6 +61,7 @@ const els = {
   scriptCoverPageArt: document.getElementById('scriptCoverPageArt'),
   scriptCoverPageTitle: document.getElementById('scriptCoverPageTitle'),
   scriptCoverPageAuthor: document.getElementById('scriptCoverPageAuthor'),
+  scriptCoverPageDate: document.getElementById('scriptCoverPageDate'),
   scriptCoverPageSummary: document.getElementById('scriptCoverPageSummary'),
   scriptCoverPageSummaryHint: document.getElementById('scriptCoverPageSummaryHint'),
 
@@ -433,6 +434,7 @@ function initControllers(getSession) {
     scriptCoverPageArt: els.scriptCoverPageArt,
     scriptCoverPageTitle: els.scriptCoverPageTitle,
     scriptCoverPageAuthor: els.scriptCoverPageAuthor,
+    scriptCoverPageDate: els.scriptCoverPageDate,
     scriptCoverPageSummary: els.scriptCoverPageSummary,
     scriptCoverPageSummaryHint: els.scriptCoverPageSummaryHint,
     styleSelect: els.styleSelect,

@@ -138,10 +138,9 @@ function printableCoverHtml(cover = {}) {
   return `<section class="cover-page${meta.coverUrl ? ' has-cover-art' : ''}" aria-label="Screenplay cover">
   ${art}
   <div class="cover-copy">
-    <p class="cover-label">Screenplay</p>
     <h1>${escapeHtml(meta.title || 'Untitled')}</h1>
+    ${meta.author ? `<p class="cover-byline">Written by <strong>${escapeHtml(meta.author)}</strong></p>` : ''}
     ${meta.summary ? `<p class="cover-summary">${escapeHtml(meta.summary)}</p>` : ''}
-    ${meta.author ? `<p class="cover-author">Written by<br><strong>${escapeHtml(meta.author)}</strong></p>` : ''}
   </div>
 </section>`;
 }
@@ -163,26 +162,25 @@ export function toPrintableScriptHtml(source = '', title = 'Screenplay', cover =
     body { margin: 0; color: #000; background: #fff; font: 12pt/1 "Courier Prime", Courier, "Courier New", monospace; }
     .cover-page {
       width: 8.5in;
-      min-height: 11in;
+      min-height: 5.5in;
       margin: 0 auto;
-      padding: 1.5in 1.25in;
+      padding: 0.7in 0.9in;
       text-align: center;
       page-break-after: always;
       break-after: page;
       display: grid;
-      align-content: center;
-      gap: 1rem;
-    }
-    .cover-page.has-cover-art {
-      padding: 0;
-      grid-template-rows: minmax(3.5in, 42%) auto;
-      text-align: left;
+      grid-template-rows: auto 1fr;
+      align-content: start;
+      gap: 0.55rem;
     }
     .cover-art {
       display: grid;
       place-items: center;
-      min-height: 3.5in;
+      justify-self: center;
+      width: 2.6in;
+      height: 1.8in;
       background: #f4f4f4;
+      border-radius: 6px;
       overflow: hidden;
     }
     .cover-art img {
@@ -192,30 +190,23 @@ export function toPrintableScriptHtml(source = '', title = 'Screenplay', cover =
       object-fit: contain;
       object-position: center;
     }
-    .cover-page.has-cover-art .cover-copy { padding: 1in 1.25in 1.25in; }
-    .cover-label {
-      margin: 0;
-      font-size: 10pt;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: #444;
-    }
+    .cover-copy { display: grid; gap: 0.4rem; }
     .cover-page h1 {
       margin: 0;
-      font-size: 28pt;
-      line-height: 1.1;
+      font-size: 22pt;
+      line-height: 1.12;
       font-weight: 700;
     }
+    .cover-byline { margin: 0; color: #444; line-height: 1.4; }
+    .cover-byline strong { color: #000; }
     .cover-summary {
-      margin: 0 auto;
-      max-width: 42ch;
+      margin: 0.15rem 0 0;
+      text-align: left;
       white-space: pre-wrap;
       line-height: 1.45;
       color: #333;
+      font-size: 11pt;
     }
-    .cover-page.has-cover-art .cover-summary { margin: 0; }
-    .cover-author { margin: 0; color: #444; line-height: 1.5; }
-    .cover-author strong { color: #000; font-size: 14pt; }
     .script-body {
       width: 8.5in;
       margin: 0 auto;

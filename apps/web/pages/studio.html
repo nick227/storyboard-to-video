@@ -106,19 +106,17 @@
             <span class="script-cover-page-art-empty">Add cover art</span>
           </button>
           <div class="script-cover-page-copy">
-            <div class="script-cover-page-top">
-              <p class="script-cover-page-label">Screenplay</p>
-            </div>
-            <div class="script-cover-page-mid">
-              <h1 id="scriptCoverPageTitle">Untitled</h1>
-              <label class="script-cover-page-summary-field">
-                <span class="script-cover-page-summary-label">Story summary</span>
-                <textarea id="scriptCoverPageSummary" class="script-cover-page-summary-input" maxlength="4000" rows="6"
-                  placeholder="Summarize the story here. The AI assistant uses this to help write the screenplay."></textarea>
-              </label>
-              <p id="scriptCoverPageSummaryHint" class="script-cover-page-summary-hint">0 / 4000</p>
-              <p class="script-cover-page-author">Written by<br><strong id="scriptCoverPageAuthor">Anonymous</strong></p>
-            </div>
+            <h1 id="scriptCoverPageTitle">Untitled</h1>
+            <p class="script-cover-page-byline">
+              <span class="script-cover-page-author">Written by <strong id="scriptCoverPageAuthor">Anonymous</strong></span>
+              <span class="script-cover-page-date" id="scriptCoverPageDate" hidden></span>
+            </p>
+            <label class="script-cover-page-summary-field">
+              <span class="script-cover-page-summary-label">Story summary</span>
+              <textarea id="scriptCoverPageSummary" class="script-cover-page-summary-input" maxlength="4000" rows="5"
+                placeholder="Summarize the story here. The AI assistant uses this to help write the screenplay."></textarea>
+              <span id="scriptCoverPageSummaryHint" class="script-cover-page-summary-hint">0 / 4000</span>
+            </label>
           </div>
         </header>
         <textarea id="scriptText" class="script-textarea" rows="7"
