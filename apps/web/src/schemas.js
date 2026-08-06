@@ -246,6 +246,7 @@ const regenerateDialogue = z.object({
 const assistantChat = z.object({
   projectId,
   scriptText: z.string().max(200_000).default(''),
+  summary: z.string().trim().max(4000).optional().default(''),
   messages: z.array(z.object({
     role: z.enum(['user', 'assistant']),
     content: z.string().max(8_000),
@@ -258,6 +259,7 @@ const assistantChat = z.object({
 const assistantAddLines = z.object({
   projectId,
   scriptText: z.string().max(200_000).default(''),
+  summary: z.string().trim().max(4000).optional().default(''),
   lineCount: z.coerce.number().int().min(1).max(30).default(10),
   provider: z.enum(['gemini', 'openai', 'stub']).default('gemini'),
   fallbackPolicy,
@@ -270,6 +272,7 @@ const createScript = z.object({
   slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
   author: z.string().trim().max(200).optional(),
   logline: z.string().trim().max(280).optional(),
+  summary: z.string().trim().max(4000).optional(),
   categoryId: z.string().uuid().optional().nullable(),
   tagSlugs: z.array(tagSlugItem).max(8).optional(),
   scriptText: z.string().max(200_000).default(''),
@@ -281,6 +284,7 @@ const updateScript = z.object({
   slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
   author: z.string().trim().max(200).optional(),
   logline: z.string().trim().max(280).optional(),
+  summary: z.string().trim().max(4000).optional(),
   categoryId: z.string().uuid().optional().nullable(),
   tagSlugs: z.array(tagSlugItem).max(8).optional(),
   scriptText: z.string().max(200_000).optional(),

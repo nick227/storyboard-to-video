@@ -43,6 +43,39 @@ test('printable export escapes script content before inserting it into HTML', as
   assert.doesNotMatch(html, /<dangerous>/);
 });
 
+test('printable export includes a cover page with contained art and escaped summary', async () => {
+  const { toPrintableScriptHtml } = await import(moduleUrl);
+  const html = toPrintableScriptHtml('INT. LAB - DAY\n\nHello.', 'Harbor Night', {
+    title: 'Harbor <Night>',
+    author: 'Ada & Co',
+    summary: 'A dockworker finds a <letter>.',
+    coverUrl: 'https://example.test/cover.png',
+  });
+
+  assert.match(html, /class="cover-page has-cover-art"/);
+  assert.match(html, /object-fit: contain/);
+  assert.match(html, /Harbor &lt;Night&gt;/);
+  assert.match(html, /Ada &amp; Co/);
+  assert.match(html, /A dockworker finds a &lt;letter&gt;\./);
+  assert.match(html, /https:\/\/example\.test\/cover\.png/);
+  assert.match(html, /page-break-after: always/);
+});
+
+test('FDX and RTF exports prepend title-page text from cover meta', async () => {
+  const { toFinalDraftXml, toRichTextScript } = await import(moduleUrl);
+  const cover = { title: 'Harbor Night', author: 'Ada', summary: 'A sealed letter.' };
+  const fdx = toFinalDraftXml(sample, cover);
+  assert.match(fdx, /<Paragraph Type="Action"><Text>Harbor Night<\/Text><\/Paragraph>/);
+  assert.match(fdx, /Written by Ada/);
+  assert.match(fdx, /A sealed letter\./);
+
+  const rtf = toRichTextScript(sample, cover);
+  assert.match(rtf, /Harbor Night/);
+  assert.match(rtf, /Written by Ada/);
+  assert.match(rtf, /A sealed letter\./);
+  assert.match(rtf, /\\page/);
+});
+
 test('structured JSON is a versioned export artifact with explicit line formats', async () => {
   const { toStructuredScriptJson } = await import(moduleUrl);
   const exported = JSON.parse(toStructuredScriptJson(sample));

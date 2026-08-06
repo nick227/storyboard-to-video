@@ -56,6 +56,7 @@ class PrismaScriptRepository extends ScriptStore {
       artifacts,
       author: row.author,
       logline: row.logline || '',
+      summary: row.summary || '',
       coverStorageKey: row.coverStorageKey || null,
       coverMimeType: row.coverMimeType || null,
       categoryId: row.categoryId || null,
@@ -94,6 +95,7 @@ class PrismaScriptRepository extends ScriptStore {
           timelineVisibility,
           author: cleanText(input.author || 'Anonymous', 200) || 'Anonymous',
           logline: cleanText(input.logline || '', 280),
+          summary: cleanText(input.summary || '', 4000),
           categoryId: input.categoryId || null,
           scriptText: String(input.scriptText || ''),
           publishedAt: visibility === 'public' ? (input.publishedAt ? new Date(input.publishedAt) : now) : null,
@@ -131,6 +133,7 @@ class PrismaScriptRepository extends ScriptStore {
     if (patch.author != null) data.author = cleanText(patch.author, 200) || 'Anonymous';
     if (patch.scriptText != null) data.scriptText = String(patch.scriptText);
     if (patch.logline != null) data.logline = cleanText(patch.logline, 280);
+    if (patch.summary != null) data.summary = cleanText(patch.summary, 4000);
     if (patch.coverStorageKey !== undefined) data.coverStorageKey = patch.coverStorageKey || null;
     if (patch.coverMimeType !== undefined) data.coverMimeType = patch.coverMimeType || null;
     if (patch.slug != null) {

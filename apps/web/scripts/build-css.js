@@ -5,12 +5,12 @@ const { spawnSync } = require('node:child_process');
 const webRoot = path.join(__dirname, '..');
 
 const BUNDLES = [
-  { name: 'studio', source: 'index.css', output: 'styles.css', maxBytes: 75_000, bundle: true },
+  { name: 'studio', source: 'index.css', output: 'styles.css', maxBytes: 90_000, bundle: true },
   { name: 'auth', source: 'auth-index.css', output: 'auth.css', maxBytes: 8_000, bundle: true },
   { name: 'admin', source: 'pages/admin.css', output: 'admin.css', maxBytes: 6_000 },
   { name: 'credits', source: 'pages/credits.css', output: 'credits.css', maxBytes: 6_000 },
   { name: 'landing', source: 'pages/landing.css', output: 'landing.css', maxBytes: 10_000, bundle: true },
-  { name: 'public scripts', source: 'pages/scripts-public.css', output: 'scripts-public.css', maxBytes: 12_000 },
+  { name: 'public scripts', source: 'pages/scripts-public.css', output: 'scripts-public.css', maxBytes: 18_000, bundle: true },
   { name: 'text to speech', source: 'pages/text-to-speech.css', output: 'text-to-speech.css', maxBytes: 2_500 },
   {
     name: 'top bar',

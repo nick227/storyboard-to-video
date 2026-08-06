@@ -16,7 +16,7 @@ function countScriptLines(text) {
 }
 
 export function initScreenplayAssistant({ container }, {
-  getCurrentRecord, appendScriptText, getScriptText, getProvider, getFallbackPolicy, setStatus, persist,
+  getCurrentRecord, appendScriptText, getScriptText, getSummary, getProvider, getFallbackPolicy, setStatus, persist,
 } = {}) {
   const getMessages = () => getCurrentRecord?.()?.screenplayAssistant?.messages || [];
 
@@ -49,6 +49,7 @@ export function initScreenplayAssistant({ container }, {
           body: JSON.stringify({
             projectId: record.id,
             scriptText: getScriptText?.() || '',
+            summary: getSummary?.() || '',
             messages: history,
             userMessage,
             provider: getProvider?.() || 'gemini',
@@ -69,6 +70,7 @@ export function initScreenplayAssistant({ container }, {
           body: JSON.stringify({
             projectId: record.id,
             scriptText: getScriptText?.() || '',
+            summary: getSummary?.() || '',
             lineCount: 10,
             provider: getProvider?.() || 'gemini',
             fallbackPolicy: getFallbackPolicy?.() || 'local',

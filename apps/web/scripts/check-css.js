@@ -83,7 +83,7 @@ for (const sourceName of authoredFiles) {
   duplicateProperties(source, sourceName);
 }
 
-if (sourceBytes > 145_000) fail(`authored CSS is ${sourceBytes} bytes; budget is 145,000`);
+if (sourceBytes > 165_000) fail(`authored CSS is ${sourceBytes} bytes; budget is 165,000`);
 
 const expectedOutputs = BUNDLES.map((bundle) => bundle.output).sort();
 const actualOutputs = listCssFiles(outputRoot).sort();

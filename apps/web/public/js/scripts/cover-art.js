@@ -2,6 +2,7 @@ import { api } from '../core/api.js';
 import { ensureProjectSynced, getCurrentStoryboardRecord } from '../core/persistence.js';
 
 export function syncScreenplayLogos(coverUrl = null) {
+  if (typeof document === 'undefined') return;
   for (const root of document.querySelectorAll('.screenplay-logo')) {
     const img = root.matches('img') ? root : root.querySelector('.screenplay-logo-image');
     if (!img) continue;
@@ -80,7 +81,11 @@ export function bindCoverArtControls({
   });
 }
 
-export function coverArtMarkup(coverUrl, { className = 'cover-art' } = {}) {
+export function coverArtMarkup(coverUrl, { className = 'cover-art', fit = 'cover' } = {}) {
   if (!coverUrl) return '';
-  return `<div class="${className}" style="background-image:url('${String(coverUrl).replaceAll("'", '%27')}')" role="img" aria-hidden="true"></div>`;
+  const safeUrl = String(coverUrl).replaceAll("'", '%27').replaceAll('"', '&quot;');
+  if (fit === 'contain') {
+    return `<div class="${className}"><img src="${safeUrl}" alt="" /></div>`;
+  }
+  return `<div class="${className}" style="background-image:url('${safeUrl}')" role="img" aria-hidden="true"></div>`;
 }

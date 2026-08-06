@@ -32,6 +32,7 @@ function publicSummary(script, { artifact = 'screenplay' } = {}) {
     slug: script.slug,
     author: script.author,
     logline: script.logline || '',
+    summary: script.summary || '',
     coverUrl: publicCoverUrl(script),
     category: script.category || null,
     tags: script.tags || [],
@@ -79,6 +80,7 @@ function createScriptsService({ store, projectStore, blobStore } = {}) {
   function taxonomyPatch(input = {}) {
     const patch = {};
     if (input.logline != null) patch.logline = input.logline;
+    if (input.summary != null) patch.summary = input.summary;
     if (input.categoryId !== undefined) patch.categoryId = input.categoryId;
     if (input.tagSlugs != null) patch.tagSlugs = input.tagSlugs;
     return patch;

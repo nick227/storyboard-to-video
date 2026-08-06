@@ -56,6 +56,13 @@ const els = {
   scriptCoverBtn: document.getElementById('scriptCoverBtn'),
   scriptCoverChangeBtn: document.getElementById('scriptCoverChangeBtn'),
   scriptCoverRemoveBtn: document.getElementById('scriptCoverRemoveBtn'),
+  scriptCoverPage: document.getElementById('scriptCoverPage'),
+  scriptCoverPageArtBtn: document.getElementById('scriptCoverPageArtBtn'),
+  scriptCoverPageArt: document.getElementById('scriptCoverPageArt'),
+  scriptCoverPageTitle: document.getElementById('scriptCoverPageTitle'),
+  scriptCoverPageAuthor: document.getElementById('scriptCoverPageAuthor'),
+  scriptCoverPageSummary: document.getElementById('scriptCoverPageSummary'),
+  scriptCoverPageSummaryHint: document.getElementById('scriptCoverPageSummaryHint'),
 
   // Studio page navigation
   pageTabs: document.querySelector('.sf-artifact-tabs') || document.querySelector('.page-tabs'),
@@ -379,6 +386,7 @@ async function loadStoryboardIntoUI() {
   renderScenes();
   settingsController?.refreshShotCount();
   scriptController?.syncFromText();
+  scriptController?.autosizeScriptText();
   scriptPublishControls?.syncFromRecord(getCurrentStoryboardRecord());
   setStatus('Ready. Loading generation options…');
 
@@ -420,8 +428,23 @@ function initControllers(getSession) {
     scriptCoverBtn: els.scriptCoverBtn,
     scriptCoverChangeBtn: els.scriptCoverChangeBtn,
     scriptCoverRemoveBtn: els.scriptCoverRemoveBtn,
+    scriptCoverPage: els.scriptCoverPage,
+    scriptCoverPageArtBtn: els.scriptCoverPageArtBtn,
+    scriptCoverPageArt: els.scriptCoverPageArt,
+    scriptCoverPageTitle: els.scriptCoverPageTitle,
+    scriptCoverPageAuthor: els.scriptCoverPageAuthor,
+    scriptCoverPageSummary: els.scriptCoverPageSummary,
+    scriptCoverPageSummaryHint: els.scriptCoverPageSummaryHint,
     styleSelect: els.styleSelect,
-  }, { setStatus, openImageLibrary });
+    storyboardTitle: els.storyboardTitle,
+  }, {
+    setStatus,
+    openImageLibrary,
+    getTitle: () => els.storyboardTitle?.value?.trim() || '',
+    getAuthor: () => getCurrentStoryboardRecord()?.script?.author
+      || getSession?.()?.user?.displayName
+      || 'Anonymous',
+  });
   scriptController = initScriptController({
     scriptText: els.scriptText,
     modeSelect: els.scriptModeSelect,
@@ -442,8 +465,12 @@ function initControllers(getSession) {
     setStatus,
     getCurrentRecord: getCurrentStoryboardRecord,
     getSession,
-    onPageChange: () => {
+    getCoverMeta: () => scriptPublishControls?.getCoverMeta?.() || {},
+    onPageChange: (page) => {
       scriptPublishControls?.syncFromRecord(getCurrentStoryboardRecord());
+      if (page === 'script') {
+        requestAnimationFrame(() => scriptPublishControls?.scrollCoverIntoView?.());
+      }
     },
     onScriptChange: () => {
       saveStoryboard(els, false);
@@ -455,6 +482,7 @@ function initControllers(getSession) {
     getCurrentRecord: getCurrentStoryboardRecord,
     appendScriptText: (text) => scriptController?.appendScriptText?.(text),
     getScriptText: () => els.scriptText.value,
+    getSummary: () => scriptPublishControls?.getSummary?.() || '',
     getProvider: () => els.textProvider.value,
     getFallbackPolicy: () => els.fallbackPolicy.value,
     setStatus,
@@ -481,6 +509,7 @@ function initControllers(getSession) {
     createProject: () => {
       createStoryboard(els);
       scriptController?.syncRoute?.();
+      scriptController?.autosizeScriptText?.();
     },
     getCurrentRecord: getCurrentStoryboardRecord,
     openProject: (id) => {

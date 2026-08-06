@@ -1,5 +1,10 @@
-.script-field textarea,
-.script-textarea { resize: vertical; }
+@import "./components/script-cover-page.css";
+
+.script-field textarea { resize: vertical; }
+.script-textarea {
+  resize: none;
+  overflow-y: hidden;
+}
 
 .script-header-row {
   display: flex;
@@ -196,6 +201,10 @@ body.script-focus-active { overflow: hidden; }
   min-height: 0;
   width: 100%;
   margin: 0 auto;
+  overflow: auto;
+}
+#scriptPagePanel.is-script-focus .script-cover-page {
+  flex: 0 0 auto;
 }
 #scriptPagePanel.is-script-focus .script-textarea {
   flex: 1 1 auto;

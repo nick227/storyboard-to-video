@@ -141,11 +141,13 @@ test('public summary includes logline, category filter, and view recording', asy
   const created = await scripts.create({
     title: 'Harbor Night',
     logline: 'A dockworker finds a letter that should not exist.',
+    summary: 'A longer story summary that can drive the AI assistant from scratch.',
     categoryId: feature.id,
     tagSlugs: ['noir', 'mystery'],
     scriptText: 'FADE IN:',
   }, { tenantId: 't1', userId: 'author-1' });
   assert.equal(created.logline, 'A dockworker finds a letter that should not exist.');
+  assert.equal(created.summary, 'A longer story summary that can drive the AI assistant from scratch.');
   assert.equal(created.category.slug, 'feature');
   assert.equal(created.tags.length, 2);
 
@@ -153,6 +155,7 @@ test('public summary includes logline, category filter, and view recording', asy
   const listed = await scripts.listPublicByCategory('feature');
   assert.equal(listed.length, 1);
   assert.equal(listed[0].logline, 'A dockworker finds a letter that should not exist.');
+  assert.equal(listed[0].summary, 'A longer story summary that can drive the AI assistant from scratch.');
   assert.equal(listed[0].viewCount, 0);
   assert.ok(listed[0].tags.some((t) => t.slug === 'noir'));
 
@@ -161,6 +164,7 @@ test('public summary includes logline, category filter, and view recording', asy
 
   const page = await scripts.getPublicBySlug('harbor-night');
   assert.equal(page.viewCount, 1);
+  assert.equal(page.summary, 'A longer story summary that can drive the AI assistant from scratch.');
   assert.equal(page.breadcrumb.category.slug, 'feature');
   const again = await scripts.getPublicBySlug('harbor-night');
   assert.equal(again.viewCount, 2);
@@ -168,6 +172,20 @@ test('public summary includes logline, category filter, and view recording', asy
   const stats = await scripts.getOwnerStats(created.id, { tenantId: 't1' });
   assert.equal(stats.viewCount, 2);
   assert.equal(stats.likeCount, 0);
+});
+
+test('script summary can be updated and is capped at 4000 characters', async () => {
+  const store = new ScriptStore();
+  const scripts = createScriptsService({ store });
+  const created = await scripts.create({
+    title: 'Summary Cap',
+    scriptText: '',
+  }, { tenantId: 't1', userId: 'u1' });
+  const updated = await scripts.update(created.id, {
+    summary: `${'x'.repeat(4000)}EXTRA`,
+  }, { tenantId: 't1' });
+  assert.equal(updated.summary.length, 4000);
+  assert.equal(updated.summary, 'x'.repeat(4000));
 });
 
 test('storyboard and timeline publish independently of screenplay', async () => {

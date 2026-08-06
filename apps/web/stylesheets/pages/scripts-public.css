@@ -1,3 +1,5 @@
+@import "../components/script-cover-page.css";
+
 * {
   box-sizing: border-box;
 }
@@ -282,21 +284,16 @@ body.scripts-shell {
   background: color-mix(in srgb, var(--glass-ink) 8%, transparent);
 }
 
-.script-cover-page-logline {
-  margin: 0 auto;
-  max-width: 28ch;
-  color: var(--scripts-muted);
-  font-size: 0.98rem;
-  line-height: 1.45;
-  text-wrap: balance;
+.script-cover-page {
+  --panel-2: var(--scripts-paper);
+  --line: var(--scripts-line);
+  --text: var(--scripts-ink);
+  --muted: var(--scripts-muted);
+  --surface-input: var(--scripts-paper);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-ink) 5%, transparent), transparent 24%),
+    linear-gradient(165deg, var(--scripts-paper) 0%, var(--scripts-paper) 60%, var(--scripts-paper-edge) 100%);
 }
-
-.script-cover-page-author-link {
-  color: inherit;
-  text-decoration: none;
-}
-
-.script-cover-page-author-link:hover { text-decoration: underline; }
 
 .writer-profile-header {
   margin-bottom: 1.75rem;
@@ -384,99 +381,6 @@ body.scripts-shell {
   overflow: auto;
   padding: 2rem 1rem 4rem;
   background: var(--scripts-bg);
-}
-
-.script-cover-page {
-  display: grid;
-  grid-template-rows: auto auto auto;
-  min-height: auto;
-  width: calc(var(--page-width) * var(--page-scale));
-  margin: 0 auto 1.25rem;
-  padding: 1.5rem 2rem;
-  text-align: center;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--glass-ink) 5%, transparent), transparent 24%),
-    linear-gradient(165deg, var(--scripts-paper) 0%, var(--scripts-paper) 60%, var(--scripts-paper-edge) 100%);
-  border: 1px solid var(--scripts-line);
-  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.35);
-  overflow: hidden;
-  position: relative;
-}
-
-.script-cover-page.has-cover-art {
-  grid-template-rows: minmax(11rem, 38%) auto;
-  padding: 0;
-  text-align: left;
-}
-
-.script-cover-page-art {
-  min-height: 11rem;
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
-}
-
-.script-cover-page-copy {
-  display: contents;
-}
-
-.script-cover-page.has-cover-art .script-cover-page-copy {
-  display: grid;
-  gap: 0.85rem;
-  padding: 1.25rem 1.5rem 1.4rem;
-}
-
-.script-cover-page-top,
-.script-cover-page-bottom { min-height: 0; }
-
-.script-cover-page-mid {
-  display: grid;
-  place-content: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0;
-}
-
-.script-cover-page.has-cover-art .script-cover-page-mid {
-  place-content: start;
-  padding: 0;
-}
-
-.script-cover-page-label {
-  margin: 0;
-  color: var(--scripts-muted);
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.script-cover-page h1 {
-  margin: 0;
-  font-family: var(--scripts-mono);
-  font-size: clamp(1.9rem, 5vw, 2.7rem);
-  font-weight: 700;
-  line-height: 1.08;
-  text-wrap: balance;
-}
-
-.script-cover-page-author {
-  margin: 0;
-  color: var(--scripts-muted);
-  font-size: 0.95rem;
-  line-height: 1.55;
-}
-
-.script-cover-page-author strong {
-  color: var(--scripts-ink);
-  font-family: var(--scripts-mono);
-  font-size: 1.12rem;
-  font-weight: 700;
-}
-
-.script-cover-page-date {
-  margin: 0;
-  color: var(--scripts-muted);
-  font-size: 0.9rem;
 }
 
 /* Reader chrome only — page/line formatting comes from screenplay-editor-standalone.css */

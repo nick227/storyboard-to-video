@@ -49,6 +49,39 @@ test('chat: an empty reply from the provider is treated as a failure, not a sile
   assert.equal(result.usedFallback, true);
 });
 
+test('chat: includes story summary in the provider prompt when present', async () => {
+  let request;
+  const service = createScreenplayAssistantService({ textProviders: { call: async (_provider, value) => { request = value; return JSON.stringify({ reply: 'Lean on the summary stakes.' }); } } });
+  const result = await service.chat({
+    scriptText: '',
+    summary: 'A courier must deliver a sealed letter before dawn.',
+    messages: [],
+    userMessage: 'Where should I start?',
+    provider: 'gemini',
+    fallbackPolicy: 'fail',
+  });
+  assert.match(request, /Story summary:/);
+  assert.match(request, /sealed letter before dawn/);
+  assert.match(request, /\(empty screenplay\)/);
+  assert.equal(result.reply, 'Lean on the summary stakes.');
+});
+
+test('addNextLines: empty script uses summary as the primary brief', async () => {
+  let request;
+  const service = createScreenplayAssistantService({ textProviders: { call: async (_provider, value) => { request = value; return JSON.stringify({ addedText: 'INT. ALLEY - NIGHT\n\nRain sheets down.' }); } } });
+  const result = await service.addNextLines({
+    scriptText: '',
+    summary: 'A courier must deliver a sealed letter before dawn.',
+    lineCount: 8,
+    provider: 'gemini',
+    fallbackPolicy: 'fail',
+  });
+  assert.match(request, /Story summary:/);
+  assert.match(request, /primary brief/);
+  assert.match(request, /sealed letter before dawn/);
+  assert.match(result.addedText, /INT\. ALLEY - NIGHT/);
+});
+
 test('addNextLines: stub mode returns no continuation without calling the provider', async () => {
   const service = createScreenplayAssistantService({ textProviders: { call() { throw new Error('should not be called'); } } });
   const result = await service.addNextLines({ scriptText: 'INT. ROOM - DAY', lineCount: 10, provider: 'stub' });

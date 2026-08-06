@@ -89,36 +89,45 @@ function normalizeFountainContinuation(text) {
   return output.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '');
 }
 
-function buildChatRequest({ scriptText, messages, userMessage }) {
+function summaryBlock(summary) {
+  const text = String(summary || '').trim();
+  return text ? `Story summary:\n${text}\n` : '';
+}
+
+function buildChatRequest({ scriptText, summary, messages, userMessage }) {
   return `Return strict JSON only: {"reply":"..."}. You are a screenwriting assistant helping a writer discuss and improve their screenplay. Answer conversationally and helpfully. Never silently rewrite or replace the screenplay -- only discuss it, unless the writer explicitly asks you to draft replacement text within your reply.
 
-Current screenplay (may be truncated to its most recent portion):
+${summaryBlock(summary)}Current screenplay (may be truncated to its most recent portion):
 ${scriptTail(scriptText, CHAT_SCRIPT_TAIL_LENGTH) || '(empty screenplay)'}
 
 ${messages.length ? `Conversation so far:\n${historyBlock(messages)}\n` : ''}
 User: ${userMessage}`;
 }
 
-function buildContinuationRequest({ scriptText, lineCount }) {
+function buildContinuationRequest({ scriptText, summary, lineCount }) {
+  const hasBody = Boolean(String(scriptText || '').trim());
+  const emptyGuidance = hasBody
+    ? 'Preserve the established characters, tone, and location from the excerpt unless the story naturally moves on (e.g. a scene heading change).'
+    : 'The screenplay body is empty. Use the story summary as the primary brief and begin the screenplay from scratch in Fountain format.';
   return `Return strict JSON only: {"addedText":"..."}. Continue this screenplay in Fountain format.
 
 Rules:
 1. Write only NEW content that comes after the excerpt below -- never repeat or rephrase existing lines.
 2. Target approximately ${lineCount} printed lines, counting every scene heading, character cue, parenthetical, and dialogue or action line separately (a multi-line dialogue speech counts as several lines, not one). This is a soft guideline, not a hard requirement to satisfy exactly.
 3. Use standard Fountain conventions: scene headings like "INT. LOCATION - DAY" or "EXT. LOCATION - NIGHT", character cues in ALL CAPS on their own line, parentheticals in parentheses, plain dialogue lines, and transitions like "CUT TO:" where appropriate. Always leave a blank line between one character's dialogue and the next character's cue.
-4. Preserve the established characters, tone, and location from the excerpt unless the story naturally moves on (e.g. a scene heading change).
+4. ${emptyGuidance}
 5. Do not include any commentary, explanation, or markdown -- addedText must be raw screenplay text only.
 
-Excerpt (end of the current screenplay):
+${summaryBlock(summary)}Excerpt (end of the current screenplay):
 ${scriptTail(scriptText, CONTINUATION_SCRIPT_TAIL_LENGTH) || '(empty screenplay -- begin the story)'}`;
 }
 
 function createScreenplayAssistantService({ textProviders }) {
-  async function chat({ scriptText, messages = [], userMessage, provider, fallbackPolicy = 'local' }) {
+  async function chat({ scriptText, summary = '', messages = [], userMessage, provider, fallbackPolicy = 'local' }) {
     if (provider === 'stub') return { reply: 'Stub text mode selected; the assistant is unavailable.', usedFallback: true, warning: 'Stub text mode selected; the assistant is unavailable.' };
 
     try {
-      const request = buildChatRequest({ scriptText, messages, userMessage });
+      const request = buildChatRequest({ scriptText, summary, messages, userMessage });
       const parsed = chatResponseSchema.parse(extractJson(providerOutput(await textProviders.call(provider, request))));
       const reply = cleanText(parsed.reply, CHAT_REPLY_MAX_LENGTH);
       if (!reply) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned an empty reply', { status: 502 });
@@ -129,11 +138,11 @@ function createScreenplayAssistantService({ textProviders }) {
     }
   }
 
-  async function addNextLines({ scriptText, lineCount = 10, provider, fallbackPolicy = 'local' }) {
+  async function addNextLines({ scriptText, summary = '', lineCount = 10, provider, fallbackPolicy = 'local' }) {
     if (provider === 'stub') return { addedText: '', usedFallback: true, warning: 'Stub text mode selected; no continuation was generated.' };
 
     try {
-      const request = buildContinuationRequest({ scriptText, lineCount });
+      const request = buildContinuationRequest({ scriptText, summary, lineCount });
       const parsed = continuationResponseSchema.parse(extractJson(providerOutput(await textProviders.call(provider, request))));
       const cleaned = cleanText(parsed.addedText, ADDED_TEXT_MAX_LENGTH);
       if (!cleaned) throw new AppError('INVALID_PROVIDER_RESPONSE', 'The text provider returned an empty continuation', { status: 502 });

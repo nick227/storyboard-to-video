@@ -71,6 +71,10 @@ export function scriptCoverCard(script, { compact = false, artifact = 'screenpla
   </a>`;
 }
 
+export function scriptCoverBlurb(script = {}) {
+  return String(script.summary || script.logline || '').trim();
+}
+
 export function scriptCoverPage(script) {
   const date = formatPublishedDate(script.publishedAt);
   const writerHref = script.writer?.profileSlug
@@ -79,8 +83,9 @@ export function scriptCoverPage(script) {
   const author = writerHref
     ? `<a class="script-cover-page-author-link" href="${writerHref}">${escapeHtml(script.author || 'Anonymous')}</a>`
     : escapeHtml(script.author || 'Anonymous');
-  const logline = script.logline
-    ? `<p class="script-cover-page-logline">${escapeHtml(script.logline)}</p>`
+  const blurb = scriptCoverBlurb(script);
+  const blurbHtml = blurb
+    ? `<p class="script-cover-page-summary">${escapeHtml(blurb)}</p>`
     : '';
   const tags = (script.tags || []).map((tag) => (
     `<a class="script-chip" href="${escapeHtml(libraryTagPath(tag.slug))}">${escapeHtml(tag.name)}</a>`
@@ -89,7 +94,7 @@ export function scriptCoverPage(script) {
     ? `<a class="script-chip" href="${escapeHtml(libraryCategoryPath(script.category.slug))}">${escapeHtml(script.category.name)}</a>`
     : '';
   return `<header class="script-cover-page${script.coverUrl ? ' has-cover-art' : ''}" aria-label="Screenplay cover">
-    ${coverArtMarkup(script.coverUrl, { className: 'script-cover-page-art' })}
+    ${coverArtMarkup(script.coverUrl, { className: 'script-cover-page-art', fit: 'contain' })}
     <div class="script-cover-page-copy">
       <div class="script-cover-page-top">
         <p class="script-cover-page-label">Screenplay</p>
@@ -97,7 +102,7 @@ export function scriptCoverPage(script) {
       </div>
       <div class="script-cover-page-mid">
         <h1>${escapeHtml(script.title || 'Untitled')}</h1>
-        ${logline}
+        ${blurbHtml}
         <p class="script-cover-page-author">Written by<br><strong>${author}</strong></p>
       </div>
       <div class="script-cover-page-bottom">

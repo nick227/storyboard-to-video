@@ -3,6 +3,7 @@ import { ensureProjectSynced, getCurrentStoryboardRecord, saveStoryboard } from 
 import { shareUrl } from './chrome.js';
 import { fetchCategories, fetchScriptStats, updateScriptMeta } from './api.js';
 import { bindCoverArtControls, syncScreenplayLogos } from './cover-art.js';
+import { initStudioCoverPage } from './cover-page.js';
 import { parseWorkPath, workPath } from '../core/app-paths.js';
 
 function parseTagSlugs(value = '') {
@@ -30,13 +31,20 @@ function artifactLabel(artifact) {
   return artifact.charAt(0).toUpperCase() + artifact.slice(1);
 }
 
-export function initScriptPublishControls(elements, { setStatus, getArtifact = activeArtifact, openImageLibrary } = {}) {
+export function initScriptPublishControls(elements, {
+  setStatus,
+  getArtifact = activeArtifact,
+  openImageLibrary,
+  getTitle,
+  getAuthor,
+} = {}) {
   const toggle = elements.workVisibilityToggle;
   const shareBtns = [elements.scriptShareBtn, elements.workShareBtn].filter(Boolean);
-  if (!toggle && !shareBtns.length) return { syncFromRecord() {} };
+  if (!toggle && !shareBtns.length && !elements.scriptCoverPage) return { syncFromRecord() {} };
 
   let busy = false;
   let categoriesLoaded = false;
+  let studioCover = null;
 
   async function ensureCategories() {
     if (categoriesLoaded || !elements.scriptCategorySelect) return;
@@ -89,6 +97,7 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
       shareBtn.dataset.artifact = shareArtifact;
     }
     applyMetaFields(script);
+    studioCover?.syncFromRecord(getCurrentStoryboardRecord());
     if (script?.id) refreshStats(script.id);
   }
 
@@ -207,6 +216,7 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
       elements.screenplayCoverBtn,
       elements.scriptCoverBtn,
       elements.scriptCoverChangeBtn,
+      elements.scriptCoverPageArtBtn,
     ],
     removeBtn: elements.scriptCoverRemoveBtn,
     ensureScript: () => ensureScript(getCurrentStoryboardRecord()),
@@ -218,5 +228,24 @@ export function initScriptPublishControls(elements, { setStatus, getArtifact = a
     domEls: elements,
   });
 
-  return { syncFromRecord, ensureScript, applyScript };
+  studioCover = initStudioCoverPage(elements, {
+    ensureScript: () => ensureScript(getCurrentStoryboardRecord()),
+    applyScript,
+    setStatus,
+    getTitle,
+    getAuthor,
+  });
+
+  elements.storyboardTitle?.addEventListener('input', () => {
+    studioCover?.syncFromRecord(getCurrentStoryboardRecord());
+  });
+
+  return {
+    syncFromRecord,
+    ensureScript,
+    applyScript,
+    getSummary: () => studioCover?.getSummary?.() || getCurrentStoryboardRecord()?.script?.summary || '',
+    getCoverMeta: () => studioCover?.getCoverMeta?.() || {},
+    scrollCoverIntoView: () => studioCover?.scrollIntoView?.(),
+  };
 }

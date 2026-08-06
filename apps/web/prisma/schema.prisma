@@ -120,6 +120,7 @@ model Script {
   timelineVisibility     String       @default("private") @map("timeline_visibility")
   author                 String
   logline                String       @default("") @db.VarChar(280)
+  summary                String       @default("") @db.VarChar(4000)
   coverStorageKey        String?      @map("cover_storage_key")
   coverMimeType          String?      @map("cover_mime_type") @db.VarChar(100)
   scriptText             String       @default("") @map("script_text") @db.Text

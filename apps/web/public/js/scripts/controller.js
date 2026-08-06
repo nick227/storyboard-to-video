@@ -8,7 +8,9 @@ import {
 
 const STUDIO_PAGE_STORAGE_KEY = 'storyboarder.activeStudioPage';
 
-export function initScriptController(elements, { setStatus, onScriptChange, onPageChange, getCurrentRecord, getSession } = {}) {
+export function initScriptController(elements, {
+  setStatus, onScriptChange, onPageChange, getCurrentRecord, getSession, getCoverMeta,
+} = {}) {
   assertElements('Script controller', elements, [
     'scriptText', 'modeSelect', 'editorContainer', 'pagePanel', 'focusBtn',
     'downloadBtn', 'downloadMenu', 'pageTabs', 'pageTabButtons', 'pagePanels',
@@ -21,6 +23,14 @@ export function initScriptController(elements, { setStatus, onScriptChange, onPa
   const updateScriptText = (rawText, { emit = true } = {}) => {
     if (elements.scriptText.value !== rawText) elements.scriptText.value = rawText;
     if (emit) elements.scriptText.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  // Grows the raw-text textarea to fit its content instead of scrolling internally.
+  // Skipped in fullscreen focus mode, where CSS flex sizing (fill + its own scroll) takes over.
+  const autosizeScriptText = () => {
+    if (elements.pagePanel.classList.contains('is-script-focus')) return;
+    elements.scriptText.style.height = 'auto';
+    elements.scriptText.style.height = `${elements.scriptText.scrollHeight}px`;
   };
 
   const setToolbarHostsVisible = (visible) => {
@@ -55,9 +65,10 @@ export function initScriptController(elements, { setStatus, onScriptChange, onPa
       }
       setToolbarHostsVisible(Boolean(editor));
     } else {
-      if (editor) updateScriptText(editor.getRawScript('fountain'));
       elements.editorContainer.hidden = true;
       elements.scriptText.hidden = false;
+      if (editor) updateScriptText(editor.getRawScript('fountain'));
+      autosizeScriptText();
       setToolbarHostsVisible(false);
     }
   };
@@ -152,6 +163,7 @@ export function initScriptController(elements, { setStatus, onScriptChange, onPa
       if (isEnabled) element.setAttribute('aria-hidden', 'true');
       else element.removeAttribute('aria-hidden');
     });
+    if (!isEnabled) autosizeScriptText();
   };
 
   const fountainScript = () => editor && elements.modeSelect.value === 'screenplay'
@@ -181,17 +193,24 @@ export function initScriptController(elements, { setStatus, onScriptChange, onPa
     const fountain = fountainScript();
     const source = exportSource();
     const title = elements.storyboardTitle.value.trim() || 'Screenplay';
+    const cover = typeof getCoverMeta === 'function' ? getCoverMeta() : {};
+    const coverMeta = {
+      title: cover.title || title,
+      author: cover.author || '',
+      summary: cover.summary || '',
+      coverUrl: cover.coverUrl || null,
+    };
     if (format === 'fountain') downloadFile(`${fountain.replace(/\s+$/, '')}\n`, 'fountain', 'text/plain;charset=utf-8');
-    else if (format === 'fdx') downloadFile(toFinalDraftXml(source), 'fdx', 'application/xml;charset=utf-8');
-    else if (format === 'rtf') downloadFile(toRichTextScript(source), 'rtf', 'application/rtf');
-    else if (format === 'text') downloadFile(`${toPlainScript(source).replace(/\s+$/, '')}\n`, 'txt', 'text/plain;charset=utf-8');
+    else if (format === 'fdx') downloadFile(toFinalDraftXml(source, coverMeta), 'fdx', 'application/xml;charset=utf-8');
+    else if (format === 'rtf') downloadFile(toRichTextScript(source, coverMeta), 'rtf', 'application/rtf');
+    else if (format === 'text') downloadFile(`${toPlainScript(source, coverMeta).replace(/\s+$/, '')}\n`, 'txt', 'text/plain;charset=utf-8');
     else if (format === 'json') downloadFile(toStructuredScriptJson(source), 'json', 'application/json;charset=utf-8');
     else if (format === 'print') {
       const printWindow = window.open('', '_blank');
       if (!printWindow) return setStatus?.('Allow pop-ups to print or save the screenplay as PDF.');
       printWindow.opener = null;
       printWindow.document.open();
-      printWindow.document.write(toPrintableScriptHtml(source, title));
+      printWindow.document.write(toPrintableScriptHtml(source, title, coverMeta));
       printWindow.document.close();
       printWindow.focus();
       setTimeout(() => printWindow.print(), 100);
@@ -242,7 +261,10 @@ export function initScriptController(elements, { setStatus, onScriptChange, onPa
     exportScript(option.dataset.scriptFormat);
     closeDownloadMenu();
   });
-  elements.scriptText.addEventListener('input', () => onScriptChange?.());
+  elements.scriptText.addEventListener('input', () => {
+    autosizeScriptText();
+    onScriptChange?.();
+  });
   document.addEventListener('click', (event) => {
     if (elements.downloadMenu.hidden || event.target === elements.downloadBtn || elements.downloadBtn.contains(event.target)) return;
     if (!elements.downloadMenu.contains(event.target)) closeDownloadMenu();
@@ -263,6 +285,7 @@ export function initScriptController(elements, { setStatus, onScriptChange, onPa
     syncFromText: () => {
       if (editor && elements.modeSelect.value === 'screenplay') editor.loadScript(elements.scriptText.value || '', 'fountain');
     },
+    autosizeScriptText,
     syncRoute: () => applyPage(activePage, { persist: true }),
     activePage: () => activePage,
     // editor.loadScript() only re-renders -- it never calls onChange/_notifyChange -- so

@@ -135,7 +135,7 @@ try {
     bindShareButton(shareBtn, {
       getUrl: new URL(workPath(canonicalAuthor, script.slug, artifact), window.location.origin).toString(),
       title: script.title || label,
-      text: script.logline || `By ${script.author || 'Anonymous'}`,
+      text: script.summary || script.logline || `By ${script.author || 'Anonymous'}`,
       onStatus: (message) => flashStatus(toolbarStatus, message),
     });
   }
