@@ -9,8 +9,10 @@
   --page-scale: 1;
   --cover-pad-x: 1.35rem;
   --cover-pad-y: 1.1rem;
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   gap: 0.85rem;
   width: calc(var(--page-width) * var(--page-scale));
   min-height: calc(var(--page-height) * var(--page-scale));
