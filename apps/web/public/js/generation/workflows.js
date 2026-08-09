@@ -940,7 +940,7 @@ export async function regenerateVideo(index, scene, els, setStatus, withinSerial
     && (shot.videoKeyframeSelection.endFrame || null) === (shot.endFrame || null)
     ? shot.videoKeyframeSelection
     : null;
-  const generationMode = selectedProvider === 'minimax' && confirmedKeyframes?.endFrame ? 'first_last_frame' : undefined;
+  const generationMode = (selectedProvider === 'minimax' || selectedProvider === 'minimax-h3') && confirmedKeyframes?.endFrame ? 'first_last_frame' : undefined;
   if (!withinSerial && !(await preflightVideoProvider(setStatus, { provider: selectedProvider, generationMode }))) return false;
 
   if (!scene) {

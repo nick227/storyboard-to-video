@@ -5,9 +5,11 @@ const path = require('node:path');
 const { VIDEO_PROVIDER_CAPABILITIES, videoProviderCapabilities } = require('../src/shared/video-provider-capabilities');
 
 test('current video providers advertise model-specific start/end-frame support', () => {
-  assert.deepEqual(Object.keys(VIDEO_PROVIDER_CAPABILITIES).sort(), ['ltx', 'minimax', 'stub', 'veo']);
+  assert.deepEqual(Object.keys(VIDEO_PROVIDER_CAPABILITIES).sort(), ['ltx', 'minimax', 'minimax-h3', 'stub', 'veo']);
   assert.equal(videoProviderCapabilities('ltx').supportsStartFrame, true);
   assert.equal(videoProviderCapabilities('ltx').supportsEndFrame, false);
+  assert.equal(videoProviderCapabilities('minimax-h3', 'minimax-h3-fl2va', 'image_to_video').supportsNativeAudio, true);
+  assert.equal(videoProviderCapabilities('minimax-h3', 'minimax-h3-fl2va', 'first_last_frame').supportsEndFrame, true);
   assert.equal(videoProviderCapabilities('minimax', 'video-01', 'image_to_video').supportsStartFrame, true);
   assert.equal(videoProviderCapabilities('minimax', 'video-01', 'image_to_video').supportsEndFrame, false);
   assert.equal(videoProviderCapabilities('minimax', 'MiniMax-Hailuo-02', 'first_last_frame').supportsEndFrame, true);

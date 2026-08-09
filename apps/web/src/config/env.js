@@ -27,6 +27,7 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     piper: env.PIPER_BINARY_PATH || path.join(root, 'vendor', 'piper', 'piper'),
     piperVoices: path.join(root, 'vendor', 'piper', 'voices'),
     ltxShared: path.resolve(env.LTX_SHARED_DIR || '/home/administrator/web/ltx-env/io/basic-cartoon-poc'),
+    h3Shared: path.resolve(env.H3_SHARED_DIR || '/home/administrator/web/basic-cartoon-poc/apps/h3-service/io'),
   };
   const storageBackend = String(env.STORAGE_BACKEND || 'local').toLowerCase();
   return {
@@ -70,7 +71,9 @@ function loadConfig(root = path.resolve(__dirname, '../..')) {
     // "assume localhost" -- the alignment provider skips the call entirely rather than attempting
     // a network request that's guaranteed to fail.
     alignUrl: String(env.ALIGNMENT_SERVICE_URL || '').replace(/\/+$/, ''), alignTimeout: integer(env.ALIGNMENT_SERVICE_TIMEOUT_MS, 60_000, 1, 600_000), alignServiceToken: String(env.ALIGNMENT_SERVICE_TOKEN || ''),
-    ltxUrl: String(env.LTX_VIDEO_URL || 'http://localhost:8000').replace(/\/+$/, ''), videoProvider: VIDEO_PROVIDERS.includes(env.VIDEO_PROVIDER) ? env.VIDEO_PROVIDER : 'ltx',
+    ltxUrl: String(env.LTX_VIDEO_URL || 'http://localhost:8000').replace(/\/+$/, ''),
+    h3Url: String(env.H3_VIDEO_URL || 'http://localhost:8010').replace(/\/+$/, ''),
+    videoProvider: VIDEO_PROVIDERS.includes(env.VIDEO_PROVIDER) ? env.VIDEO_PROVIDER : 'ltx',
     videoReconcileIntervalMs: integer(env.VIDEO_RECONCILE_INTERVAL_MS, 30_000, 1_000, 600_000),
     videoAttemptTimeoutMs: integer(env.VIDEO_ATTEMPT_TIMEOUT_MS, 15 * 60_000, 60_000, 3_600_000),
     // Local Windows Safetensors Image Generator (WSL→Windows: use host IP / host.docker.internal, not localhost).

@@ -9,6 +9,8 @@ export const MINIMAX_TEST_PRESET = Object.freeze({
 export const MINIMAX_TEST_PRESET_LABEL = 'Hailuo 02 — Economy Test · 512P · 6s';
 
 const IMAGE_TO_VIDEO = Object.freeze({ implemented: true, execution: 'immediate', requiredRoles: Object.freeze(['start_frame']), supportedRoles: Object.freeze(['start_frame']), maxInputs: 1, supportsNativeAudio: false });
+const H3_IMAGE_TO_VIDEO = Object.freeze({ implemented: true, execution: 'immediate', requiredRoles: Object.freeze(['start_frame']), supportedRoles: Object.freeze(['start_frame']), maxInputs: 1, supportsNativeAudio: true });
+const H3_FIRST_LAST_FRAME = Object.freeze({ implemented: true, execution: 'immediate', requiredRoles: Object.freeze(['start_frame', 'end_frame']), supportedRoles: Object.freeze(['start_frame', 'end_frame']), maxInputs: 2, supportsNativeAudio: true });
 const MINIMAX_IMAGE_TO_VIDEO = Object.freeze({ implemented: true, execution: 'asynchronous', requiredRoles: Object.freeze(['start_frame']), supportedRoles: Object.freeze(['start_frame']), maxInputs: 1, supportsNativeAudio: false });
 const MINIMAX_TEXT_TO_VIDEO = Object.freeze({ implemented: true, execution: 'asynchronous', requiredRoles: Object.freeze([]), supportedRoles: Object.freeze([]), maxInputs: 0, supportsNativeAudio: false });
 const MINIMAX_FIRST_LAST_FRAME = Object.freeze({ implemented: true, execution: 'asynchronous', requiredRoles: Object.freeze(['start_frame', 'end_frame']), supportedRoles: Object.freeze(['start_frame', 'end_frame']), maxInputs: 2, supportsNativeAudio: false });
@@ -17,6 +19,12 @@ const VEO_FIRST_LAST_FRAME = Object.freeze({ implemented: true, execution: 'asyn
 
 export const VIDEO_PROVIDER_CAPABILITIES = Object.freeze({
   ltx: Object.freeze({ defaultModel: 'ltx-video', models: Object.freeze({ 'ltx-video': Object.freeze({ modes: Object.freeze({ image_to_video: IMAGE_TO_VIDEO }) }) }) }),
+  'minimax-h3': Object.freeze({
+    defaultModel: 'minimax-h3-fl2va',
+    models: Object.freeze({
+      'minimax-h3-fl2va': Object.freeze({ modes: Object.freeze({ image_to_video: H3_IMAGE_TO_VIDEO, first_last_frame: H3_FIRST_LAST_FRAME }) }),
+    }),
+  }),
   minimax: Object.freeze({
     defaultModel: MINIMAX_TEST_PRESET.model,
     models: Object.freeze({

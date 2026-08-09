@@ -1,0 +1,8 @@
+# Large Comfy-Org MiniMax H3 weights (download via download-models.sh)
+models/
+io/
+.io-test/
+.venv/
+__pycache__/
+*.pyc
+.io-test/

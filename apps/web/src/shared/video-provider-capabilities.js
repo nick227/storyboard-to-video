@@ -27,6 +27,24 @@ const IMAGE_TO_VIDEO = Object.freeze({
   supportsNativeAudio: false,
 });
 
+const H3_IMAGE_TO_VIDEO = Object.freeze({
+  implemented: true,
+  execution: 'immediate',
+  requiredRoles: Object.freeze(['start_frame']),
+  supportedRoles: Object.freeze(['start_frame']),
+  maxInputs: 1,
+  supportsNativeAudio: true,
+});
+
+const H3_FIRST_LAST_FRAME = Object.freeze({
+  implemented: true,
+  execution: 'immediate',
+  requiredRoles: Object.freeze(['start_frame', 'end_frame']),
+  supportedRoles: Object.freeze(['start_frame', 'end_frame']),
+  maxInputs: 2,
+  supportsNativeAudio: true,
+});
+
 const MINIMAX_IMAGE_TO_VIDEO = Object.freeze({
   implemented: true,
   execution: 'asynchronous',
@@ -77,6 +95,19 @@ const VIDEO_PROVIDER_CAPABILITIES = Object.freeze({
     defaultModel: 'ltx-video',
     models: Object.freeze({
       'ltx-video': Object.freeze({ modes: Object.freeze({ image_to_video: IMAGE_TO_VIDEO }) }),
+    }),
+  }),
+  // Local free MiniMax H3 via ComfyUI pruned INT8 packs (apps/h3-service). Distinct from cloud
+  // `minimax` (Hailuo-02 API). Default stays ltx until H3 is proven on the workstation GPU.
+  'minimax-h3': Object.freeze({
+    defaultModel: 'minimax-h3-fl2va',
+    models: Object.freeze({
+      'minimax-h3-fl2va': Object.freeze({
+        modes: Object.freeze({
+          image_to_video: H3_IMAGE_TO_VIDEO,
+          first_last_frame: H3_FIRST_LAST_FRAME,
+        }),
+      }),
     }),
   }),
   minimax: Object.freeze({

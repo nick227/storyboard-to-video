@@ -119,11 +119,13 @@ function createLtxAdapter(config, getCancellation) {
 }
 
 const { createMiniMaxAdapter } = require('./minimax');
+const { createMiniMaxH3Adapter } = require('./minimax-h3');
 const { createVeoAdapter } = require('./veo');
 
 const VIDEO_ADAPTER_FACTORIES = {
   ltx: (config, getCancellation) => createLtxAdapter(config, getCancellation),
   minimax: (config, getCancellation) => createMiniMaxAdapter(config, getCancellation),
+  'minimax-h3': (config, getCancellation) => createMiniMaxH3Adapter(config, getCancellation),
   veo: (config, getCancellation) => createVeoAdapter(config, getCancellation),
   stub: (config) => createStubAdapter(config),
 };

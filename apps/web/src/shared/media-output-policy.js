@@ -174,6 +174,25 @@ const VIDEO_OUTPUT_RESOLVERS = Object.freeze({
     const dimensions = shortEdgeDimensions(intent.aspectRatio, shortEdge);
     return { dimensions, providerSettings: { width: dimensions.width, height: dimensions.height, ...(intent.durationSeconds ? { duration: intent.durationSeconds } : {}) } };
   },
+  // Local H3 on 12GB: draft≈480p / standard≈608p / high≈768p short-edge; reject >6s.
+  'minimax-h3'(model, intent) {
+    const shortEdge = { draft: 480, standard: 608, high: 768 }[intent.resolutionTier];
+    if (!shortEdge || (intent.durationSeconds && intent.durationSeconds > 6)) return null;
+    const base = shortEdgeDimensions(intent.aspectRatio, shortEdge);
+    if (!base) return null;
+    const dimensions = {
+      width: Math.max(32, Math.round(base.width / 32) * 32),
+      height: Math.max(32, Math.round(base.height / 32) * 32),
+    };
+    return {
+      dimensions,
+      providerSettings: {
+        width: dimensions.width,
+        height: dimensions.height,
+        duration: intent.durationSeconds || 5,
+      },
+    };
+  },
   minimax(model, intent, mode) {
     const resolution = minimaxResolutionForTier(model, intent.resolutionTier);
     const duration = intent.durationSeconds || 6;
