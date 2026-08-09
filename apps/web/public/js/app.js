@@ -48,6 +48,8 @@ const els = {
   scriptMetaCloseBtn: document.getElementById('scriptMetaCloseBtn'),
   scriptMetaCancelBtn: document.getElementById('scriptMetaCancelBtn'),
   scriptLogline: document.getElementById('scriptLogline'),
+  scriptSummary: document.getElementById('scriptSummary'),
+  scriptSummaryHint: document.getElementById('scriptSummaryHint'),
   scriptCategorySelect: document.getElementById('scriptCategorySelect'),
   scriptTagsInput: document.getElementById('scriptTagsInput'),
   scriptMetaSaveBtn: document.getElementById('scriptMetaSaveBtn'),
@@ -56,14 +58,6 @@ const els = {
   scriptCoverBtn: document.getElementById('scriptCoverBtn'),
   scriptCoverChangeBtn: document.getElementById('scriptCoverChangeBtn'),
   scriptCoverRemoveBtn: document.getElementById('scriptCoverRemoveBtn'),
-  scriptCoverPage: document.getElementById('scriptCoverPage'),
-  scriptCoverPageArtBtn: document.getElementById('scriptCoverPageArtBtn'),
-  scriptCoverPageArt: document.getElementById('scriptCoverPageArt'),
-  scriptCoverPageTitle: document.getElementById('scriptCoverPageTitle'),
-  scriptCoverPageAuthor: document.getElementById('scriptCoverPageAuthor'),
-  scriptCoverPageDate: document.getElementById('scriptCoverPageDate'),
-  scriptCoverPageSummary: document.getElementById('scriptCoverPageSummary'),
-  scriptCoverPageSummaryHint: document.getElementById('scriptCoverPageSummaryHint'),
 
   // Studio page navigation
   pageTabs: document.querySelector('.sf-artifact-tabs') || document.querySelector('.page-tabs'),
@@ -421,6 +415,8 @@ function initControllers(getSession) {
     scriptMetaCloseBtn: els.scriptMetaCloseBtn,
     scriptMetaCancelBtn: els.scriptMetaCancelBtn,
     scriptLogline: els.scriptLogline,
+    scriptSummary: els.scriptSummary,
+    scriptSummaryHint: els.scriptSummaryHint,
     scriptCategorySelect: els.scriptCategorySelect,
     scriptTagsInput: els.scriptTagsInput,
     scriptMetaSaveBtn: els.scriptMetaSaveBtn,
@@ -429,16 +425,7 @@ function initControllers(getSession) {
     scriptCoverBtn: els.scriptCoverBtn,
     scriptCoverChangeBtn: els.scriptCoverChangeBtn,
     scriptCoverRemoveBtn: els.scriptCoverRemoveBtn,
-    scriptCoverPage: els.scriptCoverPage,
-    scriptCoverPageArtBtn: els.scriptCoverPageArtBtn,
-    scriptCoverPageArt: els.scriptCoverPageArt,
-    scriptCoverPageTitle: els.scriptCoverPageTitle,
-    scriptCoverPageAuthor: els.scriptCoverPageAuthor,
-    scriptCoverPageDate: els.scriptCoverPageDate,
-    scriptCoverPageSummary: els.scriptCoverPageSummary,
-    scriptCoverPageSummaryHint: els.scriptCoverPageSummaryHint,
     styleSelect: els.styleSelect,
-    storyboardTitle: els.storyboardTitle,
   }, {
     setStatus,
     openImageLibrary,
@@ -468,11 +455,8 @@ function initControllers(getSession) {
     getCurrentRecord: getCurrentStoryboardRecord,
     getSession,
     getCoverMeta: () => scriptPublishControls?.getCoverMeta?.() || {},
-    onPageChange: (page) => {
+    onPageChange: () => {
       scriptPublishControls?.syncFromRecord(getCurrentStoryboardRecord());
-      if (page === 'script') {
-        requestAnimationFrame(() => scriptPublishControls?.scrollCoverIntoView?.());
-      }
     },
     onScriptChange: () => {
       saveStoryboard(els, false);

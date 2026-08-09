@@ -167,59 +167,6 @@
   text-align: left;
 }
 
-/* Studio editable cover — summary is the only form control */
-.script-cover-page.is-studio {
-  width: min(100%, calc(var(--page-width) * var(--page-scale)));
-}
-
-.script-cover-page-summary-field {
-  display: grid;
-  gap: 0.3rem;
-  margin-top: 0.2rem;
-  text-align: left;
-  margin-left: auto;
-  margin-right: auto;
-  width: 100%;
-  max-width: 320px;
-}
-
-.script-cover-page-summary-label {
-  color: var(--muted, #9da7b3);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.script-cover-page-summary-input {
-  display: block;
-  width: 100%;
-  max-width: none;
-  margin: 0;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--line, #30363d);
-  border-radius: 8px;
-  background: var(--surface-input, #0b0f14);
-  color: var(--text, #e6edf3);
-  font: inherit;
-  font-size: 0.95rem;
-  line-height: 1.45;
-  resize: vertical;
-  min-height: 5.25rem;
-}
-
-.script-cover-page-summary-input:focus {
-  outline: 2px solid color-mix(in srgb, var(--accent, #4f8cff) 70%, transparent);
-  outline-offset: 1px;
-}
-
-.script-cover-page-summary-hint {
-  margin: 0;
-  color: var(--muted, #9da7b3);
-  font-size: 0.72rem;
-  text-align: right;
-}
-
 @media print {
   .script-cover-page {
     box-shadow: none;

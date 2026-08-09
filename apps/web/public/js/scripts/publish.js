@@ -3,8 +3,9 @@ import { ensureProjectSynced, getCurrentStoryboardRecord, saveStoryboard } from 
 import { shareUrl } from './chrome.js';
 import { fetchCategories, fetchScriptStats, updateScriptMeta } from './api.js';
 import { bindCoverArtControls, syncScreenplayLogos } from './cover-art.js';
-import { initStudioCoverPage } from './cover-page.js';
 import { parseWorkPath, workPath } from '../core/app-paths.js';
+
+const SUMMARY_MAX = 4000;
 
 function parseTagSlugs(value = '') {
   return [...new Set(String(value).split(/[,#]+/).map((part) => part.trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean))].slice(0, 8);
@@ -40,11 +41,17 @@ export function initScriptPublishControls(elements, {
 } = {}) {
   const toggle = elements.workVisibilityToggle;
   const shareBtns = [elements.scriptShareBtn, elements.workShareBtn].filter(Boolean);
-  if (!toggle && !shareBtns.length && !elements.scriptCoverPage) return { syncFromRecord() {} };
+  if (!toggle && !shareBtns.length && !elements.scriptMetaBtn) return { syncFromRecord() {} };
 
   let busy = false;
   let categoriesLoaded = false;
-  let studioCover = null;
+
+  function updateSummaryHint() {
+    const summaryEl = elements.scriptSummary;
+    const hintEl = elements.scriptSummaryHint;
+    if (!hintEl || !summaryEl) return;
+    hintEl.textContent = `${summaryEl.value.length} / ${SUMMARY_MAX}`;
+  }
 
   async function ensureCategories() {
     if (categoriesLoaded || !elements.scriptCategorySelect) return;
@@ -57,6 +64,10 @@ export function initScriptPublishControls(elements, {
 
   function applyMetaFields(script) {
     if (elements.scriptLogline) elements.scriptLogline.value = script?.logline || '';
+    if (elements.scriptSummary && document.activeElement !== elements.scriptSummary) {
+      elements.scriptSummary.value = script?.summary || '';
+      updateSummaryHint();
+    }
     if (elements.scriptCategorySelect) elements.scriptCategorySelect.value = script?.categoryId || script?.category?.id || '';
     if (elements.scriptTagsInput) {
       elements.scriptTagsInput.value = (script?.tags || []).map((tag) => tag.slug || tag.name).join(', ');
@@ -97,7 +108,6 @@ export function initScriptPublishControls(elements, {
       shareBtn.dataset.artifact = shareArtifact;
     }
     applyMetaFields(script);
-    studioCover?.syncFromRecord(getCurrentStoryboardRecord());
     if (script?.id) refreshStats(script.id);
   }
 
@@ -192,6 +202,7 @@ export function initScriptPublishControls(elements, {
   elements.scriptMetaModal?.addEventListener('click', (event) => {
     if (event.target === elements.scriptMetaModal) closeMetaModal();
   });
+  elements.scriptSummary?.addEventListener('input', updateSummaryHint);
 
   elements.scriptMetaSaveBtn?.addEventListener('click', async () => {
     const record = getCurrentStoryboardRecord();
@@ -200,6 +211,7 @@ export function initScriptPublishControls(elements, {
       const script = await ensureScript(record);
       const response = await updateScriptMeta(script.id, {
         logline: elements.scriptLogline?.value || '',
+        summary: (elements.scriptSummary?.value || '').slice(0, SUMMARY_MAX),
         categoryId: elements.scriptCategorySelect?.value || null,
         tagSlugs: parseTagSlugs(elements.scriptTagsInput?.value || ''),
       });
@@ -216,7 +228,6 @@ export function initScriptPublishControls(elements, {
       elements.screenplayCoverBtn,
       elements.scriptCoverBtn,
       elements.scriptCoverChangeBtn,
-      elements.scriptCoverPageArtBtn,
     ],
     removeBtn: elements.scriptCoverRemoveBtn,
     ensureScript: () => ensureScript(getCurrentStoryboardRecord()),
@@ -228,24 +239,35 @@ export function initScriptPublishControls(elements, {
     domEls: elements,
   });
 
-  studioCover = initStudioCoverPage(elements, {
-    ensureScript: () => ensureScript(getCurrentStoryboardRecord()),
-    applyScript,
-    setStatus,
-    getTitle,
-    getAuthor,
-  });
+  function currentSummary() {
+    if (elements.scriptSummary) return (elements.scriptSummary.value || '').slice(0, SUMMARY_MAX);
+    return (getCurrentStoryboardRecord()?.script?.summary || '').slice(0, SUMMARY_MAX);
+  }
 
-  elements.storyboardTitle?.addEventListener('input', () => {
-    studioCover?.syncFromRecord(getCurrentStoryboardRecord());
-  });
+  function getCoverMeta() {
+    const script = getCurrentStoryboardRecord()?.script || null;
+    const title = (typeof getTitle === 'function' ? getTitle() : null)
+      || getCurrentStoryboardRecord()?.title
+      || script?.title
+      || 'Untitled';
+    const author = (typeof getAuthor === 'function' ? getAuthor() : null)
+      || script?.author
+      || 'Anonymous';
+    return {
+      title,
+      author,
+      summary: currentSummary(),
+      coverUrl: script?.coverUrl || null,
+    };
+  }
+
+  applyMetaFields(getCurrentStoryboardRecord()?.script || null);
 
   return {
     syncFromRecord,
     ensureScript,
     applyScript,
-    getSummary: () => studioCover?.getSummary?.() || getCurrentStoryboardRecord()?.script?.summary || '',
-    getCoverMeta: () => studioCover?.getCoverMeta?.() || {},
-    scrollCoverIntoView: () => studioCover?.scrollIntoView?.(),
+    getSummary: currentSummary,
+    getCoverMeta,
   };
 }

@@ -83,6 +83,16 @@
   min-height: 72px;
   resize: vertical;
 }
+.script-meta-modal.settings-modal #scriptSummary {
+  min-height: 120px;
+}
+.script-summary-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
 .script-stats-line {
   margin: 0;
   color: var(--muted);
@@ -202,9 +212,6 @@ body.script-focus-active { overflow: hidden; }
   width: 100%;
   margin: 0 auto;
   overflow: auto;
-}
-#scriptPagePanel.is-script-focus .script-cover-page {
-  flex: 0 0 auto;
 }
 #scriptPagePanel.is-script-focus .script-textarea {
   flex: 1 1 auto;
