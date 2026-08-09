@@ -108,31 +108,45 @@ def _stage_into_comfy_input(source: Path, prefix: str) -> str:
     return dest_name
 
 
-def _wait_for_video(prompt_id: str, timeout_s: float) -> Path:
+def _candidate_from_output_item(item: dict) -> Path | None:
+    filename = item.get("filename")
+    if not filename:
+        return None
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".mp4", ".webm", ".mkv", ".gif"}:
+        return None
+    subfolder = item.get("subfolder") or ""
+    candidate = COMFY_OUTPUT_DIR / subfolder / filename if subfolder else COMFY_OUTPUT_DIR / filename
+    return candidate if candidate.is_file() else None
+
+
+def _wait_for_video(prompt_id: str, timeout_s: float, filename_prefix: str) -> Path:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         history = _client.history(prompt_id)
         entry = history.get(prompt_id)
         if entry:
             status = entry.get("status") or {}
-            if status.get("status_str") == "error" or status.get("completed") is False and status.get("messages"):
+            if status.get("status_str") == "error":
                 raise HTTPException(500, f"ComfyUI job failed: {status}")
             outputs = entry.get("outputs") or {}
             for node_out in outputs.values():
-                for video in node_out.get("videos") or node_out.get("gifs") or []:
-                    filename = video.get("filename")
-                    if not filename:
-                        continue
-                    subfolder = video.get("subfolder") or ""
-                    candidate = COMFY_OUTPUT_DIR / subfolder / filename if subfolder else COMFY_OUTPUT_DIR / filename
-                    if candidate.is_file():
-                        return candidate
-            # Some SaveVideo builds report under images with video mime — fall through to scan.
-            prefix = f"h3-{prompt_id}"
-            matches = sorted(COMFY_OUTPUT_DIR.rglob(f"{prefix}*"), key=lambda p: p.stat().st_mtime, reverse=True)
+                # SaveVideo currently reports under images (+ animated); older builds used videos/gifs.
+                for key in ("videos", "gifs", "images"):
+                    for item in node_out.get(key) or []:
+                        candidate = _candidate_from_output_item(item)
+                        if candidate is not None:
+                            return candidate
+            matches = sorted(
+                COMFY_OUTPUT_DIR.rglob(f"{filename_prefix}*"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
             for match in matches:
                 if match.suffix.lower() in {".mp4", ".webm", ".mkv"}:
                     return match
+            if status.get("completed"):
+                raise HTTPException(500, f"ComfyUI finished without a video for prefix {filename_prefix}")
         time.sleep(POLL_INTERVAL_S)
     raise HTTPException(504, f"ComfyUI job timed out after {timeout_s:.0f}s")
 
@@ -238,7 +252,7 @@ def generate(payload: GenerateRequest, _: Any = Depends(require_service_token)):
             audio_vae_name=AUDIO_VAE_NAME,
         )
         prompt_id = _client.queue_prompt(prompt_graph)
-        video_path = _wait_for_video(prompt_id, GENERATE_TIMEOUT_S)
+        video_path = _wait_for_video(prompt_id, GENERATE_TIMEOUT_S, filename_prefix)
         shutil.copy2(video_path, output_path)
         return {
             "ok": True,

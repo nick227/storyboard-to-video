@@ -68,3 +68,24 @@ def test_ready_reports_missing_models(tmp_path, monkeypatch):
     client = TestClient(main.app)
     response = client.get("/ready", headers=AUTH)
     assert response.status_code == 503
+
+
+def test_wait_for_video_reads_savevideo_images(tmp_path, monkeypatch):
+    video = tmp_path / "h3-abc123_00001_.mp4"
+    video.write_bytes(b"fake-mp4")
+    monkeypatch.setattr(main, "COMFY_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(main, "POLL_INTERVAL_S", 0.01)
+    main._client = MagicMock()
+    main._client.history.return_value = {
+        "pid-1": {
+            "status": {"status_str": "success", "completed": True},
+            "outputs": {
+                "92": {
+                    "images": [{"filename": video.name, "subfolder": "", "type": "output"}],
+                    "animated": [True],
+                }
+            },
+        }
+    }
+    found = main._wait_for_video("pid-1", timeout_s=1, filename_prefix="h3-abc123")
+    assert found == video
