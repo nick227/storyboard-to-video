@@ -5,7 +5,7 @@ const { spawnSync } = require('node:child_process');
 const webRoot = path.join(__dirname, '..');
 
 const BUNDLES = [
-  { name: 'studio', source: 'index.css', output: 'styles.css', maxBytes: 90_000, bundle: true },
+  { name: 'studio', source: 'index.css', output: 'styles.css', maxBytes: 92_000, bundle: true },
   { name: 'auth', source: 'auth-index.css', output: 'auth.css', maxBytes: 8_000, bundle: true },
   { name: 'admin', source: 'pages/admin.css', output: 'admin.css', maxBytes: 6_000 },
   { name: 'credits', source: 'pages/credits.css', output: 'credits.css', maxBytes: 6_000 },
@@ -16,7 +16,7 @@ const BUNDLES = [
     name: 'top bar',
     source: 'shared/topbar.css',
     output: 'topbar.css',
-    maxBytes: 9_000,
+    maxBytes: 13_000,
     bundle: true,
     // Remote @import cannot be resolved by lightningcss --bundle; prepend after minify.
     prepend: "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;650;700;800&display=swap');",

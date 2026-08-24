@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 
 function normalize(text = '') {
@@ -86,6 +87,64 @@ test('PageManager exposes page count, page elements, and page query API', async 
   assert.equal(typeof pm.getPageCount, 'function');
   assert.equal(typeof pm.getCurrentPageNumber, 'function');
   assert.equal(pm.getCurrentPageNumber(), 1);
+});
+
+test('PageManager starts an empty screenplay with a Scene Heading line', async () => {
+  const pageManagerPath = pathToFileURL(path.join(__dirname, '..', 'public', 'js', 'screenplay-editor', 'js', 'page', 'PageManager.js')).href;
+  const { PageManager } = await import(pageManagerPath);
+  const container = {
+    innerHTML: '',
+    children: [],
+    appendChild(child) { this.children.push(child); },
+  };
+  const manager = new PageManager({ container });
+  manager.pageFactory = {
+    createPage: () => ({ children: [], appendChild(child) { this.children.push(child); } }),
+    createLine: (format, content) => ({ format, content }),
+  };
+
+  manager.renderDocument([]);
+
+  assert.equal(container.children[0].children[0].format, 'header');
+});
+
+test('ScreenplayEditor focuses and formats the first line only when the page is blank', async () => {
+  const editorPath = pathToFileURL(path.join(__dirname, '..', 'public', 'js', 'screenplay-editor', 'js', 'ScreenplayEditor.js')).href;
+  const { ScreenplayEditor } = await import(editorPath);
+  const firstLine = {
+    textContent: '',
+    format: 'action',
+    setAttribute(name, value) { if (name === 'data-format') this.format = value; },
+  };
+  const editor = Object.create(ScreenplayEditor.prototype);
+  editor.workspace = { querySelectorAll: () => [firstLine] };
+  editor.domHandler = { focusLine: (...args) => { editor.focusArgs = args; } };
+  editor._updateSelectionState = () => {};
+
+  assert.equal(editor.focusInitialSceneHeading({ preventScroll: true }), true);
+  assert.equal(firstLine.format, 'header');
+  assert.deepEqual(editor.focusArgs, [firstLine, 0, { preventScroll: true }]);
+
+  firstLine.textContent = 'INT. OFFICE - DAY';
+  editor.focusArgs = null;
+  assert.equal(editor.focusInitialSceneHeading(), false);
+  assert.equal(editor.focusArgs, null);
+});
+
+test('editor title page is page 0 and remains outside screenplay pagination', () => {
+  const editorSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'screenplay-editor', 'js', 'ScreenplayEditor.js'), 'utf8');
+  const editorCss = fs.readFileSync(path.join(__dirname, '..', 'stylesheets', 'components', 'screenplay-editor.css'), 'utf8');
+
+  assert.match(editorSource, /page\.dataset\.pageNumber = '0'/);
+  assert.match(editorSource, /this\.scaleTarget\.append\(this\.titlePage, this\.scriptPages\)/);
+  assert.match(editorSource, /container: this\.scriptPages/);
+  assert.match(editorSource, /page\.className = 'script-page screenplay-title-page'/);
+  assert.match(editorCss, /\.script-page\s*\{[\s\S]*?width: var\(--page-width\);[\s\S]*?height: var\(--page-height\)/);
+  assert.match(editorCss, /\.screenplay-title-page-title\s*\{[^}]*font:\s*700 38pt/);
+  assert.doesNotMatch(editorSource, /_createTitlePageSection/);
+  assert.doesNotMatch(editorSource, /screenplay-title-page-summary/);
+  assert.match(editorSource, /optional\.append\(logline, cover\)/);
+  assert.match(editorSource, /screenplay-title-page-cover/);
 });
 
 test('FountainAdapter losslessly preserves custom mixed-case speakers and custom headers', async () => {

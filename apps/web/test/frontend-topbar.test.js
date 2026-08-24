@@ -9,20 +9,23 @@ const topbarHtml = fs.readFileSync(path.join(webRoot, 'pages', 'partials', 'topb
 const workbarHtml = fs.readFileSync(path.join(webRoot, 'pages', 'partials', 'workbar.html'), 'utf8');
 const topbarSource = fs.readFileSync(path.join(webRoot, 'public', 'js', 'shared', 'topbar.js'), 'utf8');
 
-test('global topbar is product chrome only', () => {
+test('global topbar carries stable script controls, mode tabs, and account chrome', () => {
   assert.match(topbarHtml, /href="\/library"/);
-  assert.match(topbarHtml, />Library</);
-  assert.doesNotMatch(topbarHtml, />Screenplay<|>Storyboard<|>Timeline<|>Download</);
-  assert.doesNotMatch(topbarHtml, /data-page=/);
+  assert.match(topbarHtml, /id="storyboardTitle"/);
+  assert.match(topbarHtml, /id="newStoryboardBtn"/);
+  assert.match(topbarHtml, /id="scriptMenuToggle"/);
+  assert.match(topbarHtml, /id="workVisibilityToggle"/);
+  assert.match(topbarHtml, /data-artifact="screenplay"/);
+  assert.match(topbarHtml, /data-artifact="storyboard"/);
+  assert.match(topbarHtml, /data-artifact="timeline"/);
+  assert.match(topbarHtml, /id="authLoggedIn"/);
+  assert.doesNotMatch(topbarHtml, /id="logoutBtn"|class="sf-logout"/);
+  assert.doesNotMatch(topbarSource, /logoutBtn|api\/auth\/logout/);
 });
 
-test('workbar carries artifact tabs and actions', () => {
-  assert.match(workbarHtml, /data-artifact="screenplay"/);
-  assert.match(workbarHtml, /data-artifact="storyboard"/);
-  assert.match(workbarHtml, /data-artifact="timeline"/);
-  assert.match(workbarHtml, /id="workShareBtn"/);
-  assert.match(workbarHtml, /id="downloadZipBtn"/);
-  assert.doesNotMatch(workbarHtml, /id="workTitleBtn"|id="workTitleLabel"|id="workRecentList"/);
+test('legacy workbar remains an empty hidden mount point', () => {
+  assert.match(workbarHtml, /class="sf-workbar" hidden/);
+  assert.doesNotMatch(workbarHtml, /data-artifact=|<button|<a\b/);
 });
 
 test('studio and reader inject the workbar marker', () => {

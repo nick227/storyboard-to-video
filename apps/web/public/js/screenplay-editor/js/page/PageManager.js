@@ -32,7 +32,7 @@ export class PageManager {
         this.container.appendChild(currentPage);
 
         if (linesData.length === 0) {
-            const firstLine = this.createLine('action', '', null);
+            const firstLine = this.createLine('header', '', null);
             currentPage.appendChild(firstLine);
             return;
         }

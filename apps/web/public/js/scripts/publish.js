@@ -6,6 +6,7 @@ import { bindCoverArtControls, syncScreenplayLogos } from './cover-art.js';
 import { parseWorkPath, workPath } from '../core/app-paths.js';
 
 const SUMMARY_MAX = 4000;
+const PUBLIC_ARTIFACTS = ['screenplay', 'storyboard', 'timeline'];
 
 function parseTagSlugs(value = '') {
   return [...new Set(String(value).split(/[,#]+/).map((part) => part.trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean))].slice(0, 8);
@@ -28,16 +29,14 @@ function artifactSharePath(script, artifact = 'screenplay') {
     || workPath(script.writer?.profileSlug || 'anonymous', script.slug, artifact);
 }
 
-function artifactLabel(artifact) {
-  return artifact.charAt(0).toUpperCase() + artifact.slice(1);
-}
-
 export function initScriptPublishControls(elements, {
   setStatus,
   getArtifact = activeArtifact,
   openImageLibrary,
   getTitle,
   getAuthor,
+  setTitle,
+  onScriptMetaChange,
 } = {}) {
   const toggle = elements.workVisibilityToggle;
   const shareBtns = [elements.scriptShareBtn, elements.workShareBtn].filter(Boolean);
@@ -45,6 +44,8 @@ export function initScriptPublishControls(elements, {
 
   let busy = false;
   let categoriesLoaded = false;
+  let titlePageSaveTimer = 0;
+  let pendingTitlePagePatch = {};
 
   function updateSummaryHint() {
     const summaryEl = elements.scriptSummary;
@@ -94,12 +95,11 @@ export function initScriptPublishControls(elements, {
       if (script.scriptText != null) record.scriptText = script.scriptText;
     }
     const artifact = getArtifact();
-    const isPublic = artifactVisibility(script, artifact) === 'public';
+    const isPublic = PUBLIC_ARTIFACTS.every((name) => artifactVisibility(script, name) === 'public');
     if (toggle) {
       toggle.checked = isPublic;
-      toggle.dataset.artifact = artifact;
       const label = toggle.closest('label');
-      if (label) label.title = `Make this ${artifact} publicly viewable`;
+      if (label) label.title = 'Make Screenplay, Storyboard, and Timeline publicly viewable';
     }
     for (const shareBtn of shareBtns) {
       const shareArtifact = shareBtn === elements.scriptShareBtn ? 'screenplay' : artifact;
@@ -108,7 +108,44 @@ export function initScriptPublishControls(elements, {
       shareBtn.dataset.artifact = shareArtifact;
     }
     applyMetaFields(script);
+    onScriptMetaChange?.(script);
     if (script?.id) refreshStats(script.id);
+  }
+
+  function queueTitlePageMeta(patch = {}) {
+    const allowed = ['title', 'author', 'logline', 'summary'];
+    for (const key of allowed) {
+      if (patch[key] !== undefined) pendingTitlePagePatch[key] = String(patch[key] || '');
+    }
+    if (pendingTitlePagePatch.title !== undefined) setTitle?.(pendingTitlePagePatch.title || 'Untitled');
+    if (pendingTitlePagePatch.logline !== undefined && elements.scriptLogline) {
+      elements.scriptLogline.value = pendingTitlePagePatch.logline.slice(0, 280);
+    }
+    if (pendingTitlePagePatch.summary !== undefined && elements.scriptSummary) {
+      elements.scriptSummary.value = pendingTitlePagePatch.summary.slice(0, SUMMARY_MAX);
+      updateSummaryHint();
+    }
+
+    clearTimeout(titlePageSaveTimer);
+    titlePageSaveTimer = setTimeout(async () => {
+      const next = pendingTitlePagePatch;
+      pendingTitlePagePatch = {};
+      try {
+        const record = getCurrentStoryboardRecord();
+        if (!record) return;
+        const script = await ensureScript(record);
+        const body = {};
+        if (next.title !== undefined) body.title = next.title.trim() || 'Untitled';
+        if (next.author !== undefined) body.author = next.author.trim() || 'Anonymous';
+        if (next.logline !== undefined) body.logline = next.logline.trim().slice(0, 280);
+        if (next.summary !== undefined) body.summary = next.summary.trim().slice(0, SUMMARY_MAX);
+        if (!Object.keys(body).length) return;
+        const response = await updateScriptMeta(script.id, body);
+        applyScript(response.script);
+      } catch (error) {
+        setStatus?.(error.message || 'Could not save title page.');
+      }
+    }, 400);
   }
 
   async function syncFromRecord(record = getCurrentStoryboardRecord()) {
@@ -150,21 +187,23 @@ export function initScriptPublishControls(elements, {
       toggle.checked = false;
       return;
     }
-    const artifact = getArtifact();
     const desiredVisibility = toggle.checked ? 'public' : 'private';
     busy = true;
     toggle.disabled = true;
     try {
       const script = await ensureScript(record);
       toggle.checked = desiredVisibility === 'public';
-      const response = await api(`/api/scripts/${encodeURIComponent(script.id)}/visibility`, {
-        method: 'POST',
-        body: JSON.stringify({ visibility: desiredVisibility, artifact }),
-      });
+      let response;
+      for (const artifact of PUBLIC_ARTIFACTS) {
+        response = await api(`/api/scripts/${encodeURIComponent(script.id)}/visibility`, {
+          method: 'POST',
+          body: JSON.stringify({ visibility: desiredVisibility, artifact }),
+        });
+      }
       applyScript(response.script);
       setStatus?.(desiredVisibility === 'public'
-        ? `${artifactLabel(artifact)} is public.`
-        : `${artifactLabel(artifact)} is private.`);
+        ? 'Screenplay, Storyboard, and Timeline are public.'
+        : 'Screenplay, Storyboard, and Timeline are private.');
     } catch (error) {
       applyScript(getCurrentStoryboardRecord()?.script || null);
       setStatus?.(error.message || 'Could not update visibility.');
@@ -269,5 +308,6 @@ export function initScriptPublishControls(elements, {
     applyScript,
     getSummary: currentSummary,
     getCoverMeta,
+    queueTitlePageMeta,
   };
 }

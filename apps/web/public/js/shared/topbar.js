@@ -34,7 +34,6 @@
     label.textContent = name;
     label.title = `${session.user.email}\n${session.tenant.name}`;
     adminLink.hidden = !(session.isPlatformAdmin || ['admin', 'super_admin'].includes(session.user.platformRole));
-    document.getElementById('logoutBtn').addEventListener('click', logout, { once: true });
     bindCredits();
   }
 
@@ -50,13 +49,4 @@
     await refreshCreditBalance();
   }
 
-  async function logout() {
-    document.getElementById('logoutBtn').disabled = true;
-    try { await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); }
-    finally {
-      ['storyboard-poc-storyboards', 'storyboard-poc-current', 'storyboard-poc-draft', 'storyboard-auth-token'].forEach((key) => localStorage.removeItem(key));
-      Object.keys(localStorage).filter((key) => key.startsWith('storyboard-poc-storyboards:')).forEach((key) => localStorage.removeItem(key));
-      window.location.href = '/login.html';
-    }
-  }
 })();

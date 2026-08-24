@@ -361,6 +361,46 @@ export function createStoryboard(els) {
   if (els.videoProvider) els.videoProvider.value = '';
 }
 
+export function duplicateStoryboard(els) {
+  const current = getCurrentStoryboardRecord();
+  if (!current) return null;
+  const copy = typeof structuredClone === 'function'
+    ? structuredClone(current)
+    : JSON.parse(JSON.stringify(current));
+  delete copy.id;
+  delete copy.revision;
+  delete copy.scriptId;
+  delete copy.script;
+  copy.title = `${current.title || 'Untitled'} Copy`;
+  copy.updatedAt = new Date().toISOString();
+  const record = createStoryboardRecord(copy, copy.title);
+  revokeAllAssets();
+  projectStore.set((state) => ({ currentId: record.id, storyboards: [...state.storyboards, record] }));
+  persistStoryboardLibrary();
+  restoreStoryboardFields(els);
+  return record;
+}
+
+export async function deleteStoryboard(id, els) {
+  if (!id) return null;
+  try {
+    await api(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  } catch (error) {
+    if (error?.status !== 404) throw error;
+  }
+  const remaining = projectStore.get().storyboards.filter((record) => record.id !== id);
+  revokeAllAssets();
+  if (!remaining.length) {
+    projectStore.set({ storyboards: [], currentId: null });
+    createStoryboard(els);
+    return getCurrentStoryboardRecord();
+  }
+  projectStore.set({ storyboards: remaining, currentId: remaining[0].id });
+  persistStoryboardLibrary();
+  restoreStoryboardFields(els);
+  return remaining[0];
+}
+
 export function saveStoryboard(els, immediate = false) {
   const record = getCurrentStoryboardRecord();
   if (!record) return;

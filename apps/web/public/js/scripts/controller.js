@@ -7,12 +7,14 @@ import {
 } from '../core/app-paths.js';
 
 const STUDIO_PAGE_STORAGE_KEY = 'storyboarder.activeStudioPage';
+const SCRIPT_THEME_STORAGE_KEY = 'storyboarder.scriptTheme';
 
 export function initScriptController(elements, {
   setStatus, onScriptChange, onPageChange, getCurrentRecord, getSession, getCoverMeta,
+  onTitlePageChange, onTitlePageCoverClick,
 } = {}) {
   assertElements('Script controller', elements, [
-    'scriptText', 'modeSelect', 'editorContainer', 'pagePanel', 'focusBtn',
+    'scriptText', 'modeSelect', 'themeSelect', 'editorContainer', 'pagePanel', 'focusBtn',
     'downloadBtn', 'downloadMenu', 'pageTabs', 'pageTabButtons', 'pagePanels',
     'storyboardTitle',
   ]);
@@ -28,8 +30,9 @@ export function initScriptController(elements, {
 
   const syncStickyChromeMetrics = () => {
     const height = (element, fallback) => {
-      if (!element || element.hidden) return 0;
-      return Math.ceil(element.getBoundingClientRect().height) || fallback;
+      if (!element || element.hidden || getComputedStyle(element).display === 'none') return 0;
+      const measured = Math.ceil(element.getBoundingClientRect().height);
+      return measured > 0 ? measured : fallback;
     };
     const topbarHeight = height(stickyChrome.topbar, 57);
     const workbarHeight = height(stickyChrome.workbar, 44);
@@ -67,6 +70,18 @@ export function initScriptController(elements, {
     if (emit) elements.scriptText.dispatchEvent(new Event('input', { bubbles: true }));
   };
 
+  const currentTitlePageMeta = () => {
+    const record = getCurrentRecord?.();
+    const script = record?.script || {};
+    return {
+      title: elements.storyboardTitle.value.trim() || script.title || 'Untitled',
+      author: script.author || getSession?.()?.user?.displayName || 'Anonymous',
+      coverUrl: script.coverUrl || null,
+      logline: script.logline || '',
+      summary: script.summary || '',
+    };
+  };
+
   // Grows the raw-text textarea to fit its content instead of scrolling internally.
   // Skipped in fullscreen focus mode, where CSS flex sizing (fill + its own scroll) takes over.
   const autosizeScriptText = () => {
@@ -97,12 +112,17 @@ export function initScriptController(elements, {
             toolbarHost: elements.toolbarHost || null,
             initialScript,
             format: 'fountain',
+            theme: elements.themeSelect.value,
+            titlePage: currentTitlePageMeta(),
             showToolbar: true,
             onChange: ({ rawText }) => updateScriptText(rawText),
+            onTitlePageChange,
+            onTitlePageCoverClick,
           });
         }
       } else {
         editor.loadScript(initialScript, 'fountain');
+        editor.setTitlePageMeta(currentTitlePageMeta());
         setToolbarHostsVisible(true);
       }
       setToolbarHostsVisible(Boolean(editor));
@@ -270,6 +290,10 @@ export function initScriptController(elements, {
     else savedPage = 'script';
   } catch (_) {}
   applyPage(savedPage, { persist: true });
+  let savedTheme = 'light';
+  try { savedTheme = localStorage.getItem(SCRIPT_THEME_STORAGE_KEY) || 'light'; } catch (_) {}
+  if (!['light', 'dark'].includes(savedTheme)) savedTheme = 'light';
+  elements.themeSelect.value = savedTheme;
   let savedMode = 'raw';
   try { savedMode = localStorage.getItem('scriptEditorMode') || 'raw'; } catch (_) {}
   setEditorMode(savedMode);
@@ -292,6 +316,11 @@ export function initScriptController(elements, {
     elements.pageTabButtons[nextIndex].click();
   });
   elements.modeSelect.addEventListener('change', (event) => setEditorMode(event.target.value));
+  elements.themeSelect.addEventListener('change', (event) => {
+    const theme = event.target.value === 'dark' ? 'dark' : 'light';
+    try { localStorage.setItem(SCRIPT_THEME_STORAGE_KEY, theme); } catch (_) {}
+    editor?.setTheme(theme);
+  });
   elements.focusBtn.addEventListener('click', () => setFocusMode(!elements.pagePanel.classList.contains('is-script-focus')));
   elements.downloadBtn.addEventListener('click', () => {
     const willOpen = elements.downloadMenu.hidden;
@@ -327,11 +356,20 @@ export function initScriptController(elements, {
 
   return {
     syncFromText: () => {
-      if (editor && elements.modeSelect.value === 'screenplay') editor.loadScript(elements.scriptText.value || '', 'fountain');
+      if (editor && elements.modeSelect.value === 'screenplay') {
+        editor.loadScript(elements.scriptText.value || '', 'fountain');
+        editor.setTitlePageMeta(currentTitlePageMeta());
+      }
     },
     autosizeScriptText,
     syncRoute: () => applyPage(activePage, { persist: true }),
     activePage: () => activePage,
+    syncTitlePage: (meta) => editor?.setTitlePageMeta(meta || currentTitlePageMeta()),
+    startNewScript: () => {
+      applyPage('script', { persist: true });
+      setEditorMode('screenplay');
+      requestAnimationFrame(() => editor?.focusInitialSceneHeading());
+    },
     // editor.loadScript() only re-renders -- it never calls onChange/_notifyChange -- so
     // updateScriptText() below is what actually dispatches the `input` event that fires
     // onScriptChange (app.js) and the save pipeline, same as every manual keystroke.
@@ -342,5 +380,12 @@ export function initScriptController(elements, {
       updateScriptText(newRaw);
       return newRaw;
     },
+    replaceScriptText: (text) => {
+      const newRaw = String(text || '').replace(/\s+$/, '');
+      if (editor && elements.modeSelect.value === 'screenplay') editor.loadScript(newRaw, 'fountain');
+      updateScriptText(newRaw);
+      return newRaw;
+    },
+    openHelp: () => editor?.helpModal?.open(),
   };
 }

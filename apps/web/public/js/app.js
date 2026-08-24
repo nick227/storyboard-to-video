@@ -1,5 +1,5 @@
 import { projectStore, sceneStore, voiceStore, uiStore, batchStore, spendStore } from './core/store.js';
-import { restoreStoryboardLibrary, openStoryboard, createStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope, findStoryboardForRoute } from './core/persistence.js';
+import { restoreStoryboardLibrary, openStoryboard, createStoryboard, deleteStoryboard, saveStoryboard, getCurrentStoryboardRecord, setPersistenceScope, findStoryboardForRoute } from './core/persistence.js';
 import { parseWorkPath } from './core/app-paths.js';
 import { initWorkbar } from './shared/workbar.js';
 import { initRendering, renderScenes, renderEntityOperationState } from './studio/rendering.js';
@@ -33,6 +33,7 @@ const els = {
   // Elements
   scriptText: document.getElementById('scriptText'),
   scriptModeSelect: document.getElementById('scriptModeSelect'),
+  scriptThemeSelect: document.getElementById('scriptThemeSelect'),
   screenplayEditorContainer: document.getElementById('screenplayEditorContainer'),
   screenplayToolbarHost: document.getElementById('screenplayToolbarHost'),
   scriptPagePanel: document.getElementById('scriptPagePanel'),
@@ -44,6 +45,13 @@ const els = {
   workVisibilityToggle: document.getElementById('workVisibilityToggle'),
   workShareBtn: document.getElementById('workShareBtn'),
   scriptMetaBtn: document.getElementById('scriptMetaBtn'),
+  scriptMenuToggle: document.getElementById('scriptMenuToggle'),
+  scriptMenu: document.getElementById('scriptMenu'),
+  scriptImportBtn: document.getElementById('scriptImportBtn'),
+  scriptImportInput: document.getElementById('scriptImportInput'),
+  scriptPropertiesBtn: document.getElementById('scriptPropertiesBtn'),
+  scriptDeleteBtn: document.getElementById('scriptDeleteBtn'),
+  scriptHelpBtn: document.getElementById('scriptHelpBtn'),
   scriptMetaModal: document.getElementById('scriptMetaModal'),
   scriptMetaCloseBtn: document.getElementById('scriptMetaCloseBtn'),
   scriptMetaCancelBtn: document.getElementById('scriptMetaCancelBtn'),
@@ -430,13 +438,28 @@ function initControllers(getSession) {
     setStatus,
     openImageLibrary,
     getTitle: () => els.storyboardTitle?.value?.trim() || '',
+    setTitle: (title) => {
+      if (!els.storyboardTitle) return;
+      els.storyboardTitle.value = title;
+      els.storyboardTitle.dispatchEvent(new Event('input', { bubbles: true }));
+    },
     getAuthor: () => getCurrentStoryboardRecord()?.script?.author
       || getSession?.()?.user?.displayName
       || 'Anonymous',
+    onScriptMetaChange: (script) => {
+      scriptController?.syncTitlePage?.({
+        title: els.storyboardTitle?.value?.trim() || script?.title || 'Untitled',
+        author: script?.author || getSession?.()?.user?.displayName || 'Anonymous',
+        coverUrl: script?.coverUrl || null,
+        logline: script?.logline || '',
+        summary: script?.summary || '',
+      });
+    },
   });
   scriptController = initScriptController({
     scriptText: els.scriptText,
     modeSelect: els.scriptModeSelect,
+    themeSelect: els.scriptThemeSelect,
     editorContainer: els.screenplayEditorContainer,
     toolbarHost: els.screenplayToolbarHost,
     pagePanel: els.scriptPagePanel,
@@ -463,6 +486,8 @@ function initControllers(getSession) {
       renderStageBar(els);
       scriptController?.syncRoute?.();
     },
+    onTitlePageChange: (patch) => scriptPublishControls?.queueTitlePageMeta?.(patch),
+    onTitlePageCoverClick: () => els.scriptCoverBtn?.click(),
   });
   screenplayAssistantController = initScreenplayAssistant({ container: els.scriptPagePanel }, {
     getCurrentRecord: getCurrentStoryboardRecord,
@@ -505,6 +530,7 @@ function initControllers(getSession) {
     saveProject: (immediate) => saveStoryboard(els, immediate),
     renderPicker: () => renderStoryboardPicker(els),
     loadStoryboardIntoUI,
+    onProjectCreated: () => scriptController?.startNewScript?.(),
     renderScenes,
     downloadProject: () => downloadZip(setStatus),
   });
@@ -624,6 +650,67 @@ function initControllers(getSession) {
     setStatus,
   });
 
+  const closeScriptMenu = ({ restoreFocus = false } = {}) => {
+    els.scriptMenu.hidden = true;
+    els.scriptMenuToggle.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) els.scriptMenuToggle.focus();
+  };
+  els.scriptMenuToggle.addEventListener('click', () => {
+    const opening = els.scriptMenu.hidden;
+    els.scriptMenu.hidden = !opening;
+    els.scriptMenuToggle.setAttribute('aria-expanded', String(opening));
+    if (opening) els.scriptMenu.querySelector('[role="menuitem"]')?.focus();
+  });
+  els.scriptImportBtn.addEventListener('click', () => els.scriptImportInput.click());
+  els.scriptImportInput.addEventListener('change', async () => {
+    const [file] = els.scriptImportInput.files || [];
+    els.scriptImportInput.value = '';
+    if (!file) return;
+    try {
+      scriptController.replaceScriptText(await file.text());
+      saveStoryboard(els, true);
+      closeScriptMenu();
+      setStatus(`Imported ${file.name}.`);
+    } catch (error) {
+      setStatus(error.message || 'Could not import the script.');
+    }
+  });
+  els.scriptPropertiesBtn.addEventListener('click', () => {
+    closeScriptMenu();
+    els.settingsBtn.click();
+  });
+  els.scriptHelpBtn.addEventListener('click', () => {
+    closeScriptMenu();
+    scriptController.openHelp();
+  });
+  els.scriptDeleteBtn.addEventListener('click', async () => {
+    const current = getCurrentStoryboardRecord();
+    if (!current || !confirm(`Delete “${current.title || 'Untitled'}”? This cannot be undone.`)) return;
+    closeScriptMenu();
+    try {
+      await deleteStoryboard(current.id, els);
+      storyboardController.renderPicker();
+      await loadStoryboardIntoUI();
+      scriptController.syncRoute();
+      setStatus('Script deleted.');
+    } catch (error) {
+      setStatus(error.message || 'Could not delete the script.');
+    }
+  });
+  els.scriptMenu.addEventListener('click', (event) => {
+    if (event.target.closest('[role="menuitem"]')) closeScriptMenu();
+  });
+  document.addEventListener('click', (event) => {
+    if (els.scriptMenu.hidden || els.scriptMenu.contains(event.target) || els.scriptMenuToggle.contains(event.target)) return;
+    closeScriptMenu();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !els.scriptMenu.hidden) {
+      event.preventDefault();
+      closeScriptMenu({ restoreFocus: true });
+    }
+  });
+
   initNarrationController({
     mode: els.narrationModeSelect,
     guidance: els.narrationGuidance,
@@ -679,6 +766,8 @@ async function init() {
     'statusText', 'statusPanel', 'runResultsPanel', 'runResultsRows', 'runResultsDismissBtn',
     'storyboardGrid', 'storyboardSlider', 'storyboardViewToggle', 'sceneCardTemplate', 'storyboardTitle',
     'storyboardPickerToggle', 'storyboardPickerList', 'newStoryboardBtn',
+    'scriptMenuToggle', 'scriptMenu',
+    'scriptImportBtn', 'scriptImportInput', 'scriptPropertiesBtn', 'scriptDeleteBtn', 'scriptHelpBtn',
     'saveStateBtn', 'resizeSceneList', 'downloadZipBtn', 'downloadConfirmModal',
     'downloadConfirmCloseBtn', 'downloadConfirmCancelBtn', 'downloadConfirmRunBtn',
     'downloadConfirmWarning', 'downloadConfirmBullets', 'settingsBtn',

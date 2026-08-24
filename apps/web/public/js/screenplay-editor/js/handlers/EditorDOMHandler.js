@@ -6,9 +6,9 @@ export class EditorDOMHandler {
         this.lineFormatter = options.lineFormatter;
     }
 
-    focusLine (lineElement, offset = 0) {
+    focusLine (lineElement, offset = 0, options = {}) {
         if (!lineElement) return;
-        EditorCaretManager.setCaretPosition(lineElement, offset);
+        EditorCaretManager.setCaretPosition(lineElement, offset, options);
     }
 
     getCaretPosition (lineElement) {

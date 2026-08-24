@@ -12,34 +12,11 @@
   <script defer src="/js/shared/topbar.js"></script>
 </head>
 
-<body>
+<body class="studio-shell">
   <!--topbar-->
   <!--workbar-->
 
   <div class="app-shell">
-    <header class="storyboard-topbar">
-      <div class="brand-block row">
-        <div class="storyboard-title-row">
-          <div class="storyboard-combo">
-            <button type="button" class="screenplay-logo" id="screenplayCoverBtn" aria-label="Change cover art"
-              title="Change cover art">
-              <img class="screenplay-logo-image" alt="" hidden />
-            </button>            <input id="storyboardTitle" class="storyboard-title" type="text" maxlength="200"
-              aria-label="Storyboard title" autocomplete="off" />
-            <button id="storyboardPickerToggle" class="storyboard-picker-toggle" type="button"
-              aria-haspopup="listbox" aria-expanded="false" aria-controls="storyboardPickerList"
-              aria-label="Open a saved storyboard" title="Open a saved storyboard">&#9662;</button>
-            <ul id="storyboardPickerList" class="storyboard-picker-list" role="listbox"
-              aria-label="Saved storyboards" hidden></ul>
-          </div>
-        </div>
-        <div class="toolbar top-actions">
-          <button id="newStoryboardBtn" class="primary">New</button>
-          <button id="saveStateBtn" class="hidden" disabled>Saved</button>
-        </div>
-      </div>
-    </header>
-
     <div class="studio-page-stage">
       <div id="pageTransition" class="page-transition" role="status" aria-live="polite" aria-atomic="true" hidden>
         <span class="page-transition-spinner" aria-hidden="true"></span>
@@ -53,39 +30,20 @@
       <div class="script-header-row">
         <div id="screenplayToolbarHost" class="script-header-primary is-inactive" aria-hidden="true"></div>
         <div class="script-header-actions">
-          <div class="script-publish-control" id="scriptPublishControl">
-            <button type="button" id="scriptMetaBtn" class="script-icon-button" aria-label="Publishing details"
-              title="Publishing details" aria-haspopup="dialog" aria-controls="scriptMetaModal">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 7h16M4 12h10M4 17h7" />
-                <circle cx="18" cy="12" r="2" />
-                <circle cx="15" cy="17" r="2" />
-              </svg>
-            </button>
-            <button type="button" id="scriptShareBtn" class="script-icon-button" aria-label="Copy share link"
-              title="Copy share link" disabled>
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 6" />
-                <path d="M14 11a5 5 0 0 0-7.07 0L5.5 12.43a5 5 0 0 0 7.07 7.07L14 18" />
-              </svg>
-            </button>
-          </div>
           <select id="scriptModeSelect" class="script-mode-select">
             <option value="raw">Raw Text</option>
             <option value="screenplay">Screenplay Editor</option>
           </select>
-          <button type="button" id="scriptFocusBtn" class="script-focus-button" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
-            </svg>
-            <span id="scriptFocusBtnLabel">Full screen</span>
-          </button>
+          <label class="script-theme-control">
+            <select id="scriptThemeSelect" class="script-theme-select" aria-label="Script page theme">
+              <option value="light" selected>Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
           <div class="script-download-control">
-            <button type="button" id="scriptDownloadBtn" class="script-icon-button" aria-label="Download script"
-              title="Download script" aria-haspopup="menu" aria-expanded="false" aria-controls="scriptDownloadMenu">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 3v12M7 10l5 5 5-5M4 20h16" />
-              </svg>
+            <button type="button" id="scriptDownloadBtn" class="script-icon-button" aria-label="Download or export script"
+              title="Download or export script" aria-haspopup="menu" aria-expanded="false" aria-controls="scriptDownloadMenu">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 20h16" /></svg>
             </button>
             <div id="scriptDownloadMenu" class="script-download-menu" role="menu" aria-label="Script download format" hidden>
               <button type="button" role="menuitem" data-script-format="fountain"><strong>Fountain</strong><small>.fountain</small></button>
@@ -93,9 +51,15 @@
               <button type="button" role="menuitem" data-script-format="rtf"><strong>Rich Text</strong><small>.rtf</small></button>
               <button type="button" role="menuitem" data-script-format="text"><strong>Plain Text</strong><small>.txt</small></button>
               <button type="button" role="menuitem" data-script-format="json"><strong>Structured JSON</strong><small>.json</small></button>
-              <button type="button" role="menuitem" data-script-format="print"><strong>Print / PDF</strong><small>formatted pages</small></button>
+              <button type="button" role="menuitem" data-script-format="print"><strong>Print / PDF</strong><small>PDF</small></button>
             </div>
           </div>
+          <button type="button" id="scriptFocusBtn" class="script-focus-button" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+            </svg>
+            <span id="scriptFocusBtnLabel">Full screen</span>
+          </button>
         </div>
       </div>
       <article class="panel concept-column story-concept">

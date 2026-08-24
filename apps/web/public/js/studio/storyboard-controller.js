@@ -64,6 +64,7 @@ export function initStoryboardController(elements, {
   saveProject,
   renderPicker,
   loadStoryboardIntoUI,
+  onProjectCreated,
   renderScenes,
   downloadProject,
 } = {}) {
@@ -138,6 +139,7 @@ export function initStoryboardController(elements, {
     renderPicker();
     saveProject(true);
     await loadStoryboardIntoUI();
+    onProjectCreated?.();
   });
   elements.pickerToggle.addEventListener('click', () => {
     if (elements.pickerList.hidden) openPicker();

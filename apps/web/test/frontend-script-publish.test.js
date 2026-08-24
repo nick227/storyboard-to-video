@@ -27,8 +27,10 @@ function jsonResponse(body, status = 200) {
 
 function mockVisibilityApi(serverScript, { fail = () => false } = {}) {
   const requested = [];
+  const metaRequested = [];
   return {
     requested,
+    metaRequested,
     fetch: async (url, options = {}) => {
       if (options.method === 'POST' && String(url).endsWith('/visibility')) {
         const body = JSON.parse(options.body);
@@ -51,6 +53,12 @@ function mockVisibilityApi(serverScript, { fail = () => false } = {}) {
         });
         return jsonResponse({ ok: true, script: serverScript });
       }
+      if (options.method === 'PUT' && String(url) === `/api/scripts/${serverScript.id}`) {
+        const body = JSON.parse(options.body);
+        metaRequested.push(body);
+        Object.assign(serverScript, body);
+        return jsonResponse({ ok: true, script: serverScript });
+      }
       if (String(url) === `/api/scripts/${serverScript.id}`) {
         return jsonResponse({ ok: true, script: serverScript });
       }
@@ -59,7 +67,7 @@ function mockVisibilityApi(serverScript, { fail = () => false } = {}) {
   };
 }
 
-test('workbar Public toggle publishes the active artifact from the current view', async (t) => {
+test('global Public switch publishes every artifact and remains stable between views', async (t) => {
   const { initScriptPublishControls } = await publishControlsPromise;
   const { projectStore } = await storePromise;
   const originalFetch = global.fetch;
@@ -103,26 +111,76 @@ test('workbar Public toggle publishes the active artifact from the current view'
 
   toggle.checked = true;
   await toggle.listeners.change();
-  assert.deepEqual(api.requested, [{ visibility: 'public', artifact: 'screenplay' }]);
+  assert.deepEqual(api.requested, [
+    { visibility: 'public', artifact: 'screenplay' },
+    { visibility: 'public', artifact: 'storyboard' },
+    { visibility: 'public', artifact: 'timeline' },
+  ]);
   assert.equal(serverScript.visibility, 'public');
   assert.equal(shareBtn.disabled, false);
 
   artifact = 'storyboard';
   await controls.syncFromRecord();
-  assert.equal(toggle.checked, false);
-  assert.equal(shareBtn.disabled, true);
-
-  toggle.checked = true;
-  await toggle.listeners.change();
-  assert.deepEqual(api.requested.at(-1), { visibility: 'public', artifact: 'storyboard' });
-  assert.equal(serverScript.visibility, 'public');
+  assert.equal(toggle.checked, true);
+  assert.equal(shareBtn.disabled, false);
   assert.equal(serverScript.artifacts.storyboard.visibility, 'public');
   assert.equal(shareBtn.dataset.sharePath, '/anonymous/test-script/storyboard');
-  assert.equal(statuses.at(-1), 'Storyboard is public.');
+  assert.equal(statuses.at(-1), 'Screenplay, Storyboard, and Timeline are public.');
 
   failVisibilityUpdate = true;
   toggle.checked = false;
   await toggle.listeners.change();
   assert.equal(toggle.checked, true);
   assert.equal(statuses.at(-1), 'Publish failed');
+});
+
+test('title page fields autosave through existing script metadata', async (t) => {
+  const { initScriptPublishControls } = await publishControlsPromise;
+  const { projectStore } = await storePromise;
+  const originalFetch = global.fetch;
+  t.after(() => { global.fetch = originalFetch; });
+
+  const serverScript = {
+    id: 'script-title-page',
+    slug: 'untitled',
+    title: 'Untitled',
+    author: 'Anonymous',
+    logline: '',
+    summary: '',
+    visibility: 'private',
+    artifacts: {
+      screenplay: { visibility: 'private' },
+      storyboard: { visibility: 'private' },
+      timeline: { visibility: 'private' },
+    },
+  };
+  const api = mockVisibilityApi(serverScript);
+  global.fetch = api.fetch;
+  projectStore.set({
+    currentId: 'project-title-page',
+    storyboards: [{ id: 'project-title-page', scriptId: serverScript.id, script: { ...serverScript } }],
+  });
+  let title = '';
+  let applied = null;
+  const controls = initScriptPublishControls({ workVisibilityToggle: element() }, {
+    setTitle: (value) => { title = value; },
+    onScriptMetaChange: (script) => { applied = script; },
+  });
+
+  controls.queueTitlePageMeta({
+    title: 'The Long Way Home',
+    author: 'Morgan Lee',
+    logline: 'A pilot follows a signal beyond the mapped sky.',
+    summary: 'A restrained science-fiction drama.',
+  });
+  await new Promise((resolve) => setTimeout(resolve, 450));
+
+  assert.equal(title, 'The Long Way Home');
+  assert.deepEqual(api.metaRequested, [{
+    title: 'The Long Way Home',
+    author: 'Morgan Lee',
+    logline: 'A pilot follows a signal beyond the mapped sky.',
+    summary: 'A restrained science-fiction drama.',
+  }]);
+  assert.equal(applied.author, 'Morgan Lee');
 });
