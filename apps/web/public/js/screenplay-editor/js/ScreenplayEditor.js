@@ -167,7 +167,8 @@ export class ScreenplayEditor {
             wrapper: this.wrapper,
             workspace: this.workspace,
             shell: this.scaleShell,
-            target: this.scaleTarget
+            target: this.scaleTarget,
+            onLayoutModeChange: () => this.pageManager?.schedulePagination()
         });
         this.viewportScaler.start();
 
@@ -181,6 +182,14 @@ export class ScreenplayEditor {
         this.workspace.addEventListener('input', () => this._notifyChange());
         this.workspace.addEventListener('keyup', () => this._updateSelectionState());
         this.workspace.addEventListener('click', () => this._updateSelectionState());
+
+        if (document.fonts?.ready) {
+            document.fonts.ready.then(() => {
+                if (!this.wrapper?.isConnected) return;
+                this.pageManager?.schedulePagination();
+                this.viewportScaler?.scheduleUpdate();
+            });
+        }
     }
 
     loadScript (content, format = 'fountain') {
@@ -258,6 +267,7 @@ export class ScreenplayEditor {
         this.isDirty = true;
         const currentDoc = this.getScriptDocument();
         const rawText = RawScriptAdapter.serialize(currentDoc, this.format);
+        if (this.pageManager) this.pageManager.schedulePagination();
         if (this.viewportScaler) this.viewportScaler.scheduleUpdate();
         if (this.pageScrollIndicator) this.pageScrollIndicator.refresh(false);
 
@@ -306,6 +316,9 @@ export class ScreenplayEditor {
         }
         if (this.keyboardManager) {
             this.keyboardManager.destroy();
+        }
+        if (this.pageManager) {
+            this.pageManager.destroy();
         }
         if (this.helpModal) {
             this.helpModal.destroy();

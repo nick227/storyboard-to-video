@@ -45,7 +45,11 @@
 .sf-nav-link:hover, .sf-nav-link[aria-current="page"] { color: var(--text); background: var(--glass); }
 
 .sf-workbar {
-  background: color-mix(in srgb, var(--topbar-bg) 88%, var(--panel));
+  position: sticky;
+  top: var(--sf-topbar-height, 57px);
+  z-index: 99;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
   font-family: var(--sf-font);
 }
 .sf-workbar[hidden] { display: none; }

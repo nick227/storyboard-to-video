@@ -52,6 +52,8 @@ export class PageManager {
             currentPage.appendChild(lineEl);
             lineCount++;
         });
+
+        this.pageBreakManager.checkAndRecalculate();
     }
 
     getActiveLine () {
@@ -96,5 +98,13 @@ export class PageManager {
                 this.pageBreakManager.checkAndRecalculate();
             }
         }
+    }
+
+    schedulePagination () {
+        this.pageBreakManager?.schedule();
+    }
+
+    destroy () {
+        this.pageBreakManager?.destroy();
     }
 }

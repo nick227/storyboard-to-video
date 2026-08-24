@@ -10,9 +10,9 @@ export class EditorCaretManager {
         return preCaretRange.toString().length;
     }
 
-    static setCaretPosition (element, offset) {
+    static setCaretPosition (element, offset, { preventScroll = false } = {}) {
         if (!element) return;
-        element.focus();
+        element.focus({ preventScroll });
         const selection = window.getSelection();
         if (!selection) return;
 

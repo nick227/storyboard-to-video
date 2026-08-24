@@ -19,6 +19,48 @@ export function initScriptController(elements, {
   let editor = null;
   let activePage = 'storyboard';
   let pageSwitchToken = 0;
+  const stickyChrome = {
+    topbar: document.querySelector('.sf-topbar'),
+    workbar: document.querySelector('.sf-workbar'),
+    storyboard: document.querySelector('.storyboard-topbar'),
+    scriptHeader: elements.pagePanel.querySelector('.script-header-row'),
+  };
+
+  const syncStickyChromeMetrics = () => {
+    const height = (element, fallback) => {
+      if (!element || element.hidden) return 0;
+      return Math.ceil(element.getBoundingClientRect().height) || fallback;
+    };
+    const topbarHeight = height(stickyChrome.topbar, 57);
+    const workbarHeight = height(stickyChrome.workbar, 44);
+    const storyboardHeight = height(stickyChrome.storyboard, 48);
+    const scriptHeaderHeight = height(stickyChrome.scriptHeader, 46);
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty('--sf-topbar-height', `${topbarHeight}px`);
+    rootStyle.setProperty('--sf-workbar-height', `${workbarHeight}px`);
+    rootStyle.setProperty('--storyboard-topbar-height', `${storyboardHeight}px`);
+    rootStyle.setProperty('--script-header-height', `${scriptHeaderHeight}px`);
+    rootStyle.setProperty(
+      '--screenplay-chrome-height',
+      `${topbarHeight + workbarHeight + storyboardHeight + scriptHeaderHeight}px`,
+    );
+  };
+
+  const stickyChromeObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(syncStickyChromeMetrics)
+    : null;
+  Object.values(stickyChrome).forEach((element) => {
+    if (element) stickyChromeObserver?.observe(element);
+  });
+
+  const syncEditorLayoutState = () => {
+    const isActive = activePage === 'script'
+      && elements.modeSelect.value === 'screenplay'
+      && !elements.pagePanel.hidden;
+    document.body.classList.toggle('screenplay-editor-active', isActive);
+    document.documentElement.classList.toggle('screenplay-editor-active', isActive);
+    requestAnimationFrame(syncStickyChromeMetrics);
+  };
 
   const updateScriptText = (rawText, { emit = true } = {}) => {
     if (elements.scriptText.value !== rawText) elements.scriptText.value = rawText;
@@ -71,6 +113,7 @@ export function initScriptController(elements, {
       autosizeScriptText();
       setToolbarHostsVisible(false);
     }
+    syncEditorLayoutState();
   };
 
   const currentSlug = () => scriptSlugFromRecord(getCurrentRecord?.());
@@ -121,6 +164,7 @@ export function initScriptController(elements, {
       history.replaceState(history.state, '', next);
     }
     if (page === 'script' && elements.modeSelect.value === 'screenplay' && !editor) setEditorMode('screenplay');
+    syncEditorLayoutState();
     onPageChange?.(page);
   };
 
@@ -157,7 +201,7 @@ export function initScriptController(elements, {
     elements.focusBtn.setAttribute('aria-pressed', String(isEnabled));
     elements.focusBtn.title = isEnabled ? 'Exit distraction-free mode (Esc)' : 'Open distraction-free mode';
     if (elements.focusBtnLabel) elements.focusBtnLabel.textContent = isEnabled ? 'Exit full screen' : 'Full screen';
-    [document.querySelector('.storyboard-topbar'), elements.pageTabs].forEach((element) => {
+    [document.querySelector('.storyboard-topbar'), document.querySelector('.sf-workbar')].forEach((element) => {
       if (!element) return;
       element.inert = isEnabled;
       if (isEnabled) element.setAttribute('aria-hidden', 'true');

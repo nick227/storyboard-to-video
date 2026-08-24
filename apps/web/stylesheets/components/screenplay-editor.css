@@ -213,6 +213,7 @@
 /* Canonical page — fixed Letter geometry */
 .script-page {
     width: var(--page-width);
+    height: var(--page-height);
     min-height: var(--page-height);
     padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
     margin: 0 0 0.35in;
@@ -225,6 +226,7 @@
     font-family: var(--font-script);
     font-size: 12pt;
     line-height: 1;
+    overflow: visible;
 }
 
 .script-page:last-child {
@@ -323,6 +325,7 @@
 
 .screenplay-editor-wrapper.is-fluid .script-page {
     width: 100%;
+    height: auto;
     min-height: auto;
     padding: 20px 18px 28px;
     margin-bottom: 12px;
@@ -345,6 +348,21 @@
 
 .screenplay-editor-wrapper.is-fluid .script-line[data-format="transition"] {
     margin-left: 2em;
+}
+
+/* Canonical, off-screen Letter page used to keep logical pagination stable
+   while the visible editor is using its narrow fluid presentation. */
+.screenplay-editor-wrapper.screenplay-pagination-measure {
+    position: fixed !important;
+    left: -10000px !important;
+    top: 0 !important;
+    display: block !important;
+    width: var(--page-width) !important;
+    height: auto !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    contain: layout style paint;
 }
 
 /* Print / PDF: always canonical geometry, never scaled */
@@ -380,6 +398,7 @@
 
     .script-page {
         width: 8.5in;
+        height: 11in;
         min-height: 11in;
         padding: 1in 1in 1in 1.5in;
         margin: 0;

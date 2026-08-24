@@ -25,7 +25,9 @@ export class ViewportScaler {
         this.workspace = els.workspace;
         this.shell = els.shell;
         this.target = els.target;
+        this.onLayoutModeChange = els.onLayoutModeChange || null;
         this._pageWidthPx = inchesToPx(PAGE_WIDTH_IN);
+        this._isFluid = null;
         this._raf = 0;
         this._ro = null;
         this._onWinResize = () => this.scheduleUpdate();
@@ -59,6 +61,10 @@ export class ViewportScaler {
         const useFluid = available < FLUID_MAX_WIDTH_PX || raw < MIN_SCALE;
 
         this.wrapper.classList.toggle('is-fluid', useFluid);
+        if (useFluid !== this._isFluid) {
+            this._isFluid = useFluid;
+            this.onLayoutModeChange?.({ isFluid: useFluid });
+        }
 
         if (useFluid) {
             this.wrapper.style.setProperty('--page-scale', '1');

@@ -5,11 +5,15 @@
   padding: 20px;
 }
 .storyboard-topbar {
+  position: sticky;
+  top: calc(var(--sf-topbar-height, 57px) + var(--sf-workbar-height, 44px));
+  z-index: 98;
   display: flex;
   justify-content: space-between;
   gap: 2px;
   align-items: center;
   margin-bottom: 14px;
+  background: var(--bg);
 }
 .brand-block { min-width: 0; flex: 1; }
 .storyboard-title-row {

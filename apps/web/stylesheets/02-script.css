@@ -1,5 +1,18 @@
 @import "./components/script-cover-page.css";
 
+:root {
+  --sf-topbar-height: 57px;
+  --sf-workbar-height: 44px;
+  --storyboard-topbar-height: 48px;
+  --script-header-height: 46px;
+  --screenplay-chrome-height: calc(
+    var(--sf-topbar-height) +
+    var(--sf-workbar-height) +
+    var(--storyboard-topbar-height) +
+    var(--script-header-height)
+  );
+}
+
 .script-field textarea { resize: vertical; }
 .script-textarea {
   resize: none;
@@ -12,6 +25,52 @@
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 8px;
+}
+
+html.screenplay-editor-active .sf-topbar {
+  background: var(--bg);
+  backdrop-filter: none;
+  box-shadow: 0 2px 0 var(--bg);
+}
+
+body.screenplay-editor-active:not(.script-focus-active) .app-shell {
+  padding-top: 0;
+}
+
+body.screenplay-editor-active:not(.script-focus-active) .storyboard-topbar {
+  min-height: var(--storyboard-topbar-height, 48px);
+  margin-bottom: 0;
+  box-shadow:
+    0 -1px 0 var(--bg),
+    0 1px 0 var(--bg);
+}
+
+body.screenplay-editor-active:not(.script-focus-active) .script-header-row {
+  position: sticky;
+  top: calc(
+    var(--sf-topbar-height, 57px) +
+    var(--sf-workbar-height, 44px) +
+    var(--storyboard-topbar-height, 48px)
+  );
+  z-index: 97;
+  margin-bottom: 0;
+  padding-block: 6px;
+  background: var(--bg);
+  box-shadow:
+    0 -1px 0 var(--bg),
+    0 1px 0 var(--bg);
+}
+
+html.screenplay-editor-active {
+  scroll-padding-top: calc(var(--screenplay-chrome-height, 195px) + 12px);
+}
+
+body.screenplay-editor-active:not(.script-focus-active) .script-line {
+  scroll-margin-top: calc(var(--screenplay-chrome-height, 195px) + 12px);
+}
+
+body.screenplay-editor-active:not(.script-focus-active) .screenplay-page-float {
+  top: calc(var(--screenplay-chrome-height, 195px) + 12px);
 }
 .script-header-primary {
   flex: 1 1 70%;
@@ -192,10 +251,15 @@
 }
 .script-focus-button:hover { border-color: var(--accent); color: var(--text); }
 body.script-focus-active { overflow: hidden; }
+body.script-focus-active .sf-workbar,
+body.script-focus-active .storyboard-topbar {
+  visibility: hidden;
+  pointer-events: none;
+}
 #scriptPagePanel.is-script-focus {
   position: fixed;
-  inset: 57px 0 0;
-  z-index: 90;
+  inset: var(--sf-topbar-height, 57px) 0 0;
+  z-index: 99;
   padding: 18px;
   background: var(--bg);
   display: flex;
@@ -211,7 +275,7 @@ body.script-focus-active { overflow: hidden; }
   min-height: 0;
   width: 100%;
   margin: 0 auto;
-  overflow: auto;
+  overflow: hidden;
 }
 #scriptPagePanel.is-script-focus .script-textarea {
   flex: 1 1 auto;
@@ -221,6 +285,8 @@ body.script-focus-active { overflow: hidden; }
 #scriptPagePanel.is-script-focus .screenplay-editor-container {
   flex: 1 1 auto;
   min-height: 0;
+  width: 100%;
+  overflow: hidden;
 }
 #scriptPagePanel.is-script-focus .screenplay-editor-wrapper {
   height: 100%;
