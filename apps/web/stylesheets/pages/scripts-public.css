@@ -396,6 +396,19 @@ body.scripts-shell {
   background: transparent;
 }
 
+/* The reader renders the whole script into one page div with no real pagination,
+   so the page box must grow with content instead of clipping at a fixed Letter
+   height (which pushed overflow text onto the dark backdrop, unreadable). The
+   page-number badge is meaningless here since there's no page 2+ to count. */
+.screenplay-editor-wrapper.is-reader .script-page {
+  height: auto;
+  min-height: auto;
+}
+
+.screenplay-editor-wrapper.is-reader .script-page::after {
+  content: none;
+}
+
 .script-author-box {
   margin-top: 2.75rem;
   padding-top: 1.75rem;
