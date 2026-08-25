@@ -57,19 +57,31 @@ test('scripts service creates slug, publishes, and 404s private on public read',
   await assert.rejects(() => scripts.getPublicBySlug('the-odyssey'), (error) => error.code === 'SCRIPT_NOT_FOUND');
 });
 
-test('script update resyncs slug from placeholder once, then locks it', async () => {
+test('script update keeps slug synced to title until the slug is manually customized', async () => {
   const store = new ScriptStore();
   const scripts = createScriptsService({ store });
   const created = await scripts.create({ title: 'Untitled' }, { tenantId: 'tenant-1', userId: 'user-1' });
   assert.equal(created.slug, 'untitled');
 
-  const renamed = await scripts.update(created.id, { title: 'Angel Devil Gin v' }, { tenantId: 'tenant-1' });
-  assert.equal(renamed.slug, 'angel-devil-gin-v');
-  assert.equal(renamed.title, 'Angel Devil Gin v');
+  // Autosave can commit a partial title mid-keystroke (e.g. the "R" of "Ricky Tomlin").
+  // The slug must not lock onto that fragment -- it should keep tracking the title.
+  const partial = await scripts.update(created.id, { title: 'R' }, { tenantId: 'tenant-1' });
+  assert.equal(partial.slug, 'r');
+
+  const renamed = await scripts.update(created.id, { title: 'Ricky Tomlin' }, { tenantId: 'tenant-1' });
+  assert.equal(renamed.slug, 'ricky-tomlin');
+  assert.equal(renamed.title, 'Ricky Tomlin');
 
   const renamedAgain = await scripts.update(created.id, { title: 'Final Cut' }, { tenantId: 'tenant-1' });
-  assert.equal(renamedAgain.slug, 'angel-devil-gin-v');
+  assert.equal(renamedAgain.slug, 'final-cut');
   assert.equal(renamedAgain.title, 'Final Cut');
+
+  // Once the slug is set explicitly, it stops tracking the title.
+  const customized = await scripts.update(created.id, { slug: 'custom-slug' }, { tenantId: 'tenant-1' });
+  assert.equal(customized.slug, 'custom-slug');
+
+  const renamedAfterCustomization = await scripts.update(created.id, { title: 'Yet Another Title' }, { tenantId: 'tenant-1' });
+  assert.equal(renamedAfterCustomization.slug, 'custom-slug');
 });
 
 test('public reader lists more scripts by createdByUserId not author string', async () => {

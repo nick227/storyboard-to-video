@@ -1,6 +1,8 @@
 const crypto = require('node:crypto');
 const { AppError } = require('../errors');
-const { slugify, cleanText, isPlaceholderSlug } = require('../shared/text');
+const {
+  slugify, cleanText, isPlaceholderSlug, slugMatchesTitle,
+} = require('../shared/text');
 const {
   artifactsFromRow, artifactVisibilityPatch, isArtifactPublic, normalizeVisibility, publishedAtOrder,
 } = require('../shared/script-artifacts');
@@ -145,9 +147,11 @@ class ScriptStore {
     if (patch.coverMimeType !== undefined) next.coverMimeType = patch.coverMimeType || null;
     if (patch.slug != null) {
       next.slug = await this.allocateSlug(patch.slug, { excludeId: id });
-    } else if (patch.title != null && isPlaceholderSlug(existing.slug) && !isPlaceholderSlug(slugify(patch.title))) {
-      // First real title after "Untitled" — resync the slug once, then leave it alone so
-      // shared links never go stale on later renames.
+    } else if (patch.title != null && slugMatchesTitle(existing.slug, existing.title) && !isPlaceholderSlug(slugify(patch.title)) && slugify(patch.title) !== existing.slug) {
+      // Slug still matches the title it was derived from, so it has never been manually
+      // customized. Autosave commits titles mid-keystroke (e.g. "R" before "Ricky Tomlin"
+      // finishes typing), so keep resyncing on every title change rather than only once —
+      // otherwise the slug can lock onto a partial title and never catch up.
       next.slug = await this.allocateSlug(patch.title, { excludeId: id });
     }
     if (patch.categoryId !== undefined) {
